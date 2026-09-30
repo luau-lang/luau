@@ -79,7 +79,13 @@ local function dosteps (siz)
   collectgarbage()
   collectgarbage("stop")
   local a = {}
-  for i=1,100 do a[i] = {{}}; local b = {} end
+  local b = nil
+  for i=1,100 do
+    a[i] = {{}}
+    b = {}
+  end
+  assert(b)
+  b = nil
   local x = gcinfo()
   local i = 0
   repeat
@@ -100,13 +106,18 @@ do
   local x = gcinfo()
   collectgarbage()
   collectgarbage("stop")
+  local a = nil
   repeat
-    local a = {}
+    a = {}
   until gcinfo() > 1000
+  assert(a)
+  a = nil
   collectgarbage("restart")
   repeat
-    local a = {}
+    a = {}
   until gcinfo() < 1000
+  assert(a)
+  a = nil
 end
 
 lim = 15

@@ -34,17 +34,12 @@ FileNavigationContext::FileNavigationContext(std::string requirerPath)
 {
 }
 
-std::string FileNavigationContext::getRequirerIdentifier() const
+Luau::Require::NavigationContext::NavigateResult FileNavigationContext::resetToRequirer()
 {
-    return requirerPath;
-}
-
-Luau::Require::NavigationContext::NavigateResult FileNavigationContext::reset(const std::string& identifier)
-{
-    if (identifier == "-")
+    if (requirerPath == "-")
         return convert(vfs.resetToStdIn());
 
-    return convert(vfs.resetToPath(identifier));
+    return convert(vfs.resetToPath(requirerPath));
 }
 
 Luau::Require::NavigationContext::NavigateResult FileNavigationContext::jumpToAlias(const std::string& path)
@@ -85,7 +80,7 @@ Luau::Require::NavigationContext::ConfigBehavior FileNavigationContext::getConfi
     return Luau::Require::NavigationContext::ConfigBehavior::GetConfig;
 }
 
-std::optional<std::string> FileNavigationContext::getAlias(const std::string& alias) const
+std::optional<std::string> FileNavigationContext::getAlias(const std::string& alias)
 {
     return std::nullopt;
 }

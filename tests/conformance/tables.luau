@@ -414,6 +414,45 @@ do
 
   -- make sure table.find checks the hash portion as well
   assert(table.find({[(2)] = true}, true, 2) == 2)
+
+  -- table.find respects __eq
+  local objameta = {
+      __eq = function(a, b)
+        return a.x == b.x and a.y == b.y
+      end
+    }
+  local function makeobja(x, y)
+    return setmetatable({x=x, y=y}, objameta)
+  end
+
+  local t3 = {}
+  table.insert(t3, makeobja(1, 2))
+  table.insert(t3, makeobja(2, 3))
+  table.insert(t3, makeobja(3, 4))
+
+  assert(table.find(t3, t3[1]) == 1)
+  assert(table.find(t3, t3[2]) == 2)
+  assert(table.find(t3, t3[3]) == 3)
+
+  -- table.find respects __eq effects
+  local function addnrec(n)
+      return if n == 1 then 1 else n + addnrec(n - 1)
+  end
+
+  local objbmeta = {
+      __eq = function(a, b)
+        return addnrec(a.d) == addnrec(b.d)
+      end
+    }
+  local function makeobjb(d)
+    return setmetatable({d=d}, objbmeta)
+  end
+
+  local o = makeobjb(20)
+  local t4 = {o, o, o, o, o, o, o, o}
+
+  assert(table.find(t4, makeobjb(20)) == 1)
+  assert(table.find(t4, makeobjb(500)) == nil)
 end
 
 -- test table.concat
@@ -572,6 +611,33 @@ do
   arr.a = 'a' -- trigger rehash
 
   assert(#arr == 5) -- technically 0 is also valid, but it happens to be 5 because array capacity is 5
+end
+
+-- test appending to a sparse array that can shrink during rehash
+for tsize = 1,32 do
+  local arr = table.create(tsize, 42)
+
+  for i = 1,tsize - 1 do
+    arr[i] = nil
+  end
+
+  assert(#arr == tsize)
+  table.insert(arr, 43)
+  assert(arr[tsize] == 42)
+  assert(arr[tsize + 1] == 43)
+end
+
+-- test sparse appends switching into an array
+for tsize = 1,32 do
+  local t = {}
+
+  for i = 2,tsize do
+    table.insert(t, i, i)
+  end
+
+  for i = 2,tsize do
+    assert(t[i] == i)
+  end
 end
 
 -- test boundary invariant maintenance when replacing hash keys
@@ -754,4 +820,291 @@ assert((function ()
   return t.hi
 end)() == nil)
 
-return"OK"
+
+-- check that tables with constant keys maintain their insertion/iteration order
+-- this is important to maintain for backwards compat
+do
+  local ordering = {
+    foo = 1,
+    bar = "string",
+    thing = true
+  }
+
+  local idx = 1
+  for key, val in ordering do
+    if idx == 3 then
+      assert(key == "foo")
+      assert(val == 1)
+    elseif idx == 2 then
+      assert(key == "bar")
+      assert(val == "string")
+    elseif idx == 1 then
+      assert(key == "thing")
+      assert(val == true)
+    end
+
+    idx += 1
+  end
+end
+
+do
+  -- any optimization related to constant fields must preserve side effects that may be relied upon
+  local should_change = false
+
+  function side_effect()
+    should_change = true
+  end
+
+  local t = {a = 1, a = side_effect(), a = 3}
+
+  assert(should_change == true)
+  assert(t.a == 3)
+end
+
+-- constant folding of table properties must respect aliasing: a mutation through
+-- one local must be visible when the same table is read through any other local.
+do
+	-- mutate via alias, read via original
+	local t = { a = 32 }
+	local copy = t
+	copy.a = 1
+	assert(t.a == 1)
+end
+
+do
+	-- mutate via original, read via alias
+	local t = { a = 32 }
+	local copy = t
+	t.a = 1
+	assert(copy.a == 1)
+end
+
+do
+	-- multiple aliases all observe the mutation
+	local t = { a = 1 }
+	local a1 = t
+	local a2 = t
+	a2.a = 99
+	assert(t.a == 99)
+	assert(a1.a == 99)
+end
+
+do
+	-- tables passed by closure also observe the mutation
+	local t = { a = 32 }
+	function f()
+		return t
+	end
+	local copy = f()
+	copy.a = 1
+	assert(t.a == 1)
+end
+
+do
+	local t = {x = 0}
+	while t.x < 10 do
+		t.x = t.x + 1
+	end
+	assert(t.x == 10)
+end
+
+do
+  local t1 = { a = 1 }
+  local t2 = { b = 2 }
+  assert(not (t1 == t2))
+  assert(t1 ~= t2)
+end
+
+do
+	local t = { a = 1 }
+	local x = t or false
+	t.a = 99
+	assert(x.a == 99)
+end
+
+do
+  local function incnext(t, key)
+    local k, v = next(t, key)
+    if k ~= nil then t[k] = v + 1 end
+    return k, v
+  end
+  local t = { a = 1 }
+  for k, v in incnext, t do end
+  assert(t.a == 2)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  mutate((t))
+  assert(t.a == 99)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  mutate(t :: any)
+  assert(t.a == 99)
+end
+
+do
+  local t = { x = 1 }
+  local a = (t)
+  a.x = 99
+  assert(t.x == 99)
+end
+
+do
+  local t = {x = 1}
+  local u = {y = t}
+  u.y.x = 99
+  assert(t.x == 99)
+end
+
+do
+  local function foo(u) u.y.x = 99 end
+  local t = {x = 1}
+  local u = {y = t}
+  foo(u)
+  assert(t.x == 99)
+end
+
+do 
+  local mt = { __add = function(t, _) t.x = 99 end }
+  local t = { x = 1 }
+  setmetatable(t, mt)
+  local _ = t + 1
+  assert(t.x == 99)
+end
+
+do
+  local t = {x = 1}
+  (if true then t else t)['x'] = 99
+  assert(t.x == 99);
+  (if false then t else t)['x'] = 1000
+  assert(t.x == 1000)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  mutate(t and t)
+  assert(t.a == 99)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  local x = t or false
+  mutate(x)
+  assert(t.a == 99)
+end
+
+-- freeze a table whose metatable has __mode
+do
+  local fallback = { value = 123 }
+  local mt = setmetatable({ __index = fallback }, { __mode = "v" })
+  local object = setmetatable({}, mt)
+
+  table.freeze(mt)
+  assert(object.value == 123)
+
+  fallback = nil
+  collectgarbage("collect")
+  assert(object.value == nil)
+end
+
+-- add __mode after freezing
+do
+  local mode = {}
+  local fallback = { value = 123 }
+  local mt = setmetatable({ __index = fallback }, mode)
+  local object = setmetatable({}, mt)
+
+  table.freeze(mt)
+  assert(object.value == 123)
+
+  mode.__mode = "v"
+  fallback = nil
+  collectgarbage("collect")
+  assert(object.value == nil)
+end
+
+do
+  local t = {}
+
+  t[64] = "item"
+  for i = 1,200 do t["key" .. i] = i end
+
+  -- resize the table array part, but force a failure at node reallocation
+  setallocationlimit(3000)
+  local ok = pcall(table.move, t, 1, 128, 1, t)
+  setallocationlimit(0)
+
+  -- table should remain unmodified after that failure
+  -- we should see our number/string keys
+  assert(not ok)
+  assert(t[64] == "item")
+  assert(t.key1 == 1)
+
+  -- and the table should remain consistent for iteration
+  local seen = {}
+  local key = nil
+
+  while true do
+    key = next(t, key)
+    if key == nil then
+      break
+    elseif seen[key] then
+      assert(false, "found a repeat")
+    end
+
+    seen[key] = true
+  end
+end
+
+do
+  local t = table.create(1024, 1)
+  t.foo = "foo"
+  t.bar = "bar"
+
+  -- make the array sparse
+  for i = 257, 1024 do t[i] = nil end
+
+  -- force the reallocation which will shrink the array part and fail
+  setallocationlimit(3000)
+  local ok = pcall(function() t[1025] = true end)
+  setallocationlimit(0)
+
+  assert(not ok)
+
+  assert(t.foo == "foo")
+  assert(t.bar == "bar")
+
+  assert(t[1] == 1)
+  assert(t[128] == 1)
+
+  assert(t[513] == nil)
+end
+
+do
+  local t = table.create(1024, 1)
+
+  t.__index = {}
+
+  -- freezing might attempt to restructure the array part
+  setallocationlimit(1)
+  table.freeze(t)
+  setallocationlimit(0)
+
+  -- check allocator path for small blocks
+  local t = table.create(2, 1)
+
+  t.__index = {}
+
+  setallocationlimit(1)
+  table.freeze(t)
+  setallocationlimit(0)
+end
+
+return "OK"

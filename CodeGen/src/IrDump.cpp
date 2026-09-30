@@ -51,7 +51,7 @@ static bool isPrintableStringConstant(const char* str, size_t len)
     return true;
 }
 
-static const char* getTagName(uint8_t tag)
+const char* getTagName(uint8_t tag)
 {
     switch (tag)
     {
@@ -83,6 +83,12 @@ static const char* getTagName(uint8_t tag)
         return "tupval";
     case LUA_TDEADKEY:
         return "tdeadkey";
+    case LUA_TCLASS:
+        return "tclass";
+    case LUA_TOBJECT:
+        return "tobject";
+    case LUA_TINTEGER:
+        return "tinteger";
     default:
         CODEGEN_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();
@@ -103,6 +109,8 @@ const char* getCmdName(IrCmd cmd)
         return "LOAD_DOUBLE";
     case IrCmd::LOAD_INT:
         return "LOAD_INT";
+    case IrCmd::LOAD_INT64:
+        return "LOAD_INT64";
     case IrCmd::LOAD_FLOAT:
         return "LOAD_FLOAT";
     case IrCmd::LOAD_TVALUE:
@@ -127,6 +135,8 @@ const char* getCmdName(IrCmd cmd)
         return "STORE_DOUBLE";
     case IrCmd::STORE_INT:
         return "STORE_INT";
+    case IrCmd::STORE_INT64:
+        return "STORE_INT64";
     case IrCmd::STORE_VECTOR:
         return "STORE_VECTOR";
     case IrCmd::STORE_TVALUE:
@@ -137,6 +147,26 @@ const char* getCmdName(IrCmd cmd)
         return "ADD_INT";
     case IrCmd::SUB_INT:
         return "SUB_INT";
+    case IrCmd::ADD_INT64:
+        return "ADD_INT64";
+    case IrCmd::SUB_INT64:
+        return "SUB_INT64";
+    case IrCmd::MUL_INT64:
+        return "MUL_INT64";
+    case IrCmd::DIV_INT64:
+        return "DIV_INT64";
+    case IrCmd::IDIV_INT64:
+        return "IDIV_INT64";
+    case IrCmd::CHECK_DIV_INT64:
+        return "CHECK_DIV_INT64";
+    case IrCmd::UDIV_INT64:
+        return "UDIV_INT64";
+    case IrCmd::REM_INT64:
+        return "REM_INT64";
+    case IrCmd::UREM_INT64:
+        return "UREM_INT64";
+    case IrCmd::MOD_INT64:
+        return "MOD_INT64";
     case IrCmd::SEXTI8_INT:
         return "SEXTI8_INT";
     case IrCmd::SEXTI16_INT:
@@ -197,6 +227,8 @@ const char* getCmdName(IrCmd cmd)
         return "SIGN_FLOAT";
     case IrCmd::SELECT_NUM:
         return "SELECT_NUM";
+    case IrCmd::SELECT_INT64:
+        return "SELECT_INT64";
     case IrCmd::MULADD_NUM:
         return "MULADD_NUM";
     case IrCmd::SELECT_VEC:
@@ -217,6 +249,16 @@ const char* getCmdName(IrCmd cmd)
         return "MULADD_VEC";
     case IrCmd::UNM_VEC:
         return "UNM_VEC";
+    case IrCmd::MIN_VEC:
+        return "MIN_VEC";
+    case IrCmd::MAX_VEC:
+        return "MAX_VEC";
+    case IrCmd::FLOOR_VEC:
+        return "FLOOR_VEC";
+    case IrCmd::CEIL_VEC:
+        return "CEIL_VEC";
+    case IrCmd::ABS_VEC:
+        return "ABS_VEC";
     case IrCmd::DOT_VEC:
         return "DOT_VEC";
     case IrCmd::EXTRACT_VEC:
@@ -227,6 +269,8 @@ const char* getCmdName(IrCmd cmd)
         return "CMP_ANY";
     case IrCmd::CMP_INT:
         return "CMP_INT";
+    case IrCmd::CMP_INT64:
+        return "CMP_INT64";
     case IrCmd::CMP_TAG:
         return "CMP_TAG";
     case IrCmd::CMP_SPLIT_TVALUE:
@@ -241,6 +285,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_EQ_TAG";
     case IrCmd::JUMP_CMP_INT:
         return "JUMP_CMP_INT";
+    case IrCmd::JUMP_CMP_INT64:
+        return "JUMP_CMP_INT64";
     case IrCmd::JUMP_EQ_POINTER:
         return "JUMP_EQ_POINTER";
     case IrCmd::JUMP_CMP_NUM:
@@ -267,6 +313,10 @@ const char* getCmdName(IrCmd cmd)
         return "TRY_CALL_FASTGETTM";
     case IrCmd::NEW_USERDATA:
         return "NEW_USERDATA";
+    case IrCmd::NEW_VECTOR:
+        return "NEW_VECTOR";
+    case IrCmd::INT64_TO_NUM:
+        return "INT64_TO_NUM";
     case IrCmd::INT_TO_NUM:
         return "INT_TO_NUM";
     case IrCmd::UINT_TO_NUM:
@@ -275,14 +325,14 @@ const char* getCmdName(IrCmd cmd)
         return "UINT_TO_FLOAT";
     case IrCmd::NUM_TO_INT:
         return "NUM_TO_INT";
+    case IrCmd::NUM_TO_INT64:
+        return "NUM_TO_INT64";
     case IrCmd::NUM_TO_UINT:
         return "NUM_TO_UINT";
     case IrCmd::FLOAT_TO_NUM:
         return "FLOAT_TO_NUM";
     case IrCmd::NUM_TO_FLOAT:
         return "NUM_TO_FLOAT";
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
-        return "NUM_TO_VEC";
     case IrCmd::FLOAT_TO_VEC:
         return "FLOAT_TO_VEC";
     case IrCmd::TAG_VECTOR:
@@ -299,6 +349,8 @@ const char* getCmdName(IrCmd cmd)
         return "INVOKE_FASTCALL";
     case IrCmd::CHECK_FASTCALL_RES:
         return "CHECK_FASTCALL_RES";
+    case IrCmd::INVOKE_FASTPCALL:
+        return "INVOKE_FASTPCALL";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
     case IrCmd::DO_LEN:
@@ -325,6 +377,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_NO_METATABLE";
     case IrCmd::CHECK_SAFE_ENV:
         return "CHECK_SAFE_ENV";
+    case IrCmd::CHECK_YIELDABLE:
+        return "CHECK_YIELDABLE";
     case IrCmd::CHECK_ARRAY_SIZE:
         return "CHECK_ARRAY_SIZE";
     case IrCmd::CHECK_SLOT_MATCH:
@@ -337,8 +391,12 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_BUFFER_LEN";
     case IrCmd::CHECK_USERDATA_TAG:
         return "CHECK_USERDATA_TAG";
+    case IrCmd::CHECK_CMP_NUM:
+        return "CHECK_CMP_NUM";
     case IrCmd::CHECK_CMP_INT:
         return "CHECK_CMP_INT";
+    case IrCmd::CHECK_CMP_INT64:
+        return "CHECK_CMP_INT64";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:
@@ -391,6 +449,34 @@ const char* getCmdName(IrCmd cmd)
         return "FALLBACK_FORGPREP";
     case IrCmd::SUBSTITUTE:
         return "SUBSTITUTE";
+    case IrCmd::MARK_USED:
+        return "MARK_USED";
+    case IrCmd::MARK_DEAD:
+        return "MARK_DEAD";
+    case IrCmd::BITAND_INT64:
+        return "BITAND_INT64";
+    case IrCmd::BITXOR_INT64:
+        return "BITXOR_INT64";
+    case IrCmd::BITOR_INT64:
+        return "BITOR_INT64";
+    case IrCmd::BITNOT_INT64:
+        return "BITNOT_INT64";
+    case IrCmd::BITLSHIFT_INT64:
+        return "BITLSHIFT_INT64";
+    case IrCmd::BITRSHIFT_INT64:
+        return "BITRSHIFT_INT64";
+    case IrCmd::BITARSHIFT_INT64:
+        return "BITARSHIFT_INT64";
+    case IrCmd::BITLROTATE_INT64:
+        return "BITLROTATE_INT64";
+    case IrCmd::BITRROTATE_INT64:
+        return "BITRROTATE_INT64";
+    case IrCmd::BITCOUNTLZ_INT64:
+        return "BITCOUNTLZ_INT64";
+    case IrCmd::BITCOUNTRZ_INT64:
+        return "BITCOUNTRZ_INT64";
+    case IrCmd::BYTESWAP_INT64:
+        return "BYTESWAP_INT64";
     case IrCmd::BITAND_UINT:
         return "BITAND_UINT";
     case IrCmd::BITXOR_UINT:
@@ -447,6 +533,12 @@ const char* getCmdName(IrCmd cmd)
         return "BUFFER_READF64";
     case IrCmd::BUFFER_WRITEF64:
         return "BUFFER_WRITEF64";
+    case IrCmd::BUFFER_READI64:
+        return "BUFFER_READI64";
+    case IrCmd::BUFFER_WRITEI64:
+        return "BUFFER_WRITEI64";
+    case IrCmd::JUMP_CMP_PROTOID:
+        return "JUMP_CMP_PROTOID";
     }
 
     LUAU_UNREACHABLE();
@@ -464,11 +556,104 @@ const char* getBlockKindName(IrBlockKind kind)
         return "bb";
     case IrBlockKind::Linearized:
         return "bb_linear";
+    case IrBlockKind::ExitSync:
+        return "bb_exit";
     case IrBlockKind::Dead:
         return "dead";
     }
 
     LUAU_UNREACHABLE();
+}
+
+const char* getValueKindName(IrValueKind kind)
+{
+    switch (kind)
+    {
+    case IrValueKind::Unknown:
+        return "unknown";
+    case IrValueKind::None:
+        return "none";
+    case IrValueKind::Tag:
+        return "tag";
+    case IrValueKind::Int:
+        return "int";
+    case IrValueKind::Int64:
+        return "int64";
+    case IrValueKind::Pointer:
+        return "pointer";
+    case IrValueKind::Float:
+        return "float";
+    case IrValueKind::Double:
+        return "double";
+    case IrValueKind::Tvalue:
+        return "tvalue";
+    case IrValueKind::Count:
+        CODEGEN_ASSERT(!"invalid value kind");
+    }
+
+    LUAU_UNREACHABLE();
+}
+
+const char* getConversionCmdSuffix(IrCmd conversionCmd)
+{
+    return conversionCmd == IrCmd::INT_TO_NUM ? " as int" : conversionCmd == IrCmd::UINT_TO_NUM ? " as uint" : "";
+}
+
+uint8_t parseTagName(std::string_view name)
+{
+    if (name == "tnil")
+        return LUA_TNIL;
+
+    if (name == "tboolean")
+        return LUA_TBOOLEAN;
+
+    if (name == "tlightuserdata")
+        return LUA_TLIGHTUSERDATA;
+
+    if (name == "tnumber")
+        return LUA_TNUMBER;
+
+    if (name == "tinteger")
+        return LUA_TINTEGER;
+
+    if (name == "tvector")
+        return LUA_TVECTOR;
+
+    if (name == "tstring")
+        return LUA_TSTRING;
+
+    if (name == "ttable")
+        return LUA_TTABLE;
+
+    if (name == "tfunction")
+        return LUA_TFUNCTION;
+
+    if (name == "tuserdata")
+        return LUA_TUSERDATA;
+
+    if (name == "tthread")
+        return LUA_TTHREAD;
+
+    if (name == "tbuffer")
+        return LUA_TBUFFER;
+
+    if (name == "tproto")
+        return LUA_TPROTO;
+
+    if (name == "tupval")
+        return LUA_TUPVAL;
+
+    if (name == "tdeadkey")
+        return LUA_TDEADKEY;
+
+    if (name == "tclass")
+        return LUA_TCLASS;
+
+    if (name == "tobject")
+        return LUA_TOBJECT;
+
+    CODEGEN_ASSERT(!"Unknown type tag");
+    return 0xff;
 }
 
 void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
@@ -481,22 +666,13 @@ void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 
     ctx.result.append(getCmdName(inst.cmd));
 
-    auto checkOp = [&ctx](IrOp op, const char* sep)
+    for (size_t i = 0; i < inst.ops.size(); i++)
     {
-        if (op.kind != IrOpKind::None)
-        {
-            ctx.result.append(sep);
-            toString(ctx, op);
-        }
-    };
-
-    checkOp(inst.a, " ");
-    checkOp(inst.b, ", ");
-    checkOp(inst.c, ", ");
-    checkOp(inst.d, ", ");
-    checkOp(inst.e, ", ");
-    checkOp(inst.f, ", ");
-    checkOp(inst.g, ", ");
+        if (inst.ops[i].kind == IrOpKind::None)
+            continue;
+        ctx.result.append(i == 0 ? " " : ", ");
+        toString(ctx, inst.ops[i]);
+    }
 }
 
 void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
@@ -523,6 +699,10 @@ static void appendVmConstant(std::string& result, Proto* proto, int index)
         else
             append(result, "%.17g", constant.value.n);
     }
+    else if (constant.tt == LUA_TINTEGER)
+    {
+        append(result, "%lldi", (long long)constant.value.l);
+    }
     else if (constant.tt == LUA_TSTRING)
     {
         TString* str = gco2ts(constant.value.gc);
@@ -538,7 +718,7 @@ static void appendVmConstant(std::string& result, Proto* proto, int index)
     }
     else if (constant.tt == LUA_TVECTOR)
     {
-        const float* v = constant.value.v;
+        const LUA_VECTOR_TYPE* v = vvalue(&constant);
 
 #if LUA_VECTOR_SIZE == 4
         if (v[3] != 0)
@@ -606,6 +786,9 @@ void toString(std::string& result, Proto* proto, IrConst constant)
     case IrConstKind::Int:
         append(result, "%di", constant.valueInt);
         break;
+    case IrConstKind::Int64:
+        append(result, "%lldi", (long long)constant.valueInt64);
+        break;
     case IrConstKind::Uint:
         append(result, "%uu", constant.valueUint);
         break;
@@ -672,6 +855,8 @@ const char* getBytecodeTypeName(uint8_t type, const char* const* userdataTypes)
         return "boolean";
     case LBC_TYPE_NUMBER:
         return "number";
+    case LBC_TYPE_INTEGER:
+        return "integer";
     case LBC_TYPE_STRING:
         return "string";
     case LBC_TYPE_TABLE:
@@ -748,7 +933,7 @@ static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs, con
     }
 }
 
-static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst)
+static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, IrInst& inst)
 {
     RegisterSet extraRs;
 
@@ -759,20 +944,14 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
 
     // Find first block argument, for guard instructions (isNonTerminatingJump), that's the first and only one
     CODEGEN_ASSERT(isNonTerminatingJump(inst.cmd));
-    IrOp op = inst.a;
+    IrOp op = OP_A(inst);
 
-    if (inst.b.kind == IrOpKind::Block)
-        op = inst.b;
-    else if (inst.c.kind == IrOpKind::Block)
-        op = inst.c;
-    else if (inst.d.kind == IrOpKind::Block)
-        op = inst.d;
-    else if (inst.e.kind == IrOpKind::Block)
-        op = inst.e;
-    else if (inst.f.kind == IrOpKind::Block)
-        op = inst.f;
-    else if (inst.g.kind == IrOpKind::Block)
-        op = inst.g;
+    for (size_t i = 1; i < inst.ops.size(); i++)
+        if (inst.ops[i].kind == IrOpKind::Block)
+        {
+            op = inst.ops[i];
+            break;
+        }
 
     if (op.kind == IrOpKind::Block && op.index < ctx.cfg.in.size())
     {
@@ -787,14 +966,7 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
     return extraRs;
 }
 
-void toStringDetailed(
-    IrToStringContext& ctx,
-    const IrBlock& block,
-    uint32_t blockIdx,
-    const IrInst& inst,
-    uint32_t instIdx,
-    IncludeUseInfo includeUseInfo
-)
+void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, IrInst& inst, uint32_t instIdx, IncludeUseInfo includeUseInfo)
 {
     size_t start = ctx.result.size();
 
@@ -834,6 +1006,41 @@ void toStringDetailed(
     else
     {
         ctx.result.append("\n");
+    }
+
+    if (const VmExitSyncInfo* sync = ctx.vmExitInfo.find(instIdx))
+    {
+        if (!sync->regStores.empty())
+        {
+            append(ctx.result, "   ; exit sync: ");
+
+            bool comma = false;
+
+            for (auto& el : sync->regStores)
+            {
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
+
+                append(ctx.result, "R%d", el.reg);
+            }
+
+            comma = false;
+
+            append(ctx.result, ", {");
+
+            for (auto argOp : sync->argOps)
+            {
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
+
+                toString(ctx, argOp);
+            }
+
+            append(ctx.result, "}");
+            append(ctx.result, "\n");
+        }
     }
 }
 
@@ -925,10 +1132,10 @@ void toStringDetailed(
     }
 }
 
-std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
+std::string toString(IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -951,7 +1158,7 @@ std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
         // To allow dumping blocks that are still being constructed, we can't rely on terminator and need a bounds check
         for (uint32_t index = block.start; index <= block.finish && index < uint32_t(function.instructions.size()); index++)
         {
-            const IrInst& inst = function.instructions[index];
+            IrInst& inst = function.instructions[index];
 
             // Skip pseudo instructions unless they are still referenced
             if (isPseudo(inst.cmd) && inst.useCount == 0)
@@ -974,7 +1181,7 @@ std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
     return result;
 }
 
-std::string dump(const IrFunction& function)
+std::string dump(IrFunction& function)
 {
     std::string result = toString(function, IncludeUseInfo::Yes);
 
@@ -1045,7 +1252,7 @@ static void appendBlocks(IrToStringContext& ctx, const IrFunction& function, boo
 std::string toDot(const IrFunction& function, bool includeInst)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1074,13 +1281,8 @@ std::string toDot(const IrFunction& function, bool includeInst)
                 }
             };
 
-            checkOp(inst.a);
-            checkOp(inst.b);
-            checkOp(inst.c);
-            checkOp(inst.d);
-            checkOp(inst.e);
-            checkOp(inst.f);
-            checkOp(inst.g);
+            for (auto& op : inst.ops)
+                checkOp(op);
         }
     }
 
@@ -1092,7 +1294,7 @@ std::string toDot(const IrFunction& function, bool includeInst)
 std::string toDotCfg(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1115,7 +1317,7 @@ std::string toDotCfg(const IrFunction& function)
 std::string toDotDjGraph(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
 

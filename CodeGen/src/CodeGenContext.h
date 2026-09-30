@@ -32,6 +32,7 @@ class BaseCodeGenContext
 {
 public:
     BaseCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+    virtual ~BaseCodeGenContext();
 
     [[nodiscard]] bool initHeaderFunctions();
 
@@ -56,8 +57,7 @@ public:
     CodeAllocator codeAllocator;
     std::unique_ptr<UnwindBuilder> unwindBuilder;
 
-    uint8_t* gateData = nullptr;
-    size_t gateDataSize = 0;
+    CodeAllocationData gateAllocationData;
 
     void* userdataRemappingContext = nullptr;
     UserdataRemapperCallback* userdataRemapper = nullptr;
@@ -70,41 +70,12 @@ class StandaloneCodeGenContext final : public BaseCodeGenContext
 public:
     StandaloneCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId,
-        const std::vector<Proto*>& moduleProtos
-    ) override;
+    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
 
     [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
         const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
-        const uint8_t* data,
-        size_t dataSize,
-        const uint8_t* code,
-        size_t codeSize
-    ) override;
-
-    void onCloseState() noexcept override;
-    void onDestroyFunction(void* execdata) noexcept override;
-
-private:
-};
-
-class SharedCodeGenContext final : public BaseCodeGenContext
-{
-public:
-    SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
-
-    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId,
-        const std::vector<Proto*>& moduleProtos
-    ) override;
-
-    [[nodiscard]] ModuleBindResult bindModule(
-        const std::optional<ModuleId>& moduleId,
-        const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
         const uint8_t* data,
         size_t dataSize,
         const uint8_t* code,
@@ -117,6 +88,35 @@ public:
 private:
     SharedCodeAllocator sharedAllocator;
 };
+
+class SharedCodeGenContext final : public BaseCodeGenContext
+{
+public:
+    SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
+
+    [[nodiscard]] ModuleBindResult bindModule(
+        const std::optional<ModuleId>& moduleId,
+        const std::vector<Proto*>& moduleProtos,
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
+        const uint8_t* data,
+        size_t dataSize,
+        const uint8_t* code,
+        size_t codeSize
+    ) override;
+
+    void onCloseState() noexcept override;
+    void onDestroyFunction(void* execdata) noexcept override;
+
+private:
+    SharedCodeAllocator sharedAllocator;
+};
+
+// JIT layout randomization helpers
+
+uint64_t jitRngSeed(uintptr_t ptr);
+uint32_t jitRngRandom(uint64_t& state);
 
 } // namespace CodeGen
 } // namespace Luau

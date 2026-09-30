@@ -92,3 +92,18 @@ int luarequire_clearcache(lua_State* L)
 {
     return Luau::Require::clearCache(L);
 }
+
+void luarequire_lockplaceholder(lua_State* L, int idx)
+{
+    Luau::Require::lockPlaceholder(L, idx);
+}
+
+void luarequire_populateplaceholder(lua_State* L, int placeholderIdx, int resultIdx)
+{
+    Luau::Require::populatePlaceholder(L, placeholderIdx, resultIdx);
+}
+
+void luarequire_createplaceholder(lua_State* L)
+{
+    Luau::Require::createPlaceholder(L);
+}

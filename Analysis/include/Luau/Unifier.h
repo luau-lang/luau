@@ -40,7 +40,7 @@ struct Widen : Substitution
     bool ignoreChildren(TypeId ty) override;
 
     TypeId operator()(TypeId ty);
-    TypePackId operator()(TypePackId ty);
+    TypePackId operator()(TypePackId tp);
 };
 
 /**
@@ -103,7 +103,7 @@ struct Unifier
         TypeId superTy,
         bool isFunctionCall = false,
         bool isIntersection = false,
-        const LiteralProperties* aliasableMap = nullptr
+        const LiteralProperties* literalProperties = nullptr
     );
 
 private:
@@ -112,9 +112,9 @@ private:
         TypeId superTy,
         bool isFunctionCall = false,
         bool isIntersection = false,
-        const LiteralProperties* aliasableMap = nullptr
+        const LiteralProperties* literalProperties = nullptr
     );
-    void tryUnifyUnionWithType(TypeId subTy, const UnionType* uv, TypeId superTy);
+    void tryUnifyUnionWithType(TypeId subTy, const UnionType* subUnion, TypeId superTy);
 
     // Traverse the two types provided and block on any BlockedTypes we find.
     // Returns true if any types were blocked on.
@@ -134,7 +134,7 @@ private:
     void tryUnifyPrimitives(TypeId subTy, TypeId superTy);
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);
-    void tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
+    void tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false, const LiteralProperties* literalProperties = nullptr);
     void tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithExternType(TypeId subTy, TypeId superTy, bool reversed);
@@ -151,11 +151,11 @@ private:
     void cacheResult(TypeId subTy, TypeId superTy, size_t prevErrorCount);
 
 public:
-    void tryUnify(TypePackId subTy, TypePackId superTy, bool isFunctionCall = false);
+    void tryUnify(TypePackId subTp, TypePackId superTp, bool isFunctionCall = false);
 
 private:
-    void tryUnify_(TypePackId subTy, TypePackId superTy, bool isFunctionCall = false);
-    void tryUnifyVariadics(TypePackId subTy, TypePackId superTy, bool reversed, int subOffset = 0);
+    void tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCall = false);
+    void tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool reversed, int subOffset = 0);
 
     void tryUnifyWithAny(TypeId subTy, TypeId anyTy);
     void tryUnifyWithAny(TypePackId subTy, TypePackId anyTp);

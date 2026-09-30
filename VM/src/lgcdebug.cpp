@@ -14,6 +14,9 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauEnumMoreEdges)
+LUAU_FASTFLAG(LuauFrozenMetaButterfly)
+
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
     LUAU_ASSERT(!isdead(g, t));
@@ -103,6 +106,9 @@ static void validatestack(global_State* g, lua_State* l)
     if (l->namecall)
         validateobjref(g, obj2gco(l), obj2gco(l->namecall));
 
+    if (l->finalizers)
+        validateobjref(g, obj2gco(l), obj2gco(l->finalizers));
+
     for (UpVal* uv = l->openupval; uv; uv = uv->u.open.threadnext)
     {
         LUAU_ASSERT(uv->tt == LUA_TUPVAL);
@@ -136,6 +142,33 @@ static void validateproto(global_State* g, Proto* f)
             validateobjref(g, obj2gco(f), obj2gco(f->locvars[i].varname));
 }
 
+static void validateclass(global_State* g, LuauClass* lco)
+{
+    GCObject* obj = obj2gco(lco);
+    validateobjref(g, obj, obj2gco(lco->name));
+    if (lco->super)
+        validateobjref(g, obj, obj2gco(lco->super));
+    validateobjref(g, obj, obj2gco(lco->memberstooffset));
+    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
+    {
+        validateobjref(g, obj, obj2gco(lco->offsettomember[i]));
+        if (i >= lco->numberofinstancemembers)
+            validateref(g, obj, &lco->staticmembers[i - lco->numberofinstancemembers]);
+    }
+    if (lco->metatable)
+        validateobjref(g, obj, obj2gco(lco->metatable));
+    if (lco->instancemetatable)
+        validateobjref(g, obj, obj2gco(lco->instancemetatable));
+}
+
+static void validateobject(global_State* g, LuauObject* inst)
+{
+    GCObject* obj = obj2gco(inst);
+    validateobjref(g, obj, obj2gco(inst->lclass));
+    for (uint32_t i = 0; i < inst->numberofmembers; i++)
+        validateref(g, obj, &inst->members[i]);
+}
+
 static void validateobj(global_State* g, GCObject* o)
 {
     // dead objects can only occur during sweep
@@ -167,6 +200,9 @@ static void validateobj(global_State* g, GCObject* o)
         validatestack(g, gco2th(o));
         break;
 
+    case LUA_TVECTOR:
+        break;
+
     case LUA_TBUFFER:
         break;
 
@@ -176,6 +212,14 @@ static void validateobj(global_State* g, GCObject* o)
 
     case LUA_TUPVAL:
         validateref(g, o, gco2uv(o)->v);
+        break;
+
+    case LUA_TCLASS:
+        validateclass(g, gco2class(o));
+        break;
+
+    case LUA_TOBJECT:
+        validateobject(g, gco2object(o));
         break;
 
     default:
@@ -202,6 +246,12 @@ static void validategraylist(global_State* g, GCObject* o)
             break;
         case LUA_TTHREAD:
             o = gco2th(o)->gclist;
+            break;
+        case LUA_TCLASS:
+            o = gco2class(o)->gclist;
+            break;
+        case LUA_TOBJECT:
+            o = gco2object(o)->gclist;
             break;
         case LUA_TPROTO:
             o = gco2p(o)->gclist;
@@ -230,8 +280,26 @@ void luaC_validate(lua_State* L)
     checkliveness(g, &g->registry);
 
     for (int i = 0; i < LUA_T_COUNT; ++i)
+    {
         if (g->mt[i])
             LUAU_ASSERT(!isdead(g, obj2gco(g->mt[i])));
+    }
+
+    for (int i = 0; i < LUA_UTAG_LIMIT; i++)
+    {
+        if (g->udatamt[i])
+            LUAU_ASSERT(!isdead(g, obj2gco(g->udatamt[i])));
+    }
+
+    for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+    {
+        checkliveness(g, &g->udatadirect[i].indextm);
+        checkliveness(g, &g->udatadirect[i].newindextm);
+        checkliveness(g, &g->udatadirect[i].namecalltm);
+
+        if (g->udatadirectfields[i])
+            LUAU_ASSERT(!isdead(g, obj2gco(g->udatadirectfields[i])));
+    }
 
     validategraylist(g, g->weak);
     validategraylist(g, g->gray);
@@ -294,6 +362,9 @@ static void dumptable(FILE* f, LuaTable* h)
 {
     size_t size = sizeof(LuaTable) + (h->node == &luaH_dummynode ? 0 : sizenode(h) * sizeof(LuaNode)) + h->sizearray * sizeof(TValue);
 
+    if (FFlag::LuauFrozenMetaButterfly && hasmetacache(h))
+        size += TM_N * sizeof(TValue);
+
     fprintf(f, "{\"type\":\"table\",\"cat\":%d,\"size\":%d", h->memcat, int(size));
 
     if (h->node != &luaH_dummynode)
@@ -353,8 +424,8 @@ static void dumpclosure(FILE* f, Closure* cl)
 
     if (cl->isC)
     {
-        if (cl->c.debugname)
-            fprintf(f, ",\"name\":\"%s\"", cl->c.debugname + 0);
+        if (TString* str = cl->c.debugname)
+            fprintf(f, ",\"name\":\"%s\"", getstr(str));
 
         if (cl->nupvalues)
         {
@@ -401,23 +472,27 @@ static void dumpthread(FILE* f, lua_State* th)
     fprintf(f, ",\"env\":");
     dumpref(f, obj2gco(th->gt));
 
-    Closure* tcl = 0;
+    if (th->finalizers)
+    {
+        fprintf(f, ",\"finalizers\":");
+        dumpref(f, obj2gco(th->finalizers));
+    }
+
+    Proto* cip = nullptr;
     for (CallInfo* ci = th->base_ci; ci <= th->ci; ++ci)
     {
         if (ttisfunction(ci->func))
         {
-            tcl = clvalue(ci->func);
+            cip = ci->p;
             break;
         }
     }
 
-    if (tcl && !tcl->isC && tcl->l.p->source)
+    if (cip != nullptr && cip->source)
     {
-        Proto* p = tcl->l.p;
-
         fprintf(f, ",\"source\":\"");
-        dumpstringdata(f, p->source->data, p->source->len);
-        fprintf(f, "\",\"line\":%d", p->linedefined);
+        dumpstringdata(f, cip->source->data, cip->source->len);
+        fprintf(f, "\",\"line\":%d", cip->linedefined);
     }
 
     if (th->top > th->stack)
@@ -448,11 +523,11 @@ static void dumpthread(FILE* f, lua_State* th)
 
                 if (cl->isC)
                 {
-                    fprintf(f, "\"frame:%s\"", cl->c.debugname ? cl->c.debugname : "[C]");
+                    fprintf(f, "\"frame:%s\"", cl->c.debugname ? getstr(cl->c.debugname) : "[C]");
                 }
                 else
                 {
-                    Proto* p = cl->l.p;
+                    Proto* p = ci->p;
                     fprintf(f, "\"frame:");
                     if (p->source)
                         dumpstringdata(f, p->source->data, p->source->len);
@@ -461,7 +536,7 @@ static void dumpthread(FILE* f, lua_State* th)
             }
             else if (isLua(ci))
             {
-                Proto* p = ci_func(ci)->l.p;
+                Proto* p = ci->p;
                 int pc = pcRel(ci->savedpc, p);
                 const LocVar* var = luaF_findlocal(p, int(v - ci->base), pc);
 
@@ -532,6 +607,50 @@ static void dumpupval(FILE* f, UpVal* uv)
     fprintf(f, "}");
 }
 
+static void dumpclass(FILE* f, LuauClass* lco)
+{
+    fprintf(f, R"({"type":"class","cat":%d,"size":%d)", lco->memcat, int(sizeof(LuauClass)));
+    fprintf(f, R"(,"name":)");
+    dumpstringdata(f, lco->name->data, lco->name->len);
+    fprintf(f, R"(,"super":)");
+    if (lco->super)
+        dumpref(f, obj2gco(lco->super));
+    else
+        fprintf(f, "null");
+    fprintf(f, R"(,"membernames":[)");
+    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
+    {
+        if (i != 0)
+            fputc(',', f);
+        dumpref(f, (GCObject*)lco->offsettomember[i]);
+    }
+    fprintf(f, R"(],"staticmembers":[)");
+    dumprefs(f, lco->staticmembers, lco->numberofallmembers - lco->numberofinstancemembers);
+    fprintf(f, R"(],"metatable":)");
+    if (lco->metatable)
+        dumpref(f, obj2gco(lco->metatable));
+    else
+        fprintf(f, "null");
+    fprintf(f, R"(,"instancemetatable":)");
+    if (lco->instancemetatable)
+        dumpref(f, obj2gco(lco->instancemetatable));
+    else
+        fprintf(f, "null");
+    fprintf(f, R"(,"memberstooffset":)");
+    dumpref(f, obj2gco(lco->memberstooffset));
+    fprintf(f, "}");
+}
+
+static void dumpobject(FILE* f, LuauObject* inst)
+{
+    fprintf(f, R"({"type":"object","cat":%d,"size":%d)", inst->memcat, int(sizeof(LuauObject)));
+    fprintf(f, R"(,"class":)");
+    dumpref(f, obj2gco(inst->lclass));
+    fprintf(f, R"(,"members":[)");
+    dumprefs(f, inst->members, inst->numberofmembers);
+    fprintf(f, "]}");
+}
+
 static void dumpobj(FILE* f, GCObject* o)
 {
     switch (o->gch.tt)
@@ -551,8 +670,17 @@ static void dumpobj(FILE* f, GCObject* o)
     case LUA_TTHREAD:
         return dumpthread(f, gco2th(o));
 
+    case LUA_TVECTOR:
+        return; // vector data is outlined, but is a constant cost of a vector
+
     case LUA_TBUFFER:
         return dumpbuffer(f, gco2buf(o));
+
+    case LUA_TCLASS:
+        return dumpclass(f, gco2class(o));
+
+    case LUA_TOBJECT:
+        return dumpobject(f, gco2object(o));
 
     case LUA_TPROTO:
         return dumpproto(f, gco2p(o));
@@ -658,6 +786,9 @@ static void enumtable(EnumContext* ctx, LuaTable* h)
 {
     size_t size = sizeof(LuaTable) + (h->node == &luaH_dummynode ? 0 : sizenode(h) * sizeof(LuaNode)) + h->sizearray * sizeof(TValue);
 
+    if (FFlag::LuauFrozenMetaButterfly && hasmetacache(h))
+        size += TM_N * sizeof(TValue);
+
     // Provide a name for a special registry table
     enumnode(ctx, obj2gco(h), size, h == hvalue(registry(ctx->L)) ? "registry" : NULL);
 
@@ -718,7 +849,10 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
 {
     if (cl->isC)
     {
-        enumnode(ctx, obj2gco(cl), sizeCclosure(cl->nupvalues), cl->c.debugname);
+        enumnode(ctx, obj2gco(cl), sizeCclosure(cl->nupvalues), cl->c.debugname ? getstr(cl->c.debugname) : nullptr);
+
+        if (FFlag::LuauEnumMoreEdges && cl->c.debugname)
+            enumedge(ctx, obj2gco(cl), obj2gco(cl->c.debugname), "name");
     }
     else
     {
@@ -781,19 +915,19 @@ static void enumthread(EnumContext* ctx, lua_State* th)
 {
     size_t size = sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci;
 
-    Closure* tcl = NULL;
+    Proto* cip = NULL;
     for (CallInfo* ci = th->base_ci; ci <= th->ci; ++ci)
     {
         if (ttisfunction(ci->func))
         {
-            tcl = clvalue(ci->func);
+            cip = ci->p;
             break;
         }
     }
 
-    if (tcl && !tcl->isC && tcl->l.p->source)
+    if (cip && cip->source)
     {
-        Proto* p = tcl->l.p;
+        Proto* p = cip;
 
         char buf[LUA_IDSIZE];
 
@@ -810,6 +944,9 @@ static void enumthread(EnumContext* ctx, lua_State* th)
     }
 
     enumedge(ctx, obj2gco(th), obj2gco(th->gt), "globals");
+
+    if (th->finalizers)
+        enumedge(ctx, obj2gco(th), obj2gco(th->finalizers), "finalizers");
 
     if (th->top > th->stack)
         enumedges(ctx, obj2gco(th), th->stack, th->top - th->stack, "stack");
@@ -847,6 +984,33 @@ static void enumproto(EnumContext* ctx, Proto* p)
 
     for (int i = 0; i < p->sizep; ++i)
         enumedge(ctx, obj2gco(p), obj2gco(p->p[i]), "protos");
+
+    if (FFlag::LuauEnumMoreEdges)
+    {
+        if (p->debugname)
+            enumedge(ctx, obj2gco(p), obj2gco(p->debugname), "name");
+
+        if (p->source)
+            enumedge(ctx, obj2gco(p), obj2gco(p->source), "source");
+
+        for (int i = 0; i < p->sizelocvars; i++)
+        {
+            if (TString* str = p->locvars[i].varname)
+                enumedge(ctx, obj2gco(p), obj2gco(str), "[local name]");
+        }
+
+        for (int i = 0; i < p->sizeupvalues; ++i)
+        {
+            if (TString* str = p->upvalues[i])
+                enumedge(ctx, obj2gco(p), obj2gco(str), "[upvalue name]");
+        }
+
+        if (p->optimized)
+            enumedge(ctx, obj2gco(p), obj2gco(p->optimized), "optimized");
+
+        if (p->deoptimized)
+            enumedge(ctx, obj2gco(p), obj2gco(p->deoptimized), "deoptimized");
+    }
 }
 
 static void enumupval(EnumContext* ctx, UpVal* uv)
@@ -855,6 +1019,63 @@ static void enumupval(EnumContext* ctx, UpVal* uv)
 
     if (iscollectable(uv->v))
         enumedge(ctx, obj2gco(uv), gcvalue(uv->v), "value");
+}
+
+static void enumclass(EnumContext* ctx, LuauClass* lco)
+{
+    GCObject* obj = obj2gco(lco);
+
+    char buf[LUA_IDSIZE];
+    snprintf(buf, sizeof(buf), "class object %s", getstr(lco->name));
+    enumnode(ctx, obj, sizeof(LuauClass), buf);
+    enumedge(ctx, obj, obj2gco(lco->name), "classname");
+
+    if (lco->super)
+        enumedge(ctx, obj, obj2gco(lco->super), "super");
+
+    enumedge(ctx, obj, obj2gco(lco->memberstooffset), "classoffsets");
+    uint32_t numberofstaticmembers = lco->numberofallmembers - lco->numberofinstancemembers;
+
+    for (uint32_t i = 0; i < numberofstaticmembers; i++)
+    {
+        if (!iscollectable(&lco->staticmembers[i]))
+            continue;
+
+        char membername[32];
+        snprintf(membername, sizeof(membername), "%s", getstr(lco->offsettomember[i + lco->numberofinstancemembers]));
+        enumedge(ctx, obj, gcvalue(&lco->staticmembers[i]), membername);
+    }
+
+    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
+        enumedge(ctx, obj, obj2gco(lco->offsettomember[i]), "membername");
+
+    if (lco->metatable)
+        enumedge(ctx, obj, obj2gco(lco->metatable), "metatable");
+
+    if (FFlag::LuauEnumMoreEdges && lco->instancemetatable)
+        enumedge(ctx, obj, obj2gco(lco->instancemetatable), "instancemetatable");
+}
+
+static void enumobject(EnumContext* ctx, LuauObject* inst)
+{
+    GCObject* obj = obj2gco(inst);
+
+    char buf[LUA_IDSIZE];
+    snprintf(buf, sizeof(buf), "object %s", getstr(inst->lclass->name));
+    enumnode(ctx, obj, sizeof(LuauObject), buf);
+
+    for (uint32_t i = 0; i < inst->lclass->numberofinstancemembers; i++)
+    {
+        if (!iscollectable(&inst->members[i]))
+            continue;
+
+        char membername[32];
+        snprintf(membername, sizeof(membername), "%s", getstr(inst->lclass->offsettomember[i]));
+        enumedge(ctx, obj, gcvalue(&inst->members[i]), membername);
+    }
+
+    if (FFlag::LuauEnumMoreEdges && inst->lclass)
+        enumedge(ctx, obj, obj2gco(inst->lclass), "class");
 }
 
 static void enumobj(EnumContext* ctx, GCObject* o)
@@ -876,8 +1097,17 @@ static void enumobj(EnumContext* ctx, GCObject* o)
     case LUA_TTHREAD:
         return enumthread(ctx, gco2th(o));
 
+    case LUA_TVECTOR:
+        return enumnode(ctx, o, sizeof(LuauVector), NULL);
+
     case LUA_TBUFFER:
         return enumbuffer(ctx, gco2buf(o));
+
+    case LUA_TCLASS:
+        return enumclass(ctx, gco2class(o));
+
+    case LUA_TOBJECT:
+        return enumobject(ctx, gco2object(o));
 
     case LUA_TPROTO:
         return enumproto(ctx, gco2p(o));
@@ -912,6 +1142,56 @@ void luaC_enumheap(
     ctx.edge = edge;
 
     enumgco(&ctx, NULL, obj2gco(g->mainthread));
+
+    // global state links from mainthread
+    if (FFlag::LuauEnumMoreEdges)
+    {
+        if (iscollectable(&g->weakregistry))
+            enumedge(&ctx, obj2gco(g->mainthread), gcvalue(&g->weakregistry), "weakregistry");
+
+        for (int i = 0; i < LUA_T_COUNT; i++)
+        {
+            if (g->mt[i])
+                enumedge(&ctx, obj2gco(g->mainthread), obj2gco(g->mt[i]), "[type metatable]");
+
+            enumedge(&ctx, obj2gco(g->mainthread), obj2gco(g->ttname[i]), "[type name]");
+        }
+
+        for (int i = 0; i < TM_N; i++)
+            enumedge(&ctx, obj2gco(g->mainthread), obj2gco(g->tmname[i]), "[metamethod name]");
+
+        for (int i = 0; i < LUA_UTAG_LIMIT; i++)
+        {
+            if (g->udatamt[i])
+                enumedge(&ctx, obj2gco(g->mainthread), obj2gco(g->udatamt[i]), "[userdata metatable]");
+        }
+
+        for (int i = 0; i < LUA_LUTAG_LIMIT; i++)
+        {
+            if (g->lightuserdataname[i])
+                enumedge(&ctx, obj2gco(g->mainthread), obj2gco(g->lightuserdataname[i]), "[lightuserdata name]");
+        }
+
+        for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+        {
+            lua_UdataDirectAccessData& direct = g->udatadirect[i];
+
+            if (iscollectable(&direct.indextm))
+                enumedge(&ctx, obj2gco(g->mainthread), gcvalue(&direct.indextm), "[direct userdata]");
+
+            if (iscollectable(&direct.newindextm))
+                enumedge(&ctx, obj2gco(g->mainthread), gcvalue(&direct.newindextm), "[direct userdata]");
+
+            if (iscollectable(&direct.namecalltm))
+                enumedge(&ctx, obj2gco(g->mainthread), gcvalue(&direct.namecalltm), "[direct userdata]");
+
+            if (g->udatadirectfields[i])
+                enumedge(&ctx, obj2gco(g->mainthread), obj2gco(g->udatadirectfields[i]), "[direct userdata]");
+        }
+
+        enumedge(&ctx, obj2gco(g->mainthread), obj2gco(luaS_newliteral(L, LUA_MEMERRMSG)), "[fixed string]");
+        enumedge(&ctx, obj2gco(g->mainthread), obj2gco(luaS_newliteral(L, LUA_ERRERRMSG)), "[fixed string]");
+    }
 
     luaM_visitgco(L, &ctx, enumgco);
 }

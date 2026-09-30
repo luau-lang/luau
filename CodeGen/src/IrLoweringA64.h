@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderA64.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 
@@ -18,15 +19,17 @@ namespace CodeGen
 struct ModuleHelpers;
 struct AssemblyOptions;
 struct LoweringStats;
+enum class CodeGenCounter : unsigned;
 
 namespace A64
 {
 
 struct IrLoweringA64
 {
-    IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats);
+    IrLoweringA64(LogBuilder* logger, AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats);
 
     void lowerInst(IrInst& inst, uint32_t index, const IrBlock& next);
+    void startBlock(const IrBlock& curr);
     void finishBlock(const IrBlock& curr, const IrBlock& next);
     void finishFunction();
 
@@ -35,10 +38,14 @@ struct IrLoweringA64
     bool isFallthroughBlock(const IrBlock& target, const IrBlock& next);
     void jumpOrFallthrough(IrBlock& target, const IrBlock& next);
 
-    Label& getTargetLabel(IrOp op, Label& fresh);
-    void finalizeTargetLabel(IrOp op, Label& fresh);
+    Label& getTargetLabel(IrOp op, uint32_t index, Label& fresh);
+    void finalizeTargetLabel(IrOp op, uint32_t index, Label& fresh);
 
-    void checkSafeEnv(IrOp target, const IrBlock& next);
+    void checkSafeEnv(IrOp target, uint32_t index, const IrBlock& next);
+
+    void allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos);
+    void incrementCounterAt(size_t offset);
+
     void checkObjectBarrierConditions(RegisterA64 object, RegisterA64 temp, RegisterA64 ra, IrOp raOp, int ratag, Label& skip);
 
     // Operand data build helpers
@@ -46,6 +53,7 @@ struct IrLoweringA64
     RegisterA64 tempDouble(IrOp op);
     RegisterA64 tempFloat(IrOp op);
     RegisterA64 tempInt(IrOp op);
+    RegisterA64 tempInt64(IrOp op);
     RegisterA64 tempUint(IrOp op);
     AddressA64 tempAddr(IrOp op, int offset, RegisterA64 tempStorage = noreg); // Existing temporary register can be provided
     AddressA64 tempAddrBuffer(IrOp bufferOp, IrOp indexOp, uint8_t tag);
@@ -57,6 +65,7 @@ struct IrLoweringA64
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
     int intOp(IrOp op) const;
+    int64_t int64Op(IrOp op) const;
     unsigned uintOp(IrOp op) const;
     unsigned importOp(IrOp op) const;
     double doubleOp(IrOp op) const;
@@ -77,6 +86,7 @@ struct IrLoweringA64
         unsigned int pcpos;
     };
 
+    LogBuilder* logger = nullptr;
     AssemblyBuilderA64& build;
     ModuleHelpers& helpers;
 
@@ -90,6 +100,9 @@ struct IrLoweringA64
     std::vector<InterruptHandler> interruptHandlers;
     std::vector<ExitHandler> exitHandlers;
     DenseHashMap<uint32_t, uint32_t> exitHandlerMap;
+
+    uint32_t exitSyncAllocToken = 0;
+    uint32_t exitSyncInstIdx = kInvalidInstIdx;
 
     bool error = false;
 };

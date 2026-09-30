@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Clone.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
@@ -9,8 +10,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifiable.h"
 #include "Luau/VisitType.h"
-
-LUAU_FASTFLAG(LuauSolverV2)
 
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
@@ -269,6 +268,9 @@ private:
             t->lowerBound = shallowClone(t->lowerBound);
         if (t->upperBound)
             t->upperBound = shallowClone(t->upperBound);
+
+        if (t->primitiveType)
+            t->primitiveType = shallowClone(*t->primitiveType);
     }
 
     void cloneChildren(GenericType* t)
@@ -347,6 +349,23 @@ private:
         {
             t->indexer->indexType = shallowClone(t->indexer->indexType);
             t->indexer->indexResultType = shallowClone(t->indexer->indexResultType);
+        }
+
+        if (FFlag::DebugLuauUserDefinedClasses && t->relation)
+        {
+            Luau::visit(
+                overloaded{
+                    [&](Obj& obj)
+                    {
+                        obj.ty = shallowClone(obj.ty);
+                    },
+                    [&](Klass& klass)
+                    {
+                        klass.ty = shallowClone(klass.ty);
+                    }
+                },
+                *t->relation
+            );
         }
     }
 

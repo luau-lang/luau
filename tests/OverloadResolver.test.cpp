@@ -3,9 +3,11 @@
 #include "doctest.h"
 #include "Fixture.h"
 
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/Normalize.h"
 #include "Luau/UnifierSharedState.h"
+
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 using namespace Luau;
 
@@ -14,7 +16,7 @@ struct OverloadResolverFixture : Fixture
     TypeArena arena_;
     NotNull<TypeArena> arena{&arena_};
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+    Normalizer normalizer{arena, getBuiltins(), NotNull{&sharedState}, !FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old};
     InternalErrorReporter iceReporter;
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
@@ -37,7 +39,7 @@ struct OverloadResolverFixture : Fixture
         };
     }
 
-    DenseHashSet<TypeId> kEmptySet{nullptr};
+    DenseHashSet<TypeId> kEmptySet;
     NotNull<DenseHashSet<TypeId>> emptySet{&kEmptySet};
     Location kDummyLocation;
     AstExprConstantNil kDummyExpr{kDummyLocation};
@@ -79,15 +81,8 @@ struct OverloadResolverFixture : Fixture
 
     TypeId tableWithCall(TypeId callMm) const
     {
-        TypeId table = arena->addType(TableType{TableState::Sealed, TypeLevel{}, /*scope*/nullptr});
-        TypeId metatable = arena->addType(TableType{
-            TableType::Props{
-                {"__call", callMm}
-            },
-            std::nullopt,
-            TypeLevel{},
-            TableState::Sealed
-        });
+        TypeId table = arena->addType(TableType{TableState::Sealed, TypeLevel{}, /*scope*/ nullptr});
+        TypeId metatable = arena->addType(TableType{TableType::Props{{"__call", callMm}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 
         return arena->addType(MetatableType{table, metatable});
     }
@@ -108,53 +103,6 @@ struct OverloadResolverFixture : Fixture
 };
 
 TEST_SUITE_BEGIN("OverloadResolverTest");
-
-TEST_CASE_FIXTURE(OverloadResolverFixture, "basic_overload_selection")
-{
-    // ty: (number) -> number & (string) -> string
-    // args: (number)
-    auto [analysis, overload] =
-        resolver.selectOverload_DEPRECATED(numberToNumberAndStringToString, pack({getBuiltins()->numberType}), emptySet, false);
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(numberToNumber, overload);
-}
-
-TEST_CASE_FIXTURE(OverloadResolverFixture, "basic_overload_selection1")
-{
-    // ty: (number) -> number & (string) -> string
-    // args: (string)
-    auto [analysis, overload] =
-        resolver.selectOverload_DEPRECATED(numberToNumberAndStringToString, pack({getBuiltins()->stringType}), emptySet, false);
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(stringToString, overload);
-}
-
-TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities")
-{
-    // ty: (number) -> number & (number, number) -> number
-    // args: (number)
-    auto [analysis, overload] =
-        resolver.selectOverload_DEPRECATED(numberToNumberAndNumberNumberToNumber, pack({getBuiltins()->numberType}), emptySet, false);
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(numberToNumber, overload);
-}
-
-TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities1")
-{
-    // ty: (number) -> number & (number, number) -> number
-    // args: (number, number)
-    auto [analysis, overload] = resolver.selectOverload_DEPRECATED(
-        numberToNumberAndNumberNumberToNumber, pack({getBuiltins()->numberType, getBuiltins()->numberType}), emptySet, false
-    );
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(numberNumberToNumber, overload);
-}
-
-/////////////////////////////////////////////////////////////////
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_basic_overload_selection")
 {
@@ -187,8 +135,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_match_call_metamethod")
     TypeId callMm = fn({builtinTypes->unknownType, builtinTypes->numberType}, {builtinTypes->numberType});
     TypeId tbl = tableWithCall(callMm);
 
-    OverloadResolution result =
-        resolver.resolveOverload(tbl, pack({builtinTypes->numberType}), Location{}, emptySet, false);
+    OverloadResolution result = resolver.resolveOverload(tbl, pack({builtinTypes->numberType}), Location{}, emptySet, false);
 
     // Possible design issue here: We're indicating that an overload matches,
     // but it clearly has a different arity than the type pack that was
@@ -208,8 +155,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_metamethod_could_be_overloaded")
     TypeId overload2 = fn({builtinTypes->unknownType, builtinTypes->stringType}, {builtinTypes->stringType});
     TypeId tbl = tableWithCall(meet(overload1, overload2));
 
-    OverloadResolution result =
-        resolver.resolveOverload(tbl, pack({builtinTypes->numberType}), Location{}, emptySet, false);
+    OverloadResolution result = resolver.resolveOverload(tbl, pack({builtinTypes->numberType}), Location{}, emptySet, false);
 
     // Possible design issue here: We're indicating that an overload matches,
     // but it clearly has a different arity than the type pack that was
@@ -234,8 +180,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overload_group_could_include_met
 
     TypeId monstrosity = meet(tbl, fn({builtinTypes->booleanType}, {builtinTypes->booleanType}));
 
-    OverloadResolution result =
-        resolver.resolveOverload(monstrosity, pack({builtinTypes->numberType}), Location{}, emptySet, false);
+    OverloadResolution result = resolver.resolveOverload(monstrosity, pack({builtinTypes->numberType}), Location{}, emptySet, false);
 
     CHECK(1 == result.ok.size());
     CHECK(overload1 == result.ok.at(0));
@@ -276,14 +221,9 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_separate_non_viable_overloads_by
     // args: (string)
     const TypePack args = TypePack{{builtinTypes->stringType}, std::nullopt};
 
-    OverloadResolution resolution =
-        resolver.resolveOverload(
-            meet({numberToNumber, numberToString, numberNumberToNumber}),
-            pack({builtinTypes->stringType}),
-            Location{},
-            emptySet,
-            false
-        );
+    OverloadResolution resolution = resolver.resolveOverload(
+        meet({numberToNumber, numberToString, numberNumberToNumber}), pack({builtinTypes->stringType}), Location{}, emptySet, false
+    );
 
     CHECK(resolution.ok.empty());
     CHECK(resolution.nonFunctions.empty());
@@ -309,22 +249,11 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_select")
     TypeId numberOrString = join(builtinTypes->numberType, builtinTypes->stringType);
     TypePackId genericAs = arena->addTypePack(GenericTypePack{"A"});
 
-    TypeId selectTy = arena->addType(FunctionType{
-        {},
-        {genericAs},
-        arena->addTypePack({numberOrString}, genericAs),
-        builtinTypes->anyTypePack
-    });
+    TypeId selectTy = arena->addType(FunctionType{{}, {genericAs}, arena->addTypePack({numberOrString}, genericAs), builtinTypes->anyTypePack});
 
     OverloadResolver r = mkResolver();
     OverloadResolution resolution =
-        r.resolveOverload(
-            selectTy,
-            arena->addTypePack({numberOrString}, builtinTypes->anyTypePack),
-            Location{},
-            emptySet,
-            false
-        );
+        r.resolveOverload(selectTy, arena->addTypePack({numberOrString}, builtinTypes->anyTypePack), Location{}, emptySet, false);
 
     CHECK(1 == resolution.ok.size());
 }
@@ -332,13 +261,9 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_select")
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_pass_table_with_indexer")
 {
     // {[any]: number}
-    TypeId anyNumberTable = arena->addType(TableType{
-        TableType::Props{},
-        TableIndexer{builtinTypes->anyType, builtinTypes->numberType},
-        TypeLevel{},
-        &rootScope,
-        TableState::Sealed
-    });
+    TypeId anyNumberTable = arena->addType(
+        TableType{TableType::Props{}, TableIndexer{builtinTypes->anyType, builtinTypes->numberType}, TypeLevel{}, &rootScope, TableState::Sealed}
+    );
 
     TypeId tableToTable = fn({anyNumberTable}, {anyNumberTable});
 
@@ -363,12 +288,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "generic_higher_order_function_called
 
     TypePackId applyArgs = pack({functionArgument, genericA});
 
-    TypeId applyTy = arena->addType(FunctionType{
-        {genericA},
-        {genericBs, genericCs},
-        applyArgs,
-        genericCs
-    });
+    TypeId applyTy = arena->addType(FunctionType{{genericA}, {genericBs, genericCs}, applyArgs, genericCs});
 
     TypePackId callArgsPack = pack({numberNumberToNumber, builtinTypes->numberType});
 
@@ -421,7 +341,9 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "debug_traceback")
 
     SUBCASE("thread_message_and_level")
     {
-        resolution = r.resolveOverload(debugTraceback, pack({builtinTypes->threadType, builtinTypes->stringType, builtinTypes->numberType}), Location{}, emptySet, false);
+        resolution = r.resolveOverload(
+            debugTraceback, pack({builtinTypes->threadType, builtinTypes->stringType, builtinTypes->numberType}), Location{}, emptySet, false
+        );
         CHECK(1 == resolution.ok.size());
     }
 }

@@ -10,6 +10,8 @@
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
+#include "Luau/Simplify.h"
+#include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/TypeInfer.h"
@@ -25,11 +27,18 @@
 
 static const char* mainModuleName = "MainModule";
 
-LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
+LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
+
 LUAU_FASTINT(LuauStackGuardThreshold)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
+
+LUAU_FASTFLAGVARIABLE(DebugLuauForceExactTables)
+LUAU_FASTFLAGVARIABLE(DebugLuauRunFailingExactTableTests)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -283,7 +292,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
         // if AST is available, check how lint and typecheck handle error nodes
         if (result.root)
         {
-            if (FFlag::LuauSolverV2)
+            if (!FFlag::DebugLuauForceOldSolver)
             {
                 Mode mode = sourceModule->mode ? *sourceModule->mode : Mode::Strict;
                 Frontend::Stats stats;
@@ -330,6 +339,7 @@ CheckResult Fixture::check(Mode mode, const std::string& source, std::optional<F
     configResolver.defaultConfig.mode = mode;
     fileResolver.source[mm] = std::move(source);
     getFrontend().markDirty(mm);
+    getFrontend().clearStats();
 
     CheckResult result = getFrontend().check(mm, options);
 
@@ -425,7 +435,7 @@ ParseResult Fixture::matchParseErrorPrefix(const std::string& source, const std:
 
 ModulePtr Fixture::getMainModule(bool forAutocomplete)
 {
-    if (forAutocomplete && !FFlag::LuauSolverV2)
+    if (forAutocomplete && FFlag::DebugLuauForceOldSolver)
         return getFrontend().moduleResolverForAutocomplete.getModule(fromString(mainModuleName));
 
     return getFrontend().moduleResolver.getModule(fromString(mainModuleName));
@@ -458,7 +468,7 @@ std::optional<TypeId> Fixture::getType(const std::string& name, bool forAutocomp
     if (!module->hasModuleScope())
         return std::nullopt;
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return linearSearchForBinding(module->getModuleScope().get(), name.c_str());
     else
         return lookupName(module->getModuleScope(), name);
@@ -500,6 +510,15 @@ std::optional<TypeId> Fixture::findTypeAtPosition(Position position)
     return Luau::findTypeAtPosition(*module, *sourceModule, position);
 }
 
+std::optional<TypeId> Fixture::findTypeAtPosition(const ModuleName& moduleName, Position position)
+{
+    ModulePtr module = getFrontend().moduleResolver.getModule(moduleName);
+    SourceModule* sourceModule = getFrontend().getSourceModule(moduleName);
+    REQUIRE_MESSAGE(module, "findTypeAtPosition: No module \"" << moduleName << "\"");
+    REQUIRE_MESSAGE(sourceModule, "findTypeAtPosition: No source module \"" << moduleName << "\"");
+    return Luau::findTypeAtPosition(*module, *sourceModule, position);
+}
+
 std::optional<TypeId> Fixture::findExpectedTypeAtPosition(Position position)
 {
     ModulePtr module = getMainModule();
@@ -511,6 +530,13 @@ TypeId Fixture::requireTypeAtPosition(Position position)
 {
     auto ty = findTypeAtPosition(position);
     REQUIRE_MESSAGE(ty, "requireTypeAtPosition: No type at position " << position);
+    return *ty;
+}
+
+TypeId Fixture::requireTypeAtPosition(const ModuleName& moduleName, Position position)
+{
+    auto ty = findTypeAtPosition(moduleName, position);
+    REQUIRE_MESSAGE(ty, "requireTypeAtPosition: No type at position " << position << " in module \"" << moduleName << "\"");
     return *ty;
 }
 
@@ -547,6 +573,11 @@ TypeId Fixture::requireTypeAlias(const std::string& name)
     return follow(*ty);
 }
 
+TypeId Fixture::requireExportedType(const std::string& name)
+{
+    return requireExportedType(mainModuleName, name);
+}
+
 TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::string& name)
 {
     ModulePtr module = getFrontend().moduleResolver.getModule(moduleName);
@@ -561,12 +592,7 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
 TypeId Fixture::parseType(std::string_view src)
 {
     return getFrontend().parseType(
-        NotNull{&allocator},
-        NotNull{&nameTable},
-        NotNull{&getFrontend().iceHandler},
-        TypeCheckLimits{},
-        NotNull{&arena},
-        src
+        NotNull{&allocator}, NotNull{&nameTable}, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, NotNull{&arena}, src
     );
 }
 
@@ -701,6 +727,7 @@ Frontend& Fixture::getFrontend()
         return *frontend;
 
     Frontend& f = frontend.emplace(
+        FFlag::DebugLuauForceOldSolver ? SolverMode::Old : SolverMode::New,
         &fileResolver,
         &configResolver,
         FrontendOptions{
@@ -749,6 +776,15 @@ void Fixture::limitStackSize(size_t size)
     dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, (int)(addressSpaceSize - size));
 }
 
+void Fixture::ignoreMissingAnnotations(CheckResult& result)
+{
+    auto it = std::remove_if(result.errors.begin(), result.errors.end(), [](const TypeError& err)
+    {
+        return get<TypeAnnotationRequired>(err);
+    });
+    result.errors.erase(it, result.errors.end());
+}
+
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)
 {
@@ -774,6 +810,41 @@ Frontend& BuiltinsFixture::getFrontend()
 
     return *frontend;
 }
+
+bool IsSubtypeFixture::isSubtype(TypeId a, TypeId b)
+{
+    ModulePtr module = getMainModule();
+    REQUIRE(module);
+
+    if (!module->hasModuleScope())
+        FAIL("isSubtype: module scope data is not available");
+
+    UnifierSharedState sharedState{&ice};
+    NotNull<Scope> scope{module->getModuleScope().get()};
+    Normalizer normalizer{
+        &arena,
+        NotNull{builtinTypes},
+        NotNull{&sharedState},
+        FFlag::DebugLuauForceOldSolver ? SolverMode::Old : SolverMode::New,
+    };
+
+    if (FFlag::DebugLuauForceOldSolver)
+    {
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+        u.tryUnify(a, b);
+        return !u.failure;
+    }
+    else
+    {
+        TypeArena arena;
+        TypeCheckLimits limits;
+        TypeFunctionRuntime typeFunctionRuntime{NotNull{&ice}, NotNull{&limits}};
+
+        Subtyping subtyping{NotNull{builtinTypes}, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+        return subtyping.isSubtype(a, b, scope).isSubtype;
+    }
+}
+
 
 static std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr)
 {
@@ -957,6 +1028,48 @@ void createSomeExternTypes(Frontend& frontend)
         persist(ty.type);
 
     freeze(arena);
+}
+
+doctest::String toString(Relation rel)
+{
+    switch (rel)
+    {
+    case Relation::Disjoint:
+        return "Relation::Disjoint";
+    case Relation::Coincident:
+        return "Relation::Coincident";
+    case Relation::Intersects:
+        return "Relation::Intersects";
+    case Relation::Subset:
+        return "Relation::Subset";
+    case Relation::Superset:
+        return "Relation::Superset";
+
+    default:
+        LUAU_ASSERT(0);
+        return "Relation::???";
+    }
+}
+
+doctest::String toString(TableState state)
+{
+    switch (state)
+    {
+    case TableState::Unsealed:
+        return "TableState::Unsealed";
+    case TableState::Sealed:
+        return "TableState::Sealed";
+    case TableState::Free:
+        return "TableState::Free";
+    case TableState::Generic:
+        return "TableState::Generic";
+    case TableState::Exact:
+        return "TableState::Exact";
+
+    default:
+        LUAU_ASSERT(0);
+        return "TableState::???";
+    }
 }
 
 void dump(const std::vector<Constraint>& constraints)

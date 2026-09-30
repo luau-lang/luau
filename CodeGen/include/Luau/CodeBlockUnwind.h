@@ -10,7 +10,7 @@ namespace CodeGen
 {
 
 // context must be an UnwindBuilder
-void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, size_t& startOffset);
+void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, size_t& beginOffset);
 void destroyBlockUnwindInfo(void* context, void* unwindData);
 
 bool isUnwindSupported();

@@ -1,0 +1,988 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#pragma once
+
+#include "Luau/Bytecode.h"
+#include "Luau/BytecodeGraph.h"
+#include "Luau/BytecodeUtils.h"
+#include "Luau/BytecodeValidation.h"
+#include "Luau/VecDeque.h"
+#include "Luau/DenseHash.h"
+
+#include <cstdint>
+#include <optional>
+#include <utility>
+
+#include <math.h>
+
+namespace Luau
+{
+namespace Bytecode
+{
+
+template<typename T>
+bool bcCompare(T a, T b, BcCondition cond)
+{
+    switch (cond)
+    {
+    case BcCondition::Equal:
+        return a == b;
+    case BcCondition::NotEqual:
+        return a != b;
+    case BcCondition::Less:
+        return a < b;
+    case BcCondition::NotLess:
+        return !(a < b);
+    case BcCondition::LessEqual:
+        return a <= b;
+    case BcCondition::NotLessEqual:
+        return !(a <= b);
+    default:
+        LUAU_ASSERT(!"Unsupported condition");
+    }
+
+    return false;
+}
+
+inline bool bcCompare(double a, double b, BcCondition cond)
+{
+    // Note: redundant bool() casts work around invalid MSVC optimization that merges cases in this switch, violating IEEE754 comparison semantics
+    switch (cond)
+    {
+    case BcCondition::Equal:
+        return a == b;
+    case BcCondition::NotEqual:
+        return a != b;
+    case BcCondition::Less:
+        return a < b;
+    case BcCondition::NotLess:
+        return !bool(a < b);
+    case BcCondition::LessEqual:
+        return a <= b;
+    case BcCondition::NotLessEqual:
+        return !bool(a <= b);
+    default:
+        LUAU_ASSERT(!"Unsupported condition");
+    }
+
+    return false;
+}
+
+inline std::optional<double> evaluateNumberBinaryOp(double a, double b, LuauOpcode op)
+{
+    switch (op)
+    {
+    case LuauOpcode::LOP_ADD:
+        return a + b;
+    case LuauOpcode::LOP_SUB:
+        return a - b;
+    case LuauOpcode::LOP_MUL:
+        return a * b;
+    case LuauOpcode::LOP_DIV:
+        return a / b;
+    case LuauOpcode::LOP_MOD:
+        return a - floor(a / b) * b;
+    case LuauOpcode::LOP_POW:
+        return pow(a, b);
+    case LuauOpcode::LOP_IDIV:
+        return floor(a / b);
+    default:
+        return std::nullopt;
+    }
+}
+
+// SCCP is generic over the constant representation
+// Each instantiation inherits VmConstOps with the operations the pass needs to evaluate constants
+struct VmConstOps
+{
+    virtual std::optional<BcOp> evaluate(const BcOp& lhsOp, const BcOp& rhsOp, LuauOpcode op) const = 0;
+    virtual bool falsey(const BcOp& falseyOp) const = 0;
+
+    virtual bool compare(const BcOp& lhsOp, const BcOp& rhsOp, BcCondition cond) const = 0;
+
+    virtual BcOp makeNil() const = 0;
+    virtual BcOp makeImmBool(bool value) const = 0;
+
+    // true if the VmConst supports ordering comparisons (number, integer, string)
+    virtual bool isOrderable(const BcOp& vmConstOp) const = 0;
+    virtual bool kindEquals(const BcOp& lhsOp, const BcOp& rhsOp) const = 0;
+
+    // true if operands represent the same value exactly (NaN == NaN is true)
+    virtual bool fullyequal(const BcOp& lhsOp, const BcOp& rhsOp) const = 0;
+
+    // returns std::nullopt if the comparison is not supported
+    virtual std::optional<bool> eq(const BcOp& lhsOp, const BcOp& rhsOp) const = 0;
+
+    virtual bool isNil(const BcOp& op) const = 0;
+    virtual bool isBoolean(const BcOp& op) const = 0;
+    virtual bool isNumber(const BcOp& op) const = 0;
+
+    virtual bool asBoolean(const BcOp& op) const = 0;
+    virtual double asNumber(const BcOp& op) const = 0;
+
+    virtual BcRef<BcImm> asImm(BcOp op) const = 0;
+
+    VmConstOps() = default;
+    virtual ~VmConstOps() = default;
+    VmConstOps(const VmConstOps&) = default;
+    VmConstOps(VmConstOps&&) = delete;
+    VmConstOps& operator=(const VmConstOps&) = default;
+    VmConstOps& operator=(VmConstOps&&) = delete;
+};
+
+struct BcVmConstImpl : public VmConstOps
+{
+    std::optional<BcOp> evaluate(const BcOp& lhsOp, const BcOp& rhsOp, LuauOpcode op) const override;
+    bool falsey(const BcOp& falseyOp) const override;
+
+    bool compare(const BcOp& lhsOp, const BcOp& rhsOp, BcCondition cond) const override;
+
+    BcOp makeNil() const override;
+    BcOp makeImmBool(bool value) const override;
+
+    bool isOrderable(const BcOp& op) const override;
+    bool kindEquals(const BcOp& lhsOp, const BcOp& rhsOp) const override;
+
+    bool fullyequal(const BcOp& lhsOp, const BcOp& rhsOp) const override;
+
+    std::optional<bool> eq(const BcOp& lhsOp, const BcOp& rhsOp) const override;
+
+    bool isNil(const BcOp& op) const override;
+    bool isBoolean(const BcOp& op) const override;
+    bool isNumber(const BcOp& op) const override;
+
+    bool asBoolean(const BcOp& op) const override;
+    double asNumber(const BcOp& op) const override;
+
+    BcRef<BcImm> asImm(BcOp op) const override;
+
+    explicit BcVmConstImpl(BcFunction<BcVmConst>& func)
+        : VmConstOps()
+        , func(func)
+    {
+    }
+
+    BcFunction<BcVmConst>& func;
+};
+
+
+enum class Constness
+{
+    Undetermined, //  lattice top
+    NotAConstant, //  lattice bottom
+    Constant,
+};
+
+struct ConstnessLattice
+{
+    Constness kind = Constness::Undetermined;
+    std::optional<BcOp> constant = std::nullopt;
+
+    ConstnessLattice() = default;
+
+    ConstnessLattice(Constness kind, BcOp bcOp)
+        : kind(kind)
+        , constant(bcOp)
+    {
+        LUAU_ASSERT(kind == Constness::Constant);
+    }
+
+    explicit ConstnessLattice(Constness kind)
+        : kind(kind)
+        , constant(std::nullopt)
+    {
+    }
+
+    ConstnessLattice merge(VmConstOps* impl, const ConstnessLattice& other) const
+    {
+        // Undetermined is lattice top: meeting with it yields the other operand
+        if (kind == Constness::Undetermined)
+            return other;
+        if (other.kind == Constness::Undetermined)
+            return *this;
+        // two equal constants meet to themselves; anything else falls to bottom
+        if (equal(impl, other))
+            return *this;
+        return ConstnessLattice(Constness::NotAConstant);
+    }
+
+    bool equal(VmConstOps* impl, const ConstnessLattice& other) const
+    {
+        if (kind != other.kind)
+            return false;
+        if (kind == Constness::Constant)
+            return impl->fullyequal(constant.value(), other.constant.value());
+        return true;
+    }
+};
+
+enum class ConditionState
+{
+    AlwaysFalse,
+    AlwaysTrue,
+    Unknown,
+};
+
+struct JumpTarget
+{
+    bool dead = false;
+    BcOp blockOp;
+    ConditionState condition = ConditionState::Unknown;
+};
+
+using OpConstness = DenseHashMap<BcOp, ConstnessLattice, BcOpHash>;
+
+struct SccpState
+{
+    OpConstness opConstness;
+
+    ConstnessLattice operandLattice(const BcOp& op)
+    {
+        if (op.kind == BcOpKind::Proj || op.kind == BcOpKind::VmReg || op.kind == BcOpKind::VmUpvalue)
+            return ConstnessLattice(Constness::NotAConstant);
+        return opConstness[op];
+    }
+
+    // an unresolved condition is bottom if any operand is bottom, else top
+    Constness unknownConditionConstness(std::initializer_list<BcOp> ops)
+    {
+        for (const BcOp& op : ops)
+        {
+            ConstnessLattice lat = operandLattice(op);
+            if (lat.kind == Constness::NotAConstant)
+                return Constness::NotAConstant;
+        }
+        return Constness::Undetermined;
+    }
+};
+
+class SccpInterpreter
+{
+public:
+    explicit SccpInterpreter(VmConstOps* impl, SccpState* state)
+        : impl(impl)
+        , state(state)
+    {
+    }
+
+    ConditionState evaluateCondition(const BcOp& op);
+    ConditionState evaluateComparisonCondition(LuauOpcode op, const BcOp& lhs, const BcOp& rhs);
+    ConditionState evaluateXeqkCondition(BcRef<BcInst> inst);
+
+    ConstnessLattice evaluateArith(LuauOpcode op, BcRef<BcInst> instRepr);
+    ConstnessLattice evaluate(LuauOpcode op, BcRef<BcInst> instRepr);
+
+
+private:
+    VmConstOps* impl;
+    SccpState* state;
+};
+
+template<typename VmConst>
+struct Sccp
+{
+    BcFunction<VmConst>& func;
+    VmConstOps* impl;
+
+    SccpState state;
+    SccpInterpreter interpreter;
+
+    // this maps a block (index) to its predecessors that it was reached from
+    // if a block is not in this map, it is unreachable
+    DenseHashMap<uint32_t, DenseHashSet<BcOp, BcOpHash>> blockUses;
+
+    VecDeque<BcOp> flowWorklist;
+    DenseHashSet<BcOp, BcOpHash> flowWorklistSet;
+
+    // when a def's lattice value changes, its uses must be re-evaluated
+    VecDeque<BcOp> ssaWorklist;
+
+    explicit Sccp(BcFunction<VmConst>& func, VmConstOps* impl)
+        : func(func)
+        , impl(impl)
+        , interpreter(impl, &state)
+    {
+    }
+
+    std::optional<BcOp> getFallthrough(BcRef<BcBlock> block)
+    {
+        std::optional<BcOp> fallthrough;
+        for (auto& succOp : block->successors)
+        {
+            if (succOp.kind == BcBlockEdgeKind::Fallthrough)
+            {
+                if (fallthrough)
+                {
+                    LUAU_ASSERT(!"Multiple fallthroughs");
+                    return std::nullopt;
+                }
+
+                fallthrough = succOp.target;
+            }
+        }
+
+        return fallthrough;
+    }
+
+    // builds the target/fallthrough pair for a two-way branch
+    // targetTakenOnTrue says which edge the jump takes when the condition holds; the untaken edge is marked dead when the condition resolves
+    // a cond of Unknown leaves both edges live, which also covers branches whose condition the pass never folds (loops, CMPPROTO)
+    std::vector<JumpTarget> conditionalTargets(BcRef<BcInst> inst, const BcOp& target, ConditionState cond, bool targetTakenOnTrue)
+    {
+        LUAU_ASSERT(target.kind == BcOpKind::Block);
+        std::optional<BcOp> fallthrough = getFallthrough(func.block(inst->block));
+        LUAU_ASSERT(fallthrough);
+
+        bool targetDead = false;
+        bool fallthroughDead = false;
+        if (cond == ConditionState::AlwaysTrue)
+        {
+            targetDead = !targetTakenOnTrue;
+            fallthroughDead = targetTakenOnTrue;
+        }
+        else if (cond == ConditionState::AlwaysFalse)
+        {
+            targetDead = targetTakenOnTrue;
+            fallthroughDead = !targetTakenOnTrue;
+        }
+
+        return {{targetDead, target, cond}, {fallthroughDead, *fallthrough, cond}};
+    }
+
+    // when the condition is a known constant, the untaken path is marked dead and each target carries its resolved condition
+    std::vector<JumpTarget> jumpTargets(BcRef<BcInst> inst)
+    {
+        switch (inst->op)
+        {
+        case LOP_JUMP:
+        case LOP_JUMPBACK:
+        {
+            const BcOp& targetOp = inst->ops[0];
+            LUAU_ASSERT(targetOp.kind == BcOpKind::Block);
+            return {{false, targetOp, ConditionState::AlwaysTrue}};
+        }
+        case LOP_JUMPIF:
+        case LOP_JUMPIFNOT:
+        {
+            ConditionState cond = interpreter.evaluateCondition(inst->ops[0]);
+            return conditionalTargets(inst, inst->ops[1], cond, inst->op == LOP_JUMPIF);
+        }
+        case LOP_JUMPIFEQ:
+        case LOP_JUMPIFLE:
+        case LOP_JUMPIFLT:
+        case LOP_JUMPIFNOTEQ:
+        case LOP_JUMPIFNOTLE:
+        case LOP_JUMPIFNOTLT:
+        {
+            ConditionState cond = interpreter.evaluateComparisonCondition(inst->op, inst->ops[0], inst->ops[1]);
+            return conditionalTargets(inst, inst->ops[2], cond, true);
+        }
+        case LOP_JUMPXEQKNIL:
+        case LOP_JUMPXEQKB:
+        case LOP_JUMPXEQKN:
+        case LOP_JUMPXEQKS:
+        {
+            ConditionState cond = interpreter.evaluateXeqkCondition(inst);
+            bool negated = func.immOp(inst->ops[1]).valueBoolean;
+            return conditionalTargets(inst, inst->ops[2], cond, !negated);
+        }
+        case LOP_FORNPREP:
+        case LOP_FORNLOOP:
+        case LOP_FORGPREP:
+        case LOP_FORGPREP_NEXT:
+        case LOP_FORGPREP_INEXT:
+            return conditionalTargets(inst, inst->ops[3], ConditionState::Unknown, true);
+        case LOP_FORGLOOP:
+            // FORGLOOP has two leading imm operands FORGPREP* lack, so its target is ops[5]
+            return conditionalTargets(inst, inst->ops[5], ConditionState::Unknown, true);
+        case LOP_CMPPROTO:
+            return conditionalTargets(inst, inst->ops[2], ConditionState::Unknown, true);
+        case LOP_JUMPX:
+            LUAU_ASSERT(!"Should have never parsed this");
+            [[fallthrough]];
+        default:
+            return {};
+        }
+    }
+
+    // for each operand, evaluate and merge the lattice with the phi lattice
+    void visitPhi(BcRef<BcPhi> phi)
+    {
+        LUAU_ASSERT(phi->ops.size() > 0);
+
+        ConstnessLattice fold;
+
+        for (size_t i = 0; i < phi->ops.size(); i++)
+        {
+            BcOp op = phi->ops[i];
+
+            ConstnessLattice lattice = state.operandLattice(op);
+            fold = lattice.merge(impl, fold);
+        }
+
+        const ConstnessLattice& prevLattice = state.opConstness[phi.op];
+        if (!fold.equal(impl, prevLattice))
+        {
+            for (BcOp use : phi->uses)
+                ssaWorklist.push_back(use);
+        }
+        state.opConstness[phi.op] = fold;
+    }
+
+    // evaluate an instruction, comparing against the previous lattice value, and inserting all uses into the SSA worklist if it changed
+    void visitInst(BcRef<BcInst> inst)
+    {
+        // CAPTURE REF can be mutated externally via SETUPVAL
+        // the SSA graph doesn't model that alias, so mark the source non-constant to avoid folding a stale value
+        if (inst->op == LOP_CAPTURE && inst->ops.size() >= 2)
+        {
+            const BcOp& captureTypeOp = inst->ops[0];
+            LUAU_ASSERT(captureTypeOp.kind == BcOpKind::Imm);
+            const BcImm& captureImm = func.immOp(captureTypeOp);
+            if (captureImm.kind == BcImmKind::Int && captureImm.valueInt == LCT_REF)
+            {
+                const BcOp& srcOp = inst->ops[1];
+                ConstnessLattice prev = state.opConstness[srcOp];
+                if (prev.kind != Constness::NotAConstant && (srcOp.kind == BcOpKind::Inst || srcOp.kind == BcOpKind::Phi))
+                {
+                    state.opConstness[srcOp] = ConstnessLattice(Constness::NotAConstant);
+
+
+                    for (BcOp use : usesOf(func, srcOp))
+                        ssaWorklist.push_back(use);
+                }
+            }
+        }
+
+        ConstnessLattice lattice = interpreter.evaluate(inst->op, inst);
+        const ConstnessLattice& prevLattice = state.opConstness[inst.op];
+
+        ConstnessLattice newVal = lattice.merge(impl, prevLattice);
+        if (!newVal.equal(impl, prevLattice))
+        {
+            for (BcOp use : inst->uses)
+                ssaWorklist.push_back(use);
+        }
+
+        for (const JumpTarget& target : jumpTargets(inst))
+        {
+            uint32_t blockIdx = func.getBlockIndex(func.blockOp(target.blockOp));
+            if (!target.dead)
+            {
+                blockUses[blockIdx].insert(inst->block);
+                if (!flowWorklistSet.find(target.blockOp))
+                    flowWorklist.push_back(target.blockOp);
+            }
+        }
+
+        state.opConstness[inst.op] = newVal;
+    }
+
+    void propagate()
+    {
+        BcRef<BcBlock> entryBlock = func.block(func.entryBlock);
+        BcRef<BcBlock> exitBlock = func.block(func.exitBlock);
+        // the entry block is always live
+        blockUses[func.getBlockIndex(*entryBlock)].insert(entryBlock.op);
+        // the exit block is always live per serialization requirements
+        blockUses[func.getBlockIndex(*exitBlock)].insert(exitBlock.op);
+
+        flowWorklist.push_back(func.entryBlock);
+        while (!flowWorklist.empty() || !ssaWorklist.empty())
+        {
+            while (!flowWorklist.empty())
+            {
+                BcOp blockOp = flowWorklist.front();
+                BcRef<BcBlock> block = func.block(blockOp);
+
+                flowWorklist.pop_front();
+                if (flowWorklistSet.contains(block.op))
+                    continue;
+
+                for (BcOp& phiOp : block->phis)
+                {
+                    LUAU_ASSERT(phiOp.kind == BcOpKind::Phi);
+                    visitPhi(func.phi(phiOp));
+                }
+
+                for (BcOp& op : block->ops)
+                {
+                    LUAU_ASSERT(op.kind == BcOpKind::Inst);
+                    visitInst(func.inst(op));
+                }
+
+                bool blockEndsWithBranch = false;
+                if (!block->ops.empty() && block->ops.back().kind == BcOpKind::Inst)
+                    blockEndsWithBranch = !jumpTargets(func.inst(block->ops.back())).empty();
+
+                for (BcBlockEdge succEdge : block->successors)
+                {
+                    if (succEdge.kind == BcBlockEdgeKind::Fallthrough)
+                    {
+                        uint32_t succIdx = func.getBlockIndex(func.blockOp(succEdge.target));
+                        // If this block ends with a branch and the fallthrough wasn't already added by visitInst, skip it
+                        if (blockEndsWithBranch && !blockUses[succIdx].contains(block.op))
+                            continue;
+
+                        blockUses[succIdx].insert(block.op);
+                        if (!flowWorklistSet.contains(succEdge.target))
+                            flowWorklist.push_back(succEdge.target);
+                    }
+                }
+                flowWorklistSet.insert(block.op);
+            }
+
+            while (!ssaWorklist.empty())
+            {
+
+                BcOp op = ssaWorklist.front();
+                ssaWorklist.pop_front();
+
+                if (op.kind == BcOpKind::Inst)
+                    visitInst(func.inst(op));
+                else if (op.kind == BcOpKind::Phi)
+                    visitPhi(func.phi(op));
+            }
+        }
+    }
+
+    void replaceOperand(BcRef<BcInst> inst, BcOp oldOp, BcOp newOp)
+    {
+        for (BcOp& op : inst->ops)
+        {
+            if (op == oldOp)
+                op = newOp;
+        }
+    }
+
+    void replacePhiOperand(BcRef<BcPhi> phi, BcOp oldOp, BcOp newOp)
+    {
+        for (BcOp& op : phi->ops)
+        {
+            if (op == oldOp)
+                op = newOp;
+        }
+    }
+
+    bool isLoadInst(BcOp op)
+    {
+        if (op.kind != BcOpKind::Inst)
+            return false;
+        LuauOpcode opcode = func.inst(op)->op;
+        return opcode == LOP_LOADK || opcode == LOP_LOADKX || opcode == LOP_LOADN || opcode == LOP_LOADB || opcode == LOP_LOADNIL;
+    }
+
+    // rewrite a folded instruction in-place to a load instruction
+    // op identity is preserved so all existing uses remain valid
+    void rewriteToLoad(BcOp op, const ConstnessLattice& lattice)
+    {
+        BcRef<BcInst> inst = func.inst(op);
+        for (BcOp& usedOp : inst->ops)
+        {
+            func.eraseUse(op, usedOp);
+        }
+
+        inst->ops.clear();
+
+        if (lattice.kind == Constness::Constant)
+        {
+            BcOp op = lattice.constant.value();
+
+            if (op.kind == BcOpKind::Imm)
+            {
+                BcImm& imm = func.immOp(op);
+
+                if (imm.kind == BcImmKind::Boolean)
+                    inst->op = LOP_LOADB;
+                else if (imm.kind == BcImmKind::Int)
+                    inst->op = LOP_LOADN;
+                else
+                    LUAU_ASSERT(!"unknown constant");
+
+                inst->ops.push_back(op);
+            }
+            else if (op.kind == BcOpKind::VmConst)
+            {
+                inst->op = LOP_LOADK;
+                inst->ops.push_back(op);
+            }
+            else
+            {
+                LUAU_ASSERT(!"unknown constant");
+            }
+        }
+    }
+
+    void removeDeadEdges(BcRef<BcInst> inst)
+    {
+        std::vector<JumpTarget> targets = jumpTargets(inst);
+
+        BcRef<BcBlock> block = func.block(inst->block);
+
+        BcOp liveTarget{};
+        bool hasLive = false;
+
+        for (const JumpTarget& target : targets)
+        {
+            if (target.dead)
+            {
+                BcEdges& succs = block->successors;
+                unsigned writeIdx = 0;
+                for (unsigned i = 0; i < succs.size(); i++)
+                {
+                    if (!(succs[i].target == target.blockOp))
+                        succs[writeIdx++] = succs[i];
+                }
+                succs.resize(writeIdx);
+            }
+            else
+            {
+                liveTarget = target.blockOp;
+                hasLive = true;
+            }
+        }
+
+        if (!hasLive)
+            return;
+
+        // ensure the live target has a fallthrough edge
+        bool hasFallthrough = false;
+        for (unsigned i = 0; i < block->successors.size(); i++)
+        {
+            if (block->successors[i].target == liveTarget)
+            {
+                block->successors[i].kind = BcBlockEdgeKind::Fallthrough;
+                hasFallthrough = true;
+                break;
+            }
+        }
+
+        if (!hasFallthrough)
+            block->successors.push_back({BcBlockEdgeKind::Fallthrough, liveTarget});
+    }
+
+    void replaceUses()
+    {
+        for (auto& [op, lattice] : state.opConstness)
+        {
+            if (lattice.kind != Constness::Constant)
+                continue;
+            if (op.kind != BcOpKind::Inst)
+                continue;
+            if (isLoadInst(op))
+                continue;
+
+            BcRef<BcInst> inst = func.inst(op);
+            LUAU_ASSERT(inst->op != LOP_JUMPX);
+
+            // isJumpD is safe to use here because JUMPX is not parsed by the GraphParser
+            if (isJumpD(inst->op))
+            {
+                removeDeadEdges(inst);
+                func.eraseOp(op);
+            }
+            else
+                rewriteToLoad(op, lattice);
+        }
+    }
+
+    void simplifyPhis()
+    {
+        for (BcOp blockOp : flowWorklistSet)
+        {
+            BcRef<BcBlock> block = func.block(blockOp);
+
+            for (auto it = block->phis.begin(); it != block->phis.end();)
+            {
+                BcOp op = *it;
+                LUAU_ASSERT(op.kind == BcOpKind::Phi);
+
+                BcRef<BcPhi> phi = func.phi(op);
+                if (phi->ops.empty())
+                {
+                    ++it;
+                    continue;
+                }
+
+                BcOp unique = phi->ops[0];
+                bool allSame = true;
+                for (size_t i = 1; i < phi->ops.size(); i++)
+                {
+                    if (phi->ops[i] != unique)
+                    {
+                        allSame = false;
+                        break;
+                    }
+                }
+
+                if (!allSame)
+                {
+                    ++it;
+                    continue;
+                }
+
+                for (BcOp use : usesOf(func, op))
+                {
+                    if (use.kind == BcOpKind::Inst)
+                        replaceOperand(func.inst(use), op, unique);
+                    else if (use.kind == BcOpKind::Phi)
+                        replacePhiOperand(func.phi(use), op, unique);
+
+                    // `unique` can be VmReg(it can be param).
+                    func.recordUse(unique, use);
+                }
+                phi->uses.clear();
+
+                for (BcOp operand : phi->ops)
+                    func.eraseUse(op, operand);
+                phi->ops.clear();
+
+                it = block->phis.erase(it);
+            }
+        }
+    }
+
+    void updateBlockUses()
+    {
+        // mark dead blocks by forward reachability from entry, not by blockUses
+        // (which can miss blocks depending on worklist ordering)
+        DenseHashSet<uint32_t> reachable;
+        std::vector<uint32_t> worklist;
+
+        uint32_t entryIdx = func.getBlockIndex(*func.block(func.entryBlock));
+        uint32_t exitIdx = func.getBlockIndex(*func.block(func.exitBlock));
+        reachable.insert(entryIdx);
+        reachable.insert(exitIdx);
+        worklist.push_back(entryIdx);
+
+        while (!worklist.empty())
+        {
+            uint32_t idx = worklist.back();
+            worklist.pop_back();
+            BcBlock& blk = func.blocks[idx];
+            for (const BcBlockEdge& edge : blk.successors)
+            {
+                uint32_t succIdx = func.getBlockIndex(func.blockOp(edge.target));
+                if (!reachable.contains(succIdx))
+                {
+                    reachable.insert(succIdx);
+                    worklist.push_back(succIdx);
+                }
+            }
+        }
+
+        for (BcBlock& block : func.blocks)
+        {
+            uint32_t blockidx = func.getBlockIndex(block);
+            block.useCount = static_cast<uint32_t>(blockUses[blockidx].size());
+            if (!reachable.contains(blockidx))
+                block.flags |= BcBlockFlag::Dead;
+        }
+    }
+
+    static std::optional<LuauOpcode> arithToKOpcode(LuauOpcode op)
+    {
+        switch (op)
+        {
+        case LOP_ADD:
+            return LOP_ADDK;
+        case LOP_SUB:
+            return LOP_SUBK;
+        case LOP_MUL:
+            return LOP_MULK;
+        case LOP_DIV:
+            return LOP_DIVK;
+        case LOP_MOD:
+            return LOP_MODK;
+        case LOP_POW:
+            return LOP_POWK;
+        default:
+            return std::nullopt;
+        }
+    }
+
+    // pure value producers can be removed once nothing references their result
+    bool isPureProducer(LuauOpcode op) const
+    {
+        switch (op)
+        {
+        case LOP_LOADK:
+        case LOP_LOADKX:
+        case LOP_LOADN:
+        case LOP_LOADB:
+        case LOP_LOADNIL:
+        case LOP_GETUPVAL:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    std::optional<Reg> registerOf(BcOp op)
+    {
+        if (op.kind == BcOpKind::VmReg)
+            return static_cast<Reg>(op.index);
+        if (auto it = func.regs.find(op); it != func.regs.end())
+            return it->second;
+        return std::nullopt;
+    }
+
+    void eraseDeadProducer(BcOp op)
+    {
+        if (op.kind != BcOpKind::Inst)
+            return;
+        BcRef<BcInst> inst = func.inst(op);
+        if (!isPureProducer(inst->op))
+            return;
+        if (!inst->uses.empty())
+            return;
+        func.eraseOp(op);
+    }
+
+    // values that are known constant used in arithmetic operations can be turned into their KR or RK variants
+    // sub and div have both KR and RK
+    void arithToK()
+    {
+        for (BcBlock& block : func.blocks)
+        {
+            uint32_t blockidx = func.getBlockIndex(block);
+            if (blockUses[blockidx].empty())
+                continue;
+
+            std::vector<BcOp> toErase;
+            toErase.reserve(block.ops.size());
+
+            for (auto bcOpIt = block.ops.begin(); bcOpIt != block.ops.end(); ++bcOpIt)
+            {
+                BcOp& op = *bcOpIt;
+
+                BcRef<BcInst> inst = func.inst(op);
+
+                std::optional<LuauOpcode> kOpcode = arithToKOpcode(inst->op);
+                if (!kOpcode || inst->ops.size() != 2)
+                    continue;
+
+                BcOp lhs = inst->ops[0];
+                BcOp rhs = inst->ops[1];
+                // we can safely assume that, at most, one of these can be a Constant
+                // if they both were constant, the arith would have been folded
+                ConstnessLattice lhsLat = state.operandLattice(lhs);
+                ConstnessLattice rhsLat = state.operandLattice(rhs);
+
+                BcOp nonConstantOp;
+                ConstnessLattice constantK;
+                bool rk = false;
+
+                auto isConstNumber = [&](const ConstnessLattice& lat) -> bool
+                {
+                    // Only VmConst are allowed because we don't want to fold a 'compact' LOADN into Tvalue constant
+                    return lat.kind == Constness::Constant && lat.constant && lat.constant->kind == BcOpKind::VmConst &&
+                           impl->isNumber(*lat.constant);
+                };
+
+                if (isConstNumber(rhsLat) && lhsLat.kind == Constness::NotAConstant)
+                {
+                    // can fold this to a <ARITH>K variant
+                    nonConstantOp = lhs;
+                    constantK = rhsLat;
+                }
+                else if (isConstNumber(lhsLat) && rhsLat.kind == Constness::NotAConstant)
+                {
+                    if (inst->op != LOP_ADD && inst->op != LOP_MUL && inst->op != LOP_SUB && inst->op != LOP_DIV)
+                        continue;
+
+                    nonConstantOp = rhs;
+                    constantK = lhsLat;
+
+                    if (inst->op == LOP_SUB)
+                    {
+                        kOpcode = LOP_SUBRK;
+                        rk = true;
+                    }
+                    else if (inst->op == LOP_DIV)
+                    {
+                        kOpcode = LOP_DIVRK;
+                        rk = true;
+                    }
+                }
+                else
+                {
+                    continue;
+                }
+
+                BcOp prevConstOperand = (nonConstantOp == lhs) ? rhs : lhs;
+
+                const bool constantIsRhs = (nonConstantOp == lhs);
+
+                // we can do some potential folding here now that we know one operand is constant
+                // for instance, adds of zero, muls of zero or 1, pows of zero or 1, etc
+                double valueNumber = impl->asNumber(constantK.constant.value());
+                if (valueNumber == 0)
+                {
+                    if (inst->op == LOP_ADD || (inst->op == LOP_SUB && constantIsRhs))
+                    {
+                        inst->op = LOP_MOVE;
+                        func.setOps(op, inst, {nonConstantOp});
+                    }
+                    else if (inst->op == LOP_MUL)
+                    {
+                        inst->op = LOP_LOADN;
+                        BcImm imm{BcImmKind::Int};
+                        imm.valueInt = 0;
+                        func.setOps(op, inst, {func.addImm(imm)});
+                    }
+                    else if (inst->op == LOP_POW && constantIsRhs)
+                    {
+                        // x ^ 0 == 1 (0 ^ x is not folded: it is 0 for x != 0)
+                        inst->op = LOP_LOADN;
+                        BcImm imm{BcImmKind::Int};
+                        imm.valueInt = 1;
+                        func.setOps(op, inst, {func.addImm(imm)});
+                    }
+                }
+                else if (valueNumber == 1)
+                {
+                    if (inst->op == LOP_MUL || (inst->op == LOP_POW && constantIsRhs) || (inst->op == LOP_DIV && constantIsRhs))
+                    {
+                        inst->op = LOP_MOVE;
+                        func.setOps(op, inst, {nonConstantOp});
+                    }
+                }
+                else
+                {
+                    inst->op = *kOpcode;
+                    if (!rk)
+                        func.setOps(op, inst, {nonConstantOp, constantK.constant.value()});
+                    else
+                        // SUBRK and DIVRK expect B as the constant table index
+                        func.setOps(op, inst, {constantK.constant.value(), nonConstantOp});
+                }
+
+                toErase.push_back(prevConstOperand);
+            }
+
+            for (BcOp op : toErase)
+            {
+                eraseDeadProducer(op);
+            }
+        }
+    }
+
+    void rewrite()
+    {
+        arithToK();
+        replaceUses();
+        simplifyPhis();
+        updateBlockUses();
+    }
+};
+
+template<typename VmConst>
+void foldConstants(BcFunction<VmConst>& func, VmConstOps& impl)
+{
+    Sccp<VmConst> sccp(func, &impl);
+    sccp.propagate();
+    sccp.rewrite();
+}
+
+} // namespace Bytecode
+} // namespace Luau

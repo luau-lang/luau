@@ -68,6 +68,11 @@ struct AutocompleteEntry
 
     // Only meaningful if kind is Property.
     bool indexedWithSelf = false;
+
+    // When true, the editor should rewrite the preceding '.' operator to ':' as
+    // part of inserting this completion. Set when a Point (dot) index resolves
+    // to a function that should be called with self.
+    bool replaceDotWithColon = false;
 };
 
 using AutocompleteEntryMap = std::unordered_map<std::string, AutocompleteEntry>;

@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Scope.h"
+#include "Luau/TypeFunctionError.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
 #include "Luau/Type.h"
 #include "Luau/Variant.h"
@@ -32,6 +33,7 @@ struct LuauTempThreadPopper
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
 void* typeFunctionAlloc(void* ud, void* ptr, size_t osize, size_t nsize);
+void* typeFunctionAllocWithLimit(void* ud, void* ptr, size_t osize, size_t nsize);
 
 struct TypeFunctionPrimitiveType
 {
@@ -40,6 +42,7 @@ struct TypeFunctionPrimitiveType
         NilType,
         Boolean,
         Number,
+        Integer,
         String,
         Thread,
         Buffer,
@@ -157,6 +160,9 @@ struct TypeFunctionFunctionType
 
     TypeFunctionTypePackId argTypes;
     TypeFunctionTypePackId retTypes;
+
+    // Parallel to argTypes.head; nullopt entries mean the parameter has no name.
+    std::vector<std::optional<std::string>> argNames;
 };
 
 template<typename T>
@@ -177,14 +183,16 @@ T* getMutable(TypeFunctionTypePackId tv)
 
 struct TypeFunctionTableIndexer
 {
-    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType)
+    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType, bool isReadOnly = false)
         : keyType(keyType)
         , valueType(valueType)
+        , isReadOnly(isReadOnly)
     {
     }
 
     TypeFunctionTypeId keyType;
     TypeFunctionTypeId valueType;
+    bool isReadOnly = false;
 };
 
 struct TypeFunctionProperty
@@ -288,8 +296,11 @@ struct TypeFunctionRuntime
     TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits);
     ~TypeFunctionRuntime();
 
-    // Return value is an error message if registration failed
-    std::optional<std::string> registerFunction(AstStatTypeFunction* function);
+    // Return value is an error message string if registration failed.
+    std::optional<std::string> registerFunction_DEPRECATED(AstStatTypeFunction* function);
+
+    // Return value is a structured error if registration failed.
+    std::optional<TypeFunctionError> registerFunction(AstStatTypeFunction* function);
 
     // For user-defined type functions, we store all generated types and packs for the duration of the typecheck
     TypedAllocator<TypeFunctionType> typeArena;
@@ -301,7 +312,7 @@ struct TypeFunctionRuntime
     StateRef state;
 
     // Set of functions which have their environment table initialized
-    DenseHashSet<AstStatTypeFunction*> initialized{nullptr};
+    DenseHashSet<AstStatTypeFunction*> initialized;
 
     // Evaluation of type functions should only be performed in the absence of parse errors in the source module
     bool allowEvaluation = true;
@@ -315,11 +326,14 @@ struct TypeFunctionRuntime
     // Type builder, valid for the duration of a single evaluation
     TypeFunctionRuntimeBuilderState* runtimeBuilder = nullptr;
 
+    std::unique_ptr<size_t> heapSize = nullptr;
+
 private:
     void prepareState();
 };
 
-std::optional<std::string> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
+std::optional<std::string> checkResultForError_DEPRECATED(lua_State* L, const char* typeFunctionName, int luaResult);
+std::optional<TypeFunctionError> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
 
 TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L);
 

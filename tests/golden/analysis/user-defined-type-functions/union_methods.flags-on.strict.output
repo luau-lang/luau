@@ -1,0 +1,6 @@
+./analysis/user-defined-type-functions/union_methods.luau(14,12): TypeError: Expected this to be unreachable, but got
+	'boolean | number | string'; 
+this is because 
+	 * `boolean` is not a subtype of `never`
+	 * `number` is not a subtype of `never`
+	 * `string` is not a subtype of `never`

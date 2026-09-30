@@ -49,12 +49,12 @@ bool IterativeTypeVisitor::WorkItem::operator==(TypePackId tp) const
 }
 
 IterativeTypeVisitor::IterativeTypeVisitor(std::string visitorName, bool skipBoundTypes)
-    : IterativeTypeVisitor(std::move(visitorName), SeenSet{nullptr}, /*visitOnce*/ true, skipBoundTypes)
+    : IterativeTypeVisitor(std::move(visitorName), SeenSet{}, /*visitOnce*/ true, skipBoundTypes)
 {
 }
 
 IterativeTypeVisitor::IterativeTypeVisitor(std::string visitorName, bool visitOnce, bool skipBoundTypes)
-    : IterativeTypeVisitor(std::move(visitorName), SeenSet{nullptr}, visitOnce, skipBoundTypes)
+    : IterativeTypeVisitor(std::move(visitorName), SeenSet{}, visitOnce, skipBoundTypes)
 {
 }
 
@@ -287,6 +287,9 @@ void IterativeTypeVisitor::process(TypeId ty)
 
             traverse(ftv->lowerBound);
             traverse(ftv->upperBound);
+
+            if (ftv->primitiveType)
+                traverse(*ftv->primitiveType);
         }
     }
     else if (auto gtv = get<GenericType>(ty))
@@ -533,7 +536,7 @@ bool IterativeTypeVisitor::hasSeen(const void* tv)
     if (!visitOnce)
         return false;
 
-    bool isFresh = seen.insert(tv);
+    bool isFresh = seen.try_insert(tv);
     return !isFresh;
 }
 

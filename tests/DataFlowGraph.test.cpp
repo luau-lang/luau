@@ -12,12 +12,12 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(DebugLuauForceOldSolver);
 
 struct DataFlowGraphFixture
 {
     // Only needed to fix the operator== reflexivity of an empty Symbol.
-    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
+    ScopedFastFlag dcr{FFlag::DebugLuauForceOldSolver, false};
 
     DefArena defArena;
     RefinementKeyArena keyArena;
@@ -48,7 +48,7 @@ struct DataFlowGraphFixture
 
     void checkOperands(const Phi* phi, std::vector<DefId> operands)
     {
-        Set<const Def*> operandSet{nullptr};
+        DenseHashSet<const Def*> operandSet;
         for (auto o : operands)
             operandSet.insert(o.get());
         CHECK(phi->operands.size() == operandSet.size());

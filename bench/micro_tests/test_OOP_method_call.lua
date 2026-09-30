@@ -21,8 +21,8 @@ function test()
     local n = Number.new(42)
 
     local ts0 = os.clock()
-    for i=1,1000000 do
-        local nv = n:Get()
+    for i=1,10_000_000 do
+        local _ = n:Get()
     end
     local ts1 = os.clock()
 

@@ -3,9 +3,6 @@
 
 #include "Luau/IrBuilder.h"
 
-LUAU_FASTFLAG(LuauCodegenSplitFloat)
-LUAU_FASTFLAG(LuauCodegenFloatOps)
-
 static const char* kUserdataRunTypes[] = {"extra", "color", "vec2", "mat3", "vertex", nullptr};
 
 constexpr uint8_t kUserdataExtra = 0;
@@ -60,38 +57,35 @@ inline uint8_t vectorAccessBytecodeType(const char* member, size_t memberLength)
     return LBC_TYPE_ANY;
 }
 
+inline void storeVecResult3(Luau::CodeGen::IrBuilder& build, int reg, Luau::CodeGen::IrOp x, Luau::CodeGen::IrOp y, Luau::CodeGen::IrOp z)
+{
+    using namespace Luau::CodeGen;
+
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(reg), build.inst(IrCmd::NEW_VECTOR, x, y, z));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(reg), build.constTag(LUA_TVECTOR));
+    }
+    else
+    {
+        build.inst(IrCmd::STORE_VECTOR, build.vmReg(reg), x, y, z);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(reg), build.constTag(LUA_TVECTOR));
+    }
+}
+
 inline bool vectorAccess(Luau::CodeGen::IrBuilder& build, const char* member, size_t memberLength, int resultReg, int sourceReg, int pcpos)
 {
     using namespace Luau::CodeGen;
 
     if (compareMemberName(member, memberLength, "Magnitude"))
     {
-        IrOp x = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
-        IrOp y = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(4));
-        IrOp z = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(8));
-
-        if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
-            // Intentionally not using DOT_VEC to check other kind of math compared to vector.magnitude
-            IrOp x2 = build.inst(IrCmd::MUL_FLOAT, x, x);
-            IrOp y2 = build.inst(IrCmd::MUL_FLOAT, y, y);
-            IrOp z2 = build.inst(IrCmd::MUL_FLOAT, z, z);
+            IrOp ptr = build.inst(IrCmd::LOAD_POINTER, build.vmReg(sourceReg));
 
-            IrOp sum = build.inst(IrCmd::ADD_FLOAT, build.inst(IrCmd::ADD_FLOAT, x2, y2), z2);
-
-            IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
-
-            build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), build.inst(IrCmd::FLOAT_TO_NUM, mag));
-            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
-        }
-        else
-        {
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                x = build.inst(IrCmd::FLOAT_TO_NUM, x);
-                y = build.inst(IrCmd::FLOAT_TO_NUM, y);
-                z = build.inst(IrCmd::FLOAT_TO_NUM, z);
-            }
+            IrOp x = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp y = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp z = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
             IrOp x2 = build.inst(IrCmd::MUL_NUM, x, x);
             IrOp y2 = build.inst(IrCmd::MUL_NUM, y, y);
@@ -104,19 +98,13 @@ inline bool vectorAccess(Luau::CodeGen::IrBuilder& build, const char* member, si
             build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), mag);
             build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
         }
-
-        return true;
-    }
-
-    if (compareMemberName(member, memberLength, "Unit"))
-    {
-        IrOp x = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
-        IrOp y = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(4));
-        IrOp z = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(8));
-
-        if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
+        else
         {
-            // Intentionally not using DOT_VEC to check other kind of math compared to vector.normalize
+            IrOp x = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
+            IrOp y = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(4));
+            IrOp z = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(8));
+
+            // Intentionally not using DOT_VEC to check other kind of math compared to vector.magnitude
             IrOp x2 = build.inst(IrCmd::MUL_FLOAT, x, x);
             IrOp y2 = build.inst(IrCmd::MUL_FLOAT, y, y);
             IrOp z2 = build.inst(IrCmd::MUL_FLOAT, z, z);
@@ -124,23 +112,23 @@ inline bool vectorAccess(Luau::CodeGen::IrBuilder& build, const char* member, si
             IrOp sum = build.inst(IrCmd::ADD_FLOAT, build.inst(IrCmd::ADD_FLOAT, x2, y2), z2);
 
             IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
-            IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0f), mag);
 
-            IrOp xr = build.inst(IrCmd::MUL_FLOAT, x, inv);
-            IrOp yr = build.inst(IrCmd::MUL_FLOAT, y, inv);
-            IrOp zr = build.inst(IrCmd::MUL_FLOAT, z, inv);
-
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(resultReg), xr, yr, zr);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TVECTOR));
+            build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), build.inst(IrCmd::FLOAT_TO_NUM, mag));
+            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
         }
-        else
+
+        return true;
+    }
+
+    if (compareMemberName(member, memberLength, "Unit"))
+    {
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                x = build.inst(IrCmd::FLOAT_TO_NUM, x);
-                y = build.inst(IrCmd::FLOAT_TO_NUM, y);
-                z = build.inst(IrCmd::FLOAT_TO_NUM, z);
-            }
+            IrOp ptr = build.inst(IrCmd::LOAD_POINTER, build.vmReg(sourceReg));
+
+            IrOp x = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp y = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp z = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
             IrOp x2 = build.inst(IrCmd::MUL_NUM, x, x);
             IrOp y2 = build.inst(IrCmd::MUL_NUM, y, y);
@@ -155,15 +143,30 @@ inline bool vectorAccess(Luau::CodeGen::IrBuilder& build, const char* member, si
             IrOp yr = build.inst(IrCmd::MUL_NUM, y, inv);
             IrOp zr = build.inst(IrCmd::MUL_NUM, z, inv);
 
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                xr = build.inst(IrCmd::NUM_TO_FLOAT, xr);
-                yr = build.inst(IrCmd::NUM_TO_FLOAT, yr);
-                zr = build.inst(IrCmd::NUM_TO_FLOAT, zr);
-            }
+            storeVecResult3(build, resultReg, xr, yr, zr);
+        }
+        else
+        {
 
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(resultReg), xr, yr, zr);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TVECTOR));
+            IrOp x = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
+            IrOp y = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(4));
+            IrOp z = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(8));
+
+            // Intentionally not using DOT_VEC to check other kind of math compared to vector.normalize
+            IrOp x2 = build.inst(IrCmd::MUL_FLOAT, x, x);
+            IrOp y2 = build.inst(IrCmd::MUL_FLOAT, y, y);
+            IrOp z2 = build.inst(IrCmd::MUL_FLOAT, z, z);
+
+            IrOp sum = build.inst(IrCmd::ADD_FLOAT, build.inst(IrCmd::ADD_FLOAT, x2, y2), z2);
+
+            IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+            IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0f), mag);
+
+            IrOp xr = build.inst(IrCmd::MUL_FLOAT, x, inv);
+            IrOp yr = build.inst(IrCmd::MUL_FLOAT, y, inv);
+            IrOp zr = build.inst(IrCmd::MUL_FLOAT, z, inv);
+
+            storeVecResult3(build, resultReg, xr, yr, zr);
         }
 
         return true;
@@ -200,7 +203,32 @@ inline bool vectorNamecall(
     {
         build.loadAndCheckTag(build.vmReg(argResReg + 2), LUA_TVECTOR, build.vmExit(pcpos));
 
-        if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
+        {
+            IrOp ptr1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(sourceReg));
+            IrOp ptr2 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(argResReg + 2));
+
+            IrOp x1 = build.inst(IrCmd::BUFFER_READF64, ptr1, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp x2 = build.inst(IrCmd::BUFFER_READF64, ptr2, build.constInt(0), build.constTag(LUA_TVECTOR));
+
+            IrOp xx = build.inst(IrCmd::MUL_NUM, x1, x2);
+
+            IrOp y1 = build.inst(IrCmd::BUFFER_READF64, ptr1, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp y2 = build.inst(IrCmd::BUFFER_READF64, ptr2, build.constInt(8), build.constTag(LUA_TVECTOR));
+
+            IrOp yy = build.inst(IrCmd::MUL_NUM, y1, y2);
+
+            IrOp z1 = build.inst(IrCmd::BUFFER_READF64, ptr1, build.constInt(16), build.constTag(LUA_TVECTOR));
+            IrOp z2 = build.inst(IrCmd::BUFFER_READF64, ptr2, build.constInt(16), build.constTag(LUA_TVECTOR));
+
+            IrOp zz = build.inst(IrCmd::MUL_NUM, z1, z2);
+
+            IrOp sum = build.inst(IrCmd::ADD_NUM, build.inst(IrCmd::ADD_NUM, xx, yy), zz);
+
+            build.inst(IrCmd::STORE_DOUBLE, build.vmReg(argResReg), sum);
+            build.inst(IrCmd::STORE_TAG, build.vmReg(argResReg), build.constTag(LUA_TNUMBER));
+        }
+        else
         {
             // Intentionally not using DOT_VEC to check other kind of math compared to vector.dot
             IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
@@ -223,46 +251,6 @@ inline bool vectorNamecall(
             build.inst(IrCmd::STORE_DOUBLE, build.vmReg(argResReg), build.inst(IrCmd::FLOAT_TO_NUM, sum));
             build.inst(IrCmd::STORE_TAG, build.vmReg(argResReg), build.constTag(LUA_TNUMBER));
         }
-        else
-        {
-            IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
-            IrOp x2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(0));
-
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-                x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-            }
-
-            IrOp xx = build.inst(IrCmd::MUL_NUM, x1, x2);
-
-            IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(4));
-            IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(4));
-
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-                y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-            }
-
-            IrOp yy = build.inst(IrCmd::MUL_NUM, y1, y2);
-
-            IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(8));
-            IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(8));
-
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                z1 = build.inst(IrCmd::FLOAT_TO_NUM, z1);
-                z2 = build.inst(IrCmd::FLOAT_TO_NUM, z2);
-            }
-
-            IrOp zz = build.inst(IrCmd::MUL_NUM, z1, z2);
-
-            IrOp sum = build.inst(IrCmd::ADD_NUM, build.inst(IrCmd::ADD_NUM, xx, yy), zz);
-
-            build.inst(IrCmd::STORE_DOUBLE, build.vmReg(argResReg), sum);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(argResReg), build.constTag(LUA_TNUMBER));
-        }
 
         // If the function is called in multi-return context, stack has to be adjusted
         if (results == LUA_MULTRET)
@@ -275,45 +263,19 @@ inline bool vectorNamecall(
     {
         build.loadAndCheckTag(build.vmReg(argResReg + 2), LUA_TVECTOR, build.vmExit(pcpos));
 
-        IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
-        IrOp x2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(0));
-
-        IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(4));
-        IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(4));
-
-        IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(8));
-        IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(8));
-
-        if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
-            IrOp y1z2 = build.inst(IrCmd::MUL_FLOAT, y1, z2);
-            IrOp z1y2 = build.inst(IrCmd::MUL_FLOAT, z1, y2);
-            IrOp xr = build.inst(IrCmd::SUB_FLOAT, y1z2, z1y2);
+            IrOp ptr1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(sourceReg));
+            IrOp ptr2 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(argResReg + 2));
 
-            IrOp z1x2 = build.inst(IrCmd::MUL_FLOAT, z1, x2);
-            IrOp x1z2 = build.inst(IrCmd::MUL_FLOAT, x1, z2);
-            IrOp yr = build.inst(IrCmd::SUB_FLOAT, z1x2, x1z2);
+            IrOp x1 = build.inst(IrCmd::BUFFER_READF64, ptr1, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp x2 = build.inst(IrCmd::BUFFER_READF64, ptr2, build.constInt(0), build.constTag(LUA_TVECTOR));
 
-            IrOp x1y2 = build.inst(IrCmd::MUL_FLOAT, x1, y2);
-            IrOp y1x2 = build.inst(IrCmd::MUL_FLOAT, y1, x2);
-            IrOp zr = build.inst(IrCmd::SUB_FLOAT, x1y2, y1x2);
+            IrOp y1 = build.inst(IrCmd::BUFFER_READF64, ptr1, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp y2 = build.inst(IrCmd::BUFFER_READF64, ptr2, build.constInt(8), build.constTag(LUA_TVECTOR));
 
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(argResReg), xr, yr, zr);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(argResReg), build.constTag(LUA_TVECTOR));
-        }
-        else
-        {
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-                x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-
-                y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-                y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-
-                z1 = build.inst(IrCmd::FLOAT_TO_NUM, z1);
-                z2 = build.inst(IrCmd::FLOAT_TO_NUM, z2);
-            }
+            IrOp z1 = build.inst(IrCmd::BUFFER_READF64, ptr1, build.constInt(16), build.constTag(LUA_TVECTOR));
+            IrOp z2 = build.inst(IrCmd::BUFFER_READF64, ptr2, build.constInt(16), build.constTag(LUA_TVECTOR));
 
             IrOp y1z2 = build.inst(IrCmd::MUL_NUM, y1, z2);
             IrOp z1y2 = build.inst(IrCmd::MUL_NUM, z1, y2);
@@ -327,15 +289,32 @@ inline bool vectorNamecall(
             IrOp y1x2 = build.inst(IrCmd::MUL_NUM, y1, x2);
             IrOp zr = build.inst(IrCmd::SUB_NUM, x1y2, y1x2);
 
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                xr = build.inst(IrCmd::NUM_TO_FLOAT, xr);
-                yr = build.inst(IrCmd::NUM_TO_FLOAT, yr);
-                zr = build.inst(IrCmd::NUM_TO_FLOAT, zr);
-            }
+            storeVecResult3(build, argResReg, xr, yr, zr);
+        }
+        else
+        {
+            IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(0));
+            IrOp x2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(0));
 
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(argResReg), xr, yr, zr);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(argResReg), build.constTag(LUA_TVECTOR));
+            IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(4));
+            IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(4));
+
+            IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(sourceReg), build.constInt(8));
+            IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(argResReg + 2), build.constInt(8));
+
+            IrOp y1z2 = build.inst(IrCmd::MUL_FLOAT, y1, z2);
+            IrOp z1y2 = build.inst(IrCmd::MUL_FLOAT, z1, y2);
+            IrOp xr = build.inst(IrCmd::SUB_FLOAT, y1z2, z1y2);
+
+            IrOp z1x2 = build.inst(IrCmd::MUL_FLOAT, z1, x2);
+            IrOp x1z2 = build.inst(IrCmd::MUL_FLOAT, x1, z2);
+            IrOp yr = build.inst(IrCmd::SUB_FLOAT, z1x2, x1z2);
+
+            IrOp x1y2 = build.inst(IrCmd::MUL_FLOAT, x1, y2);
+            IrOp y1x2 = build.inst(IrCmd::MUL_FLOAT, y1, x2);
+            IrOp zr = build.inst(IrCmd::SUB_FLOAT, x1y2, y1x2);
+
+            storeVecResult3(build, argResReg, xr, yr, zr);
         }
 
         // If the function is called in multi-return context, stack has to be adjusted
@@ -424,8 +403,7 @@ inline bool userdataAccess(
 
             IrOp value = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
 
-            if (FFlag::LuauCodegenSplitFloat)
-                value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            value = build.inst(IrCmd::FLOAT_TO_NUM, value);
 
             build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), value);
             build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
@@ -439,8 +417,7 @@ inline bool userdataAccess(
 
             IrOp value = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-            if (FFlag::LuauCodegenSplitFloat)
-                value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            value = build.inst(IrCmd::FLOAT_TO_NUM, value);
 
             build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), value);
             build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
@@ -455,36 +432,15 @@ inline bool userdataAccess(
             IrOp x = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
             IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-            if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-            {
-                IrOp x2 = build.inst(IrCmd::MUL_FLOAT, x, x);
-                IrOp y2 = build.inst(IrCmd::MUL_FLOAT, y, y);
+            IrOp x2 = build.inst(IrCmd::MUL_FLOAT, x, x);
+            IrOp y2 = build.inst(IrCmd::MUL_FLOAT, y, y);
 
-                IrOp sum = build.inst(IrCmd::ADD_FLOAT, x2, y2);
+            IrOp sum = build.inst(IrCmd::ADD_FLOAT, x2, y2);
 
-                IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+            IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
 
-                build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), build.inst(IrCmd::FLOAT_TO_NUM, mag));
-                build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
-            }
-            else
-            {
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    x = build.inst(IrCmd::FLOAT_TO_NUM, x);
-                    y = build.inst(IrCmd::FLOAT_TO_NUM, y);
-                }
-
-                IrOp x2 = build.inst(IrCmd::MUL_NUM, x, x);
-                IrOp y2 = build.inst(IrCmd::MUL_NUM, y, y);
-
-                IrOp sum = build.inst(IrCmd::ADD_NUM, x2, y2);
-
-                IrOp mag = build.inst(IrCmd::SQRT_NUM, sum);
-
-                build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), mag);
-                build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
-            }
+            build.inst(IrCmd::STORE_DOUBLE, build.vmReg(resultReg), build.inst(IrCmd::FLOAT_TO_NUM, mag));
+            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TNUMBER));
             return true;
         }
 
@@ -496,48 +452,17 @@ inline bool userdataAccess(
             IrOp x = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
             IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-            IrOp xr, yr;
+            IrOp x2 = build.inst(IrCmd::MUL_FLOAT, x, x);
+            IrOp y2 = build.inst(IrCmd::MUL_FLOAT, y, y);
 
-            if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-            {
-                IrOp x2 = build.inst(IrCmd::MUL_FLOAT, x, x);
-                IrOp y2 = build.inst(IrCmd::MUL_FLOAT, y, y);
+            IrOp sum = build.inst(IrCmd::ADD_FLOAT, x2, y2);
 
-                IrOp sum = build.inst(IrCmd::ADD_FLOAT, x2, y2);
+            IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+            IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0), mag);
 
-                IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
-                IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0), mag);
+            IrOp xr = build.inst(IrCmd::MUL_FLOAT, x, inv);
+            IrOp yr = build.inst(IrCmd::MUL_FLOAT, y, inv);
 
-                xr = build.inst(IrCmd::MUL_FLOAT, x, inv);
-                yr = build.inst(IrCmd::MUL_FLOAT, y, inv);
-            }
-            else
-            {
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    x = build.inst(IrCmd::FLOAT_TO_NUM, x);
-                    y = build.inst(IrCmd::FLOAT_TO_NUM, y);
-                }
-
-                IrOp x2 = build.inst(IrCmd::MUL_NUM, x, x);
-                IrOp y2 = build.inst(IrCmd::MUL_NUM, y, y);
-
-                IrOp sum = build.inst(IrCmd::ADD_NUM, x2, y2);
-
-                IrOp mag = build.inst(IrCmd::SQRT_NUM, sum);
-                IrOp inv = build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), mag);
-
-                xr = build.inst(IrCmd::MUL_NUM, x, inv);
-                yr = build.inst(IrCmd::MUL_NUM, y, inv);
-
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    xr = build.inst(IrCmd::NUM_TO_FLOAT, xr);
-                    yr = build.inst(IrCmd::NUM_TO_FLOAT, yr);
-                }
-            }
-
-            build.inst(IrCmd::CHECK_GC);
             IrOp udatar = build.inst(IrCmd::NEW_USERDATA, build.constInt(sizeof(Vec2)), build.constInt(kTagVec2));
 
             build.inst(IrCmd::BUFFER_WRITEF32, udatar, build.constInt(offsetof(Vec2, x)), xr, build.constTag(LUA_TUSERDATA));
@@ -560,8 +485,14 @@ inline bool userdataAccess(
             IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, pos[1])), build.constTag(LUA_TUSERDATA));
             IrOp z = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, pos[2])), build.constTag(LUA_TUSERDATA));
 
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(resultReg), x, y, z);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TVECTOR));
+            if constexpr (LUA_VECTOR_DOUBLE == 1)
+            {
+                x = build.inst(IrCmd::FLOAT_TO_NUM, x);
+                y = build.inst(IrCmd::FLOAT_TO_NUM, y);
+                z = build.inst(IrCmd::FLOAT_TO_NUM, z);
+            }
+
+            storeVecResult3(build, resultReg, x, y, z);
             return true;
         }
 
@@ -574,8 +505,14 @@ inline bool userdataAccess(
             IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, normal[1])), build.constTag(LUA_TUSERDATA));
             IrOp z = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, normal[2])), build.constTag(LUA_TUSERDATA));
 
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(resultReg), x, y, z);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TVECTOR));
+            if constexpr (LUA_VECTOR_DOUBLE == 1)
+            {
+                x = build.inst(IrCmd::FLOAT_TO_NUM, x);
+                y = build.inst(IrCmd::FLOAT_TO_NUM, y);
+                z = build.inst(IrCmd::FLOAT_TO_NUM, z);
+            }
+
+            storeVecResult3(build, resultReg, x, y, z);
             return true;
         }
 
@@ -587,7 +524,6 @@ inline bool userdataAccess(
             IrOp x = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, uv[0])), build.constTag(LUA_TUSERDATA));
             IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, uv[1])), build.constTag(LUA_TUSERDATA));
 
-            build.inst(IrCmd::CHECK_GC);
             IrOp result = build.inst(IrCmd::NEW_USERDATA, build.constInt(sizeof(Vec2)), build.constInt(kTagVec2));
 
             build.inst(IrCmd::BUFFER_WRITEF32, result, build.constInt(offsetof(Vec2, x)), x, build.constTag(LUA_TUSERDATA));
@@ -655,46 +591,13 @@ inline bool userdataMetamethod(
             IrOp x1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
             IrOp x2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
 
-            IrOp mx, my;
+            IrOp mx = build.inst(IrCmd::ADD_FLOAT, x1, x2);
 
-            if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-            {
-                mx = build.inst(IrCmd::ADD_FLOAT, x1, x2);
+            IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
+            IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-                IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
-                IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
+            IrOp my = build.inst(IrCmd::ADD_FLOAT, y1, y2);
 
-                my = build.inst(IrCmd::ADD_FLOAT, y1, y2);
-            }
-            else
-            {
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-                    x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-                }
-
-                mx = build.inst(IrCmd::ADD_NUM, x1, x2);
-
-                IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
-                IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
-
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-                    y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-                }
-
-                my = build.inst(IrCmd::ADD_NUM, y1, y2);
-
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    mx = build.inst(IrCmd::NUM_TO_FLOAT, mx);
-                    my = build.inst(IrCmd::NUM_TO_FLOAT, my);
-                }
-            }
-
-            build.inst(IrCmd::CHECK_GC);
             IrOp udatar = build.inst(IrCmd::NEW_USERDATA, build.constInt(sizeof(Vec2)), build.constInt(kTagVec2));
 
             build.inst(IrCmd::BUFFER_WRITEF32, udatar, build.constInt(offsetof(Vec2, x)), mx, build.constTag(LUA_TUSERDATA));
@@ -721,46 +624,13 @@ inline bool userdataMetamethod(
             IrOp x1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
             IrOp x2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
 
-            IrOp mx, my;
+            IrOp mx = build.inst(IrCmd::MUL_FLOAT, x1, x2);
 
-            if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-            {
-                mx = build.inst(IrCmd::MUL_FLOAT, x1, x2);
+            IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
+            IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-                IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
-                IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
+            IrOp my = build.inst(IrCmd::MUL_FLOAT, y1, y2);
 
-                my = build.inst(IrCmd::MUL_FLOAT, y1, y2);
-            }
-            else
-            {
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-                    x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-                }
-
-                mx = build.inst(IrCmd::MUL_NUM, x1, x2);
-
-                IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
-                IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
-
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-                    y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-                }
-
-                my = build.inst(IrCmd::MUL_NUM, y1, y2);
-
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    mx = build.inst(IrCmd::NUM_TO_FLOAT, mx);
-                    my = build.inst(IrCmd::NUM_TO_FLOAT, my);
-                }
-            }
-
-            build.inst(IrCmd::CHECK_GC);
             IrOp udatar = build.inst(IrCmd::NEW_USERDATA, build.constInt(sizeof(Vec2)), build.constInt(kTagVec2));
 
             build.inst(IrCmd::BUFFER_WRITEF32, udatar, build.constInt(offsetof(Vec2, x)), mx, build.constTag(LUA_TUSERDATA));
@@ -783,32 +653,9 @@ inline bool userdataMetamethod(
             IrOp x = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
             IrOp y = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-            IrOp mx, my;
+            IrOp mx = build.inst(IrCmd::UNM_FLOAT, x);
+            IrOp my = build.inst(IrCmd::UNM_FLOAT, y);
 
-            if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-            {
-                mx = build.inst(IrCmd::UNM_FLOAT, x);
-                my = build.inst(IrCmd::UNM_FLOAT, y);
-            }
-            else
-            {
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    x = build.inst(IrCmd::FLOAT_TO_NUM, x);
-                    y = build.inst(IrCmd::FLOAT_TO_NUM, y);
-                }
-
-                mx = build.inst(IrCmd::UNM_NUM, x);
-                my = build.inst(IrCmd::UNM_NUM, y);
-
-                if (FFlag::LuauCodegenSplitFloat)
-                {
-                    mx = build.inst(IrCmd::NUM_TO_FLOAT, mx);
-                    my = build.inst(IrCmd::NUM_TO_FLOAT, my);
-                }
-            }
-
-            build.inst(IrCmd::CHECK_GC);
             IrOp udatar = build.inst(IrCmd::NEW_USERDATA, build.constInt(sizeof(Vec2)), build.constInt(kTagVec2));
 
             build.inst(IrCmd::BUFFER_WRITEF32, udatar, build.constInt(offsetof(Vec2, x)), mx, build.constTag(LUA_TUSERDATA));
@@ -879,22 +726,16 @@ inline bool userdataNamecall(
             IrOp x1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
             IrOp x2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
 
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-                x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-            }
+            x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
+            x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
 
             IrOp xx = build.inst(IrCmd::MUL_NUM, x1, x2);
 
             IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
             IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-                y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-            }
+            y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
+            y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
 
             IrOp yy = build.inst(IrCmd::MUL_NUM, y1, y2);
 
@@ -923,32 +764,22 @@ inline bool userdataNamecall(
             IrOp x1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
             IrOp x2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, x)), build.constTag(LUA_TUSERDATA));
 
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-                x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-            }
+            x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
+            x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
 
             IrOp mx = build.inst(IrCmd::MIN_NUM, x1, x2);
 
             IrOp y1 = build.inst(IrCmd::BUFFER_READF32, udata1, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
             IrOp y2 = build.inst(IrCmd::BUFFER_READF32, udata2, build.constInt(offsetof(Vec2, y)), build.constTag(LUA_TUSERDATA));
 
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-                y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-            }
+            y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
+            y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
 
             IrOp my = build.inst(IrCmd::MIN_NUM, y1, y2);
 
-            if (FFlag::LuauCodegenSplitFloat)
-            {
-                mx = build.inst(IrCmd::NUM_TO_FLOAT, mx);
-                my = build.inst(IrCmd::NUM_TO_FLOAT, my);
-            }
+            mx = build.inst(IrCmd::NUM_TO_FLOAT, mx);
+            my = build.inst(IrCmd::NUM_TO_FLOAT, my);
 
-            build.inst(IrCmd::CHECK_GC);
             IrOp udatar = build.inst(IrCmd::NEW_USERDATA, build.constInt(sizeof(Vec2)), build.constInt(kTagVec2));
 
             build.inst(IrCmd::BUFFER_WRITEF32, udatar, build.constInt(offsetof(Vec2, x)), mx, build.constTag(LUA_TUSERDATA));

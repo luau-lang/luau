@@ -105,8 +105,8 @@ struct Tarjan
     virtual ~Tarjan() = default;
 
     // Vertices (types and type packs) are indexed, using pre-order traversal.
-    DenseHashMap<TypeId, int> typeToIndex{nullptr};
-    DenseHashMap<TypePackId, int> packToIndex{nullptr};
+    DenseHashMap<TypeId, int> typeToIndex;
+    DenseHashMap<TypePackId, int> packToIndex;
 
     std::vector<TarjanNode> nodes;
 
@@ -206,13 +206,13 @@ protected:
 
 public:
     TypeArena* arena;
-    DenseHashMap<TypeId, TypeId> newTypes{nullptr};
-    DenseHashMap<TypePackId, TypePackId> newPacks{nullptr};
-    DenseHashSet<TypeId> replacedTypes{nullptr};
-    DenseHashSet<TypePackId> replacedTypePacks{nullptr};
+    DenseHashMap<TypeId, TypeId> newTypes;
+    DenseHashMap<TypePackId, TypePackId> newPacks;
+    DenseHashSet<TypeId> replacedTypes;
+    DenseHashSet<TypePackId> replacedTypePacks;
 
-    DenseHashSet<TypeId> noTraverseTypes{nullptr};
-    DenseHashSet<TypePackId> noTraverseTypePacks{nullptr};
+    DenseHashSet<TypeId> noTraverseTypes;
+    DenseHashSet<TypePackId> noTraverseTypePacks;
 
     std::optional<TypeId> substitute(TypeId ty);
     std::optional<TypePackId> substitute(TypePackId tp);

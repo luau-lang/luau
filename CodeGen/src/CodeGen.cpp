@@ -43,6 +43,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenOptSize)
 LUAU_FASTFLAGVARIABLE(DebugCodegenSkipNumbering)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNopPadding)
 
 // Per-module IR instruction count limit
 LUAU_FASTINTVARIABLE(CodegenHeuristicsInstructionLimit, 1'048'576) // 1 M
@@ -56,6 +57,8 @@ LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768) // 32 K
 // Per-function IR instruction limit
 // Current value is based on some member variables being limited to 16 bits
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
+
+LUAU_FASTFLAGVARIABLE(LuauCodegenInteger3)
 
 namespace Luau
 {
@@ -122,14 +125,9 @@ void onDisable(lua_State* L, Proto* proto)
 
             for (CallInfo* ci = th->ci; ci > th->base_ci; ci--)
             {
-                if (isLua(ci))
+                if (isLua(ci) && ci->p == proto)
                 {
-                    Proto* p = clvalue(ci->func)->l.p;
-
-                    if (p == proto)
-                    {
-                        ci->flags &= ~LUA_CALLINFO_NATIVE;
-                    }
+                    ci->flags &= ~LUA_CALLINFO_NATIVE;
                 }
             }
 
@@ -153,6 +151,22 @@ unsigned int getCpuFeaturesA64()
     size_t advSIMDLen = sizeof(advSIMD);
     if (sysctlbyname("hw.optional.arm.AdvSIMD", &advSIMD, &advSIMDLen, nullptr, 0) == 0 && advSIMD == 1)
         result |= A64::Feature_AdvSIMD;
+#endif
+
+    // The JITted code must match the Pointer Authentication (PAC) use of the
+    // process in which it runs, so we determine whether to use PAC based on
+    // how the hosting binary has been built, not on the hardware capabilities.
+    // (It is possible to not-use PAC on PAC-capable hardware.)
+    //
+    // Note that the two options here are separate:
+    //  * Apple arm64e makes use of both call- and ret-signing.
+    //  * Linux -mbranch-protection=pac-ret only makes use of ret-signing.
+    // (Both cases are detected and reflected in the state of the macros.)
+#ifdef CODEGEN_TARGET_A64_PTRAUTH_CALLS
+    result |= A64::Feature_PtrAuthCall;
+#endif
+#ifdef CODEGEN_TARGET_A64_PTRAUTH_RETURNS
+    result |= A64::Feature_PtrAuthRet;
 #endif
 
     return result;

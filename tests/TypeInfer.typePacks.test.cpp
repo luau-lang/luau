@@ -4,14 +4,16 @@
 #include "Luau/Type.h"
 
 #include "Fixture.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 TEST_SUITE_BEGIN("TypePackTests");
@@ -24,6 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     const FunctionType* takeTwoType = get<FunctionType>(requireType("take_two"));
@@ -55,6 +58,7 @@ TEST_CASE_FIXTURE(Fixture, "self_and_varargs_should_work")
         t:f(1)
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -70,6 +74,7 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
@@ -94,12 +99,13 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("<T, U..., V...>((V...) -> (U...), (T) -> (V...), T) -> (U...)", toString(requireType("apply")));
     else
-        CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
+        CHECK_EQ("<T, U..., V...>((U...) -> (V...), (T) -> (U...), T) -> (V...)", toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")
@@ -127,6 +133,7 @@ TEST_CASE_FIXTURE(Fixture, "no_return_size_should_be_zero")
         g(h())
         f(g(),h())
     )");
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     const FunctionType* fTy = get<FunctionType>(requireType("f"));
@@ -155,6 +162,7 @@ TEST_CASE_FIXTURE(Fixture, "varargs_inference_through_multiple_scopes")
         f("foo")
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -172,6 +180,7 @@ TEST_CASE_FIXTURE(Fixture, "multiple_varargs_inference_are_not_confused")
         f("foo", "bar")(1, 2)
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -186,6 +195,7 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_varargs_returns_any")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("any", toString(requireType("value")));
 }
@@ -619,7 +629,7 @@ local a: Packed
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T...>' expects 1 type pack argument, but none are specified");
     else
         CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
@@ -763,26 +773,34 @@ local d: Y<number, string, ...boolean, ...() -> ()>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
 
-    CheckResult result = check(R"(
-        type Y<T = T> = { a: T }
-        local a: Y = { a = 2 }
-    )");
+    for (Mode mode : {Mode::Strict, Mode::Nonstrict})
+    {
+        CheckResult result = check(mode, R"(
+            type Y<T = T> = { a: T }
+            local a: Y = { a = 2 }
+        )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors2")
 {
-    CheckResult result = check(R"(
-        type Y<T... = T...> = { a: (T...) -> () }
-        local a: Y<>
-    )");
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    for (Mode mode : {Mode::Strict, Mode::Nonstrict})
+    {
+        CheckResult result = check(mode, R"(
+            type Y<T... = T...> = { a: (T...) -> () }
+            local a: Y<>
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
@@ -793,7 +811,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[0]), "Type parameters must come before type pack parameters");
     else
         CHECK_EQ(toString(result.errors[0]), "Generic type 'Y<T, U...>' expects at least 1 type argument, but none are specified");
@@ -807,7 +825,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors4")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T>' expects 1 type argument, but none are specified");
     else
         CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
@@ -926,28 +944,26 @@ a = b
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
-
-        const std::string expected =
-            FFlag::LuauBetterTypeMismatchErrors
-                ? "Expected this to be\n\t"
-                  "'() -> (number, ...string)'"
-                  "\nbut got\n\t"
-                  "'() -> (number, ...boolean)'"
-                  "; \n"
-                  "it returns a tail of the variadic `boolean` in the latter type and `string` in the former "
-                  "type, and `boolean` is not a subtype of `string`"
-                : "Type\n\t"
-                  "'() -> (number, ...boolean)'"
-                  "\ncould not be converted into\n\t"
-                  "'() -> (number, ...string)'; \n"
-                  "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
-                  "type, and `boolean` is not a subtype of `string`";
+        const std::string expected = FFlag::LuauNewTypePathErrorMessages
+                                         ? "Expected this to be\n\t"
+                                           "'() -> (number, ...string)'"
+                                           "\nbut got\n\t"
+                                           "'() -> (number, ...boolean)'"
+                                           "; \n"
+                                           "Expected the variadic return value to be `string`, but got `boolean`"
+                                         : "Expected this to be\n\t"
+                                           "'() -> (number, ...string)'"
+                                           "\nbut got\n\t"
+                                           "'() -> (number, ...boolean)'"
+                                           "; \n"
+                                           "it returns a tail of the variadic `boolean` in the latter type and `string` in the former "
+                                           "type, and `boolean` is not a subtype of `string`";
 
         CHECK(expected == toString(result.errors[0]));
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
     {
         const std::string expected = R"(Expected this to be
 	'() -> (number, ...string)'
@@ -957,14 +973,100 @@ caused by:
   Expected this to be 'string', but got 'boolean')";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
-    else
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_return_count_mismatch_reports_expected_return_pack")
+{
+    CheckResult result = check(R"(
+local x: () -> number
+local y: () -> (string, boolean) = x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = R"(Type
-	'() -> (number, ...boolean)'
-could not be converted into
-	'() -> (number, ...string)'
-caused by:
-  Type 'boolean' could not be converted into 'string')";
+        const std::string expected =
+            FFlag::LuauNewTypePathErrorMessages
+                ? "Expected this to be\n\t"
+                  "'() -> (string, boolean)'"
+                  "\nbut got\n\t"
+                  "'() -> number'"
+                  "; \n"
+                  "Expected to return `(string, boolean)`, but got `number`"
+                : "Expected this to be\n\t"
+                  "'() -> (string, boolean)'"
+                  "\nbut got\n\t"
+                  "'() -> number'"
+                  "; \n"
+                  "it returns the 1st entry in the type pack is `number` in the latter type and `string` in the former type, "
+                  "and `number` is not a subtype of `string`";
+
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_return_count_mismatch_through_union_reports_expected_return_pack")
+{
+    ScopedFastFlag forceNewSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
+
+    CheckResult result = check(R"(
+local x: ((number) -> number) | ((number) -> string)
+local y: ((number) -> (boolean, boolean)) | ((number) -> (boolean, string)) = x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const std::string message = toString(result.errors[0]);
+    CHECK(message.find("Expected to return") == std::string::npos);
+    CHECK(message.find("is not a subtype of") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_return_count_mismatch_through_intersection_reports_expected_return_pack")
+{
+    ScopedFastFlag forceNewSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
+
+    CheckResult result = check(R"(
+local x: ((number) -> number) & ((number) -> string)
+local y: ((number) -> (boolean, boolean)) & ((number) -> (boolean, string)) = x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const std::string message = toString(result.errors[0]);
+    CHECK(message.find("Expected to return") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(Fixture, "nested_function_return_count_mismatch_preserves_the_function_context")
+{
+    CheckResult result = check(R"(
+local x: () -> (() -> number)
+local y: () -> (() -> (string, boolean)) = x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (!FFlag::DebugLuauForceOldSolver)
+    {
+        const std::string expected =
+            FFlag::LuauNewTypePathErrorMessages
+                ? "Expected this to be\n\t"
+                  "'() -> () -> (string, boolean)'"
+                  "\nbut got\n\t"
+                  "'() -> () -> number'"
+                  "; \n"
+                  "Expected the 1st return value of the function returned by this function to be `string`, but the return type of the function "
+                  "returned by this function is `number`"
+                : "Expected this to be\n\t"
+                  "'() -> () -> (string, boolean)'"
+                  "\nbut got\n\t"
+                  "'() -> () -> number'"
+                  "; \n"
+                  "it returns the 1st entry in the type pack, the function returns the 1st entry in the type pack which is `number` in the latter "
+                  "type and `string` in the former type, and `number` is not a subtype of `string`";
+
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -1053,6 +1155,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK("Unknown type 't0'" == toString(result.errors[0]));
@@ -1074,10 +1177,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'string', but got 'number'");
-    else
-        CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'string'");
+    CHECK_EQ(toString(result.errors[0]), "Expected this to be 'string', but got 'number'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
@@ -1093,29 +1193,27 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
-        if (FFlag::LuauBetterTypeMismatchErrors)
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                toString(result.errors.at(0)) == "Expected this to be 'boolean', but got '...number'; \n"
+                                                 "the type pack's tail is `...number`, which is not a subtype of `boolean`"
+            );
+        else
             CHECK(
                 toString(result.errors.at(0)) == "Expected this to be 'boolean', but got '...number'; \n"
                                                  "it has a tail of `...number`, which is not a subtype of `boolean`"
             );
-        else
-            CHECK(
-                toString(result.errors.at(0)) == "Type pack '...number' could not be converted into 'boolean'; \nthis is because it has a tail of "
-                                                 "`...number`, which is not a subtype of `boolean`"
-            );
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'boolean', but got 'number'");
     else
-        CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
+        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'boolean', but got 'number'");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 {
     std::optional<ScopedFastFlag> sff;
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         sff = {FFlag::LuauInstantiateInSubtyping, true};
 
     CheckResult result = check(R"(
@@ -1136,7 +1234,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalize_expectedTypes_with_proper_scope")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauInstantiateInSubtyping, true},
     };
 
@@ -1168,6 +1266,7 @@ function test(name, searchTerm)
 end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

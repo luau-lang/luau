@@ -23,15 +23,18 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonsInIndexer)
-LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticPropType)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
+LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
+LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
-static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
-    {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
+static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
+    {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
 
 static constexpr std::array<std::string_view, 6> kHotComments = {"nolint", "nocheck", "nonstrict", "strict", "optimize", "native"};
 
@@ -126,14 +129,37 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
     // When we don't have anything inside () yet, we also don't have an AST node to base our lookup
     if (AstExprCall* exprCall = expr->as<AstExprCall>())
     {
-        if (exprCall->args.size == 0 && exprCall->argLocation.contains(position))
+        if ((exprCall->args.size == 0 && exprCall->argLocation.contains(position)) ||
+            (exprCall->args.size > 0 && (*exprCall->args.begin())->as<AstExprError>()))
         {
-            auto it = module.astTypes.find(exprCall->func);
+            const FunctionType* ftv = nullptr;
 
-            if (!it)
-                return std::nullopt;
+            if (FFlag::LuauUseExplicitTypeArgsInGenerics)
+            {
+                TypeId funcType = nullptr;
 
-            const FunctionType* ftv = get<FunctionType>(follow(*it));
+                if (const TypeId* resolvedType = module.astOverloadResolvedTypes.find(exprCall))
+                    funcType = *resolvedType;
+
+                if (!funcType)
+                {
+                    auto it = module.astTypes.find(exprCall->func);
+                    if (!it)
+                        return std::nullopt;
+                    funcType = *it;
+                }
+
+                ftv = get<FunctionType>(follow(funcType));
+            }
+            else
+            {
+                auto it = module.astTypes.find(exprCall->func);
+
+                if (!it)
+                    return std::nullopt;
+
+                ftv = get<FunctionType>(follow(*it));
+            }
 
             if (!ftv)
                 return std::nullopt;
@@ -143,6 +169,8 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
 
             if (index < head.size())
                 return head[index];
+            else if (index == head.size() && tail.has_value() && isVariadic(*tail))
+                return first(*tail);
 
             return std::nullopt;
         }
@@ -247,12 +275,58 @@ static TypeCorrectKind checkTypeCorrectKind(
     return checkTypeMatch(module, ty, expectedType, moduleScope, typeArena, builtinTypes) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 }
 
+static bool isTypeDeprecated(TypeId ty)
+{
+    LUAU_ASSERT(FFlag::LuauCheckTypeForDeprecated);
+    ty = follow(ty);
+
+    auto check = [](auto candidate)
+    {
+        if (const auto ftv = get<FunctionType>(candidate); ftv && ftv->isDeprecatedFunction)
+            return true;
+        return false;
+    };
+
+    if (const auto itv = get<IntersectionType>(ty))
+    {
+        // Avoid a potentially degenerate intersection type *and* descend into
+        // nested intersections.
+        for (auto part : itv)
+        {
+            if (!check(part))
+                return false;
+        }
+        return true;
+    }
+
+    return check(ty);
+}
+
 enum class PropIndexType
 {
     Point,
     Colon,
     Key,
 };
+
+/**
+ * When we perform autocomplete on a type, if we encounter a union we often
+ * need to provide the intersection of the union's options. However, for UX
+ * reasons we skip over types like `nil` and `never`. If we didn't, then
+ * something like ...
+ *
+ *  local function foobar(tbl: { prop: number }?)
+ *      return tbl.|
+ *  end
+ *
+ * ... would never provide autocomplete options, even though `prop` is a
+ * reasonable option, even in strict mode.
+ */
+static bool isSkippableTypeInUnion(TypeId ty)
+{
+    ty = follow(ty);
+    return isNil(ty) || is<ErrorType>(ty) || is<NeverType>(ty);
+}
 
 static void autocompleteProps(
     const Module& module,
@@ -274,7 +348,7 @@ static void autocompleteProps(
         return;
     seen.insert(ty);
 
-    auto isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type)
+    auto DEPRECATED_isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type)
     {
         if (indexType == PropIndexType::Key)
             return false;
@@ -321,6 +395,88 @@ static void autocompleteProps(
         return calledWithSelf;
     };
 
+    // Classification used only when FFlag::LuauAutocompleteDotMethodConversion is enabled. Splits
+    // the wrong-indexer case into "wrong, but auto-fixable by rewriting '.' to ':'" vs. "wrong for
+    // some other reason", and otherwise mirrors isWrongIndexer.
+    enum class IndexerStatus
+    {
+        Ok,
+        WrongConvertibleToColon,
+        WrongOther,
+    };
+
+    auto classifyIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type) -> IndexerStatus
+    {
+        if (indexType == PropIndexType::Key)
+            return IndexerStatus::Ok;
+
+        const bool calledWithSelf = indexType == PropIndexType::Colon;
+
+        // Returns whether calling `ftv` with the given operator (':' if callWithSelf, else '.') is
+        // a valid call: strong match on `hasSelf` or first-arg compatibility.
+        auto isCompatibleCall = [typeArena, builtinTypes, &module, rootTy](const FunctionType* ftv, bool callWithSelf) -> bool
+        {
+            // Strong match with definition is a success
+            if (callWithSelf == ftv->hasSelf)
+                return true;
+            // Calls on extern types require strict match between how function is declared and how it's called
+            if (get<ExternType>(rootTy))
+                return false;
+
+            // When called with ':', but declared without 'self', it is invalid if a function has incompatible first argument or no arguments at all
+            // When called with '.', but declared with 'self', it is considered invalid if first argument is compatible
+            if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
+            {
+                if (checkTypeMatch(module, rootTy, *firstArgTy, NotNull{module.getModuleScope().get()}, typeArena, builtinTypes))
+                    return callWithSelf;
+            }
+            return !callWithSelf;
+        };
+
+        if (const FunctionType* ftv = get<FunctionType>(type))
+        {
+            const bool dotOk = isCompatibleCall(ftv, /*callWithSelf=*/false);
+            const bool colonOk = isCompatibleCall(ftv, /*callWithSelf=*/true);
+
+            if (calledWithSelf)
+                return colonOk ? IndexerStatus::Ok : IndexerStatus::WrongOther;
+            if (dotOk)
+                return IndexerStatus::Ok;
+            if (colonOk)
+                return IndexerStatus::WrongConvertibleToColon;
+            return IndexerStatus::WrongOther;
+        }
+
+        if (const IntersectionType* itv = get<IntersectionType>(type))
+        {
+            bool anyDotOk = false;
+            bool anyColonOk = false;
+            for (auto subType : itv->parts)
+            {
+                if (const FunctionType* ftv = get<FunctionType>(Luau::follow(subType)))
+                {
+                    if (isCompatibleCall(ftv, /*callWithSelf=*/false))
+                        anyDotOk = true;
+                    if (isCompatibleCall(ftv, /*callWithSelf=*/true))
+                        anyColonOk = true;
+                }
+            }
+
+            if (calledWithSelf)
+                return anyColonOk ? IndexerStatus::Ok : IndexerStatus::WrongOther;
+            if (anyDotOk)
+                return IndexerStatus::Ok;
+            if (anyColonOk)
+                return IndexerStatus::WrongConvertibleToColon;
+            // Match isWrongIndexer's intersection fall-through (`return calledWithSelf`): an
+            // intersection accessed via '.' with no compatible part is treated as not-wrong.
+            return IndexerStatus::Ok;
+        }
+
+        // Non-function, non-intersection: dot is fine; colon is wrong.
+        return calledWithSelf ? IndexerStatus::WrongOther : IndexerStatus::Ok;
+    };
+
     auto maybeFillSingletonProp = [&](TypeId type)
     {
         if (auto singletonTy = get<SingletonType>(type))
@@ -335,11 +491,25 @@ static void autocompleteProps(
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(ty, nodes, typeCorrect);
 
+                bool replaceDot = false;
+                bool wrong = false;
+                if (FFlag::LuauAutocompleteDotMethodConversion)
+                {
+                    IndexerStatus s = classifyIndexer(type);
+                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                    wrong = (s == IndexerStatus::WrongOther);
+                }
+                else
+                {
+                    wrong = DEPRECATED_isWrongIndexer(type);
+                }
+                bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
+
                 result[stringSingleton->value] = AutocompleteEntry{
                     AutocompleteEntryKind::String,
                     type,
                     /* deprecated */ false,
-                    isWrongIndexer(type),
+                    wrong,
                     typeCorrect,
                     containingExternType,
                     std::nullopt,
@@ -347,7 +517,8 @@ static void autocompleteProps(
                     {},
                     parens,
                     {},
-                    indexType == PropIndexType::Colon
+                    withSelf,
+                    replaceDot
                 };
             }
         }
@@ -362,16 +533,10 @@ static void autocompleteProps(
             if (result.count(name) == 0 && name != kParseNameError)
             {
                 Luau::TypeId type;
-
-                if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticPropType)
-                {
-                    if (auto ty = prop.readTy)
-                        type = follow(*ty);
-                    else
-                        continue;
-                }
+                if (auto ty = prop.readTy)
+                    type = follow(*ty);
                 else
-                    type = follow(prop.type_DEPRECATED());
+                    continue;
 
                 TypeCorrectKind typeCorrect = indexType == PropIndexType::Key
                                                   ? TypeCorrectKind::Correct
@@ -380,11 +545,25 @@ static void autocompleteProps(
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(type, nodes, typeCorrect);
 
+                bool replaceDot = false;
+                bool wrong = false;
+                if (FFlag::LuauAutocompleteDotMethodConversion)
+                {
+                    IndexerStatus s = classifyIndexer(type);
+                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                    wrong = (s == IndexerStatus::WrongOther);
+                }
+                else
+                {
+                    wrong = DEPRECATED_isWrongIndexer(type);
+                }
+                bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
+
                 result[name] = AutocompleteEntry{
                     AutocompleteEntryKind::Property,
                     type,
-                    prop.deprecated,
-                    isWrongIndexer(type),
+                    prop.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(type)),
+                    wrong,
                     typeCorrect,
                     containingExternType,
                     &prop,
@@ -392,7 +571,8 @@ static void autocompleteProps(
                     {},
                     parens,
                     {},
-                    indexType == PropIndexType::Colon
+                    withSelf,
+                    replaceDot
                 };
             }
         }
@@ -403,18 +583,12 @@ static void autocompleteProps(
         auto indexIt = mtable->props.find("__index");
         if (indexIt != mtable->props.end())
         {
-            TypeId followed;
-            if (FFlag::LuauSolverAgnosticPropType)
-            {
-                if (auto propTy = indexIt->second.readTy)
-                {
-                    followed = follow(*propTy);
-                }
-            }
-            else if (FFlag::LuauSolverV2)
-                followed = follow(*indexIt->second.readTy);
-            else
-                followed = follow(indexIt->second.type_DEPRECATED());
+            TypeId followed = indexIt->second.readTy.value_or(nullptr);
+            if (followed == nullptr)
+                return;
+            followed = follow(followed);
+            LUAU_ASSERT(followed);
+
             if (get<TableType>(followed) || get<MetatableType>(followed))
             {
                 autocompleteProps(module, typeArena, builtinTypes, rootTy, followed, indexType, nodes, result, seen);
@@ -438,7 +612,7 @@ static void autocompleteProps(
     else if (auto tbl = get<TableType>(ty))
     {
         fillProps(tbl->props);
-        if (FFlag::LuauAutocompleteSingletonsInIndexer && tbl->indexer && indexType == PropIndexType::Point)
+        if (tbl->indexer && indexType == PropIndexType::Point)
         {
             auto indexerTy = follow(tbl->indexer->indexType);
             if (auto utv = get<UnionType>(indexerTy))
@@ -454,7 +628,8 @@ static void autocompleteProps(
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, mt->table, indexType, nodes, result, seen);
 
-        if (auto mtable = get<TableType>(follow(mt->metatable)))
+        const TableType* mtable = getTableType(follow(mt->metatable));
+        if (mtable)
             fillMetatableProps(mtable);
     }
     else if (auto i = get<IntersectionType>(ty))
@@ -477,13 +652,8 @@ static void autocompleteProps(
         auto iter = begin(u);
         auto endIter = end(u);
 
-        while (iter != endIter)
-        {
-            if (isNil(*iter))
-                ++iter;
-            else
-                break;
-        }
+        while (iter != endIter && isSkippableTypeInUnion(*iter))
+            ++iter;
 
         if (iter == endIter)
             return;
@@ -509,7 +679,7 @@ static void autocompleteProps(
                     innerSeen.insert(ty);
             }
 
-            if (isNil(*iter))
+            if (isSkippableTypeInUnion(*iter))
             {
                 ++iter;
                 continue;
@@ -649,6 +819,11 @@ static void autocompleteStringSingleton(TypeId ty, bool addQuotes, AstNode* node
                 );
             }
         }
+    }
+    else if (auto ity = get<IntersectionType>(ty))
+    {
+        for (auto el : ity->parts)
+            autocompleteStringSingleton(el, addQuotes, node, position, result);
     }
 };
 
@@ -1324,10 +1499,11 @@ static AutocompleteEntryMap autocompleteStatement(
 
             std::string n = toString(name);
             if (!result.count(n))
+            {
                 result[n] = {
                     AutocompleteEntryKind::Binding,
                     binding.typeId,
-                    binding.deprecated,
+                    binding.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(binding.typeId)),
                     false,
                     TypeCorrectKind::None,
                     std::nullopt,
@@ -1336,12 +1512,14 @@ static AutocompleteEntryMap autocompleteStatement(
                     {},
                     getParenRecommendation(binding.typeId, ancestry, TypeCorrectKind::None)
                 };
+            }
         }
 
         scope = scope->parent;
     }
 
     bool shouldIncludeBreakAndContinue = isValidBreakContinueContext(ancestry, position);
+
     for (const std::string_view kw : kStatementStartingKeywords)
     {
         if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
@@ -1419,14 +1597,37 @@ static bool autocompleteIfElseExpression(
     if (!parent)
         return false;
 
-    if (node->is<AstExprIfElse>())
+    if (FFlag::LuauExperimentalIfLocalSyntax)
     {
-        // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
-        // expression).
-        return true;
+        if (const AstExprIfElse* selfIfElse = node->as<AstExprIfElse>())
+        {
+            if (selfIfElse->conditionLocal && selfIfElse->conditionEqualsLocation &&
+                    position >= selfIfElse->conditionEqualsLocation->end)
+                return false;
+            // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
+            // expression).
+            return true;
+        }
+    }
+    else
+    {
+        if (node->is<AstExprIfElse>())
+        {
+            // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
+            // expression).
+            return true;
+        }
     }
 
     AstExprIfElse* ifElseExpr = parent->as<AstExprIfElse>();
+
+    if (FFlag::LuauExperimentalIfLocalSyntax)
+    {
+        if (ifElseExpr && ifElseExpr->conditionLocal && ifElseExpr->conditionEqualsLocation &&
+            position >= ifElseExpr->conditionEqualsLocation->end && !ifElseExpr->hasThen)
+            return false;
+    }
+
     if (!ifElseExpr || ifElseExpr->condition->location.containsClosed(position))
     {
         return false;
@@ -1507,7 +1708,7 @@ static AutocompleteContext autocompleteExpression(
                     result[n] = {
                         AutocompleteEntryKind::Binding,
                         binding.typeId,
-                        binding.deprecated,
+                        binding.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(binding.typeId)),
                         false,
                         typeCorrect,
                         std::nullopt,
@@ -1747,14 +1948,15 @@ static AutocompleteResult autocompleteWhileLoopKeywords(std::vector<AstNode*> an
     return {std::move(ret), std::move(ancestry), AutocompleteContext::Keyword};
 }
 
-static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& funcTy)
+// Builds the argument parameter list string (what goes between the parentheses of a function expression).
+// e.g. for (number, string) -> () returns "a0: number, a1: string"
+static std::string makeAnonymousArgList(const ScopePtr& scope, const FunctionType& funcTy)
 {
-    std::string result = "function(";
+    std::string result;
 
     auto [args, tail] = Luau::flatten(funcTy.argTypes);
 
     bool first = true;
-    // Skip the implicit 'self' argument if call is indexed with ':'
     for (size_t argIdx = 0; argIdx < args.size(); ++argIdx)
     {
         if (!first)
@@ -1792,6 +1994,14 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
             result += "...";
     }
 
+    return result;
+}
+
+static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& funcTy)
+{
+    std::string result = "function(";
+
+    result += makeAnonymousArgList(scope, funcTy);
     result += ")";
 
     auto [rets, retTail] = Luau::flatten(funcTy.retTypes);
@@ -1830,11 +2040,34 @@ static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
     if (!call->location.containsClosed(position) || call->func->location.containsClosed(position))
         return std::nullopt;
 
-    TypeId* typeIter = module->astTypes.find(call->func);
-    if (!typeIter)
-        return std::nullopt;
+    const FunctionType* outerFunction = nullptr;
 
-    const FunctionType* outerFunction = get<FunctionType>(follow(*typeIter));
+    if (FFlag::LuauUseExplicitTypeArgsInGenerics)
+    {
+        TypeId funcType = nullptr;
+
+        if (const TypeId* resolvedType = module->astOverloadResolvedTypes.find(call))
+            funcType = *resolvedType;
+
+        if (!funcType)
+        {
+            TypeId* typeIter = module->astTypes.find(call->func);
+            if (!typeIter)
+                return std::nullopt;
+            funcType = *typeIter;
+        }
+
+        outerFunction = get<FunctionType>(follow(funcType));
+    }
+    else
+    {
+        TypeId* typeIter = module->astTypes.find(call->func);
+        if (!typeIter)
+            return std::nullopt;
+
+        outerFunction = get<FunctionType>(follow(*typeIter));
+    }
+
     if (!outerFunction)
         return std::nullopt;
 
@@ -1881,7 +2114,15 @@ static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
     entry.kind = AutocompleteEntryKind::GeneratedFunction;
     entry.typeCorrect = TypeCorrectKind::Correct;
     entry.type = argType;
-    entry.insertText = makeAnonymous(scope, *type);
+    // When the cursor is inside the arg list of an already-typed "function(...)" (argLocation is set),
+    // only suggest the parameter list — not the full "function(...) end" expression.
+    // If argLocation is absent the user has typed the "function" keyword but not yet the "(", so
+    // the full expression is still the correct completion.
+    const AstExprFunction* exprFunc = node->as<AstExprFunction>();
+    if (exprFunc && exprFunc->argLocation.has_value())
+        entry.insertText = makeAnonymousArgList(scope, *type);
+    else
+        entry.insertText = makeAnonymous(scope, *type);
     return std::make_optional(std::move(entry));
 }
 
@@ -2030,6 +2271,11 @@ AutocompleteResult autocomplete_(
               !statWhile->condition->location.containsClosed(position)))
     {
         return autocompleteWhileLoopKeywords(ancestry);
+    }
+    else if (AstStatIf* statIf = node->as<AstStatIf>(); FFlag::LuauExperimentalIfLocalSyntax && statIf && statIf->conditionLocal &&
+                                                        statIf->conditionEqualsLocation && position >= statIf->conditionEqualsLocation->end)
+    {
+        return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     }
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {

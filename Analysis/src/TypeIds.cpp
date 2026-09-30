@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/Type.h"
+#include "Luau/TypePack.h"
 #include "Luau/TypeIds.h"
 
 namespace Luau
@@ -111,6 +112,11 @@ size_t TypeIds::count(TypeId ty) const
     return (val && *val) ? 1 : 0;
 }
 
+bool TypeIds::contains(TypeId ty) const
+{
+    return 0 != count(ty);
+}
+
 void TypeIds::retain(const TypeIds& tys)
 {
     for (auto it = begin(); it != end();)
@@ -178,6 +184,5 @@ void TypeIds::reserve(size_t n)
 {
     order.reserve(n);
 }
-
 
 } // namespace Luau

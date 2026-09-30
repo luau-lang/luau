@@ -54,7 +54,7 @@ struct Scope
     std::unordered_map<Name, ModuleName> importedModules; // Mapping from the name in the require statement to the internal moduleName.
     std::unordered_map<Name, std::unordered_map<Name, TypeFun>> importedTypeBindings;
 
-    DenseHashSet<Name> builtinTypeNames{""};
+    DenseHashSet<Name> builtinTypeNames;
     void addBuiltinTypeBinding(const Name& name, const TypeFun& tyFun);
 
     std::optional<TypeId> lookup(Symbol sym) const;
@@ -78,18 +78,18 @@ struct Scope
     RefinementMap refinements;
 
     // This can be viewed as the "unrefined" type of each binding.
-    DenseHashMap<const Def*, TypeId> lvalueTypes{nullptr};
+    DenseHashMap<const Def*, TypeId> lvalueTypes;
 
     // Luau values are routinely refined more narrowly than their actual
     // inferred type through control flow statements.  We retain those refined
     // types here.
-    DenseHashMap<const Def*, TypeId> rvalueRefinements{nullptr};
+    DenseHashMap<const Def*, TypeId> rvalueRefinements;
 
     void inheritAssignments(const ScopePtr& childScope);
     void inheritRefinements(const ScopePtr& childScope);
 
     // Track globals that should emit warnings during type checking.
-    DenseHashSet<std::string> globalsToWarn{""};
+    DenseHashSet<std::string> globalsToWarn;
     bool shouldWarnGlobal(std::string name) const;
 
     // For mutually recursive type aliases, it's important that
@@ -108,13 +108,8 @@ struct Scope
     // that marked said trigger.
     //
     // CLI-183875: Surely this can be an AstName?
-    DenseHashMap<std::string, Location> invalidTypeAliases{{}};
+    DenseHashMap<std::string, Location> invalidTypeAliases;
     std::optional<Location> isInvalidTypeAlias(const std::string& name) const;
-
-    // Clip with LuauReworkInfiniteTypeFinder
-    // A set of type alias names that are invalid because they violate the recursion restrictions of type aliases.
-    DenseHashSet<std::string> invalidTypeAliasNames_DEPRECATED{""};
-    bool isInvalidTypeAliasName_DEPRECATED(const std::string& name) const;
 
     NotNull<Scope> findNarrowestScopeContaining(Location);
 };

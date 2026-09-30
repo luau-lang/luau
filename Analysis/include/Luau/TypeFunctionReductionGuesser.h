@@ -35,12 +35,12 @@ struct TypeFunctionInferenceResult
 struct TypeFunctionReductionGuesser
 {
     // Tracks our hypothesis about what a type function reduces to
-    DenseHashMap<TypeId, TypeId> functionReducesTo{nullptr};
+    DenseHashMap<TypeId, TypeId> functionReducesTo;
     // Tracks our constraints on type function operands
-    DenseHashMap<TypeId, TypeId> substitutable{nullptr};
+    DenseHashMap<TypeId, TypeId> substitutable;
     // List of instances to try progress
     VecDeque<TypeId> toInfer;
-    DenseHashSet<TypeId> cyclicInstances{nullptr};
+    DenseHashSet<TypeId> cyclicInstances;
 
     // Utilities
     NotNull<TypeArena> arena;
@@ -50,7 +50,7 @@ struct TypeFunctionReductionGuesser
     TypeFunctionReductionGuesser(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer);
 
     std::optional<TypeId> guess(TypeId typ);
-    std::optional<TypePackId> guess(TypePackId typ);
+    std::optional<TypePackId> guess(TypePackId tp);
     TypeFunctionReductionGuessResult guessTypeFunctionReductionForFunctionExpr(const AstExprFunction& expr, const FunctionType* ftv, TypeId retTy);
 
 private:
@@ -73,7 +73,7 @@ private:
     void infer();
     bool done();
 
-    bool isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& instanceArgs);
+    bool isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& argsUsed);
     void inferTypeFunctionSubstitutions(TypeId ty, const TypeFunctionInstanceType* instance);
     TypeFunctionInferenceResult inferNumericBinopFunction(const TypeFunctionInstanceType* instance);
     TypeFunctionInferenceResult inferComparisonFunction(const TypeFunctionInstanceType* instance);

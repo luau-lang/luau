@@ -11,8 +11,6 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAG(LuauCodegenLocationEndFix)
-
 namespace Luau
 {
 namespace CodeGen
@@ -54,35 +52,33 @@ const char* tryFindUpvalueName(const Proto* proto, int upval)
     return nullptr;
 }
 
-template<typename AssemblyBuilder>
-static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
+static void logFunctionHeader(LogBuilder& logger, Proto* proto)
 {
     if (proto->debugname)
-        build.logAppend("; function %s(", getstr(proto->debugname));
+        logger.formatAppend("; function %s(", getstr(proto->debugname));
     else
-        build.logAppend("; function(");
+        logger.formatAppend("; function(");
 
     for (int i = 0; i < proto->numparams; i++)
     {
         if (const char* name = tryFindLocalName(proto, i, 0))
-            build.logAppend("%s%s", i == 0 ? "" : ", ", name);
+            logger.formatAppend("%s%s", i == 0 ? "" : ", ", name);
         else
-            build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
+            logger.formatAppend("%s$arg%d", i == 0 ? "" : ", ", i);
     }
 
     if (proto->numparams != 0 && proto->is_vararg)
-        build.logAppend(", ...)");
+        logger.formatAppend(", ...)");
     else
-        build.logAppend(")");
+        logger.formatAppend(")");
 
     if (proto->linedefined >= 0)
-        build.logAppend(" line %d\n", proto->linedefined);
+        logger.formatAppend(" line %d\n", proto->linedefined);
     else
-        build.logAppend("\n");
+        logger.formatAppend("\n");
 }
 
-template<typename AssemblyBuilder>
-static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function, const char* const* userdataTypes)
+static void logFunctionTypes(LogBuilder& logger, const IrFunction& function, const char* const* userdataTypes)
 {
     const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
 
@@ -96,9 +92,9 @@ static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function,
         if (ty != LBC_TYPE_ANY)
         {
             if (const char* name = tryFindLocalName(function.proto, int(i), 0))
-                build.logAppend("; R%d: %s%s [argument '%s']\n", int(i), type, optional, name);
+                logger.formatAppend("; R%d: %s%s [argument '%s']\n", int(i), type, optional, name);
             else
-                build.logAppend("; R%d: %s%s [argument]\n", int(i), type, optional);
+                logger.formatAppend("; R%d: %s%s [argument]\n", int(i), type, optional);
         }
     }
 
@@ -112,9 +108,9 @@ static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function,
         if (ty != LBC_TYPE_ANY)
         {
             if (const char* name = tryFindUpvalueName(function.proto, int(i)))
-                build.logAppend("; U%d: %s%s ['%s']\n", int(i), type, optional, name);
+                logger.formatAppend("; U%d: %s%s ['%s']\n", int(i), type, optional, name);
             else
-                build.logAppend("; U%d: %s%s\n", int(i), type, optional);
+                logger.formatAppend("; U%d: %s%s\n", int(i), type, optional);
         }
     }
 
@@ -125,9 +121,9 @@ static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function,
 
         // Using last active position as the PC because 'startpc' for type info is before local is initialized
         if (const char* name = tryFindLocalName(function.proto, el.reg, el.endpc - 1))
-            build.logAppend("; R%d: %s%s from %d to %d [local '%s']\n", el.reg, type, optional, el.startpc, el.endpc, name);
+            logger.formatAppend("; R%d: %s%s from %d to %d [local '%s']\n", el.reg, type, optional, el.startpc, el.endpc, name);
         else
-            build.logAppend("; R%d: %s%s from %d to %d\n", el.reg, type, optional, el.startpc, el.endpc);
+            logger.formatAppend("; R%d: %s%s from %d to %d\n", el.reg, type, optional, el.startpc, el.endpc);
     }
 }
 
@@ -143,7 +139,14 @@ unsigned getInstructionCount(const Instruction* insns, const unsigned size)
 }
 
 template<typename AssemblyBuilder>
-static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, AssemblyOptions options, LoweringStats* stats)
+static std::string getAssemblyImpl(
+    LogBuilder& logger,
+    AssemblyBuilder& build,
+    const TValue* func,
+    AssemblyOptions options,
+    LoweringStats* stats,
+    const VmEnvironmentInfo& envInfo
+)
 {
     Proto* root = clvalue(func)->l.p;
 
@@ -178,33 +181,33 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
     }
 
     ModuleHelpers helpers;
-    assembleHelpers(build, helpers);
+    assembleHelpers(options.includeAssembly ? &logger : nullptr, build, helpers);
 
     if (!options.includeOutlinedCode && options.includeAssembly)
     {
-        build.text.clear();
-        build.logAppend("; skipping %u bytes of outlined helpers\n", unsigned(build.getCodeSize() * sizeof(build.code[0])));
+        logger.text.clear();
+        logger.formatAppend("; skipping %u bytes of outlined helpers\n", unsigned(build.getCodeSize() * sizeof(build.code[0])));
     }
 
     for (Proto* p : protos)
     {
-        IrBuilder ir(options.compilationOptions.hooks);
+        IrBuilder ir(options.compilationOptions.hooks, envInfo);
         ir.buildFunctionIr(p);
         unsigned asmSize = build.getCodeSize();
         unsigned asmCount = build.getInstructionCount();
 
         if (options.includeAssembly || options.includeIr)
-            logFunctionHeader(build, p);
+            logFunctionHeader(logger, p);
 
         if (options.includeIrTypes)
-            logFunctionTypes(build, ir.function, options.compilationOptions.userdataTypes);
+            logFunctionTypes(logger, ir.function, options.compilationOptions.userdataTypes);
 
         CodeGenCompilationResult result = CodeGenCompilationResult::Success;
 
-        if (!lowerFunction(ir, build, helpers, p, options, stats, result))
+        if (!lowerFunction(ir, &logger, build, helpers, p, options, stats, result))
         {
-            if (build.logText)
-                build.logAppend("; skipping (can't lower)\n");
+            if (options.includeAssembly)
+                logger.formatAppend("; skipping (can't lower)\n");
 
             asmSize = 0;
             asmCount = 0;
@@ -228,7 +231,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
             functionStat.line = p->linedefined;
             functionStat.bcodeCount = getInstructionCount(p->code, p->sizecode);
             functionStat.irCount = unsigned(ir.function.instructions.size());
-            functionStat.asmSize = FFlag::LuauCodegenLocationEndFix ? asmSize * sizeof(build.code[0]) : asmSize;
+            functionStat.asmSize = asmSize * sizeof(build.code[0]);
             functionStat.asmCount = asmCount;
             if (stats->functionStatsFlags & FunctionStats_BytecodeSummary)
             {
@@ -238,8 +241,8 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
             stats->functions.push_back(std::move(functionStat));
         }
 
-        if (build.logText)
-            build.logAppend("\n");
+        if (options.includeAssembly)
+            logger.formatAppend("\n");
     }
 
     if (!build.finalize())
@@ -249,7 +252,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         return std::string(reinterpret_cast<const char*>(build.code.data()), reinterpret_cast<const char*>(build.code.data() + build.code.size())) +
                std::string(build.data.begin(), build.data.end());
     else
-        return build.text;
+        return logger.text;
 }
 
 #if defined(CODEGEN_TARGET_A64)
@@ -263,47 +266,149 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, Lowering
     CODEGEN_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
 
+    LogBuilder logger(options);
+
+    VmEnvironmentInfo envInfo;
+    envInfo.hasPcall = L->global->builtinPcall != nullptr;
+    envInfo.hasXpcall = L->global->builtinXpcall != nullptr;
+
     switch (options.target)
     {
     case AssemblyOptions::Host:
     {
 #if defined(CODEGEN_TARGET_A64)
         static unsigned int cpuFeatures = getCpuFeaturesA64();
-        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, cpuFeatures);
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, cpuFeatures);
 #else
         static unsigned int cpuFeatures = getCpuFeaturesX64();
-        X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, cpuFeatures);
+        X64::AssemblyBuilderX64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, cpuFeatures);
 #endif
 
-        return getAssemblyImpl(build, func, options, stats);
+        return getAssemblyImpl(logger, build, func, options, stats, envInfo);
     }
 
     case AssemblyOptions::A64:
     {
-        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, /* features= */ A64::Feature_JSCVT);
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr,
+                                      /* features= */ A64::Feature_JSCVT);
 
-        return getAssemblyImpl(build, func, options, stats);
+        return getAssemblyImpl(logger, build, func, options, stats, envInfo);
     }
 
     case AssemblyOptions::A64_NoFeatures:
     {
-        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, /* features= */ 0);
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, /* features= */ 0);
 
-        return getAssemblyImpl(build, func, options, stats);
+        return getAssemblyImpl(logger, build, func, options, stats, envInfo);
     }
 
     case AssemblyOptions::X64_Windows:
     {
-        X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, X64::ABIX64::Windows);
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, X64::ABIX64::Windows, /* features= */ 0
+        );
 
-        return getAssemblyImpl(build, func, options, stats);
+        return getAssemblyImpl(logger, build, func, options, stats, envInfo);
     }
 
     case AssemblyOptions::X64_SystemV:
     {
-        X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, X64::ABIX64::SystemV);
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, X64::ABIX64::SystemV, /* features= */ 0
+        );
 
-        return getAssemblyImpl(build, func, options, stats);
+        return getAssemblyImpl(logger, build, func, options, stats, envInfo);
+    }
+
+    default:
+        CODEGEN_ASSERT(!"Unknown target");
+        return std::string();
+    }
+}
+
+template<typename AssemblyBuilder>
+static std::string getAssemblyFromIrImpl(LogBuilder& logger, AssemblyBuilder& build, IrBuilder& ir, AssemblyOptions options, LoweringStats* stats)
+{
+    ModuleHelpers helpers;
+    assembleHelpers(options.includeAssembly ? &logger : nullptr, build, helpers);
+
+    if (!options.includeOutlinedCode && options.includeAssembly)
+    {
+        logger.text.clear();
+        logger.formatAppend("; skipping %u bytes of outlined helpers\n", unsigned(build.getCodeSize() * sizeof(build.code[0])));
+    }
+
+    CodeGenCompilationResult result = CodeGenCompilationResult::Success;
+
+    if (!lowerFunction(ir, &logger, build, helpers, /* proto */ nullptr, options, stats, result))
+    {
+        if (options.includeAssembly)
+            logger.formatAppend("; skipping (can't lower)\n");
+    }
+
+    if (options.includeAssembly)
+        logger.formatAppend("\n");
+
+    if (!build.finalize())
+        return std::string();
+
+    if (options.outputBinary)
+        return std::string(reinterpret_cast<const char*>(build.code.data()), reinterpret_cast<const char*>(build.code.data() + build.code.size())) +
+               std::string(build.data.begin(), build.data.end());
+    else
+        return logger.text;
+}
+
+std::string getAssemblyFromIr(IrBuilder& ir, AssemblyOptions options, LoweringStats* stats)
+{
+    LogBuilder logger(options);
+
+    switch (options.target)
+    {
+    case AssemblyOptions::Host:
+    {
+#if defined(CODEGEN_TARGET_A64)
+        static unsigned int cpuFeatures = getCpuFeaturesA64();
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, cpuFeatures);
+#else
+        static unsigned int cpuFeatures = getCpuFeaturesX64();
+        X64::AssemblyBuilderX64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, cpuFeatures);
+#endif
+
+        return getAssemblyFromIrImpl(logger, build, ir, options, stats);
+    }
+
+    case AssemblyOptions::A64:
+    {
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr,
+                                      /* features= */ A64::Feature_JSCVT);
+
+        return getAssemblyFromIrImpl(logger, build, ir, options, stats);
+    }
+
+    case AssemblyOptions::A64_NoFeatures:
+    {
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, /* features= */ 0);
+
+        return getAssemblyFromIrImpl(logger, build, ir, options, stats);
+    }
+
+    case AssemblyOptions::X64_Windows:
+    {
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, X64::ABIX64::Windows, /* features= */ 0
+        );
+
+        return getAssemblyFromIrImpl(logger, build, ir, options, stats);
+    }
+
+    case AssemblyOptions::X64_SystemV:
+    {
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, X64::ABIX64::SystemV, /* features= */ 0
+        );
+
+        return getAssemblyFromIrImpl(logger, build, ir, options, stats);
     }
 
     default:

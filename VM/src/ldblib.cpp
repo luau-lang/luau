@@ -127,6 +127,7 @@ static int db_traceback(lua_State* L)
     luaL_argcheck(L, level >= 0, arg + 2, "level can't be negative");
 
     luaL_traceback(L, L1, msg, level);
+
     return 1;
 }
 

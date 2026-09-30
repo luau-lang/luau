@@ -226,6 +226,24 @@ assert((function () return nil end)(4) == nil)
 assert((function () local a; return a end)(4) == nil)
 assert((function (a) return a end)() == nil)
 
+ -- test for a bug in clobbering stack variables 
+ -- this call to print will clobber x and y if the call to f is not properly setup
+local function clobber()
+   print("abcdefg", "hijklmnop")
+
+end
+
+local x = { }
+local y = { }
+
+x[1] = 1234
+x[2] = 4567
+
+clobber()
+
+assert(x[1] == 1234)
+assert(x[2] == 4567)
+
 -- C-stack overflow while handling C-stack overflow
 if not limitedstack then
   local function loop ()

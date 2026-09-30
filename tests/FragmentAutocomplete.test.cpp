@@ -14,11 +14,7 @@
 #include "Luau/Type.h"
 #include "ScopedFlags.h"
 
-#include <algorithm>
-#include <chrono>
 #include <ctime>
-#include <iomanip>
-#include <iostream>
 #include <memory>
 #include <optional>
 
@@ -26,10 +22,13 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauParseErrorLimit)
 
-LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
-LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
-LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
+LUAU_FASTFLAG(LuauFragmentACEnableTypeFunctionEvaluation)
+LUAU_FASTFLAG(LuauFragmentACLocalAutocompleteFix)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -41,7 +40,7 @@ static FrontendOptions getOptions()
     FrontendOptions options;
     options.retainFullTypeGraphs = true;
 
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         options.forAutocomplete = true;
 
     options.runLintChecks = false;
@@ -51,7 +50,7 @@ static FrontendOptions getOptions()
 
 static ModuleResolver& getModuleResolver(Frontend& frontend)
 {
-    return FFlag::LuauSolverV2 ? frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
+    return !FFlag::DebugLuauForceOldSolver ? frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
 }
 
 template<class BaseType>
@@ -157,7 +156,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 
     CheckResult checkOldSolver(const std::string& source)
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
         return this->check(Mode::Strict, source, getOptions());
     }
 
@@ -194,7 +193,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
         std::string cleanDocument = cleanMarkers(document);
         std::string cleanUpdated = cleanMarkers(updated);
@@ -216,7 +215,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
 
         std::string cleanDocument = cleanMarkers(document);
         std::string cleanUpdated = cleanMarkers(updated);
@@ -242,7 +241,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::string cleanUpdated = cleanMarkers(updated);
         Position cursorPos = getPosition(marker);
 
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
         this->getFrontend().setLuauSolverMode(SolverMode::New);
         this->check(cleanDocument, getOptions());
 
@@ -250,7 +249,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
 
-        ScopedFastFlag _{FFlag::LuauSolverV2, false};
+        ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, true};
         this->getFrontend().setLuauSolverMode(SolverMode::Old);
         this->check(cleanDocument, getOptions());
 
@@ -332,7 +331,7 @@ struct FragmentAutocompleteBuiltinsFixture : FragmentAutocompleteFixtureImpl<Bui
         Luau::unfreeze(f.globals.globalTypes);
         Luau::unfreeze(f.globalsForAutocomplete.globalTypes);
         const std::string fakeVecDecl = R"(
-declare class FakeVec
+declare extern type FakeVec with
     function dot(self, x: FakeVec) : FakeVec
     zero : FakeVec
 end
@@ -1105,6 +1104,45 @@ local function bar() return x + foo() end
     CHECK(returnSt != nullptr);
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_self_in_local_stack")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    auto result = runAutocompleteVisitor(
+        R"(
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+)",
+        {4, 2}
+    );
+
+    CHECK_EQ(1, result.localStack.size());
+    CHECK_EQ(result.localMap.size(), result.localStack.size());
+    CHECK_EQ("self", std::string(result.localStack.back()->name.value));
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_args_not_in_scope_outside_class")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // Cursor is after the class `end` — method args must not leak into the outer scope.
+    auto result = runAutocompleteVisitor(
+        R"(
+class Bar
+    function method(self)
+    end
+end
+local x = 4
+)",
+        {6, 10}
+    );
+
+    CHECK(result.localMap.find(AstName("self")) == nullptr);
+}
+
 TEST_SUITE_END();
 
 
@@ -1142,7 +1180,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "thrown_parse_error_leads_to_null
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     checkWithOptions("local a =");
     auto fragment = parseFragment("local a =", Position(0, 9));
 
@@ -1153,7 +1191,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_non_null")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(R"(
 
 )");
@@ -1177,7 +1215,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_n
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_complete_fragments")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1224,7 +1262,7 @@ local z = x + y
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_fragments_in_line")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1270,7 +1308,7 @@ local y = 5
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_in_correct_scope")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     checkWithOptions(R"(
         local myLocal = 4
         function abc()
@@ -1297,7 +1335,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_in_correct_scope")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_single_line_fragment_override")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions("function abc(foo: string) end");
 
     LUAU_REQUIRE_NO_ERRORS(res);
@@ -1355,12 +1393,12 @@ abc("bar")
     CHECK_EQ(Position{1, 4}, asString->location.begin);
     CHECK_EQ(Position{1, 9}, asString->location.end);
     CHECK_EQ("foo", std::string{asString->value.data});
-    CHECK_EQ(AstExprConstantString::QuotedSimple, asString->quoteStyle);
+    CHECK_EQ(AstExprConstantString::QuoteStyle::QuotedSimple, asString->quoteStyle);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_multi_line_fragment_override")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     auto res = checkWithOptions("function abc(foo: string) end");
 
@@ -1398,6 +1436,9 @@ abc("bar")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "respects_frontend_options")
 {
+    // NOTE: This does not pass the new solver because it is exercising behavior
+    // that is only meaningful under the old solver (whether the correct
+    // module resolver is used).
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     std::string source = R"(
@@ -1408,7 +1449,7 @@ t
 
     FrontendOptions opts;
     opts.forAutocomplete = true;
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     getFrontend().check("game/A", opts);
     CHECK_NE(getFrontend().moduleResolverForAutocomplete.getModule("game/A"), nullptr);
     CHECK_EQ(getFrontend().moduleResolver.getModule("game/A"), nullptr);
@@ -1433,7 +1474,7 @@ TEST_SUITE_BEGIN("FragmentAutocompleteTypeCheckerTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_typecheck_simple_fragment")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1459,7 +1500,7 @@ local z = x + y
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_typecheck_fragment_inserted_inline")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1489,8 +1530,8 @@ TEST_SUITE_BEGIN("MixedModeTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "mixed_mode_basic_example_append")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     auto res = checkOldSolver(
         R"(
 local x = 4
@@ -1516,8 +1557,8 @@ local z = x + y
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "mixed_mode_basic_example_inlined")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     auto res = checkOldSolver(
         R"(
 local x = 4
@@ -1541,8 +1582,8 @@ local y = 5
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "mixed_mode_can_autocomplete_simple_property_access")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     auto res = checkOldSolver(
         R"(
 local tbl = { abc = 1234}
@@ -1564,6 +1605,32 @@ tbl.
     CHECK_EQ(1, fragment.result->acResults.entryMap.size());
     CHECK(fragment.result->acResults.entryMap.count("abc"));
     CHECK_EQ(AutocompleteContext::Property, fragment.result->acResults.context);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "autocomplete_props_through_metatable_typed_metatable")
+{
+    const std::string source = R"(
+local Base = { baseProp = 5 }
+local Meta = setmetatable({ __index = Base }, {})
+local obj = setmetatable({}, Meta)
+)";
+    const std::string updated = R"(
+local Base = { baseProp = 5 }
+local Meta = setmetatable({ __index = Base }, {})
+local obj = setmetatable({}, Meta)
+obj. @1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("baseProp"));
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "typecheck_fragment_handles_unusable_module")
@@ -1603,6 +1670,8 @@ TEST_SUITE_BEGIN("FragmentAutocompleteTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_fragment_autocomplete")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -1655,20 +1724,21 @@ function module.ab
 return module)";
 
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
         getFrontend().setLuauSolverMode(SolverMode::Old);
         checkAndExamine(source, "module", "{|  |}");
         fragmentACAndCheck(updated1, Position{1, 17}, "module", "{|  |}", "{| a: (%error-id%: unknown) -> () |}");
         fragmentACAndCheck(updated2, Position{1, 18}, "module", "{|  |}", "{| ab: (%error-id%: unknown) -> () |}");
     }
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
         getFrontend().setLuauSolverMode(SolverMode::New);
         checkAndExamine(source, "module", "{  }");
         // [TODO] CLI-140762 Fragment autocomplete still doesn't return correct result when LuauSolverV2 is on
-        return;
+#if 0
         fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
         fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
+#endif
     }
 }
 
@@ -2484,6 +2554,49 @@ end
     );
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_inside_of_function_parameter")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACLocalAutocompleteFix, true};
+    const std::string source = R"(--!strict
+type Foo = { x: number, y: string }
+
+function t(body: Foo)
+    local bim: Foo = body
+
+    if bim then
+        return
+    end
+end
+)";
+
+    const std::string updated = R"(--!strict
+type Foo = { x: number, y: string }
+
+function t(body: Foo)
+    local bim: Foo = body
+    bim.@1
+
+    if bim then
+        return
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK_EQ(2, fragment.result->acResults.entryMap.size());
+            CHECK(fragment.result->acResults.entryMap.count("x"));
+            CHECK(fragment.result->acResults.entryMap.count("y"));
+            CHECK_EQ(AutocompleteContext::Property, fragment.result->acResults.context);
+        }
+    );
+}
+
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "vec3_function_parameter")
 {
     const std::string source = R"(
@@ -2979,6 +3092,8 @@ end)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_memory_isolation")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -3012,7 +3127,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_me
         LUAU_ASSERT(srcId);
 
         CHECK((*fragId)->owningArena != (*srcId)->owningArena);
-        CHECK(&(frag.result->incrementalModule->internalTypes) == (*fragId)->owningArena);
+        CHECK(frag.result->incrementalModule->internalTypes.get() == (*fragId)->owningArena);
     };
 
     const std::string source = R"(local module = {}
@@ -3028,7 +3143,7 @@ function module.ab
 return module)";
 
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
         getFrontend().setLuauSolverMode(SolverMode::Old);
         checkAndExamine(source, "module", "{|  |}");
         // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
@@ -3038,7 +3153,7 @@ return module)";
     }
 
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
         getFrontend().setLuauSolverMode(SolverMode::New);
         checkAndExamine(source, "module", "{  }");
         // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
@@ -3189,7 +3304,7 @@ end
 )";
 
     // Only checking in new solver as old solver doesn't handle type functions and constraint solver will ICE
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     this->check(source, getOptions());
 
     FragmentAutocompleteStatusResult result = autocompleteFragment(dest, Position{4, 9}, std::nullopt);
@@ -3976,7 +4091,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "inline_prop_read_on_requires_provides_results")
 {
-    ScopedFastFlag sff{FFlag::LuauFragmentRequiresCanBeResolvedToAModule, true};
     const std::string moduleA = R"(
 local mod = { prop1 = true}
 mod.prop2 = "a"
@@ -4409,7 +4523,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "hot_comment_should_rec")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "len_operator_needs_to_provide_autocomplete_results")
 {
-    ScopedFastFlag sff{FFlag::LuauNumericUnaryOpsDontProduceNegationRefinements, true};
     std::string source = R"(
 type Pool = { numbers: { number }}
 
@@ -4440,7 +4553,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "unary_minus_operator_needs_to_provide_autocomplete_results")
 {
-    ScopedFastFlag sff{FFlag::LuauNumericUnaryOpsDontProduceNegationRefinements, true};
     std::string source = R"(
 type Pool = { x : number }
 
@@ -4714,8 +4826,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_indexer_with_singleton_keys")
 {
-    ScopedFastFlag _{FFlag::LuauAutocompleteSingletonsInIndexer, true};
-
     std::string source = R"(
         type List = "Val1" | "Val2" | "Val3"
         local Table: { [List]: boolean }
@@ -4741,6 +4851,1070 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_inde
     );
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_function_call_with_variadic_args")
+{
+    std::string source = R"(
+        local function foo(...: "Val1" | "Val2") end
+    )";
+
+    std::string dest = R"(
+        local function foo(...: "Val1" | "Val2") end
+        foo(@1
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("\"Val1\"") == 1);
+            CHECK(frag.result->acResults.entryMap.count("\"Val2\"") == 1);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_intersection_param")
+{
+    std::string source = R"(
+        local function C(_: "Example"&"Example") end
+    )";
+
+    std::string dest = R"(
+        local function C(_: "Example"&"Example") end
+        C(@1
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("\"Example\"") == 1);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_intersection_variable_annotation")
+{
+    std::string source = R"(
+        local _: "foo"&"foo"
+    )";
+
+    std::string dest = R"(
+        local _: "foo"&"foo" = "@1"
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("foo") == 1);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+        },
+        Position{1, 33}
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_table_insert")
+{
+    std::string src = R"(
+        local function addToTable(t: {{ foobar: number }})
+            table.insert(t, {})
+        end
+    )";
+
+    std::string dest = R"(
+        local function addToTable(t: {{ foobar: number }})
+            table.insert(t, { f@1 })
+        end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '1',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_properties")
+{
+    std::string src = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+    )";
+
+    std::string dest = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+        createElement(MyComponent, { f@1 })
+        createElement(MyComponent, { barbaz = { b@2 } })
+        createElement(MyComponent, { foobar = {}, b@3 })
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '1',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '2',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("bazquxx") > 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '3',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("barbaz") > 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narrow_fragment")
+{
+    std::string src = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+        createElement(MyComponent, { })
+    )";
+
+    std::string dest = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+        createElement(MyComponent, { f@1 })
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '1',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
+        }
+    );
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_self_dot_autocomplete")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+        self.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+            CHECK(!frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_self_dot_multiple_properties")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Vec3
+    public x: number
+    public y: number
+    public z: number
+    function length(self)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Vec3
+    public x: number
+    public y: number
+    public z: number
+    function length(self)
+        self.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("x"));
+            CHECK(frag.result->acResults.entryMap.count("y"));
+            CHECK(frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_extra_args_visible_in_body")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Counter
+    public value: number
+    function increment(self, count: number)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Counter
+    public value: number
+    function increment(self, count: number)
+        @1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("self"));
+            CHECK(frag.result->acResults.entryMap.count("count"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_second_method_self_dot")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function first(self)
+    end
+    function second(self)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function first(self)
+    end
+    function second(self)
+        self.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_instance_dot_property_from_outside")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+end
+local bar = Bar { value = 1 }
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+end
+local bar = Bar { value = 1 }
+bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+            CHECK(!frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_instance_dot_includes_method_from_outside")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+local bar = Bar { value = 1 }
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+local bar = Bar { value = 1 }
+bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+            CHECK(frag.result->acResults.entryMap.count("doThing"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_instance_multiple_props_from_outside")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Point
+    public x: number
+    public y: number
+    public z: number
+end
+local p = Point { x = 0, y = 0, z = 0 }
+)";
+
+    const std::string dest = R"(--!strict
+class Point
+    public x: number
+    public y: number
+    public z: number
+end
+local p = Point { x = 0, y = 0, z = 0 }
+p.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("x"));
+            CHECK(frag.result->acResults.entryMap.count("y"));
+            CHECK(frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_static_method_dot_autocomplete_1")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+
+Bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("new"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_static_method_dot_autocomplete_2")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+
+local _ = Bar.new()
+
+Bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("new"));
+        }
+    );
+}
+
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_autocomplete_between_definitions")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function printvalue(self)
+        print(self.value)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function printvalue(self)
+        print(self.value)
+    end
+    s@1
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("self") == 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_autocomplete_classname_inside_method")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function new()
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return B@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Bar"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "isinstance_refines_for_autocomplete")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauAllowGlobalDeclarationToBeCalledClass, true},
+    };
+
+    const std::string source = R"(
+class Point
+    public x
+    public y
+end
+
+local function f(v: Point | string)
+    if class.isinstance(v, Point) then
+
+    end
+end
+)";
+
+    const std::string dest = R"(
+class Point
+    public x
+    public y
+end
+
+local function f(v: Point | string)
+    if class.isinstance(v, Point) then
+        v.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("x"));
+            CHECK(frag.result->acResults.entryMap.count("y"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_ac_on_nonexistent_table")
+{
+    const std::string source = R"(
+        local mygame = {}
+
+        local char = (nil :: any) :: {
+            Humanoid: {
+                Animator: number
+            }
+        } & typeof(mygame.interesting)
+    )";
+
+    const std::string updated = R"(
+        local mygame = {}
+
+        local char = (nil :: any) :: {
+            Humanoid: {
+                Animator: number
+            }
+        } & typeof(mygame.interesting)
+
+        char.Humanoid.@1
+    )";
+
+    // In the old solver, we effectively infer `never` for the type of `char`.
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Animator"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_type_function_string_singleton_union")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACEnableTypeFunctionEvaluation, true};
+
+    const std::string source = R"(--!strict
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> =
+)";
+
+    const std::string dest = R"(--!strict
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> = "@1"
+)";
+
+    // Only checking in new solver as old solver doesn't handle type functions
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+            CHECK(frag.result->acResults.entryMap.count("test") == 1);
+            CHECK(frag.result->acResults.entryMap.count("test2") == 1);
+        },
+        Position{7, 19}
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_optional_binding_member_completion_in_then_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+        myTest.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("name"));
+            CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_optional_binding_is_in_scope_in_then_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+        @1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("myTest"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_and_elseif_local_bindings_are_scoped_to_their_own_branch")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local thenBinding = getTester() then
+
+    elseif local elseifBinding = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local thenBinding = getTester() then
+        @1
+    elseif local elseifBinding = getTester() then
+        @2
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("thenBinding"));
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "elseifBinding");
+        }
+    );
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '2',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("elseifBinding"));
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "thenBinding");
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "elseif_local_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if false then
+    elseif local myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if false then
+    elseif local myTest = getTester() then
+        myTest.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("name"));
+            CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "nested_if_local_bindings_are_both_in_scope")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local outer = getTester() then
+        if local inner = getTester() then
+
+        end
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local outer = getTester() then
+        if local inner = getTester() then
+            @1
+        end
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("outer"));
+            CHECK(fragment.result->acResults.entryMap.count("inner"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_binding_is_not_in_scope_in_else_branch")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    else
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    else
+        @1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "myTest");
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_binding_is_not_in_scope_after_if_statement")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    end
+
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    end
+    @1
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "myTest");
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_const_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if const myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if const myTest = getTester() then
+        myTest.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("name"));
+            CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
+    );
+}
 
 TEST_SUITE_END();

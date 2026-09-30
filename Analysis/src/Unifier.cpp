@@ -15,13 +15,9 @@
 #include <algorithm>
 
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
+LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 namespace Luau
 {
@@ -959,7 +955,7 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
         innerState->tryUnify_(type, superTy, isFunctionCall);
 
         // TODO: This sets errorSuppressed to true if any of the parts is error-suppressing,
-        // in paricular any & T is error-suppressing. Really, errorSuppressed should be true if
+        // in particular any & T is error-suppressing. Really, errorSuppressed should be true if
         // all of the parts are error-suppressing, but that fails to typecheck lua-apps.
         if (innerState->errors.empty())
         {
@@ -1496,10 +1492,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
         auto mkFreshType = [this](Scope* scope, TypeLevel level)
         {
-            if (FFlag::LuauSolverV2)
-                return freshType(NotNull{types}, builtinTypes, scope);
-            else
-                return types->freshType(builtinTypes, scope, level);
+            return freshType(NotNull{types}, builtinTypes, scope);
         };
 
         const TypePackId emptyTp = types->addTypePack(TypePack{{}, std::nullopt});
@@ -1971,18 +1964,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         // If one of the types stopped being a table altogether, we need to restart from the top
         if ((superTy != superTyNew || activeSubTy != subTyNew) && errors.empty())
-        {
-            if (FFlag::LuauUnifierRecursionOnRestart)
-            {
-                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
-                tryUnify(subTy, superTy, false, isIntersection);
-                return;
-            }
-            else
-            {
-                return tryUnify(subTy, superTy, false, isIntersection);
-            }
-        }
+            return tryUnify(subTy, superTy, false, isIntersection);
 
         // Otherwise, restart only the table unification
         TableType* newSuperTable = log.getMutable<TableType>(superTyNew);
@@ -2061,18 +2043,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         // If one of the types stopped being a table altogether, we need to restart from the top
         if ((superTy != superTyNew || activeSubTy != subTyNew) && errors.empty())
-        {
-            if (FFlag::LuauUnifierRecursionOnRestart)
-            {
-                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
-                tryUnify(subTy, superTy, false, isIntersection);
-                return;
-            }
-            else
-            {
-                return tryUnify(subTy, superTy, false, isIntersection);
-            }
-        }
+            return tryUnify(subTy, superTy, false, isIntersection);
 
         // Recursive unification can change the txn log, and invalidate the old
         // table. If we detect that this has happened, we start over, with the updated
@@ -2195,8 +2166,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
 
     auto fail = [&](std::optional<TypeError> e)
     {
-        std::string reason = FFlag::LuauBetterTypeMismatchErrors ? "The given type's metatable does not satisfy the requirements."
-                                                                 : "The former's metatable does not satisfy the requirements.";
+        std::string reason = "The given type's metatable does not satisfy the requirements.";
         if (e)
             reportError(location, TypeMismatch{osuperTy, osubTy, std::move(reason), std::move(e), mismatchContext()});
         else
@@ -2311,6 +2281,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
         case TableState::Sealed:
         case TableState::Unsealed:
         case TableState::Generic:
+        case TableState::Exact:
             reportError(std::move(mismatchError));
         }
     }
@@ -2426,11 +2397,18 @@ void Unifier::tryUnifyNegations(TypeId subTy, TypeId superTy)
     if (!subNorm || !superNorm)
         return reportError(location, NormalizationTooComplex{});
 
-    // T </: ~U iff T <: U
-    std::unique_ptr<Unifier> state = makeChildUnifier();
-    state->tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
-    if (state->errors.empty())
-        reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
+    if (FFlag::LuauRefactorStringSemanticSubtyping)
+    {
+        tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
+    }
+    else
+    {
+        // T </: ~U iff T <: U
+        std::unique_ptr<Unifier> state = makeChildUnifier();
+        state->tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
+        if (state->errors.empty())
+            reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
+    }
 }
 
 static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)
@@ -2621,7 +2599,7 @@ void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 
 std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, Name name)
 {
-    return Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location);
+    return Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location, /* useNewSolver */ false);
 }
 
 TxnLog Unifier::combineLogsIntoUnion(std::vector<TxnLog> logs)

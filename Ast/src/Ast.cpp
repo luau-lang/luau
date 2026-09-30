@@ -3,9 +3,7 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAGVARIABLE(LuauStandaloneParseType)
-
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 namespace Luau
 {
@@ -37,8 +35,6 @@ static void visitTypeList(AstVisitor* visitor, const AstTypeList& list)
 
 static void visitTypeOrPackArray(AstVisitor* visitor, const AstArray<AstTypeOrPack>& arrayOfTypeOrPack)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
-
     for (const AstTypeOrPack& param : arrayOfTypeOrPack)
     {
         if (param.type)
@@ -176,6 +172,18 @@ void AstExprConstantNumber::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+AstExprConstantInteger::AstExprConstantInteger(const Location& location, int64_t value, ConstantNumberParseResult parseResult)
+    : AstExpr(ClassIndex(), location)
+    , value(value)
+    , parseResult(parseResult)
+{
+}
+
+void AstExprConstantInteger::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
 AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle)
     : AstExpr(ClassIndex(), location)
     , value(value)
@@ -241,7 +249,6 @@ AstExprCall::AstExprCall(
     , self(self)
     , argLocation(argLocation)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax || explicitTypes.size == 0);
 }
 
 void AstExprCall::visit(AstVisitor* visitor)
@@ -417,11 +424,11 @@ std::string toString(AstExprUnary::Op op)
 {
     switch (op)
     {
-    case AstExprUnary::Minus:
+    case AstExprUnary::Op::Minus:
         return "-";
-    case AstExprUnary::Not:
+    case AstExprUnary::Op::Not:
         return "not";
-    case AstExprUnary::Len:
+    case AstExprUnary::Op::Len:
         return "#";
     default:
         LUAU_ASSERT(false);
@@ -514,10 +521,38 @@ AstExprIfElse::AstExprIfElse(const Location& location, AstExpr* condition, bool 
 {
 }
 
+AstExprIfElse::AstExprIfElse(
+    const Location& location,
+    AstExpr* condition,
+    bool hasThen,
+    AstExpr* trueExpr,
+    bool hasElse,
+    AstExpr* falseExpr,
+    AstLocal* conditionLocal,
+    bool conditionIsConst,
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
+)
+    : AstExpr(ClassIndex(), location)
+    , condition(condition)
+    , hasThen(hasThen)
+    , trueExpr(trueExpr)
+    , hasElse(hasElse)
+    , falseExpr(falseExpr)
+    , conditionLocal(conditionLocal)
+    , conditionIsConst(conditionIsConst)
+    , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
+{
+}
+
 void AstExprIfElse::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
+        if (FFlag::LuauExperimentalIfLocalSyntax && conditionLocal && conditionLocal->annotation)
+            conditionLocal->annotation->visit(visitor);
+
         condition->visit(visitor);
         trueExpr->visit(visitor);
         falseExpr->visit(visitor);
@@ -552,15 +587,13 @@ AstExprInstantiate::AstExprInstantiate(const Location& location, AstExpr* expr, 
     , expr(expr)
     , typeArguments(types)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
 }
 
 void AstExprInstantiate::visit(AstVisitor* visitor)
 {
-    expr->visit(visitor);
-
     if (visitor->visit(this))
     {
+        expr->visit(visitor);
         visitTypeOrPackArray(visitor, typeArguments);
     }
 }
@@ -608,10 +641,38 @@ AstStatIf::AstStatIf(
 {
 }
 
+AstStatIf::AstStatIf(
+    const Location& location,
+    AstExpr* condition,
+    AstStatBlock* thenbody,
+    AstStat* elsebody,
+    const std::optional<Location>& thenLocation,
+    const std::optional<Location>& elseLocation,
+    AstLocal* conditionLocal,
+    bool conditionIsConst,
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
+)
+    : AstStat(ClassIndex(), location)
+    , condition(condition)
+    , thenbody(thenbody)
+    , elsebody(elsebody)
+    , thenLocation(thenLocation)
+    , elseLocation(elseLocation)
+    , conditionLocal(conditionLocal)
+    , conditionIsConst(conditionIsConst)
+    , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
+{
+}
+
 void AstStatIf::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
+        if (FFlag::LuauExperimentalIfLocalSyntax && conditionLocal && conditionLocal->annotation)
+            conditionLocal->annotation->visit(visitor);
+
         condition->visit(visitor);
         thenbody->visit(visitor);
 
@@ -706,11 +767,13 @@ AstStatLocal::AstStatLocal(
     const Location& location,
     const AstArray<AstLocal*>& vars,
     const AstArray<AstExpr*>& values,
-    const std::optional<Location>& equalsSignLocation
+    const std::optional<Location>& equalsSignLocation,
+    bool isConst
 )
     : AstStat(ClassIndex(), location)
     , vars(vars)
     , values(values)
+    , isConst(isConst)
     , equalsSignLocation(equalsSignLocation)
 {
 }
@@ -858,10 +921,12 @@ void AstStatFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func)
+AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst, Position constKeywordBegin)
     : AstStat(ClassIndex(), location)
     , name(name)
     , func(func)
+    , isConst(isConst)
+    , constKeywordBegin(constKeywordBegin)
 {
 }
 
@@ -969,6 +1034,45 @@ AstStatDeclareFunction::AstStatDeclareFunction(
     , varargLocation(varargLocation)
     , retTypes(retTypes)
 {
+}
+
+AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported, bool open)
+    : AstStat(ClassIndex(), location)
+    , name(name)
+    , super(super)
+    , members(members)
+    , exported(exported)
+    , open(open)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+}
+
+void AstStatClass::visit(AstVisitor* visitor)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    if (visitor->visit(this))
+    {
+        if (super)
+            super->visit(visitor);
+
+        for (const auto& member : members)
+        {
+            Luau::visit(
+                overloaded{
+                    [&](const AstClassProperty& prop)
+                    {
+                        if (prop.ty)
+                            prop.ty->visit(visitor);
+                    },
+                    [&](const AstClassMethod& method)
+                    {
+                        method.function->visit(visitor);
+                    }
+                },
+                member
+            );
+        }
+    }
 }
 
 AstStatDeclareFunction::AstStatDeclareFunction(
@@ -1084,12 +1188,14 @@ AstTypeReference::AstTypeReference(
     std::optional<Location> prefixLocation,
     const Location& nameLocation,
     bool hasParameterList,
-    const AstArray<AstTypeOrPack>& parameters
+    const AstArray<AstTypeOrPack>& parameters,
+    AstLocal* prefixLocal
 )
     : AstType(ClassIndex(), location)
     , hasParameterList(hasParameterList)
     , prefix(prefix)
     , prefixLocation(prefixLocation)
+    , prefixLocal(prefixLocal)
     , name(name)
     , nameLocation(nameLocation)
     , parameters(parameters)
@@ -1100,27 +1206,15 @@ void AstTypeReference::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
-        if (FFlag::LuauExplicitTypeInstantiationSyntax)
-        {
-            visitTypeOrPackArray(visitor, parameters);
-        }
-        else
-        {
-            for (const AstTypeOrPack& param : parameters)
-            {
-                if (param.type)
-                    param.type->visit(visitor);
-                else
-                    param.typePack->visit(visitor);
-            }
-        }
+        visitTypeOrPackArray(visitor, parameters);
     }
 }
 
-AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer)
+AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer, bool isExact)
     : AstType(ClassIndex(), location)
     , props(props)
     , indexer(indexer)
+    , isExact(isExact)
 {
 }
 

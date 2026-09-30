@@ -5,6 +5,8 @@
 
 #include "ValueTracking.h"
 
+#include <vector>
+
 namespace Luau
 {
 namespace Compile
@@ -18,8 +20,11 @@ struct Constant
         Type_Nil,
         Type_Boolean,
         Type_Number,
-        Type_Vector,
+        Type_Integer,
+        Type_Vectorf,
+        Type_Vectord,
         Type_String,
+        Type_Table,
     };
 
     Type type = Type_Unknown;
@@ -29,7 +34,10 @@ struct Constant
     {
         bool valueBoolean;
         double valueNumber;
-        float valueVector[4];
+        int64_t valueInteger64;
+        float valueVectorf[4];
+        double valueVectord[4];
+        size_t valueTable;                 // index pointing to constant table entry with table's constant properties
         const char* valueString = nullptr; // length stored in stringLength
     };
 
@@ -46,15 +54,47 @@ struct Constant
     }
 };
 
+enum TableConstantKind
+{
+    ConstantTable,
+    NotConstant
+};
+
+void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, const DenseHashMap<AstLocal*, Variable>& variables, AstNode* root);
+
+struct ExprConstantChange
+{
+    AstExpr* key = nullptr;
+    Constant oldValue;
+    bool wasAbsent = false;
+};
+
+struct LocalConstantChange
+{
+    AstLocal* key = nullptr;
+    Constant oldValue;
+    bool wasAbsent = false;
+};
+
+using ExprConstantChangeLog = std::vector<ExprConstantChange>;
+using LocalConstantChangeLog = std::vector<LocalConstantChange>;
+
+void undoChanges(DenseHashMap<AstExpr*, Constant>& constants, const ExprConstantChangeLog& changes);
+void undoChanges(DenseHashMap<AstLocal*, Constant>& locals, const LocalConstantChangeLog& changes);
+
 void foldConstants(
     DenseHashMap<AstExpr*, Constant>& constants,
     DenseHashMap<AstLocal*, Variable>& variables,
     DenseHashMap<AstLocal*, Constant>& locals,
     const DenseHashMap<AstExprCall*, int>* builtins,
     bool foldLibraryK,
+    bool vectorDoublePrecision,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
-    AstNameTable& stringTable
+    AstNameTable& stringTable,
+    const DenseHashMap<AstLocal*, TableConstantKind>& tableConstants,
+    ExprConstantChangeLog* exprChangeLog = nullptr,
+    LocalConstantChangeLog* localChangeLog = nullptr
 );
 
 } // namespace Compile

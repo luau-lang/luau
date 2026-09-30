@@ -83,6 +83,7 @@ TEST_CASE("NativeModuleRefRefcounting")
     {
         NativeModuleRef modRef1{modRefA};
         NativeModuleRef modRef2{std::move(modRef1)};
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.get() == modRefA.get());
         REQUIRE(modRefA->getRefcount() == 2);
@@ -95,6 +96,7 @@ TEST_CASE("NativeModuleRefRefcounting")
     {
         NativeModuleRef modRef1{};
         NativeModuleRef modRef2{std::move(modRef1)};
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.empty());
     }
@@ -155,6 +157,7 @@ TEST_CASE("NativeModuleRefRefcounting")
         NativeModuleRef modRef1{modRefA};
         NativeModuleRef modRef2{};
         modRef2 = std::move(modRef1);
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.get() == modRefA.get());
         REQUIRE(modRefA->getRefcount() == 2);
@@ -168,6 +171,7 @@ TEST_CASE("NativeModuleRefRefcounting")
         NativeModuleRef modRef1{};
         NativeModuleRef modRef2{};
         modRef2 = std::move(modRef1);
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.empty());
     }
@@ -195,6 +199,7 @@ TEST_CASE("NativeModuleRefRefcounting")
         NativeModuleRef modRef1{modRefA};
         NativeModuleRef modRef2{modRefB};
         modRef2 = std::move(modRef1);
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.get() == modRefA.get());
         REQUIRE(modRefA->getRefcount() == 2);
@@ -255,7 +260,7 @@ TEST_CASE("NativeProtoRefcounting")
 
     std::vector<NativeProtoExecDataPtr> nativeProtos;
     nativeProtos.reserve(1);
-    NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(0);
+    NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(0, 0);
     getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 0x01;
     nativeProtos.push_back(std::move(nativeProto));
 
@@ -311,7 +316,7 @@ TEST_CASE("NativeProtoState")
     nativeProtos.reserve(2);
 
     {
-        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2, 0);
         getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 1;
         getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x00);
         nativeProto[0] = 0;
@@ -321,7 +326,7 @@ TEST_CASE("NativeProtoState")
     }
 
     {
-        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2, 0);
         getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 3;
         getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x08);
         nativeProto[0] = 8;
@@ -370,7 +375,7 @@ TEST_CASE("AnonymousModuleLifetime")
     nativeProtos.reserve(1);
 
     {
-        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2, 0);
         getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 1;
         getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x00);
         nativeProto[0] = 0;

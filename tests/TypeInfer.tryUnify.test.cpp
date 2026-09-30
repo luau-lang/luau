@@ -11,14 +11,10 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauUnifierRecursionOnRestart);
+LUAU_FASTFLAG(DebugLuauForceOldSolver);
 
 struct TryUnifyFixture : Fixture
 {
-    // Cannot use `TryUnifyFixture` under DCR.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     TypeArena arena;
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;
@@ -103,7 +99,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     state.log.commit();
 
-    CHECK(follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) == follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED()));
+    CHECK(
+        follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) ==
+        follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED())
+    );
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
@@ -133,7 +132,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
     CHECK(state.failure);
     CHECK_EQ(1, state.errors.size());
 
-    CHECK(follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) != follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED()));
+    CHECK(
+        follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) !=
+        follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED())
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_intersection_sub_never")
@@ -230,6 +232,7 @@ TEST_CASE_FIXTURE(Fixture, "typepack_unification_should_trim_free_tails")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("(number) -> boolean", toString(requireType("f")));
 }
@@ -275,6 +278,8 @@ TEST_CASE_FIXTURE(Fixture, "variadics_should_use_reversed_properly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
 
     CheckResult result = check(R"(
         --!strict
@@ -283,7 +288,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unifica
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "No overload for function accepts 0 arguments.");
-    if (FFlag::LuauSolverV2)
+    CHECK_EQ(result.errors[1].moduleName, "MainModule");
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[1]), "Available overloads: <V>({V}, V) -> (); and <V>({V}, number, V) -> ()");
     else
         CHECK_EQ(toString(result.errors[1]), "Available overloads: ({'a}, 'a) -> (); and ({'a}, number, 'a) -> ()");
@@ -371,8 +377,6 @@ local l0:(any)&(typeof(_)),l0:(any)|(any) = _,_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_unification_full_restart_recursion")
 {
-    ScopedFastFlag luauUnifierRecursionOnRestart{FFlag::LuauUnifierRecursionOnRestart, true};
-
     CheckResult result = check(R"(
 local A, B, C, D
 

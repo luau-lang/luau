@@ -11,8 +11,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauStacklessPcall)
-
 // convert a stack index to positive
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 
@@ -25,7 +23,8 @@ LUAU_FASTFLAG(LuauStacklessPcall)
 static const char* currfuncname(lua_State* L)
 {
     Closure* cl = L->ci > L->base_ci ? curr_func(L) : NULL;
-    const char* debugname = cl && cl->isC ? cl->c.debugname + 0 : NULL;
+
+    const char* debugname = cl && cl->isC && cl->c.debugname ? getstr(cl->c.debugname) : NULL;
 
     if (debugname && strcmp(debugname, "__namecall") == 0)
         return L->namecall ? getstr(L->namecall) : NULL;
@@ -138,6 +137,16 @@ void* luaL_checkudata(lua_State* L, int ud, const char* tname)
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
+void* luaL_checkudatatagged(lua_State* L, int ud, int tag)
+{
+    void* p = lua_touserdatatagged(L, ud, tag);
+    if (p != NULL)
+        return p;
+
+    const char* tname = lua_getuserdataname(L, tag);
+    luaL_typeerrorL(L, ud, tname); // else error
+}
+
 void* luaL_checkbuffer(lua_State* L, int narg, size_t* len)
 {
     void* b = lua_tobuffer(L, narg, len);
@@ -223,9 +232,21 @@ int luaL_checkinteger(lua_State* L, int narg)
     return d;
 }
 
+int64_t luaL_checkinteger64(lua_State* L, int narg)
+{
+    if (!lua_isinteger64(L, narg))
+        tag_error(L, narg, LUA_TINTEGER);
+    return lua_tointeger64(L, narg, nullptr);
+}
+
 int luaL_optinteger(lua_State* L, int narg, int def)
 {
     return luaL_opt(L, luaL_checkinteger, narg, def);
+}
+
+int64_t luaL_optinteger64(lua_State* L, int narg, int64_t def)
+{
+    return luaL_opt(L, luaL_checkinteger64, narg, def);
 }
 
 unsigned luaL_checkunsigned(lua_State* L, int narg)
@@ -242,15 +263,15 @@ unsigned luaL_optunsigned(lua_State* L, int narg, unsigned def)
     return luaL_opt(L, luaL_checkunsigned, narg, def);
 }
 
-const float* luaL_checkvector(lua_State* L, int narg)
+const LUA_VECTOR_TYPE* luaL_checkvector(lua_State* L, int narg)
 {
-    const float* v = lua_tovector(L, narg);
+    const LUA_VECTOR_TYPE* v = lua_tovector(L, narg);
     if (!v)
         tag_error(L, narg, LUA_TVECTOR);
     return v;
 }
 
-const float* luaL_optvector(lua_State* L, int narg, const float* def)
+const LUA_VECTOR_TYPE* luaL_optvector(lua_State* L, int narg, const LUA_VECTOR_TYPE* def)
 {
     return luaL_opt(L, luaL_checkvector, narg, def);
 }
@@ -351,29 +372,6 @@ const char* luaL_typename(lua_State* L, int idx)
 {
     const TValue* obj = luaA_toobject(L, idx);
     return obj ? luaT_objtypename(L, obj) : "no value";
-}
-
-int luaL_callyieldable(lua_State* L, int nargs, int nresults)
-{
-    api_check(L, iscfunction(L->ci->func));
-    Closure* cl = clvalue(L->ci->func);
-    api_check(L, cl->c.cont);
-
-    lua_call(L, nargs, nresults);
-
-    if (FFlag::LuauStacklessPcall)
-    {
-        // yielding means we need to propagate yield; resume will call continuation function later
-        if (isyielded(L))
-            return C_CALL_YIELD;
-    }
-    else
-    {
-        if (L->status == LUA_YIELD || L->status == LUA_BREAK)
-            return -1; // -1 is a marker for yielding from C
-    }
-
-    return cl->c.cont(L, LUA_OK);
 }
 
 void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level)
@@ -559,6 +557,14 @@ void luaL_addvalueany(luaL_Strbuf* B, int idx)
         luaL_addlstring(B, s, len);
         break;
     }
+    case LUA_TINTEGER:
+    {
+        int64_t n = lua_tointeger64(L, idx, nullptr);
+        char s[LUAI_MAXINT2STR];
+        char* e = luai_int2str(s, n);
+        luaL_addlstring(B, s, e - s);
+        break;
+    }
     default:
     {
         size_t len;
@@ -579,7 +585,7 @@ void luaL_pushresult(luaL_Strbuf* B)
     {
         luaC_checkGC(L);
 
-        // if we finished just at the end of the string buffer, we can convert it to a mutable stirng without a copy
+        // if we finished just at the end of the string buffer, we can convert it to a mutable string without a copy
         if (B->p == B->end)
         {
             setsvalue(L, L->top - 1, luaS_buffinish(L, storage));
@@ -631,7 +637,7 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     }
     case LUA_TVECTOR:
     {
-        const float* v = lua_tovector(L, idx);
+        const LUA_VECTOR_TYPE* v = lua_tovector(L, idx);
 
         char s[LUAI_MAXNUM2STR * LUA_VECTOR_SIZE];
         char* e = s;
@@ -650,6 +656,14 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     case LUA_TSTRING:
         lua_pushvalue(L, idx);
         break;
+    case LUA_TINTEGER:
+    {
+        int64_t l = lua_tointeger64(L, idx, nullptr);
+        char s[LUAI_MAXINT2STR];
+        char* e = luai_int2str(s, l);
+        lua_pushlstring(L, s, e - s);
+        break;
+    }
     default:
     {
         const void* ptr = lua_topointer(L, idx);

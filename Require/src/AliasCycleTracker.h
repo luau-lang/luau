@@ -18,7 +18,7 @@ public:
 private:
     std::string getStringifiedCycle(const std::string& repeated) const;
 
-    DenseHashSet<std::string> seen{""};
+    DenseHashSet<std::string> seen;
     std::vector<std::string> ordered;
 };
 

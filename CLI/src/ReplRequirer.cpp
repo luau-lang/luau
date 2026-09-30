@@ -14,6 +14,8 @@
 #include <string_view>
 #include <utility>
 
+LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
+
 static luarequire_WriteResult write(std::optional<std::string> contents, char* buffer, size_t bufferSize, size_t* sizeOut)
 {
     if (!contents)
@@ -165,14 +167,24 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
 
     if (status == 0)
     {
+        if (FFlag::LuauCyclicRequireShortCircuit && lua_usesexport(ML, -1) != 0)
+            luarequire_createplaceholder(L);
+
         if (req->codegenEnabled())
         {
             Luau::CodeGen::CompilationOptions nativeOptions;
+
+            if (req->countersActive())
+                nativeOptions.recordCounters = true;
+
             Luau::CodeGen::compile(ML, -1, nativeOptions);
         }
 
         if (req->coverageActive())
             req->coverageTrack(ML, -1);
+
+        if (req->countersActive())
+            req->countersTrack(ML, -1);
 
         int status = lua_resume(ML, L, 0);
 
@@ -224,10 +236,19 @@ void requireConfigInit(luarequire_Configuration* config)
     config->load = load;
 }
 
-ReplRequirer::ReplRequirer(CompileOptions copts, BoolCheck coverageActive, BoolCheck codegenEnabled, Coverage coverageTrack)
+ReplRequirer::ReplRequirer(
+    CompileOptions copts,
+    BoolCheck coverageActive,
+    BoolCheck codegenEnabled,
+    Coverage coverageTrack,
+    BoolCheck countersActive,
+    Coverage countersTrack
+)
     : copts(copts)
     , coverageActive(coverageActive)
     , codegenEnabled(codegenEnabled)
     , coverageTrack(coverageTrack)
+    , countersActive(countersActive)
+    , countersTrack(countersTrack)
 {
 }

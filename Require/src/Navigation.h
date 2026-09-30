@@ -29,10 +29,8 @@ class RuntimeNavigationContext : public NavigationContext
 public:
     RuntimeNavigationContext(luarequire_Configuration* config, lua_State* L, void* ctx, std::string requirerChunkname);
 
-    std::string getRequirerIdentifier() const override;
-
     // Navigation interface
-    NavigateResult reset(const std::string& requirerChunkname) override;
+    NavigateResult resetToRequirer() override;
     NavigateResult jumpToAlias(const std::string& path) override;
 
     NavigateResult toAliasOverride(const std::string& aliasUnprefixed) override;
@@ -43,7 +41,7 @@ public:
 
     NavigationContext::ConfigStatus getConfigStatus() const override;
     NavigationContext::ConfigBehavior getConfigBehavior() const override;
-    std::optional<std::string> getAlias(const std::string& alias) const override;
+    std::optional<std::string> getAlias(const std::string& alias) override;
     std::optional<std::string> getConfig() const override;
 
     // Custom capabilities

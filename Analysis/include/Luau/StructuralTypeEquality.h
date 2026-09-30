@@ -15,4 +15,4 @@ bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs);
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);
 bool areEqual(SeenSet& seen, TypeId lhs, TypeId rhs);
 
-}
+} // namespace Luau

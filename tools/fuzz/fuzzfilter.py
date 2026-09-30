@@ -94,7 +94,7 @@ if __name__ == "__main__":
         for index, reproducer in enumerate(reproducers):
             if reproducer.fingerprint in seen:
                 if sys.stdout.isatty():
-                    print("-\|/"[index % 4], end="\r")
+                    print("-\\|/"[index % 4], end="\r")
 
                 if args.remove_duplicates:
                     if args.verbosity >= 1:

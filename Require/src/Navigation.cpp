@@ -59,12 +59,7 @@ RuntimeNavigationContext::RuntimeNavigationContext(luarequire_Configuration* con
     };
 }
 
-std::string RuntimeNavigationContext::getRequirerIdentifier() const
-{
-    return requirerChunkname;
-}
-
-NavigationContext::NavigateResult RuntimeNavigationContext::reset(const std::string& requirerChunkname)
+NavigationContext::NavigateResult RuntimeNavigationContext::resetToRequirer()
 {
     return convertNavigateResult(config->reset(L, ctx, requirerChunkname.c_str()));
 }
@@ -130,7 +125,7 @@ NavigationContext::ConfigBehavior RuntimeNavigationContext::getConfigBehavior() 
     return ConfigBehavior::GetConfig;
 }
 
-std::optional<std::string> RuntimeNavigationContext::getAlias(const std::string& alias) const
+std::optional<std::string> RuntimeNavigationContext::getAlias(const std::string& alias)
 {
     return getStringFromCWriterWithInput(config->get_alias, alias, initalIdentifierBufferSize);
 }

@@ -27,21 +27,23 @@ local function prequire(name) local success, result = pcall(require, name); retu
 local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../../bench_support")
 
 function test()
+	local function Ack(M, N)
+		if (M == 0) then
+			return N + 1
+		end
+		if (N == 0) then
+			return Ack(M - 1, 1)
+		end
+		return Ack(M - 1, Ack(M, (N - 1)))
+	end
 
-local function Ack(M, N)
-    if (M == 0) then
-        return N + 1
-    end
-    if (N == 0) then
-        return Ack(M - 1, 1)
-    end
-    return Ack(M - 1, Ack(M, (N - 1)))
-end
+	N = tonumber((arg and arg[1])) or 3
+	M = tonumber((arg and arg[2])) or 8
 
-N = tonumber((arg and arg[1])) or 3
-M = tonumber((arg and arg[2])) or 8
-print(string.format("Ack(%d, %d) = %d\n", N, M, Ack(N,M)))
+	local result = Ack(N, M)
+	print(string.format("Ack(%d, %d) = %d\n", N, M, result))
 
+	assert(result == 2045)
 end
 
 bench.runCode(test, "ack")

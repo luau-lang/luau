@@ -23,7 +23,7 @@ struct TypeArena
     bool collectSingletonStats = false;
     size_t boolSingletonsMinted = 0;
     size_t strSingletonsMinted = 0;
-    DenseHashSet<std::optional<std::string>> uniqueStrSingletonsMinted{std::nullopt};
+    DenseHashSet<std::optional<std::string>> uniqueStrSingletonsMinted;
 
     void clear();
 
@@ -52,8 +52,8 @@ struct TypeArena
 
     TypePackId addTypePack(std::initializer_list<TypeId> types);
     TypePackId addTypePack(std::vector<TypeId> types, std::optional<TypePackId> tail = {});
-    TypePackId addTypePack(TypePack pack);
-    TypePackId addTypePack(TypePackVar pack);
+    TypePackId addTypePack(TypePack tp);
+    TypePackId addTypePack(TypePackVar tp);
 
     template<typename T>
     TypePackId addTypePack(T tp)

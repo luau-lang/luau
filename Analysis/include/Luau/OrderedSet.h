@@ -11,6 +11,7 @@ namespace Luau
 template<typename T>
 struct OrderedSet
 {
+    static_assert(std::is_pointer_v<T>, "OrderedSet can only be used with pointers!");
     using iterator = typename std::vector<T>::iterator;
     using const_iterator = typename std::vector<T>::const_iterator;
 
@@ -62,7 +63,7 @@ struct OrderedSet
 
 private:
     std::vector<T> elements;
-    DenseHashSet<T> elementSet{nullptr};
+    DenseHashSet<T> elementSet;
 };
 
 } // namespace Luau

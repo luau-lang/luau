@@ -155,16 +155,36 @@ void write(JsonEmitter& emitter, std::string_view sv)
 
     for (char c : sv)
     {
-        if (c == '"')
+        switch (c)
+        {
+        case '"':
             emitter.writeRaw("\\\"");
-        else if (c == '\\')
+            break;
+        case '\\':
             emitter.writeRaw("\\\\");
-        else if (c == '\n')
+            break;
+        case '\b':
+            emitter.writeRaw("\\b");
+            break;
+        case '\f':
+            emitter.writeRaw("\\f");
+            break;
+        case '\n':
             emitter.writeRaw("\\n");
-        else if (c < ' ')
-            emitter.writeRaw(format("\\u%04x", c));
-        else
-            emitter.writeRaw(c);
+            break;
+        case '\r':
+            emitter.writeRaw("\\r");
+            break;
+        case '\t':
+            emitter.writeRaw("\\t");
+            break;
+        default:
+            if (static_cast<unsigned char>(c) < 0x20)
+                emitter.writeRaw(format("\\u%04x", static_cast<unsigned char>(c)));
+            else
+                emitter.writeRaw(c);
+            break;
+        }
     }
 
     emitter.writeRaw('\"');
