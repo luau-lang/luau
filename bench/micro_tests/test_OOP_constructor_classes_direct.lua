@@ -13,7 +13,7 @@ function test()
 
     local ts0 = os.clock()
     for i=1,1_000_000 do
-        local n = Number.new({ x = 42 })
+        local n = Number { x = 42 }
     end
     local ts1 = os.clock()
 

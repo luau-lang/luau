@@ -15,7 +15,6 @@
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauCodegenSkipDeadPredecessorTags)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenNoLinearFastpcall)
@@ -4320,8 +4319,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DeadPredecessorDoesNotPreventTagPropagation")
 {
-    ScopedFastFlag luauCodegenSkipDeadPredecessorTags{FFlag::LuauCodegenSkipDeadPredecessorTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp deadBlock = build.block(IrBlockKind::Internal);
     IrOp liveBlock = build.block(IrBlockKind::Internal);

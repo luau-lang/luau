@@ -74,6 +74,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_ch
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_check")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type Map<K, V> = { [K]: V }
         local map: Map<string, number> = { ["foo"] = 1, ["bar"] = 2, ["baz"] = 3 }
@@ -201,6 +203,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_checks_for_numbers")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"LUA(
         local b = bit32
     )LUA");
@@ -378,6 +382,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type A = {tag: "A", x: number}
         type B = {tag: "B", y: string}
@@ -422,6 +428,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local t = table.pack(1, "foo", true)
     )");
@@ -432,6 +440,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_variadic")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
 --!strict
 function f(): (string, ...number)
@@ -447,6 +457,8 @@ local t = table.pack(f())
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local t = table.pack(1, 2, true)
     )");
@@ -457,6 +469,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local t = table.pack("a", "b", "c")
     )");
