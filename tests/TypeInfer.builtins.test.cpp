@@ -514,21 +514,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_takes_optional_date_table")
 {
     CheckResult result = check(R"(
         local n1 = os.time()
-        local n2 = os.time({ year = 2020, month = 4, day = 20 })
-        local n3 = os.time({ year = 2020, month = 4, day = 20, hour = 0, min = 0, sec = 0, isdst = true })
+        local n2 = os.time(nil)
+        local n3 = os.time({ year = 2020, month = 4, day = 20 })
+        local n4 = os.time({ year = 2020, month = 4, day = 20, hour = 0, min = 0, sec = 0, isdst = true })
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("number" == toString(requireType("n1")));
+    CHECK("number" == toString(requireType("n2")));
     if (FFlag::LuauBetterOsAnalysis)
     {
-        CHECK("number?" == toString(requireType("n2")));
         CHECK("number?" == toString(requireType("n3")));
+        CHECK("number?" == toString(requireType("n4")));
     }
     else
     {
-        CHECK("number" == toString(requireType("n2")));
         CHECK("number" == toString(requireType("n3")));
+        CHECK("number" == toString(requireType("n4")));
     }
 }
 
@@ -538,6 +540,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_with_date_table_may_return_nil")
     // must not be used as a number without a check.
     CheckResult result = check(R"(
         local n: number = os.time({ year = 0, month = 0, day = 0 })
+    )");
+
+    if (FFlag::LuauBetterOsAnalysis)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(0, result);
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "os_difftime_accepts_numbers")
+{
+    // os.time returns nil when the date table is out of range, so the result
+    // must not be used as a number without a check.
+    CheckResult result = check(R"(
+        local n: number = os.difftime(os.time(), os.time({ year = 2026, month = 9, day = 30 }))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "os_difftime_rejects_DateTimeResult")
+{
+    // os.time returns nil when the date table is out of range, so the result
+    // must not be used as a number without a check.
+    CheckResult result = check(R"(
+        local n: number = os.difftime(os.time(), os.date("*t"))
     )");
 
     if (FFlag::LuauBetterOsAnalysis)
