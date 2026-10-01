@@ -3,6 +3,7 @@
 
 #include "Luau/Variant.h"
 
+#include <atomic>
 #include <optional>
 #include <string>
 
@@ -114,7 +115,7 @@ struct Error
     std::optional<Id> synthetic;
 
 private:
-    static int nextIndex;
+    static std::atomic<int> nextIndex;
 };
 
 template<typename Id, typename... Value>

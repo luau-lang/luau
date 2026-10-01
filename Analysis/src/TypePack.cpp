@@ -95,7 +95,7 @@ BlockedTypePack::BlockedTypePack()
 {
 }
 
-size_t BlockedTypePack::nextIndex = 0;
+std::atomic<size_t> BlockedTypePack::nextIndex = 0;
 
 TypePackVar::TypePackVar(const TypePackVariant& tp)
     : ty(tp)

@@ -9,6 +9,7 @@
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
 
+#include <atomic>
 #include <optional>
 #include <set>
 #include <vector>
@@ -92,7 +93,7 @@ struct BlockedTypePack
 
     struct Constraint* owner = nullptr;
 
-    static size_t nextIndex;
+    static std::atomic<size_t> nextIndex;
 };
 
 /**

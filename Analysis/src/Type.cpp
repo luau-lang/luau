@@ -605,7 +605,7 @@ PendingExpansionType::PendingExpansionType(
 {
 }
 
-size_t PendingExpansionType::nextIndex = 0;
+std::atomic<size_t> PendingExpansionType::nextIndex = 0;
 
 FunctionType::FunctionType(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
     : definition(std::move(defn))

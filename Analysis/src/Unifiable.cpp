@@ -8,7 +8,9 @@ namespace Luau
 namespace Unifiable
 {
 
-static int nextIndex = 0;
+// Types are created on several threads at once when modules are checked in
+// parallel, so these counters are atomic.
+static std::atomic<int> nextIndex = 0;
 
 int freshIndex()
 {
@@ -22,7 +24,7 @@ Error<Id>::Error()
 }
 
 template<typename Id>
-int Error<Id>::nextIndex = 0;
+std::atomic<int> Error<Id>::nextIndex = 0;
 
 template struct Error<TypeId>;
 template struct Error<TypePackId>;
