@@ -1475,12 +1475,16 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
 
     TypeCheckLimits typeCheckLimits = makeTypeCheckLimits(item.options);
 
-    UnifierSharedState unifierState{NotNull{&iceHandler}};
+    // Build queue items can be checked on several threads at once, and the
+    // module name below changes per module, so this item gets its own reporter.
+    InternalErrorReporter sccIceHandler{iceHandler.onInternalError, {}};
+
+    UnifierSharedState unifierState{NotNull{&sccIceHandler}};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
     unifierState.counters.iterationLimit = typeCheckLimits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
 
     Normalizer normalizer{scc->sharedArena.get(), builtinTypes, NotNull{&unifierState}, SolverMode::New};
-    TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceHandler}, NotNull{&typeCheckLimits}};
+    TypeFunctionRuntime typeFunctionRuntime{NotNull{&sccIceHandler}, NotNull{&typeCheckLimits}};
     typeFunctionRuntime.allowEvaluation = true;
 
     // Per-module ConstraintGenerator data for this SCC that needs to be preserved for later use in the ConstraintSolver
@@ -1526,10 +1530,10 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         module->names = sourceModule.names;
         module->root = sourceModule.root;
 
-        iceHandler.moduleName = sourceModule.name;
+        sccIceHandler.moduleName = sourceModule.name;
 
         cgData[i].dfg = std::make_unique<DataFlowGraph>(
-            DataFlowGraphBuilder::build(sourceModule.root, NotNull{&module->defArena}, NotNull{&module->keyArena}, NotNull{&iceHandler})
+            DataFlowGraphBuilder::build(sourceModule.root, NotNull{&module->defArena}, NotNull{&module->keyArena}, NotNull{&sccIceHandler})
         );
 
         ScopePtr environmentScope = moduleInfo.environmentScope;
@@ -1546,7 +1550,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
             NotNull{&typeFunctionRuntime},
             NotNull{&moduleResolver},
             builtinTypes,
-            NotNull{&iceHandler},
+            NotNull{&sccIceHandler},
             environmentScope ? environmentScope : globals.globalScope,
             globals.globalTypeFunctionScope,
             std::move(prepareModuleScopeWrap),
@@ -1612,7 +1616,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         std::move(mergedDeferredConstraints),
     };
 
-    Subtyping subtyping{builtinTypes, NotNull{scc->sharedArena.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceHandler}};
+    Subtyping subtyping{builtinTypes, NotNull{scc->sharedArena.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&sccIceHandler}};
 
     ConstraintSolver cs{
         NotNull{&normalizer},
@@ -1693,7 +1697,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
                     Luau::checkNonStrict(
                         builtinTypes,
                         NotNull{&typeFunctionRuntime},
-                        NotNull{&iceHandler},
+                        NotNull{&sccIceHandler},
                         NotNull{&unifierState},
                         NotNull{cgData[i].dfg.get()},
                         NotNull{&typeCheckLimits},
@@ -1730,7 +1734,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
 
         // Clone public interface
         unfreeze(module->interfaceTypes);
-        module->clonePublicInterface(builtinTypes, iceHandler, SolverMode::New);
+        module->clonePublicInterface(builtinTypes, sccIceHandler, SolverMode::New);
 
         if (module->mode == Mode::NoCheck)
         {
@@ -2558,6 +2562,10 @@ ModulePtr Frontend::check(
     TypeCheckLimits typeCheckLimits
 )
 {
+    // Modules can be checked on several threads at once, and checking records
+    // the module name on the reporter, so each check gets its own.
+    InternalErrorReporter moduleIceHandler{iceHandler.onInternalError, sourceModule.name};
+
     if (getLuauSolverMode() == SolverMode::New)
     {
         auto prepareModuleScopeWrap = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope)
@@ -2573,7 +2581,7 @@ ModulePtr Frontend::check(
                 mode,
                 requireCycles,
                 builtinTypes,
-                NotNull{&iceHandler},
+                NotNull{&moduleIceHandler},
                 NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver},
                 NotNull{fileResolver},
                 environmentScope ? *environmentScope : globals.globalScope,
@@ -2599,7 +2607,7 @@ ModulePtr Frontend::check(
             forAutocomplete ? globalsForAutocomplete.globalScope : globals.globalScope,
             forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver,
             builtinTypes,
-            &iceHandler
+            &moduleIceHandler
         );
 
         if (prepareModuleScope)
