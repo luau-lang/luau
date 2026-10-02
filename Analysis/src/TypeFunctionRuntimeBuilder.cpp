@@ -1021,6 +1021,7 @@ private:
 
             TypeId mapping = state->ctx->arena->addTV(Type(gty->isNamed ? GenericType{state->ctx->scope.get(), gty->name} : GenericType{}));
             genericTypes.emplace_back(gty->isNamed, gty->name, mapping);
+            state->dependsOnContext = true;
         }
 
         for (auto tp : f2->genericPacks)
@@ -1048,6 +1049,7 @@ private:
             TypePackId mapping =
                 state->ctx->arena->addTypePack(TypePackVar(gtp->isNamed ? GenericTypePack{state->ctx->scope.get(), gtp->name} : GenericTypePack{}));
             genericPacks.emplace_back(gtp->isNamed, gtp->name, mapping);
+            state->dependsOnContext = true;
         }
 
         f1->generics.reserve(f2->generics.size());

@@ -291,6 +291,22 @@ T* getMutable(TypeFunctionTypeId tv)
     return tv ? Luau::get_if<T>(&const_cast<TypeFunctionType*>(tv)->type) : nullptr;
 }
 
+// An evaluation of a user-defined type function whose result can be reused:
+// the function, the arena the result is built in, and the followed arguments.
+struct UserDefinedTypeFunctionCall
+{
+    const AstStatTypeFunction* definition = nullptr;
+    const TypeArena* arena = nullptr;
+    std::vector<TypeId> arguments;
+
+    bool operator==(const UserDefinedTypeFunctionCall& rhs) const;
+};
+
+struct HashUserDefinedTypeFunctionCall
+{
+    size_t operator()(const UserDefinedTypeFunctionCall& call) const;
+};
+
 struct TypeFunctionRuntime
 {
     TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits);
@@ -322,6 +338,9 @@ struct TypeFunctionRuntime
 
     // Output created by 'print' function
     std::vector<std::string> messages;
+
+    // Results of evaluations whose arguments can no longer change during this check
+    DenseHashMap<UserDefinedTypeFunctionCall, TypeId, HashUserDefinedTypeFunctionCall> results;
 
     // Type builder, valid for the duration of a single evaluation
     TypeFunctionRuntimeBuilderState* runtimeBuilder = nullptr;

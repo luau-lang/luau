@@ -9,6 +9,7 @@
 #include "Luau/ParseResult.h"
 #include "Luau/Compiler.h"
 #include "Luau/DenseHash.h"
+#include "Luau/HashUtil.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
@@ -47,6 +48,23 @@ LuauTempThreadPopper::~LuauTempThreadPopper()
 }
 
 static void dummyStateClose(lua_State*) {}
+
+bool UserDefinedTypeFunctionCall::operator==(const UserDefinedTypeFunctionCall& rhs) const
+{
+    return definition == rhs.definition && arena == rhs.arena && arguments == rhs.arguments;
+}
+
+size_t HashUserDefinedTypeFunctionCall::operator()(const UserDefinedTypeFunctionCall& call) const
+{
+    size_t seed = 0;
+    hashCombine(seed, std::hash<const AstStatTypeFunction*>{}(call.definition));
+    hashCombine(seed, std::hash<const TypeArena*>{}(call.arena));
+
+    for (TypeId argument : call.arguments)
+        hashCombine(seed, std::hash<TypeId>{}(argument));
+
+    return seed;
+}
 
 TypeFunctionRuntime::TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits)
     : ice(ice)
@@ -1839,6 +1857,7 @@ static int isSubtypeOf(lua_State* L)
 
     TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
     NotNull<TypeFunctionContext> ctx = runtimeBuilder->ctx;
+    runtimeBuilder->dependsOnContext = true;
 
     TypeId subTy = Luau::deserialize(self, runtimeBuilder);
     if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())

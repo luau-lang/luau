@@ -16,6 +16,7 @@
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsReturnAfterAllSerialized)
+LUAU_FASTFLAGVARIABLE(LuauCacheUserTypeFunctionResults)
 
 namespace Luau
 {
@@ -43,6 +44,37 @@ private:
     T* target = nullptr;
     T oldValue;
 };
+
+// The evaluation of [definition] on these arguments, if its result can be reused
+// for the rest of this check: every argument must be persistent or belong to
+// another module or the globals, whose types no longer change.
+std::optional<UserDefinedTypeFunctionCall> getReusableCall(
+    const AstStatTypeFunction* definition,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    LUAU_ASSERT(FFlag::LuauCacheUserTypeFunctionResults);
+
+    // Without frozen aliases, an evaluation can leave state behind for the next one.
+    if (!FFlag::LuauTypeFunctionSupportsFrozen || !packParams.empty())
+        return std::nullopt;
+
+    UserDefinedTypeFunctionCall call{definition, ctx->arena.get(), {}};
+    call.arguments.reserve(typeParams.size());
+
+    for (TypeId typeParam : typeParams)
+    {
+        TypeId ty = follow(typeParam);
+        if (!ty->persistent && (!ty->owningArena || ty->owningArena == ctx->arena.get()))
+            return std::nullopt;
+
+        call.arguments.push_back(ty);
+    }
+
+    return call;
+}
 
 } // namespace
 
@@ -102,6 +134,7 @@ static int evaluateTypeAliasCall(lua_State* L)
 
     TypeFunctionRuntime* runtime = getTypeFunctionRuntime(L);
     TypeFunctionRuntimeBuilderState* runtimeBuilder = runtime->runtimeBuilder;
+    runtimeBuilder->dependsOnContext = true;
 
     ApplyTypeFunction applyTypeFunction{runtimeBuilder->ctx->arena};
 
@@ -229,6 +262,17 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
     if (!ctx->typeFunctionRuntime->allowEvaluation || typeFunction->userFuncData.definition->hasErrors)
         return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
+
+    std::optional<UserDefinedTypeFunctionCall> reusableCall;
+    if (FFlag::LuauCacheUserTypeFunctionResults)
+    {
+        reusableCall = getReusableCall(typeFunction->userFuncData.definition, typeParams, packParams, ctx);
+        if (reusableCall)
+        {
+            if (TypeId* result = ctx->typeFunctionRuntime->results.find(*reusableCall))
+                return {*result, Reduction::MaybeOk, {}, {}};
+        }
+    }
 
     FindUserTypeFunctionBlockers check{ctx};
 
@@ -462,6 +506,11 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
         if (!runtimeBuilder->errors.empty())
             return {std::nullopt, Reduction::Erroneous, {}, {}, toString(runtimeBuilder->errors.front()), ctx->typeFunctionRuntime->messages};
 
+        // Printed messages have to be reported again by every evaluation, so their results are not reused.
+        if (FFlag::LuauCacheUserTypeFunctionResults && reusableCall && ctx->typeFunctionRuntime->messages.empty() &&
+            !runtimeBuilder->dependsOnContext)
+            ctx->typeFunctionRuntime->results[*reusableCall] = retTypeId;
+
         return {retTypeId, Reduction::MaybeOk, {}, {}, std::nullopt, ctx->typeFunctionRuntime->messages};
     }
     else
@@ -474,6 +523,11 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
         // At least 1 error occurred while deserializing
         if (runtimeBuilder->errors_DEPRECATED.size() > 0)
             return {std::nullopt, Reduction::Erroneous, {}, {}, runtimeBuilder->errors_DEPRECATED.front(), ctx->typeFunctionRuntime->messages};
+
+        // Printed messages have to be reported again by every evaluation, so their results are not reused.
+        if (FFlag::LuauCacheUserTypeFunctionResults && reusableCall && ctx->typeFunctionRuntime->messages.empty() &&
+            !runtimeBuilder->dependsOnContext)
+            ctx->typeFunctionRuntime->results[*reusableCall] = retTypeId;
 
         return {retTypeId, Reduction::MaybeOk, {}, {}, std::nullopt, ctx->typeFunctionRuntime->messages};
     }
