@@ -51,7 +51,17 @@ jobs:
     - name: pack
       if: matrix.os.name == 'windows'
       run: 7z a luau-${{matrix.os.name}}.zip .\Release\luau*.exe
-    - uses: actions/upload-release-asset@v1
+    - name: upload versioned archive
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: luau-${{matrix.os.name}}.zip
+        asset_name: luau-${{ github.event.inputs.version }}-${{matrix.os.name}}.zip
+        asset_content_type: application/octet-stream
+    - name: upload archive with legacy name
+      uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
