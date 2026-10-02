@@ -152,6 +152,7 @@ extern "C" const char* checkScript(const char* source, int useNewSolver)
 
         Luau::Frontend frontend(&fileResolver, &configResolver, options);
         frontend.setLuauSolverMode(useNewSolver ? Luau::SolverMode::New : Luau::SolverMode::Old);
+        frontend.setVectorSize(LUA_VECTOR_SIZE == 4 ? Luau::VectorSize::Four : Luau::VectorSize::Three);
         // Add Luau builtins
         Luau::unfreeze(frontend.globals.globalTypes);
         Luau::registerBuiltinGlobals(frontend, frontend.globals);
