@@ -225,6 +225,47 @@ assert(string.gsub("alo alo", "().", {2,5,6}) == "256 alo")
 t = {}; setmetatable(t, {__index = function (t,s) return string.upper(s) end})
 assert(string.gsub("a alo b hi", "%w%w+", t) == "a ALO b HI")
 
+-- gsub with patterns that don't have special characters
+do
+  local function check(s, p, r, n, er, en)
+    local a, b = string.gsub(s, p, r, n)
+    assert(a == er and b == en)
+  end
+
+  check("hello world", "o", "0", nil, "hell0 w0rld", 2)
+  check("hello world", " ", "", nil, "helloworld", 1)
+  check("hello world", "world", "there", nil, "hello there", 1)
+  check("hello world", "xyz", "abc", nil, "hello world", 0)
+  check("", "a", "b", nil, "", 0)
+  check("a", "a", "b", nil, "b", 1)
+  check("aaa", "aa", "b", nil, "ba", 1)
+  check("aaaa", "aa", "b", nil, "bb", 2)
+  check("abab", "aba", "x", nil, "xb", 1)
+  check("ab", "abc", "x", nil, "ab", 0)
+  check(",,,", ",", "", nil, "", 3)
+  check("a,b,c", ",", ";", 1, "a;b,c", 1)
+  check("a,b,c", ",", ";", 0, "a,b,c", 0)
+  check("a,b,c", ",", ";", -1, "a,b,c", 0)
+  check("a b c", " ", 5, nil, "a5b5c", 2)
+  check("a b", " ", "%0%0", nil, "a  b", 1)
+  check("a b", " ", "%1", nil, "a b", 1)
+  check("a b", " ", "<%%>", nil, "a<%>b", 1)
+  check("a b c", " ", {[" "] = "_"}, nil, "a_b_c", 2)
+  check("a b c", " ", {}, nil, "a b c", 2)
+  check("a b c", " ", function(m) return "[" .. m .. "]" end, nil, "a[ ]b[ ]c", 2)
+  check("a b c", " ", function() return false end, nil, "a b c", 2)
+  check("a\0b\0c", "\0", "-", nil, "a-b-c", 2)
+  check("a\0\0b", "\0\0", "-", nil, "a-b", 1)
+  check("a]b", "]", "x", nil, "axb", 1)
+  check("hello", "hello", "", nil, "", 1)
+
+  assert(not pcall(string.gsub, "a)b", ")", "x"))
+  assert(not pcall(string.gsub, "a b", " ", "%2"))
+  assert(not pcall(string.gsub, "a b", " ", "%"))
+  assert(not pcall(string.gsub, "a b", " ", {[" "] = {}}))
+  assert(not pcall(string.gsub, "a b", " ", function() return {} end))
+end
+
 
 -- tests for gmatch
 -- assert(string.gfind == string.gmatch)
