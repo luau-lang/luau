@@ -184,13 +184,13 @@ declare os: {
 static constexpr const char* kBuiltinDefinitionOsSrc_DEPRECATED = R"BUILTIN_SRC(
 
 type DateTypeArg = {
-    year: number,
-    month: number,
-    day: number,
-    hour: number?,
-    min: number?,
-    sec: number?,
-    isdst: boolean?,
+    read year: number,
+    read month: number,
+    read day: number,
+    read hour: number?,
+    read min: number?,
+    read sec: number?,
+    read isdst: boolean?,
 }
 
 type DateTypeResult = {
@@ -479,7 +479,7 @@ std::string getBuiltinDefinitionSource()
 
     result += kBuiltinDefinitionBit32Src;
     result += kBuiltinDefinitionMathSrc;
-  
+
     if (FFlag::LuauBetterOsAnalysis)
         result += kBuiltinDefinitionOsSrc;
     else
