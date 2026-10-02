@@ -29,7 +29,6 @@ LUAU_FLAGVERSION(LuauExportValueSyntax, 5)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauParseExactTables)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
@@ -3951,13 +3950,10 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
 {
     LUAU_ASSERT(base == 2 || base == 16);
 
-    if (FFlag::LuauNoDuplicateBinaryPrefix)
-    {
-        // Some libc implementations accept an optional 0b prefix for base-2 parsing.
-        // Binary literals have already had their leading 0b stripped by us.
-        if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
-            return ConstantNumberParseResult::Malformed;
-    }
+    // Some libc implementations accept an optional 0b prefix for base-2 parsing.
+    // Binary literals have already had their leading 0b stripped by us.
+    if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
+        return ConstantNumberParseResult::Malformed;
 
     char* end = nullptr;
     unsigned long long value = strtoull(data, &end, base);
@@ -4010,11 +4006,8 @@ static ConstantNumberParseResult parseInteger64(int64_t& result, const char* dat
     }
     else
     {
-        if (FFlag::LuauNoDuplicateBinaryPrefix)
-        {
-            if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
-                return ConstantNumberParseResult::Malformed;
-        }
+        if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
+            return ConstantNumberParseResult::Malformed;
 
         // hex and binary literals represent bit patterns covering the full uint64 range
         unsigned long long u = strtoull(data, &end, base);

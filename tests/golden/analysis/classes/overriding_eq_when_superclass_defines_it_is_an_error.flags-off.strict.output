@@ -1,0 +1,1 @@
+./analysis/classes/overriding_eq_when_superclass_defines_it_is_an_error.luau(10,14): TypeError: Method '__eq' on class 'NamedPoint' is not a compatible override of the method inherited from superclass 'Point'
