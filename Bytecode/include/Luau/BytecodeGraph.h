@@ -393,6 +393,19 @@ inline BcCondition opcodeToCondition(LuauOpcode op)
     }
 }
 
+struct BcFeedbackSlot
+{
+    LuauFeedbackType kind;
+
+    union
+    {
+        struct
+        {
+            uint32_t inst;
+        } callTarget;
+    };
+};
+
 struct TypedLocal
 {
     LuauBytecodeType type;
@@ -445,6 +458,7 @@ struct BcFunction
     std::vector<BcProj> projections;
     std::vector<BytecodeBuilder::TableShape> tableShapes;
     std::vector<BytecodeBuilder::ClassShape> classShapes;
+    std::vector<BcFeedbackSlot> feedbackSlots;
 
     BcOp entryBlock;
     BcOp exitBlock;

@@ -24,7 +24,6 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 
-LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -882,8 +881,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
-    ScopedFastFlag sff{FFlag::LuauNoDuplicateBinaryPrefix, true};
-
     matchParseError("return 0b123", "Malformed number");
     matchParseError("return 0b0b1", "Malformed number");
     matchParseError("return 123x", "Malformed number");

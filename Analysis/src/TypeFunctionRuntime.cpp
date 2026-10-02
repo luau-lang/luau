@@ -31,10 +31,6 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAGVARIABLE(LuauUdtfErrorHandling)
-LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
-LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
-LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
 
 namespace Luau
@@ -2121,25 +2117,12 @@ void setTypeFunctionEnvironment(lua_State* L)
     luaopen_base(L);
     lua_pop(L, 1);
 
-    if (FFlag::LuauUdtfErrorHandling)
+    // Remove certain global functions from the base library
+    static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv"};
+    for (auto& name : unavailableGlobals)
     {
-        // Remove certain global functions from the base library
-        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv"};
-        for (auto& name : unavailableGlobals)
-        {
-            lua_pushcfunction(L, unsupportedFunction, name);
-            lua_setglobal(L, name);
-        }
-    }
-    else
-    {
-        // Remove certain global functions from the base library
-        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
-        for (auto& name : unavailableGlobals)
-        {
-            lua_pushcfunction(L, unsupportedFunction, name);
-            lua_setglobal(L, name);
-        }
+        lua_pushcfunction(L, unsupportedFunction, name);
+        lua_setglobal(L, name);
     }
 
     lua_pushcfunction(L, print, "print");

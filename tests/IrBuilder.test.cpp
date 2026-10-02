@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenNoLinearFastpcall)
+LUAU_FASTFLAG(LuauCodegenLimitVersions)
 
 using namespace Luau::CodeGen;
 
@@ -6951,6 +6952,27 @@ bb_0:
    RETURN R0, 1i
 
 )");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "VersionLimitCheck")
+{
+    ScopedFastFlag luauCodegenLimitVersions{FFlag::LuauCodegenLimitVersions, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+
+    for (int i = 0; i < 150000; i++)
+    {
+        build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(1.0));
+    }
+
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build); // Checking for no assertions
 }
 
 TEST_SUITE_END();

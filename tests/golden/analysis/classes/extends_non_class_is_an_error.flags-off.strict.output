@@ -1,0 +1,1 @@
+./analysis/classes/extends_non_class_is_an_error.luau(5,19): TypeError: Cannot extend non-class of type (number) -> number
