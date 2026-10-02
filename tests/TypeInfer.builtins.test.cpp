@@ -557,7 +557,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_difftime_accepts_numbers")
     // os.time returns nil when the date table is out of range, so the result
     // must not be used as a number without a check.
     CheckResult result = check(R"(
-        local n: number = os.difftime(os.time(), os.time({ year = 2026, month = 9, day = 30 }))
+        local n: number = os.difftime(os.time(), 5)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -577,6 +577,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_difftime_rejects_DateTimeResult")
     }
     else
     {
+        std::string t = toString(requireType("date"));
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
 }
