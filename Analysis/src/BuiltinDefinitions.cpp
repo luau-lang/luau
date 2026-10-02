@@ -26,7 +26,6 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAG(LuauUdtfErrorHandling)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -532,89 +531,45 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     globals.globalTypeFunctionScope->exportedTypeBindings = globals.globalScope->exportedTypeBindings;
     globals.globalTypeFunctionScope->builtinTypeNames = globals.globalScope->builtinTypeNames;
 
-    if (FFlag::LuauUdtfErrorHandling)
+    // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
+    static constexpr const char* typeFunctionRuntimeBindings[] = {
+        // Libraries
+        "math",
+        "table",
+        "string",
+        "bit32",
+        "utf8",
+        "buffer",
+
+        // Globals
+        "assert",
+        "error",
+        "print",
+        "next",
+        "ipairs",
+        "pairs",
+        "select",
+        "unpack",
+        "getmetatable",
+        "setmetatable",
+        "rawget",
+        "rawset",
+        "rawlen",
+        "rawequal",
+        "tonumber",
+        "tostring",
+        "type",
+        "typeof",
+        "pcall",
+        "xpcall",
+    };
+
+    for (auto& name : typeFunctionRuntimeBindings)
     {
-        // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
-        static constexpr const char* typeFunctionRuntimeBindings[] = {
-            // Libraries
-            "math",
-            "table",
-            "string",
-            "bit32",
-            "utf8",
-            "buffer",
+        AstName astName = globals.globalNames.names->get(name);
+        LUAU_ASSERT(astName.value);
 
-            // Globals
-            "assert",
-            "error",
-            "print",
-            "next",
-            "ipairs",
-            "pairs",
-            "select",
-            "unpack",
-            "getmetatable",
-            "setmetatable",
-            "rawget",
-            "rawset",
-            "rawlen",
-            "rawequal",
-            "tonumber",
-            "tostring",
-            "type",
-            "typeof",
-            "pcall",
-            "xpcall",
-        };
-
-        for (auto& name : typeFunctionRuntimeBindings)
-        {
-            AstName astName = globals.globalNames.names->get(name);
-            LUAU_ASSERT(astName.value);
-
-            globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
-        }
-    }
-    else
-    {
-        // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
-        static constexpr const char* typeFunctionRuntimeBindings[] = {
-            // Libraries
-            "math",
-            "table",
-            "string",
-            "bit32",
-            "utf8",
-            "buffer",
-
-            // Globals
-            "assert",
-            "error",
-            "print",
-            "next",
-            "ipairs",
-            "pairs",
-            "select",
-            "unpack",
-            "getmetatable",
-            "setmetatable",
-            "rawget",
-            "rawset",
-            "rawlen",
-            "rawequal",
-            "tonumber",
-            "tostring",
-            "type",
-            "typeof",
-        };
-
-        for (auto& name : typeFunctionRuntimeBindings)
-        {
-            AstName astName = globals.globalNames.names->get(name);
-            LUAU_ASSERT(astName.value);
-
-            globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
-        }
+        globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
     }
 
     LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(

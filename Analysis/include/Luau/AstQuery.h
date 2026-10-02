@@ -71,6 +71,7 @@ struct FindFullAncestry final : public AstVisitor
     explicit FindFullAncestry(Position pos, Position documentEnd, bool includeTypes = false);
 
     bool visit(AstType* type) override;
+    bool visit(AstTypePack* pack) override;
 
     bool visit(AstStatFunction* node) override;
 

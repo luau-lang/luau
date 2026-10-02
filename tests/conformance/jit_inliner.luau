@@ -86,6 +86,26 @@ do
     end
 end
 
+do
+    -- check that feedback slots are correctly remapped
+    function recursive(n)
+        if n > 0 then
+            return (recursive(n - 1))
+        end
+        return 0
+    end
+
+    function caller(n)
+        return (recursive(n))
+    end
+
+    for _ = 1, INLINING_THREASHOLD do
+        assert(caller(0) == 0)
+    end
+
+    assert(caller(1) == 0)
+end
+
 function fuzzfail_infinite1()
     local function foo(x)
         repeat

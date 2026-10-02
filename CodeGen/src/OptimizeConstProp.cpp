@@ -26,11 +26,15 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
 LUAU_FLAGVERSION(LuauCodegenPropagateFallbackTags, 2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNoLinearFastpcall)
+LUAU_FASTFLAGVARIABLE(LuauCodegenConstPropMinOffset)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLimitVersions)
 
 namespace Luau
 {
 namespace CodeGen
 {
+
+constexpr uint32_t kRegisterVersionLimit = 0x0007ffff;
 
 // Data we know about the register value
 struct RegisterInfo
@@ -175,6 +179,9 @@ struct ConstPropState
             {
                 info->tag = tag;
                 info->version++;
+
+                if (FFlag::LuauCodegenLimitVersions && info->version == kRegisterVersionLimit)
+                    reachedLimits = true;
             }
         }
     }
@@ -197,6 +204,9 @@ struct ConstPropState
             {
                 info->value = value;
                 info->version++;
+
+                if (FFlag::LuauCodegenLimitVersions && info->version == kRegisterVersionLimit)
+                    reachedLimits = true;
             }
         }
     }
@@ -214,6 +224,9 @@ struct ConstPropState
         }
 
         reg.version++;
+
+        if (FFlag::LuauCodegenLimitVersions && reg.version == kRegisterVersionLimit)
+            reachedLimits = true;
     }
 
     void invalidateTag(IrOp regOp)
@@ -394,7 +407,7 @@ struct ConstPropState
     {
         CODEGEN_ASSERT(op.kind == IrOpKind::VmReg);
         uint32_t version = regs[vmRegOp(op)].version;
-        CODEGEN_ASSERT(version <= 0xffffff);
+        CODEGEN_ASSERT(version <= kRegisterVersionLimit);
         op.index = vmRegOp(op) | (version << 8);
         return IrInst{loadCmd, {op}};
     }
@@ -624,7 +637,7 @@ struct ConstPropState
         IrOp op = OP_A(loadInst);
         CODEGEN_ASSERT(op.kind == IrOpKind::VmUpvalue);
         uint32_t version = regs[vmUpvalueOp(op)].version;
-        CODEGEN_ASSERT(version <= 0xffffff);
+        CODEGEN_ASSERT(version <= kRegisterVersionLimit);
         op.index = vmUpvalueOp(OP_A(loadInst)) | (version << 8);
         return IrInst{loadInst.cmd, {op}};
     }
@@ -1345,6 +1358,7 @@ struct ConstPropState
         maxReg = 0;
         instPos = 0u;
 
+        reachedLimits = false;
         inSafeEnv = false;
         checkedGc = false;
 
@@ -1376,6 +1390,7 @@ struct ConstPropState
     // Number of the instruction being processed
     uint32_t instPos = 0;
 
+    bool reachedLimits = false;
     bool inSafeEnv = false;
     bool checkedGc = false;
 
@@ -2358,7 +2373,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (bufferOffset)
         {
             // Negative offsets and offsets overflowing signed integer will jump to fallback, no need to keep the check
-            if (*bufferOffset < 0 || unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
+            if (*bufferOffset < 0 || (FFlag::LuauCodegenConstPropMinOffset && *bufferOffset + minOffset < 0) ||
+                unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
             {
                 replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}});
                 break;
@@ -3473,7 +3489,7 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
         constPropInInst(state, build, function, block, inst, index);
 
         // Optimizations might have killed the current block
-        if (block.kind == IrBlockKind::Dead)
+        if (block.kind == IrBlockKind::Dead || state.reachedLimits)
             break;
     }
 }
@@ -3502,7 +3518,7 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
         constPropInBlock(build, *block, state);
 
         // Optimizations might have killed the current block
-        if (block->kind == IrBlockKind::Dead)
+        if (block->kind == IrBlockKind::Dead || state.reachedLimits)
             break;
 
         // Blocks in a chain are guaranteed to follow each other
@@ -3717,6 +3733,9 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     setupBlockEntryState(build, function, startingBlock, state);
 
     constPropInBlock(build, startingBlock, state);
+
+    if (state.reachedLimits)
+        return;
 
     // Verify that target hasn't changed
     if (startingBlock.finish != termInstIdx || OP_A(function.instructions[termInstIdx]).index != targetBlockIdx)
