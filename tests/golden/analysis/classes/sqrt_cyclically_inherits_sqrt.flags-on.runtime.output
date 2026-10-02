@@ -1,0 +1,3 @@
+./analysis/classes/sqrt_cyclically_inherits_sqrt.luau:3: Non-open class 'sqrt' cannot be extended
+stacktrace:
+./analysis/classes/sqrt_cyclically_inherits_sqrt.luau:3

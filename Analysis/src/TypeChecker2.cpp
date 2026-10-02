@@ -527,7 +527,7 @@ TypePackId TypeChecker2::lookupPack(AstExpr* expr) const
         return builtinTypes->anyTypePack;
 }
 
-TypeId TypeChecker2::lookupType(AstExpr* expr)
+std::optional<TypeId> TypeChecker2::tryLookupType(AstExpr* expr)
 {
     // If a type isn't in the type graph, it probably means that a recursion limit was exceeded.
     // We'll just return anyType in these cases.  Typechecking against any is very fast and this
@@ -540,7 +540,12 @@ TypeId TypeChecker2::lookupType(AstExpr* expr)
     if (tp)
         return checkForTypeFunctionInhabitance(flattenPack(*tp), expr->location);
 
-    return builtinTypes->anyType;
+    return std::nullopt;
+}
+
+TypeId TypeChecker2::lookupType(AstExpr* expr)
+{
+    return tryLookupType(expr).value_or(builtinTypes->anyType);
 }
 
 TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
@@ -1472,12 +1477,90 @@ void TypeChecker2::visit(AstStatDeclareExternType* stat)
         visit(prop.ty);
 }
 
+void TypeChecker2::checkExtendsClause(AstStatClass* stat)
+{
+    NotNull<Scope> scope{findInnermostScope(stat->location)};
+
+    // The extends clause technically contains an expression, so we expect
+    // lookupType() to yield to us a class type (not an instance type!)
+    TypeId superClassTy = follow(lookupType(stat->super));
+
+    // When constraint generation senses a cyclic inheritance chain, it replaces
+    // one of the links in the chain with an ErrorType that has a synthetic link
+    // to the stated base type.  We chase that away here.
+
+    if (auto e = get<ErrorType>(superClassTy); e && e->synthetic)
+        superClassTy = *e->synthetic;
+
+    if (is<ErrorType>(superClassTy))
+        return;
+
+    const ExternType* superClassExtern = get<ExternType>(superClassTy);
+    if (!superClassExtern || !superClassExtern->relation.has_value())
+    {
+        reportError(InvalidClassExtension{InvalidClassExtension::NotAClass, superClassTy}, stat->super->location);
+        return;
+    }
+
+    if (nullptr == get_if<Obj>(&*superClassExtern->relation))
+    {
+        reportError(InvalidClassExtension{InvalidClassExtension::BaseIsClassInstance, superClassTy}, stat->super->location);
+        return;
+    }
+
+    if (!superClassExtern->isOpen)
+    {
+        reportError(InvalidClassExtension{InvalidClassExtension::ClassIsNotOpen, superClassTy}, stat->super->location);
+        return;
+    }
+
+    TypeIds cycle;
+
+    std::optional<TypeFun> thisClassTy = scope->lookupType(stat->name->name.value);
+    if (!thisClassTy.has_value())
+    {
+        reportError(InternalError{format("Internal error: Type inference failed to record the type of class '%s'", stat->name->name.value)}, stat->name->location);
+        return;
+    }
+
+    TypeId ty = follow(thisClassTy->type);
+    cycle.insert(ty);
+
+    while (ty)
+    {
+        if (auto ext = get<ExternType>(ty); ext && ext->parent)
+            ty = follow(*ext->parent);
+        else if (auto err = get<ErrorType>(ty); err && err->synthetic)
+            ty = follow(*err->synthetic);
+        else
+            break;
+
+        if (cycle.contains(ty))
+        {
+            std::vector<Name> names;
+            for (TypeId t : cycle)
+            {
+                const ExternType* ext = get<ExternType>(t);
+                names.emplace_back(ext->name);
+            }
+            reportError(CyclicClassInheritance{std::move(names)}, stat->super->location);
+            break;
+        }
+
+        if (is<ExternType>(ty))
+            cycle.insert(ty);
+    }
+}
+
 void TypeChecker2::visit(AstStatClass* stat)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 
     if (stat->super)
+    {
         visit(stat->super, ValueContext::RValue);
+        checkExtendsClause(stat);
+    }
 
     for (const auto& member : stat->members)
     {
@@ -1496,10 +1579,105 @@ void TypeChecker2::visit(AstStatClass* stat)
                 visitConstructor(stat, method);
             }
             else
+            {
                 checkFunctionAnnotations(method->function, AnnotationCheckMode::Method, method->nameLocation);
+                checkMethodOverride(stat, method);
+            }
         }
         else
             LUAU_ASSERT(!"Unknown class member!");
+    }
+}
+
+void TypeChecker2::checkMethodOverride(AstStatClass* stat, const AstClassMethod* method)
+{
+    if (!stat->super)
+        return;
+
+    // Static methods (no leading `self`) are a separate namespace; override checks only apply to
+    // instance methods.
+    if (method->function->args.size == 0 || method->function->args.data[0]->name != "self")
+        return;
+
+    // Subtlety: The extends clause names an expression, so the type of this
+    // expression will be the class object, not the instance type that we're
+    // inheriting from.
+    TypeId superClassTy = follow(lookupType(stat->super));
+    const ExternType* superClassEtv = get<ExternType>(superClassTy);
+    if (!superClassEtv)
+        return;
+
+    TypeId superInstanceTy = superClassTy;
+    if (superClassEtv->relation)
+    {
+        if (const Obj* obj = superClassEtv->relation->get_if<Obj>())
+            superInstanceTy = follow(obj->ty);
+    }
+
+    const ExternType* superInstanceEtv = get<ExternType>(superInstanceTy);
+    if (!superInstanceEtv)
+        return;
+
+    // Ordinary methods live directly on the instance ExternType's `props`; metamethods (including
+    // the comparison metamethods checked below) are instead stored on its `metatable`.
+    std::string methodName{method->functionName.value};
+    std::optional<TypeId> superMethodTy;
+    if (auto propIt = superInstanceEtv->props.find(methodName); propIt != superInstanceEtv->props.end())
+        superMethodTy = propIt->second.readTy;
+    else if (superInstanceEtv->metatable)
+    {
+        if (const TableType* mt = get<TableType>(follow(*superInstanceEtv->metatable)))
+        {
+            if (auto mtIt = mt->props.find(methodName); mtIt != mt->props.end())
+                superMethodTy = mtIt->second.readTy;
+        }
+    }
+
+    if (!superMethodTy)
+        return;
+
+    const FunctionType* superFtv = get<FunctionType>(follow(*superMethodTy));
+    if (!superFtv)
+        return;
+
+    // __eq/__lt/__le cannot be overridden once a superclass defines them: their silent fallback
+    // to physical equality makes a subclass override too easy to miss from the base type alone.
+    if (method->functionName == "__eq" || method->functionName == "__lt" || method->functionName == "__le")
+    {
+        reportError(
+            IncompatibleClassMethodOverride{Name(method->functionName.value), Name(stat->name->name.value), superInstanceEtv->name},
+            method->nameLocation
+        );
+        return;
+    }
+
+    const FunctionType* subFtv = get<FunctionType>(follow(lookupType(method->function)));
+    if (!subFtv)
+        return;
+
+    // self is a different nominal type on each side by design, so it's excluded before the
+    // subtype check.
+    auto [subHead, subTail] = flatten(subFtv->argTypes);
+    auto [superHead, superTail] = flatten(superFtv->argTypes);
+
+    if (subHead.empty() || superHead.empty())
+        return;
+
+    TypeArena& arena = *module->internalTypes;
+
+    TypePackId subArgsNoSelf = arena.addTypePack(std::vector<TypeId>(subHead.begin() + 1, subHead.end()), subTail);
+    TypePackId superArgsNoSelf = arena.addTypePack(std::vector<TypeId>(superHead.begin() + 1, superHead.end()), superTail);
+
+    TypeId subFnNoSelf = arena.addType(FunctionType{subArgsNoSelf, subFtv->retTypes});
+    TypeId superFnNoSelf = arena.addType(FunctionType{superArgsNoSelf, superFtv->retTypes});
+
+    SubtypingResult result = subtyping->isSubtype(subFnNoSelf, superFnNoSelf, stack.back());
+    if (!result.isSubtype)
+    {
+        reportError(
+            IncompatibleClassMethodOverride{Name(method->functionName.value), Name(stat->name->name.value), superInstanceEtv->name},
+            method->nameLocation
+        );
     }
 }
 

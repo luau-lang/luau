@@ -561,15 +561,17 @@ struct BytecodeGraphParser
                     break;
 
                 case LOP_FORNPREP:
-                    // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
+                case LOP_FORGPREP:
+                case LOP_FORGPREP_NEXT:
+                case LOP_FORGPREP_INEXT:
+                    // for loop prep: A..A+2 carry iterator state for both numeric loops and generalized
                     addVmRegInput(node, LUAU_INSN_A(insn));
                     addVmRegInput(node, LUAU_INSN_A(insn) + 1);
                     addVmRegInput(node, LUAU_INSN_A(insn) + 2);
                     addJumpInput(node, jumpTarget);
                     func.regs[nodeOp] = LUAU_INSN_A(insn);
-                    addProducer(LUAU_INSN_A(insn), func.addProj(nodeOp, 0));
-                    addProducer(LUAU_INSN_A(insn) + 1, func.addProj(nodeOp, 1));
-                    addProducer(LUAU_INSN_A(insn) + 2, func.addProj(nodeOp, 2));
+                    for (int offset = 0; offset < 3; ++offset)
+                        addProducer(LUAU_INSN_A(insn) + offset, func.addProj(nodeOp, offset));
                     break;
 
                 case LOP_FORNLOOP:
@@ -577,7 +579,25 @@ struct BytecodeGraphParser
                     addVmRegInput(node, LUAU_INSN_A(insn) + 1);
                     addVmRegInput(node, LUAU_INSN_A(insn) + 2);
                     addJumpInput(node, jumpTarget);
+                    func.regs[nodeOp] = LUAU_INSN_A(insn);
+                    addProducer(LUAU_INSN_A(insn) + 2, func.addProj(nodeOp, 2));
                     break;
+
+                // FORGLOOP updates A+2 for the iterator register and A+3..A+vars for loop variables
+                case LOP_FORGLOOP:
+                {
+                    addVmRegInput(node, LUAU_INSN_A(insn));
+                    addVmRegInput(node, LUAU_INSN_A(insn) + 1);
+                    addVmRegInput(node, LUAU_INSN_A(insn) + 2);
+                    addImmInput(node, static_cast<bool>(aux >> 31));
+                    int32_t vars = aux & 0xFF;
+                    addImmInput(node, vars);
+                    addJumpInput(node, jumpTarget);
+                    func.regs[nodeOp] = LUAU_INSN_A(insn);
+                    for (int offset = 2; offset <= 2 + std::max(vars, 2); ++offset)
+                        addProducer(LUAU_INSN_A(insn) + offset, func.addProj(nodeOp, offset));
+                    break;
+                }
 
                 default:
                     LUAU_UNREACHABLE();
@@ -809,6 +829,10 @@ struct BytecodeGraphParser
             case LOP_JUMPIFNOTLT:
             case LOP_FORNPREP:
             case LOP_FORNLOOP:
+            case LOP_FORGPREP:
+            case LOP_FORGPREP_NEXT:
+            case LOP_FORGPREP_INEXT:
+            case LOP_FORGLOOP:
                 parseJump(op, getJumpTarget(insn, i));
                 break;
 
@@ -876,35 +900,6 @@ struct BytecodeGraphParser
                 if (count < 0)
                     for (auto inp : findProducersUpToTop(currentBlock, LUAU_INSN_B(insn)))
                         func.addUse(node, inp);
-                break;
-            }
-
-            case LOP_FORGPREP:
-            case LOP_FORGPREP_NEXT:
-            case LOP_FORGPREP_INEXT:
-            {
-                addVmRegInput(node, LUAU_INSN_A(insn));
-                addVmRegInput(node, LUAU_INSN_A(insn) + 1);
-                addVmRegInput(node, LUAU_INSN_A(insn) + 2);
-                int loopInsnPc = getJumpTarget(insn, i);
-                addJumpInput(node, loopInsnPc);
-                LUAU_ASSERT(loopInsnPc + 1 < static_cast<int>(codesize) && LuauOpcode(LUAU_INSN_OP(code[loopInsnPc])) == LOP_FORGLOOP);
-                int32_t vars = code[loopInsnPc + 1] & 0xFF;
-                func.regs[nodeOp] = LUAU_INSN_A(insn);
-                for (int i = 0; i <= std::max(vars, 2); i++)
-                    addProducer(LUAU_INSN_A(insn) + 2 + i, func.addProj(nodeOp, 2 + i));
-                break;
-            }
-
-            case LOP_FORGLOOP:
-            {
-                addVmRegInput(node, LUAU_INSN_A(insn));
-                addVmRegInput(node, LUAU_INSN_A(insn) + 1);
-                addVmRegInput(node, LUAU_INSN_A(insn) + 2);
-                addImmInput(node, static_cast<bool>(aux >> 31));
-                int32_t vars = aux & 0xFF;
-                addImmInput(node, vars);
-                addJumpInput(node, getJumpTarget(insn, i));
                 break;
             }
 
