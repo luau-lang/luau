@@ -563,7 +563,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_difftime_accepts_numbers")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "os_difftime_rejects_DateTimeResult")
+TEST_CASE_FIXTURE(BuiltinsFixture, "os_difftime_rejects_DateTypeResult")
 {
     // os.time returns nil when the date table is out of range, so the result
     // must not be used as a number without a check.
