@@ -2736,7 +2736,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
             else
             {
                 TypeId t = follow(tf->type);
-                if (auto et = get<ExternType>(t))
+                if (is<ExternType>(t))
                     return t;
 
                 return builtinTypes->errorType;
