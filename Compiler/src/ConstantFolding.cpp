@@ -10,8 +10,8 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileNoFoldVectorEqW)
 
 namespace Luau
 {

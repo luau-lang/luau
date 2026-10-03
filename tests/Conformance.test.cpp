@@ -70,6 +70,7 @@ LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAG(LuauEnumMoreEdges)
 LUAU_DYNAMIC_FASTFLAG(LuauTableMoveTimeoutFix)
+LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
 LUAU_FASTFLAG(LuauFastpcallInterrupt)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
@@ -78,6 +79,7 @@ LUAU_FASTFLAG(LuauVirtualBcBuilder)
 LUAU_FASTFLAG(LuauNewPointerEncode)
 LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 LUAU_FASTFLAG(LuauBufferCage)
 LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAG(DebugLuauCoroutineFinally)
@@ -1293,7 +1295,7 @@ static BufferCage* bufferCage;
 static void setupBufferCage(lua_State* L)
 {
     setupNativeHelpers(L);
-    lua_setbuffercage(L, &bufferCage->frealloc, bufferCage);
+    lua_setmemorycage(L, &bufferCage->frealloc, bufferCage);
 }
 
 TEST_CASE("BuffersWithCage")
@@ -1472,13 +1474,18 @@ TEST_CASE("Attrib")
 }
 
 // Exercises the runtime JIT inliner with constant folding
-// Initially designed to catch pointer ASAN issues with TempTValueBacking
 TEST_CASE("JitInliner")
 {
     ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauBytecodeFold{FFlag::LuauBytecodeFold, true};
     ScopedFastFlag luauVirtualBuilder{FFlag::LuauVirtualBcBuilder, true};
+
+    // Test it even when it is not enabled for all tests
+    bool wasEnabled = jitInliner;
+    jitInliner = true;
+
     StateRef globalState = runConformance("jit_inliner.luau", nullptr, nullptr, nullptr, nullptr, /*skipCodegen=*/true);
+    jitInliner = wasEnabled;
 
     lua_State* L = globalState.get();
 
@@ -2147,6 +2154,21 @@ TEST_CASE("Debug")
     runConformance("debug.luau");
 }
 
+bool findLocal(lua_State* L, int level, const char* name)
+{
+    int n = 1;
+
+    while (const char* localName = lua_getlocal(L, level, n++))
+    {
+        if (strcmp(name, localName) == 0)
+            return true;
+
+        lua_pop(L, 1);
+    }
+
+    return false;
+}
+
 TEST_CASE("Debugger")
 {
     ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
@@ -2248,9 +2270,7 @@ TEST_CASE("Debugger")
                 lua_pop(L, 1);
 
                 // test lua_getlocal
-                const char* l = lua_getlocal(L, 0, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "b") == 0);
+                REQUIRE(findLocal(L, 0, "b"));
                 CHECK(lua_tointeger(L, -1) == 50);
                 lua_pop(L, 1);
 
@@ -2267,45 +2287,35 @@ TEST_CASE("Debugger")
             else if (breakhits == 3)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 0, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 0, "a"));
                 CHECK(lua_tointeger(L, -1) == 6);
                 lua_pop(L, 1);
             }
             else if (breakhits == 5)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 1, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 1, "a"));
                 CHECK(lua_tointeger(L, -1) == 7);
                 lua_pop(L, 1);
             }
             else if (breakhits == 7)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 1, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 1, "a"));
                 CHECK(lua_tointeger(L, -1) == 8);
                 lua_pop(L, 1);
             }
             else if (breakhits == 9)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 1, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 1, "a"));
                 CHECK(lua_tointeger(L, -1) == 9);
                 lua_pop(L, 1);
             }
             else if (breakhits == 13)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 0, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 0, "a"));
                 CHECK(lua_isnil(L, -1));
                 lua_pop(L, 1);
             }
@@ -3201,6 +3211,52 @@ TEST_CASE("ApiAlloc")
     bool allocfIsSet = lua_getallocf(L, &udCheck) == limitedRealloc;
     CHECK(allocfIsSet);
     CHECK(udCheck == &ud);
+}
+
+TEST_CASE("ApiAllocationRateAfterFullGC")
+{
+    ScopedFastFlag luauGcHeapShrinkFix{DFFlag::LuauGcHeapShrinkFix, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    // data that stays alive, so that allocating after the full collection doesn't immediately start a new cycle
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 10000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
+    // grow the heap so that incremental collection cycles complete
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 100000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+    lua_pop(L, 1);
+
+    // full collection shrinks the heap below its size at the end of the last incremental cycle
+    lua_gc(L, LUA_GCCOLLECT, 0);
+
+    // allocation rate is only measured over intervals longer than 1ms
+    double start = lua_clock();
+    while (lua_clock() - start < 0.002)
+    {
+    }
+
+    CHECK(lua_allocationrate(L) >= 0);
+
+    // allocations after the full collection are measured from its end
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 1000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
+    CHECK(lua_allocationrate(L) > 0);
 }
 
 TEST_CASE("ApiEncode")
@@ -5525,6 +5581,29 @@ TEST_CASE("ClassInheritanceRepeatedCallMemberOffsetCorruption")
         int status = lua_pcall(L, 0, 0, 0);
         REQUIRE(status == LUA_OK);
     }
+}
+
+TEST_CASE("SandboxFreezesVectorMetatable")
+{
+    ScopedFastFlag freezeVectorMetatable{FFlag::LuauSandboxFreezesVectorMetatable, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    luaL_newmetatable(L, "Vector7");
+    lua_pushboolean(L, true);
+    lua_setfield(L, -2, "Supported");
+
+    lua_setmetatable(L, -2);
+
+    luaL_sandbox(L);
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    CHECK(lua_getmetatable(L, -1));
+    CHECK(lua_getreadonly(L, -1));
 }
 
 TEST_SUITE_END();

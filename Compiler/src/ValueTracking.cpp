@@ -2,8 +2,10 @@
 #include "ValueTracking.h"
 
 #include "Luau/Lexer.h"
+#include "Luau/SmallVector.h"
 
 LUAU_FASTFLAG(LuauOptimizeExportTable)
+LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 
 namespace Luau
 {
@@ -18,7 +20,7 @@ struct ValueVisitor : AstVisitor
     DenseHashMap<AstName, AstLocal*>& classLocals;
     DenseHashSet<AstLocal*>* exportedFunctions = nullptr;
     std::vector<AstLocal*>* exportedVariables = nullptr;
-
+    SmallVector<AstStatBlock*, 4> blockOwnerStack;
 
     // with LuauOptimizeExportTable, remove this constructor
     ValueVisitor(
@@ -51,7 +53,20 @@ struct ValueVisitor : AstVisitor
     {
         if (AstExprLocal* lv = var->as<AstExprLocal>())
         {
-            variables[lv->local].written = true;
+            if (FFlag::LuauCompileReuseLocalRegs)
+            {
+                Variable& variable = variables[lv->local];
+
+                variable.written = true;
+                variable.lastUsed = lv;
+
+                if (lv->upvalue || lv->local->isExported)
+                    variable.nonLexicalUse = true;
+            }
+            else
+            {
+                variables[lv->local].written = true;
+            }
         }
         else if (AstExprGlobal* gv = var->as<AstExprGlobal>())
         {
@@ -61,6 +76,25 @@ struct ValueVisitor : AstVisitor
         {
             // we need to be able to track assignments in all expressions, including crazy ones like t[function() t = nil end] = 5
             var->visit(this);
+        }
+    }
+
+    bool visit(AstExprLocal* node) override
+    {
+        if (FFlag::LuauCompileReuseLocalRegs)
+        {
+            Variable& variable = variables[node->local];
+
+            variable.lastUsed = node;
+
+            if (node->upvalue || node->local->isExported)
+                variable.nonLexicalUse = true;
+
+            return false;
+        }
+        else
+        {
+            return true;
         }
     }
 
@@ -81,6 +115,17 @@ struct ValueVisitor : AstVisitor
                 {
                     exportedVariables->push_back(local);
                 }
+            }
+        }
+
+        if (FFlag::LuauCompileReuseLocalRegs)
+        {
+            for (size_t i = 0; i < node->vars.size; ++i)
+            {
+                AstLocal* local = node->vars.data[i];
+
+                LUAU_ASSERT(!blockOwnerStack.empty());
+                variables[local].owner = blockOwnerStack.back();
             }
         }
 
@@ -124,7 +169,22 @@ struct ValueVisitor : AstVisitor
 
     bool visit(AstStatLocalFunction* node) override
     {
-        variables[node->name].init = node->func;
+        if (FFlag::LuauCompileReuseLocalRegs)
+        {
+            Variable& variable = variables[node->name];
+
+            variable.init = node->func;
+
+            LUAU_ASSERT(!blockOwnerStack.empty());
+            variable.owner = blockOwnerStack.back();
+
+            if (node->name->isExported)
+                variable.nonLexicalUse = true;
+        }
+        else
+        {
+            variables[node->name].init = node->func;
+        }
 
         if (FFlag::LuauOptimizeExportTable && exportedFunctions && node->name->isExported)
         {
@@ -160,6 +220,22 @@ struct ValueVisitor : AstVisitor
         variables[decl->name].written = true;
 
         return true;
+    }
+
+    bool visit(AstStatBlock* block) override
+    {
+        if (FFlag::LuauCompileReuseLocalRegs)
+        {
+            blockOwnerStack.push_back(block);
+            for (AstStat* stat : block->body)
+                stat->visit(this);
+            blockOwnerStack.pop_back();
+            return false;
+        }
+        else
+        {
+            return true;
+        }
     }
 };
 

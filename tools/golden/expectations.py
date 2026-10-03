@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import os
+import shlex
 import stat
 import tempfile
 
@@ -59,7 +60,7 @@ def validate_configuration(
     for command, command_result in result.commands.items():
         if command_result.harness_error:
             message = f"{test.test_id} [{config}] harness failure for {command}: "
-            message += f"{command_result.harness_error}\nargv: {command_result.argv!r}"
+            message += f"{command_result.harness_error}\nargv: {shlex.join(command_result.argv)}"
             errors.append(message)
 
     if result.has_harness_error:

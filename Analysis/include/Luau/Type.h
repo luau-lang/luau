@@ -590,6 +590,7 @@ struct ExternType
     std::shared_ptr<ClassUserData> userData;
     ModuleName definitionModuleName;
     std::optional<Location> definitionLocation;
+    bool isOpen = false;
     std::optional<TableIndexer> indexer;
     /* This field represents a bidirectional relationship between classes and object types
        Given a Class, this relation should be a Obj in the variant, representing an instantiation of the class
@@ -607,7 +608,8 @@ struct ExternType
         Tags tags,
         std::shared_ptr<ClassUserData> userData,
         ModuleName definitionModuleName,
-        std::optional<Location> definitionLocation
+        std::optional<Location> definitionLocation,
+        bool isOpen = false
     )
         : name(std::move(name))
         , props(std::move(props))
@@ -617,6 +619,7 @@ struct ExternType
         , userData(std::move(userData))
         , definitionModuleName(std::move(definitionModuleName))
         , definitionLocation(definitionLocation)
+        , isOpen(isOpen)
     {
     }
 
