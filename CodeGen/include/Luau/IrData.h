@@ -1212,7 +1212,7 @@ struct IrInst
     IrOps ops;
 
     uint32_t lastUse = 0;
-    uint16_t useCount = 0;
+    uint32_t useCount = 0;
 
     // Location of the result (optional)
     X64::RegisterX64 regX64 = X64::noreg;
@@ -1362,7 +1362,7 @@ struct IrBlock
 {
     IrBlockKind kind;
     uint8_t flags = 0;
-    uint16_t useCount = 0;
+    uint32_t useCount = 0;
 
     // 'start' and 'finish' define an inclusive range of instructions which belong to this block inside the function
     // When block has been constructed, 'finish' always points to the first and only terminating instruction

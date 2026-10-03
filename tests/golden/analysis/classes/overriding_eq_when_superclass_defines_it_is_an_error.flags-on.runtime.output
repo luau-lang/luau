@@ -1,0 +1,3 @@
+./analysis/classes/overriding_eq_when_superclass_defines_it_is_an_error.luau:9: Overriding comparison metamethods is not allowed ('__eq' in class 'NamedPoint')
+stacktrace:
+./analysis/classes/overriding_eq_when_superclass_defines_it_is_an_error.luau:9

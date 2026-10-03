@@ -3,6 +3,8 @@
 
 #include "Luau/Variant.h"
 
+#include <cstdint>
+#include <functional>
 #include <string>
 
 namespace Luau
@@ -63,3 +65,23 @@ struct TypeFunctionTypePackVar;
 using TypeFunctionTypePackId = const TypeFunctionTypePackVar*;
 
 } // namespace Luau
+
+// Types are hashed by address. DenseHash's Fibonacci hashing already mixes the bits, while MSVC's std::hash<T*>
+// runs FNV-1a over every byte of the pointer.
+template<>
+struct std::hash<Luau::TypeId>
+{
+    size_t operator()(Luau::TypeId ty) const noexcept
+    {
+        return uintptr_t(ty);
+    }
+};
+
+template<>
+struct std::hash<Luau::TypePackId>
+{
+    size_t operator()(Luau::TypePackId tp) const noexcept
+    {
+        return uintptr_t(tp);
+    }
+};

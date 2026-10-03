@@ -121,6 +121,7 @@ private:
     void checkForInternalTypeFunction(TypeId ty, Location location);
     TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location);
     TypePackId lookupPack(AstExpr* expr) const;
+    std::optional<TypeId> tryLookupType(AstExpr* expr);
     TypeId lookupType(AstExpr* expr);
     TypeId lookupAnnotation(AstType* annotation);
     std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation) const;
@@ -153,8 +154,10 @@ private:
     void visit(AstStatDeclareFunction* stat);
     void visit(AstStatDeclareGlobal* stat);
     void visit(AstStatDeclareExternType* stat);
+    void checkExtendsClause(AstStatClass* stat);
     void visit(AstStatClass* stat);
     void visitConstructor(AstStatClass* stat, const AstClassMethod* method);
+    void checkMethodOverride(AstStatClass* stat, const AstClassMethod* method);
     void visit(AstStatError* stat);
     void visit(AstExpr* expr, ValueContext context);
     void visit(AstExprGroup* expr, ValueContext context);

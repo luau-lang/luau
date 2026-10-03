@@ -634,6 +634,37 @@ struct ConstructorsShouldNotReturnAnything
     }
 };
 
+struct CyclicClassInheritance
+{
+    std::vector<Name> cycle;
+
+    bool operator==(const CyclicClassInheritance& rhs) const;
+};
+
+struct InvalidClassExtension
+{
+    enum Context
+    {
+        ClassIsNotOpen,
+        NotAClass,
+        BaseIsClassInstance,
+    };
+
+    Context context;
+    TypeId baseClass;
+
+    bool operator==(const InvalidClassExtension& rhs) const;
+};
+
+struct IncompatibleClassMethodOverride
+{
+    Name method;
+    Name className;
+    Name superName;
+
+    bool operator==(const IncompatibleClassMethodOverride& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -701,7 +732,10 @@ using TypeErrorData = Variant<
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
     TypeAnnotationRequired,
-    ConstructorsShouldNotReturnAnything>;
+    ConstructorsShouldNotReturnAnything,
+    CyclicClassInheritance,
+    InvalidClassExtension,
+    IncompatibleClassMethodOverride>;
 
 struct TypeErrorSummary
 {

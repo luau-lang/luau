@@ -1,0 +1,3 @@
+./analysis/classes/three_step_cyclic_inheritance.luau(2,22): TypeError: Cyclic class inheritance detected: A -> B -> C
+./analysis/classes/three_step_cyclic_inheritance.luau(5,22): TypeError: Cyclic class inheritance detected: B -> C -> A
+./analysis/classes/three_step_cyclic_inheritance.luau(8,22): TypeError: Cyclic class inheritance detected: C -> A -> B

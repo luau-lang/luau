@@ -69,8 +69,21 @@ struct Checkpoint
 
 struct ClassDeclRecord
 {
+    ClassDeclRecord(TypeId classTy, TypeId instanceTy, DenseHashMap<AstName, TypeId> memberTypes)
+        : classTy(classTy)
+        , instanceTy(instanceTy)
+        , memberTypes(std::move(memberTypes))
+    {
+        LUAU_ASSERT(classTy);
+        LUAU_ASSERT(instanceTy);
+    }
+
+    // The type of the class object itself.
+    TypeId classTy;
+
     // The type of an instance of the class.
-    TypeId ty = nullptr;
+    TypeId instanceTy;
+
     DenseHashMap<AstName, TypeId> memberTypes;
 };
 
@@ -293,6 +306,7 @@ private:
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     LUAU_NOINLINE void prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block);
+    void prototypeClass(const ScopePtr& scope, AstStatClass* classDecl, TypeId classObjectTy);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 

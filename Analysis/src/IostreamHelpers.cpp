@@ -28,6 +28,18 @@ std::ostream& operator<<(std::ostream& stream, const AstName& name)
         return stream << "<empty>";
 }
 
+static std::ostream& operator<<(std::ostream& stream, InvalidClassExtension::Context ctx)
+{
+    switch (ctx)
+    {
+        case InvalidClassExtension::ClassIsNotOpen: return stream << "ClassIsNotOpen";
+        case InvalidClassExtension::NotAClass: return stream << "NotAClass";
+        default:
+            LUAU_ASSERT(0);
+            return stream << "???";
+    }
+}
+
 template<typename T>
 static void errorToString(std::ostream& stream, const T& err)
 {
@@ -312,6 +324,25 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "TypeAnnotationRequired { " << toString(err.inferredTy) << " }";
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
         stream << "ConstructorsShouldNotReturnAnything {}";
+    else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
+    {
+        stream << "CyclicClassInheritance { cycle = [";
+        bool first = true;
+        for (const Name& name : err.cycle)
+        {
+            if (first)
+                first = false;
+            else
+                stream << ", ";
+            stream << name;
+        }
+        stream << "] }";
+    }
+    else if constexpr (std::is_same_v<T, InvalidClassExtension>)
+        stream << "InvalidExtension { ctx = " << err.context << ", ty = " << toString(err.baseClass) << " }";
+    else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
+        stream << "IncompatibleClassMethodOverride { method = " << err.method << ", className = " << err.className
+               << ", superName = " << err.superName << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }
