@@ -49,13 +49,10 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenNopPadding)
 LUAU_FASTINTVARIABLE(CodegenHeuristicsInstructionLimit, 1'048'576) // 1 M
 
 // Per-function IR block limit
-// Current value is based on some member variables being limited to 16 bits
-// Because block check is made before optimization passes and optimization can generate new blocks, limit is lowered 2x
 // The limit will probably be adjusted in the future to avoid performance issues with analysis that's more complex than O(n)
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768) // 32 K
 
-// Per-function IR instruction limit
-// Current value is based on some member variables being limited to 16 bits
+// Per-block IR instruction limit
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenInteger3)

@@ -16,8 +16,6 @@ LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauUdtfErrorHandling)
-LUAU_FASTFLAG(LuauUdtfPopulateEnv)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -1242,7 +1240,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
 
     CheckResult result = check(R"(
         type function first(arg: string)
@@ -1316,7 +1313,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_unordered")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
     ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
@@ -3804,8 +3800,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_handling_pcall")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag luauUdtfErrorHandling{FFlag::LuauUdtfErrorHandling, true};
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
 
     CheckResult result = check(R"(
         type function foo(ty: type)
@@ -3831,7 +3825,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_handling_pcall")
 TEST_CASE_FIXTURE(BuiltinsFixture, "cross_type_function_type_check")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
 
     CheckResult result = check(R"(
         type function foo(x: number)

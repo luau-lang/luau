@@ -1048,6 +1048,43 @@ struct ErrorConverter
     {
         return "Class constructors should not return anything.";
     }
+
+    std::string operator()(const CyclicClassInheritance& e) const
+    {
+        std::string s = "Cyclic class inheritance detected: ";
+        bool first = true;
+        for (const Name& name : e.cycle)
+        {
+            if (first)
+                first = false;
+            else
+                s += " -> ";
+            s += name;
+        }
+        return s;
+    }
+
+    std::string operator()(const InvalidClassExtension& e) const
+    {
+        switch (e.context)
+        {
+            case InvalidClassExtension::ClassIsNotOpen:
+                return "Non-open class " + toString(e.baseClass) + " cannot be extended";
+            case InvalidClassExtension::BaseIsClassInstance:
+                return "Object of type " + toString(e.baseClass) + " cannot be extended because it is an object, not a class";
+            case InvalidClassExtension::NotAClass:
+                return "Cannot extend non-class of type " + toString(e.baseClass);
+            default:
+                LUAU_ASSERT(0);
+                return "Cannot extend non-class of type " + toString(e.baseClass);
+        }
+    }
+
+    std::string operator()(const IncompatibleClassMethodOverride& e) const
+    {
+        return "Method '" + e.method + "' on class '" + e.className + "' is not a compatible override of the method inherited from superclass '" +
+               e.superName + "'";
+    }
 };
 
 struct InvalidNameChecker
@@ -1278,6 +1315,21 @@ bool DeprecatedApiUsed::operator==(const DeprecatedApiUsed& rhs) const
 bool FunctionExitsWithoutReturning::operator==(const FunctionExitsWithoutReturning& rhs) const
 {
     return expectedReturnType == rhs.expectedReturnType;
+}
+
+bool CyclicClassInheritance::operator==(const CyclicClassInheritance& rhs) const
+{
+    return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
+}
+
+bool InvalidClassExtension::operator==(const InvalidClassExtension& rhs) const
+{
+    return context == rhs.context && baseClass == rhs.baseClass;
+}
+
+bool IncompatibleClassMethodOverride::operator==(const IncompatibleClassMethodOverride& rhs) const
+{
+    return method == rhs.method && className == rhs.className && superName == rhs.superName;
 }
 
 int TypeError::code() const
@@ -1777,6 +1829,16 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.inferredTy = clone(e.inferredTy);
     }
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, InvalidClassExtension>)
+    {
+        e.baseClass = clone(e.baseClass);
+    }
+    else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
     {
     }
     else

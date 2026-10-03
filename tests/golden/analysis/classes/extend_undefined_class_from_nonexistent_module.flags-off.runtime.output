@@ -1,0 +1,3 @@
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau:3: attempt to index nil with 'nope_not_defined'
+stacktrace:
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau:3

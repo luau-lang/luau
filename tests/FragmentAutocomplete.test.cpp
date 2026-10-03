@@ -25,7 +25,6 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAG(LuauFragmentACEnableTypeFunctionEvaluation)
 LUAU_FASTFLAG(LuauFragmentACLocalAutocompleteFix)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
@@ -5574,8 +5573,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_ac_on_nonexistent_table
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_type_function_string_singleton_union")
 {
-    ScopedFastFlag sff{FFlag::LuauFragmentACEnableTypeFunctionEvaluation, true};
-
     const std::string source = R"(--!strict
 type function test(ty: type)
     return types.unionof(types.singleton("test"), types.singleton("test2"))

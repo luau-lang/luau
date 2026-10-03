@@ -130,7 +130,10 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
         {
             ExternType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.definitionLocation, a.indexer};
             if (FFlag::DebugLuauUserDefinedClasses)
+            {
+                clone.isOpen = a.isOpen;
                 clone.relation = a.relation;
+            }
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, NegationType>)

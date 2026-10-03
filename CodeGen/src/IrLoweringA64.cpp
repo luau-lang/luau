@@ -13,7 +13,8 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenA64ForgLoopArray)
-LUAU_FASTFLAG(LuauCIProto)
+
+LUAU_FASTFLAG(LuauCodegenConstPropMinOffset)
 
 namespace Luau
 {
@@ -2706,7 +2707,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             ConditionA64 failCond = ConditionA64::UnsignedLess;
 
             // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-            if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
+            if (offset < 0 || (FFlag::LuauCodegenConstPropMinOffset && offset + minOffset < 0) ||
+                unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
             {
                 build.b(target);
             }

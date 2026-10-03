@@ -86,7 +86,9 @@ public:
     int32_t addConstantTable(const TableShape& shape);
     int32_t addConstantClosure(uint32_t fid);
 
-    uint32_t addFbSlot(LuauFeedbackType t);
+    uint32_t addFbSlot_DEPRECATED(LuauFeedbackType t);
+    uint32_t addFbSlot_DEPRECATED(LuauFeedbackType t, uint32_t pc);
+    uint32_t addCallTargetSlot(uint32_t pc);
 
     int16_t addChildFunction(uint32_t fid);
     int32_t addClassShape(ClassShape shape);
@@ -336,7 +338,21 @@ protected:
     std::vector<TableShape> tableShapes;
     std::vector<ClassShape> classShapes;
 
-    std::vector<uint32_t> fbSlots;
+    struct FeedbackSlot
+    {
+        LuauFeedbackType kind;
+
+        union
+        {
+            struct
+            {
+                uint32_t pc;
+            } callTarget;
+        };
+    };
+
+    std::vector<FeedbackSlot> fbSlots;
+    std::vector<uint32_t> fbSlots_DEPRECATED;
 
     bool hasLongJumps = false;
 
