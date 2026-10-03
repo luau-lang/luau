@@ -25,7 +25,6 @@ LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
-LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauCompileCleanBlockDeadClose)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
@@ -42,6 +41,7 @@ LUAU_FASTFLAG(LuauCompileRecursiveAliases)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 
 using namespace Luau;
 
@@ -3939,6 +3939,7 @@ RETURN R1 1
 TEST_CASE("DebugLocals")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     const char* source = R"(
 function foo(e, f)
@@ -4046,6 +4047,8 @@ local 2 (x): reg 0, start pc 0 line 4, end pc 2 line 6
 
 TEST_CASE("DebugLocals3")
 {
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
     const char* source = R"(
 function foo(x)
     repeat
@@ -4084,6 +4087,7 @@ TEST_CASE("DebugLocalInlineUndoEmit")
 {
     ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
     ScopedFastFlag luauCompileUndoEmitAdjust{FFlag::LuauCompileUndoEmitAdjust, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     const char* source = R"(
 local x = ...
@@ -4196,6 +4200,7 @@ RETURN R0 0
 TEST_CASE("DebugTypes")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     const char* source = R"(
 local up: number = 2
@@ -7697,6 +7702,7 @@ RETURN R2 1
     );
 
     ScopedFastFlag luauCompileCleanBlockDeadClose{FFlag::LuauCompileCleanBlockDeadClose, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     // note that mutation and capture might be inside internal control flow
     CHECK_EQ(
@@ -7727,9 +7733,8 @@ CAPTURE REF R3
 CLOSEUPVALS R3
 JUMP L1
 L0: LOADNIL R2
-L1: MOVE R3 R2
-MOVE R4 R1
-RETURN R3 2
+L1: MOVE R3 R1
+RETURN R2 2
 )"
     );
 }
@@ -8120,8 +8125,6 @@ L0: MOVE R3 R2
 RETURN R3 1
 )"
     );
-
-    ScopedFastFlag luauCompileIifeInline{FFlag::LuauCompileIifeInline, true};
 
     // IIFE with a function exceeding regular inline complexity
     CHECK_EQ(
@@ -8744,6 +8747,8 @@ L1: RETURN R0 0
 )"
     );
 
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
     // inline builtins
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8781,15 +8786,16 @@ MOVE R9 R1
 MOVE R7 R4
 CALL R7 2 1
 L1: MULK R6 R7 K7 [2]
+MOVE R7 R2
+MOVE R8 R0
+MOVE R9 R1
+CALL R7 2 1
 MOVE R8 R2
-MOVE R9 R0
-MOVE R10 R1
+LOADN R9 2
+LOADN R10 4
 CALL R8 2 1
-MOVE R9 R2
-LOADN R10 2
-LOADN R11 4
-CALL R9 2 1
-MUL R7 R8 R9
+MUL R4 R7 R8
+MOVE R7 R4
 RETURN R5 3
 )"
     );
@@ -9583,6 +9589,8 @@ RETURN R2 1
 )"
     );
 
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
     // Non-captured local move arrives at the ADDK arguments directly
     CHECK_EQ(
         "\n" + compileFunction(
@@ -9620,9 +9628,9 @@ return b
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['id']
-ADD R4 R0 R1
-RETURN R4 1
+DUPCLOSURE R2 K0 ['id']
+ADD R3 R0 R1
+RETURN R3 1
 )"
     );
 
@@ -9641,9 +9649,9 @@ return b
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['id']
-ADDK R4 R0 K1 [1]
-RETURN R4 1
+DUPCLOSURE R2 K0 ['id']
+ADDK R1 R0 K1 [1]
+RETURN R1 1
 )"
     );
 
@@ -9680,7 +9688,7 @@ return y
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['id']
+DUPCLOSURE R2 K0 ['id']
 MOVE R1 R0
 RETURN R1 1
 )"
@@ -9700,12 +9708,12 @@ return t
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['id']
-NEWTABLE R4 0 2
-MOVE R5 R0
-MOVE R6 R1
-SETLIST R4 R5 2 [1]
-RETURN R4 1
+DUPCLOSURE R2 K0 ['id']
+NEWTABLE R3 0 2
+MOVE R4 R0
+MOVE R5 R1
+SETLIST R3 R4 2 [1]
+RETURN R3 1
 )"
     );
 
@@ -9723,13 +9731,13 @@ return b
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['id']
+DUPCLOSURE R2 K0 ['id']
 FASTCALL2 18 R0 R1 L0
-MOVE R5 R0
-MOVE R6 R1
-GETIMPORT R4 3 [math.max]
-CALL R4 2 1
-L0: RETURN R4 1
+MOVE R4 R0
+MOVE R5 R1
+GETIMPORT R3 3 [math.max]
+CALL R3 2 1
+L0: RETURN R3 1
 )"
     );
 
@@ -9750,10 +9758,10 @@ return b
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['inc']
-MOVE R4 R0
-ADDK R4 R4 K1 [1]
-RETURN R4 1
+DUPCLOSURE R2 K0 ['inc']
+MOVE R1 R0
+ADDK R1 R1 K1 [1]
+RETURN R1 1
 )"
     );
 
@@ -9775,13 +9783,13 @@ return b
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['choose']
-LOADN R4 0
+DUPCLOSURE R2 K0 ['choose']
+LOADN R1 0
 JUMPIFNOT R0 L0
-LOADN R4 1
-RETURN R4 1
-L0: LOADN R4 2
-RETURN R4 1
+LOADN R1 1
+RETURN R1 1
+L0: LOADN R1 2
+RETURN R1 1
 )"
     );
 
@@ -9798,9 +9806,9 @@ return id(x).name
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['id']
-GETTABLEKS R4 R0 K1 ['name']
-RETURN R4 1
+DUPCLOSURE R2 K0 ['id']
+GETTABLEKS R3 R0 K1 ['name']
+RETURN R3 1
 )"
     );
 
@@ -9819,10 +9827,10 @@ return r
                ),
         R"(
 GETVARARGS R0 3
-DUPCLOSURE R3 K0 ['id']
-DUPCLOSURE R4 K1 ['pick']
-ADD R5 R0 R1
-RETURN R5 1
+DUPCLOSURE R2 K0 ['id']
+DUPCLOSURE R3 K1 ['pick']
+ADD R4 R0 R1
+RETURN R4 1
 )"
     );
 }
@@ -10163,6 +10171,8 @@ RETURN R0 0
 
 TEST_CASE("ReturnConsecutive")
 {
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
     // we can return a single local directly
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -10201,7 +10211,7 @@ RETURN R2 2
 )"
     );
 
-    // or a local with wrong register number
+    // or a local with wrong register number (but we can reduce the size of the moved tail)
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local x, y = ...
@@ -10209,9 +10219,8 @@ return y, x
 )"),
         R"(
 GETVARARGS R0 2
-MOVE R2 R1
-MOVE R3 R0
-RETURN R2 2
+MOVE R2 R0
+RETURN R1 2
 )"
     );
 
@@ -14169,6 +14178,263 @@ CAPTURE VAL R1
 RETURN R0 1
 L0: LOADNIL R0
 RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("LocalRegisterReuse")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    const char* source = R"(
+local a, b, c = ...
+
+a += 1
+b += 2
+c += 3
+
+local h = a * b
+local l = c / a
+local n = h / l
+
+return n + 1
+        )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines | Luau::BytecodeBuilder::Dump_Locals);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.debugLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+local 0 (b): reg 1, start pc 2 line 4, end pc 5 line 8
+local 1 (c): reg 2, start pc 2 line 4, end pc 6 line 9
+local 2 (a): reg 0, start pc 2 line 4, end pc 9 line 12
+local 3 (l): reg 1, start pc 7 line 10, end pc 9 line 12
+local 4 (h): reg 3, start pc 6 line 9, end pc 9 line 12
+local 5 (n): reg 2, start pc 8 line 12, end pc 9 line 12
+2: GETVARARGS R0 3
+4: ADDK R0 R0 K0 [1]
+5: ADDK R1 R1 K1 [2]
+6: ADDK R2 R2 K2 [3]
+8: MUL R3 R0 R1
+9: DIV R1 R2 R0
+10: DIV R2 R3 R1
+12: ADDK R4 R2 K0 [1]
+12: RETURN R4 1
+)");
+}
+
+TEST_CASE("LocalRegisterReuseFunction")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    const char* source = R"(
+local a, b, c = ...
+
+local function helper(x, y)
+    return x * y
+end
+
+local h = helper(a, b)
+
+local function utility(x, y)
+    return x / y
+end
+
+local l = utility(c, a)
+
+local n = h / l
+
+return n + 1
+        )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines | Luau::BytecodeBuilder::Dump_Locals);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.debugLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+local 0 (helper): reg 3, start pc 3 line 8, end pc 6 line 8
+local 1 (b): reg 1, start pc 2 line 4, end pc 7 line 10
+local 2 (utility): reg 3, start pc 8 line 14, end pc 12 line 14
+local 3 (a): reg 0, start pc 2 line 4, end pc 15 line 18
+local 4 (l): reg 1, start pc 13 line 16, end pc 15 line 18
+local 5 (c): reg 2, start pc 2 line 4, end pc 15 line 18
+local 6 (h): reg 4, start pc 7 line 10, end pc 15 line 18
+local 7 (n): reg 3, start pc 14 line 18, end pc 15 line 18
+2: GETVARARGS R0 3
+4: DUPCLOSURE R3 K0 ['helper']
+8: MOVE R4 R3
+8: MOVE R5 R0
+8: MOVE R6 R1
+8: CALL R4 2 1
+10: DUPCLOSURE R3 K1 ['utility']
+14: MOVE R5 R3
+14: MOVE R6 R2
+14: MOVE R7 R0
+14: CALL R5 2 1
+14: MOVE R1 R5
+16: DIV R3 R4 R1
+18: ADDK R5 R3 K2 [1]
+18: RETURN R5 1
+)");
+}
+
+TEST_CASE("LocalRegisterReuseUnused")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    const char* source = R"(
+local a = ...
+
+local x = a + 1
+local y = a * 2
+local z = a / 5
+
+return a
+        )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines | Luau::BytecodeBuilder::Dump_Locals);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.debugLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+local 0 (x): reg 1, start pc 3 line 5, no live range
+local 1 (y): reg 1, start pc 4 line 6, no live range
+local 2 (a): reg 0, start pc 2 line 4, end pc 5 line 8
+local 3 (z): reg 1, start pc 5 line 8, end pc 5 line 8
+2: GETVARARGS R0 1
+4: ADDK R1 R0 K0 [1]
+5: MULK R1 R0 K1 [2]
+6: DIVK R1 R0 K2 [5]
+8: RETURN R0 1
+)");
+}
+
+TEST_CASE("LocalRegisterReuseAliasedLocalsDoesNotDuplicateRegisters")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    const char* source = R"(
+local a, x, y = ...
+local b = a
+local _ = b
+local c = x + 0
+local d = y + 0
+local keep = x
+return c - d
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines | Luau::BytecodeBuilder::Dump_Locals);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.debugLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+local 0 (a): reg 0, start pc 2 line 5, no live range
+local 1 (b): reg 0, start pc 2 line 5, no live range
+local 2 (_): reg 0, start pc 2 line 5, no live range
+local 3 (x): reg 1, start pc 2 line 5, end pc 3 line 6
+local 4 (y): reg 2, start pc 2 line 5, end pc 5 line 8
+local 5 (c): reg 0, start pc 3 line 6, end pc 5 line 8
+local 6 (d): reg 3, start pc 4 line 8, end pc 5 line 8
+local 7 (keep): reg 1, start pc 4 line 8, end pc 5 line 8
+2: GETVARARGS R0 3
+5: ADDK R0 R1 K0 [0]
+6: ADDK R3 R2 K0 [0]
+8: SUB R4 R0 R3
+8: RETURN R4 1
+)");
+}
+
+TEST_CASE("LocalRegisterReuseUnrolledLocals")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a, x = ...
+for i = 1, 2 do
+    local b = a
+    local _ = b
+    local c = x + 0
+end
+)",
+                   0,
+                   2
+               ),
+        R"(
+GETVARARGS R0 2
+ADDK R2 R1 K0 [0]
+ADDK R2 R1 K0 [0]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("LocalRegisterReuseGroup")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local a, x = ...
+local b = a
+local c = x + 0
+return b - c
+)"),
+        R"(
+GETVARARGS R0 2
+ADDK R2 R1 K0 [0]
+SUB R3 R0 R2
+RETURN R3 1
+)"
+    );
+}
+
+TEST_CASE("LocalRegisterReuseInlinedLocals")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function inner(a)
+    local x = a + 1
+    local y = a * 2
+    return y + 1
+end
+
+local function outer(a)
+    return inner(a)
+end
+)",
+                   1,
+                   2
+               ),
+        R"(
+ADDK R2 R0 K0 [1]
+MULK R2 R0 K1 [2]
+ADDK R1 R2 K0 [1]
+RETURN R1 1
 )"
     );
 }

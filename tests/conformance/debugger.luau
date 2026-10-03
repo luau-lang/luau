@@ -89,7 +89,7 @@ local function continueLocals()
 		local a1, a2, a3, a4, a5, a6
 	until pcall(
 		function()
-			print("1")
+			print("1" .. x)
 			print("2")
 		end, nil
 	) or true
