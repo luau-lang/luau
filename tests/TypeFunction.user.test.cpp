@@ -5,6 +5,7 @@
 #include "ExternTypeFixture.h"
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
@@ -3753,6 +3754,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
 TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult results = check(R"(
         type alias = {}
@@ -3766,7 +3768,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
     LUAU_REQUIRE_ERROR_COUNT(1, results);
     CHECK_EQ(
         toString(results.errors[0]),
-        "'meow' type function errored at runtime: [string \"meow\"]:4: types.singleton: can't create a singleton from a type"
+        "'meow' type function errored at runtime: meow:4: types.singleton: can't create a singleton from a type"
     );
 }
 
@@ -3775,6 +3777,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult results = check(R"(
         type function foo(ty)
@@ -3793,7 +3796,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 
     CHECK_EQ(
         toString(results.errors[0]),
-        "'foo' type function errored at runtime: [string \"foo\"]:3: { [number]: string, read absoluteHina: true, t: t1 }"
+        "'foo' type function errored at runtime: foo:3: { [number]: string, read absoluteHina: true, t: t1 }"
         " where t1 = { [number]: string, read absoluteHina: true, t: t1 }"
     );
 }
