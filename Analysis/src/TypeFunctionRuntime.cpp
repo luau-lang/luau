@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 
 namespace Luau
 {
@@ -130,8 +131,13 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstS
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
+    std::string chunkName = name.value;
+
+    if (FFlag::LuauUdtfTerseChunkNames)
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "ty"]` with just `ty`
+
     // Load bytecode into Luau state
-    if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+    if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
         return error;
 
     // Execute the global function which should return our user-defined type function
@@ -216,8 +222,13 @@ std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTy
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
+    std::string chunkName = name.value;
+
+    if (FFlag::LuauUdtfTerseChunkNames)
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "ty"]` with just `ty`
+
     // Load bytecode into Luau state
-    if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+    if (auto error = checkResultForError(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
         return error;
 
     // Execute the global function which should return our user-defined type function
