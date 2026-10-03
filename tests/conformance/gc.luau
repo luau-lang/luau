@@ -174,9 +174,12 @@ local x, y, z = {}, {}, {}
 a[1], a[2], a[3] = x, y, z
 a[string.rep('$', 11)] = string.rep('$', 11)
 -- fill a with some `collectable' values
-for i=4,lim do a[i] = {} end
-for i=1,lim do a[{}] = i end
-for i=1,lim do local t={}; a[t]=t end
+function filltables()
+    for i=4,lim do a[i] = {} end
+    for i=1,lim do a[{}] = i end
+    for i=1,lim do local t={}; a[t]=t; end
+end
+filltables()
 collectgarbage()
 assert(next(a) ~= nil)
 local i = 0
@@ -249,26 +252,19 @@ for i=1,10 do a[newproxy(true)] = i end
 -- for k in pairs(a) do assert(getmetatable(k) == getmetatable(u)) end
 local a1 = {}; for k,v in pairs(a) do a1[k] = v end
 for k,v in pairs(a1) do a[v] = k end
-for i =1,10 do assert(a[i]) end
+for i=1,10 do assert(a[i]) end
 getmetatable(u).a = a1
 getmetatable(u).u = u
 do
-  local u = u
   getmetatable(u).__gc = function (o)
-    assert(a[o] == 10-s)
-    assert(a[10-s] == nil) -- udata already removed from weak table
-    assert(getmetatable(o) == getmetatable(u))
-    assert(getmetatable(o).a[o] == 10-s)
-    s=s+1
+    assert(false) -- __gc is not called in Luau
   end
 end
 a1, u = nil
 assert(next(a) ~= nil)
 collectgarbage()
--- assert(s==11)
 collectgarbage()
 assert(next(a) == nil)  -- finalized keys are removed in two cycles
-
 
 -- __gc x weak tables
 local u = newproxy(true)
@@ -280,13 +276,10 @@ local u = newproxy(true)
 local m = getmetatable(u)
 m.x = {[{0}] = 1; [0] = {1}}; setmetatable(m.x, {__mode = "kv"});
 m.__gc = function (o)
-  assert(next(getmetatable(o).x) == nil)
-  m = 10
+  assert(false) -- __gc is not called in Luau
 end
 u, m = nil
 collectgarbage()
--- assert(m==10)
-
 
 -- errors during collection
 u = newproxy(true)

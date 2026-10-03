@@ -8,9 +8,9 @@
 #include "Luau/Type.h"
 #include "Luau/ToString.h"
 
-#include "Luau/Common.h"
-
 #include <algorithm>
+
+LUAU_FASTFLAGVARIABLE(LuauFindFullAncestryLooksIntoTypePacks)
 
 namespace Luau
 {
@@ -197,6 +197,14 @@ bool FindFullAncestry::visit(AstType* type)
         return false;
 }
 
+bool FindFullAncestry::visit(AstTypePack* pack)
+{
+    if (FFlag::LuauFindFullAncestryLooksIntoTypePacks && includeTypes)
+        return visit(static_cast<AstNode*>(pack));
+    else
+        return false;
+}
+
 bool FindFullAncestry::visit(AstStatFunction* node)
 {
     visit(static_cast<AstNode*>(node));
@@ -252,7 +260,7 @@ std::vector<AstNode*> findAstAncestryOfPosition(AstStatBlock* root, Position pos
 
     FindFullAncestry finder(pos, end, includeTypes);
     root->visit(&finder);
-    return finder.nodes;
+    return std::move(finder.nodes);
 }
 
 AstNode* findNodeAtPosition(const SourceModule& source, Position pos)

@@ -11,7 +11,6 @@
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauPrettyPrintVisualizeIndexerAccess)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 using namespace Luau;
@@ -2785,8 +2784,6 @@ TEST_CASE("pretty_print_incomplete_attr_args")
 
 TEST_CASE("pretty_print_readonly_indexer")
 {
-    ScopedFastFlag visualizeIndexerAccess{FFlag::LuauPrettyPrintVisualizeIndexerAccess, true};
-
     std::string code = R"(
         local _t: { read number } = {}
         local _u: { read [string]: boolean }
