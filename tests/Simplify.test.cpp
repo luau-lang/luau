@@ -422,6 +422,45 @@ TEST_CASE_FIXTURE(LegacySimplifyFixture, "combine_disjoint_sealed_tables")
     CHECK("{ prop: string, second_prop: number }" == toString(intersect(t1, t2)));
 }
 
+TEST_CASE_FIXTURE(LegacySimplifyFixture, "combine_disjoint_sealed_tables_indexer")
+{
+    TypeId t1 = arena->addType(TableType{
+        {},
+        TableIndexer{numberTy, numberTy},
+        TypeLevel{},
+        TableState::Sealed
+    });
+    TypeId t2 = mkTable({{"prop", numberTy}});
+
+    CHECK("{ [number]: number, prop: number }" == toString(intersect(t1, t2)));
+}
+
+TEST_CASE_FIXTURE(LegacySimplifyFixture, "combine_disjoint_sealed_tables_indexer_and_optional_property")
+{
+    TypeId t1 = arena->addType(TableType{
+        {},
+        TableIndexer{numberTy, numberTy},
+        TypeLevel{},
+        TableState::Sealed
+    });
+    TypeId t2 = mkTable({{"prop", Property{arena->addType(UnionType{{numberTy, nilTy}})}}});
+
+    CHECK("{ [number]: number, prop: number? }" == toString(intersect(t1, t2)));
+}
+
+TEST_CASE_FIXTURE(LegacySimplifyFixture, "combine_disjoint_sealed_tables_indexer_and_overlapping_property")
+{
+    TypeId t1 = arena->addType(TableType{
+        {},
+        TableIndexer{stringTy, numberTy},
+        TypeLevel{},
+        TableState::Sealed
+    });
+    TypeId t2 = mkTable({{"prop", stringTy}});
+
+    CHECK("{ [string]: number } & { prop: string }" == toString(intersect(t1, t2)));
+}
+
 TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "combine_inexact_disjoint_sealed_tables")
 {
     TypeId t1 = mkTable({{"prop", stringTy}});

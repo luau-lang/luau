@@ -1558,10 +1558,22 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
             if (auto tbl = combineDisjointTables(lt, rt))
                 return arena->addType(std::move(*tbl));
         }
-        else if (!lt->indexer && !rt->indexer && lt->state == TableState::Sealed && rt->state == TableState::Sealed)
+        else if (lt->state == TableState::Sealed && rt->state == TableState::Sealed)
         {
-            if (rt->props.empty())
+            // Only combine an indexer with properties when their key types are disjoint
+            // so that the indexer does not also cover those properties.
+            auto indexerDisjointFromProperties = [&](const TableIndexer& indexer, const TableType& table) {
+                return 
+                    table.props.empty() ||
+                    relate(builtinTypes->stringType, indexer.indexType) == Relation::Disjoint;
+            };
+
+            if (rt->props.empty() && !rt->indexer)
                 return left;
+            
+            // Cannot represent the intersection of two indexers in a single table type
+            if (lt->indexer && rt->indexer)
+                return std::nullopt;
 
             bool areDisjoint = true;
             for (const auto& [name, leftProp] : lt->props)
@@ -1575,11 +1587,19 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 
             if (areDisjoint)
             {
+                if (lt->indexer && !indexerDisjointFromProperties(*lt->indexer, *rt))
+                    return std::nullopt;
+
+                if (rt->indexer && !indexerDisjointFromProperties(*rt->indexer, *lt))
+                    return std::nullopt;
+
                 TableType merged{TableState::Sealed, TypeLevel{}, lt->scope};
                 merged.props = lt->props;
 
                 for (const auto& [name, rightProp] : rt->props)
                     merged.props[name] = rightProp;
+
+                merged.indexer = lt->indexer ? lt->indexer : rt->indexer;
 
                 return arena->addType(std::move(merged));
             }

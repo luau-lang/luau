@@ -60,6 +60,18 @@ TEST_CASE_FIXTURE(Fixture, "table_combines_missing")
     REQUIRE(result.errors.size() == 1);
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_combines_indexer")
+{
+    CheckResult result = check(R"(
+        type A = { [number]: number }
+        type B = { field: number? }
+        local a: A & B = {}
+        local b: A & B = {field = 10}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "impossible_type")
 {
     CheckResult result = check(R"(
