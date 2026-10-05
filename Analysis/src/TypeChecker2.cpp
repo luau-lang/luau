@@ -5,6 +5,7 @@
 #include "Luau/AstUtils.h"
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/DenseHash.h"
@@ -3916,6 +3917,44 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
         reportError(TypePackMismatch{superTy, subTy, reasonings.toString()}, location);
 }
 
+static bool isRefinementOfGeneric(NotNull<BuiltinTypes> builtinTypes, TypeId ty, TypeId generic)
+{
+    ty = follow(ty);
+    if (ty == generic || is<FreeType, NeverType>(ty))
+        return true;
+
+    auto isGeneric = [&](TypeId part)
+    {
+        return follow(part) == generic;
+    };
+
+    if (auto intersection = get<IntersectionType>(ty))
+        return std::any_of(begin(intersection), end(intersection), isGeneric);
+
+    if (auto tfit = get<TypeFunctionInstanceType>(ty))
+    {
+        if (tfit->function.get() == &builtinTypes->typeFunctions->intersectFunc)
+            return std::any_of(tfit->typeArguments.begin(), tfit->typeArguments.end(), isGeneric);
+
+        if (tfit->function.get() == &builtinTypes->typeFunctions->refineFunc)
+            return !tfit->typeArguments.empty() && isGeneric(tfit->typeArguments[0]);
+    }
+
+    if (auto u = get<UnionType>(ty))
+    {
+        return std::all_of(
+            begin(u),
+            end(u),
+            [&](TypeId option)
+            {
+                return isRefinementOfGeneric(builtinTypes, option, generic);
+            }
+        );
+    }
+
+    return false;
+}
+
 bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType)
 {
     NotNull<Scope> scope{findInnermostScope(expr->location)};
@@ -3941,31 +3980,15 @@ bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedT
         {
             // If our type is already the generic type, we can proceed normally without this check.
             // If our type is free or `never`, then it is sound to treat it as the generic type.
-            if (exprTy != expectedType && !is<FreeType, NeverType>(exprTy))
+            // We need to look at intersections for the sake of refinements.
+            // If we have a refinement like `T & ~nil`, we don't want to claim it's not `T`.
+            if (!isRefinementOfGeneric(builtinTypes, exprTy, expectedType))
             {
-                // We need to look at intersections for the sake of refinements.
-                // If we have a refinement like `T & ~nil`, we don't want to claim it's not `T`.
-                bool isExpectedPartOfIntersection = false;
-                if (auto intersection = get<IntersectionType>(exprTy))
-                {
-                    for (TypeId part : intersection)
-                    {
-                        if (follow(part) == expectedType)
-                        {
-                            isExpectedPartOfIntersection = true;
-                            break;
-                        }
-                    }
-                }
+                if (isErrorSuppressing(expr->location, exprTy, expr->location, expectedType))
+                    return true;
 
-                if (!isExpectedPartOfIntersection)
-                {
-                    if (isErrorSuppressing(expr->location, exprTy, expr->location, expectedType))
-                        return true;
-
-                    maybeReportSubtypingError(exprTy, expectedType, expr->location);
-                    return false;
-                }
+                maybeReportSubtypingError(exprTy, expectedType, expr->location);
+                return false;
             }
         }
     }
