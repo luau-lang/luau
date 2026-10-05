@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 namespace Luau
 {
@@ -549,6 +550,9 @@ void AstExprIfElse::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
+        if (FFlag::LuauExperimentalIfLocalSyntax && conditionLocal && conditionLocal->annotation)
+            conditionLocal->annotation->visit(visitor);
+
         condition->visit(visitor);
         trueExpr->visit(visitor);
         falseExpr->visit(visitor);
@@ -666,6 +670,9 @@ void AstStatIf::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
+        if (FFlag::LuauExperimentalIfLocalSyntax && conditionLocal && conditionLocal->annotation)
+            conditionLocal->annotation->visit(visitor);
+
         condition->visit(visitor);
         thenbody->visit(visitor);
 
@@ -1203,10 +1210,11 @@ void AstTypeReference::visit(AstVisitor* visitor)
     }
 }
 
-AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer)
+AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer, bool isExact)
     : AstType(ClassIndex(), location)
     , props(props)
     , indexer(indexer)
+    , isExact(isExact)
 {
 }
 

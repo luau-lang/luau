@@ -9,8 +9,8 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 LUAU_FASTFLAG(LuauImproveDeprecatedLint)
 
@@ -1950,6 +1950,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTabl
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTable2")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
 
@@ -2548,7 +2550,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfLocalExcluded")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     LintOptions options;
     options.setDefaults();
@@ -2570,7 +2572,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsMixedWithIfLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     LintOptions options;
     options.setDefaults();
@@ -2594,7 +2596,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfLocalExpressionExcluded")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     LintOptions options;
     options.setDefaults();
@@ -2613,7 +2615,7 @@ return if local a = x then a elseif local b = x then b elseif const c = x then c
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsMixedWithIfLocalExpression")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     LintOptions options;
     options.setDefaults();

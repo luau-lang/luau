@@ -6,7 +6,7 @@
 #include "Luau/Type.h"
 
 #include "Fixture.h"
-#include "ClassFixture.h"
+#include "ExternTypeFixture.h"
 
 #include "ScopedFlags.h"
 #include "doctest.h"
@@ -16,7 +16,6 @@ using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
-LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -395,6 +394,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_indexers_are_invariant")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_errors_for_missing_properties")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         function foo(bar)
             bar.Y = 1 -- valid
@@ -453,6 +454,8 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "detailed_class_unification_error")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -1048,6 +1051,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
@@ -1132,6 +1137,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
@@ -1272,8 +1279,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_1")
 {
-    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
-
     loadDefinition(R"(
         declare extern type Frame with
         end
@@ -1294,7 +1299,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
 {
-    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     loadDefinition(R"(
         declare extern type Folder with

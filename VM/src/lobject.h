@@ -575,6 +575,9 @@ typedef struct LuauClass
     // Mapping from offset to member name. Instance member offsets are stored before static member offsets.
     TString** offsettomember;
 
+    // Metatable for this *class object*. At time of writing this only contains __call
+    LuaTable* metatable;
+
     // Metatable for instances of this class. NULL until the first metamethod
     // is added via luaR_addclassmember.
     LuaTable* instancemetatable;

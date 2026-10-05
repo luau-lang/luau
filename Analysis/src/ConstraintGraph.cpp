@@ -8,6 +8,8 @@
 
 LUAU_FASTFLAG(DebugLuauLogSolver)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
+LUAU_FASTFLAG(LuauSkipUnusedTypeTraversals)
 
 namespace Luau
 {
@@ -49,7 +51,7 @@ size_t HashBlockedConstraintId::operator()(const BlockedConstraintId& bci) const
     else if (const TypePackId* tp = get_if<TypePackId>(&bci))
         result = std::hash<TypePackId>()(*tp);
     else if (Constraint const* const* c = get_if<const Constraint*>(&bci))
-        result = std::hash<const Constraint*>()(*c);
+        result = uintptr_t(*c); // By address, like std::hash<TypeId>
     else
         LUAU_ASSERT(!"Should be unreachable");
 
@@ -387,10 +389,25 @@ void ConstraintGraph::shiftReferences(T source, T target)
 
     auto sourceDependencies = findDependencyList(source);
 
+    // With nothing to copy, the types reachable from the target are never used.
+    if (FFlag::LuauSkipUnusedTypeTraversals && sourceDependencies->size() == 0)
+    {
+        clearReverseDependenciesOf(source);
+        return;
+    }
+
     TypeIds mutatedTypes;
     TypePackIds mutatedTypePacks;
-    ReferenceCountInitializer rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-    rci.traverse(target);
+    if (FFlag::LuauReferenceCountInitializerIsIterative)
+    {
+        ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.run(target);
+    }
+    else
+    {
+        ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.traverse(target);
+    }
     copyDependenciesToReachableTypes(source, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
 
     // Types in the constraint graph are always dynamically discovered, so
@@ -445,8 +462,17 @@ void ConstraintGraph::copyDependenciesOf(T source, T target)
     auto sourceDependencies = findDependencyList(source);
     TypeIds mutatedTypes;
     TypePackIds mutatedTypePacks;
-    ReferenceCountInitializer rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-    rci.traverse(target);
+
+    if (FFlag::LuauReferenceCountInitializerIsIterative)
+    {
+        ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.run(target);
+    }
+    else
+    {
+        ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.traverse(target);
+    }
     // We do not want to _delete_ the original vertex, so we pass nullopt here.
     copyDependenciesToReachableTypes(std::nullopt, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
 }

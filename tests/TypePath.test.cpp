@@ -5,7 +5,7 @@
 #include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 
-#include "ClassFixture.h"
+#include "ExternTypeFixture.h"
 #include "doctest.h"
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -556,6 +556,8 @@ TEST_CASE_FIXTURE(TypePathFixture, "step_limit")
 
 TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "complex_chains")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     SUBCASE("add_metamethod_return_type")
     {
         TYPESOLVE_CODE(R"(

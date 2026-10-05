@@ -7,7 +7,6 @@
 #include "Luau/Compiler.h"
 #include "Luau/Parser.h"
 
-#include <algorithm>
 #include <optional>
 
 #include "Fixture.h"
@@ -18,9 +17,9 @@ using namespace Luau;
 using namespace Luau::Bytecode;
 
 LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauCompileFastpcall)
-LUAU_FASTFLAG(LuauCompileExpandLimit)
-LUAU_FASTFLAG(LuauCompileExpandShortLimit)
+LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 
 namespace
 {
@@ -208,6 +207,159 @@ struct BytecodeCompilerFixture
 
 TEST_SUITE_BEGIN("BytecodeCompiler");
 
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "numeric_for_loop_backedge")
+{
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
+    std::optional<CompTimeBcFunction> fn = buildBytecode(R"(
+        for index = 1, limit do
+            consume(index)
+        end
+    )");
+    REQUIRE(fn);
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function(...) line 1 maxstacksize: 5 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  %0 = PREPVARARGS 0
+  %1 = LOADK K0 (1)                                          ; uses: %4
+  %2 = GETGLOBAL 234, K1 ('limit')                           ; uses: %4
+  %3 = LOADN 1                                               ; uses: %4
+  %4 = FORNPREP %2, %3, %1, bb_2
+
+bb_3:
+; predecessors: bb_0 [fallthrough], bb_3 [loop]
+; successors: bb_3 [loop], bb_2 [fallthrough]
+  phi.0 = %4[2], %8[2]                                       ; uses: %6, %8
+  %5 = GETGLOBAL 42, K2 ('consume')                          ; uses: %7
+  %6 = MOVE phi.0                                            ; uses: %7
+  %7 = CALL 1, 0, %5, %6
+  %8 = FORNLOOP %4[0], %4[1], phi.0, bb_3
+
+bb_2:
+; predecessors: bb_0 [branch], bb_3 [fallthrough]
+; successors: bb_1 [fallthrough]
+  %9 = RETURN 0, R0
+
+bb_1 (exit):
+; predecessors: bb_2 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "generic_for_loop")
+{
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
+    std::optional<CompTimeBcFunction> fn = buildBytecode(R"(
+        for key, value in iterate() do
+            consume(key, value)
+        end
+    )");
+    REQUIRE(fn);
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function(...) line 1 maxstacksize: 8 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [branch]
+  %0 = PREPVARARGS 0
+  %1 = GETGLOBAL 68, K0 ('iterate')                          ; uses: %2
+  %2 = CALL 0, 3, %1
+  %3 = FORGPREP %2[0], %2[1], %2[2], bb_2
+
+bb_3:
+; predecessors: bb_2 [loop]
+; successors: bb_2 [fallthrough]
+  %4 = GETGLOBAL 42, K1 ('consume')                          ; uses: %7
+  %5 = MOVE %8[3]                                            ; uses: %7
+  %6 = MOVE %8[4]                                            ; uses: %7
+  %7 = CALL 2, 0, %4, %5, %6
+
+bb_2:
+; predecessors: bb_0 [branch], bb_3 [fallthrough]
+; successors: bb_3 [loop], bb_4 [fallthrough]
+  phi.6 = %3[2], %8[2]                                       ; uses: %8
+  %8 = FORGLOOP %3[0], %3[1], phi.6, false, 2, bb_3
+
+bb_4:
+; predecessors: bb_2 [fallthrough]
+; successors: bb_1 [fallthrough]
+  %9 = RETURN 0, R0
+
+bb_1 (exit):
+; predecessors: bb_4 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "nested_numeric_for_loops")
+{
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
+    std::optional<CompTimeBcFunction> fn = buildBytecode(R"(
+        for outer = 1, outerLimit do
+            for inner = 1, innerLimit do
+                consume(outer, inner)
+            end
+        end
+    )");
+    REQUIRE(fn);
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function(...) line 1 maxstacksize: 9 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  %0 = PREPVARARGS 0
+  %1 = LOADK K0 (1)                                          ; uses: %4
+  %2 = GETGLOBAL 22, K1 ('outerLimit')                       ; uses: %4
+  %3 = LOADN 1                                               ; uses: %4
+  %4 = FORNPREP %2, %3, %1, bb_2
+
+bb_3:
+; predecessors: bb_0 [fallthrough], bb_4 [loop]
+; successors: bb_4 [branch], bb_5 [fallthrough]
+  phi.4 = %4[2], %14[2]                                      ; uses: phi.0, %10, phi.11, phi.11, %14
+  %5 = LOADK K0 (1)                                          ; uses: %8
+  %6 = GETGLOBAL 63, K2 ('innerLimit')                       ; uses: %8
+  %7 = LOADN 1                                               ; uses: %8
+  %8 = FORNPREP %6, %7, %5, bb_4
+
+bb_5:
+; predecessors: bb_3 [fallthrough], bb_5 [loop]
+; successors: bb_5 [loop], bb_4 [fallthrough]
+  phi.1 = %8[2], %13[2]                                      ; uses: %11, %13
+  %9 = GETGLOBAL 42, K3 ('consume')                          ; uses: %12
+  %10 = MOVE phi.4                                           ; uses: %12
+  %11 = MOVE phi.1                                           ; uses: %12
+  %12 = CALL 2, 0, %9, %10, %11
+  %13 = FORNLOOP %8[0], %8[1], phi.1, bb_5
+
+bb_4:
+; predecessors: bb_3 [branch], bb_5 [fallthrough]
+; successors: bb_3 [loop], bb_2 [fallthrough]
+  %14 = FORNLOOP %4[0], %4[1], phi.4, bb_3
+
+bb_2:
+; predecessors: bb_0 [branch], bb_4 [fallthrough]
+; successors: bb_1 [fallthrough]
+  %15 = RETURN 0, R0
+
+bb_1 (exit):
+; predecessors: bb_2 [fallthrough]
+)"
+    );
+}
+
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "from_function_bytecode")
 {
     ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
@@ -306,6 +458,7 @@ bb_1 (exit):
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         function fn()
@@ -323,6 +476,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
         "\n" + toString(*fn, true),
         R"(
 ; function fn() line 2 maxstacksize: 6 upvalues: 0 flags: 8
+; feedback slot 0: CALLTARGET %9
 bb_0 (entry):
 ; successors: bb_2 [branch], bb_3 [fallthrough]
   %0 = LOADK K0 (3)                                          ; uses: phi.0
@@ -335,6 +489,7 @@ bb_3:
 ; predecessors: bb_0 [fallthrough], bb_4 [loop]
 ; successors: bb_4 [branch], bb_5 [fallthrough]
   phi.0 = %0 from bb_0, %11 from bb_4                        ; uses: %6, phi.2, phi.2, %11
+  phi.1 = %4[2], %12[2]                                      ; uses: %8, phi.7, phi.7, %12
   %5 = LOADK K3 (0)                                          ; uses: %6
   %6 = JUMPIFNOTLT %5, phi.0, bb_4
 
@@ -342,7 +497,7 @@ bb_5:
 ; predecessors: bb_3 [fallthrough]
 ; successors: bb_4 [fallthrough]
   %7 = GETGLOBAL 70, K4 ('print')                            ; uses: %9
-  %8 = MOVE %4[2]                                            ; uses: %9
+  %8 = MOVE phi.1                                            ; uses: %9
   %9 = CALLFB 1, 0, 0, %7, %8
 
 bb_4:
@@ -350,7 +505,7 @@ bb_4:
 ; successors: bb_3 [loop], bb_2 [fallthrough]
   %10 = LOADK K1 (1)                                         ; uses: %11
   %11 = SUB phi.0, %10                                       ; uses: phi.0
-  %12 = FORNLOOP %4[0], %4[1], %4[2], bb_3
+  %12 = FORNLOOP %4[0], %4[1], phi.1, bb_3
 
 bb_2:
 ; predecessors: bb_0 [branch], bb_4 [fallthrough]
@@ -444,6 +599,8 @@ bb_1 (exit):
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     auto fn = buildBytecode(R"(
         local function x()
@@ -457,14 +614,14 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
     CHECK_EQ(
         "\n" + toString(*fn, false),
         R"(
-; function x() line 2 maxstacksize: 4 upvalues: 0 flags: 8
+; function x() line 2 maxstacksize: 3 upvalues: 0 flags: 8
+; feedback slot 0: CALLTARGET %1
 bb_0 (entry):
 ; successors: bb_1 [fallthrough]
   %0 = GETGLOBAL 135, K0 ('f')
   %1 = CALLFB 0, 2, 0, %0
-  %2 = MOVE %1[1]
-  %3 = MOVE %1[0]
-  %4 = RETURN 2, %2, %3
+  %2 = MOVE %1[0]
+  %3 = RETURN 2, %1[1], %2
 
 bb_1 (exit):
 ; predecessors: bb_0 [fallthrough]
@@ -475,6 +632,7 @@ bb_1 (exit):
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         local function fn(n)
@@ -493,6 +651,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
         "\n" + toString(*fn, true),
         R"(
 ; function fn($arg0) line 2 maxstacksize: 6 upvalues: 1 flags: 0
+; feedback slot 0: CALLTARGET %8
 bb_0 (entry):
 ; successors: bb_2 [branch], bb_3 [fallthrough]
   %0 = LOADK K0 (0)                                          ; uses: %1
@@ -615,16 +774,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "def_use_chains")
             return x + y
         end
     )");
-
-    /*
-        // Block 1 (entry)
-        ADD R3 R0 R1   ; s = a + b
-        ADD R4 R3 R2   ; x = s + c
-        ADD R5 R3 R0   ; y = s + a
-        ADD R4 R4 R5   ; r = x + y
-        RETURN R4 1
-        // Block 2 (exit)
-    */
 
     REQUIRE(fn);
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
@@ -865,45 +1014,42 @@ K2: function __tostring
 K3: '__tostring'
 K4: function live
 K5: 'live'
-K6: 'new'
-K7: '__init'
-K8: class Animal (props: 1, methods: 4)
+K6: '__init'
+K7: class Animal (props: 1, methods: 3)
   props:
     K1 ['species']
   methods:
     K3 ['__tostring']
     K5 ['live']
-    K6 ['new']
-    K7 ['__init']
-K9: 'Cat'
-K10: 'breed'
-K11: class Cat (props: 1, methods: 3)
+    K6 ['__init']
+K8: 'Cat'
+K9: 'breed'
+K10: class Cat (props: 1, methods: 2)
   props:
-    K10 ['breed']
+    K9 ['breed']
   methods:
     K3 ['__tostring']
-    K6 ['new']
-    K7 ['__init']
-K12: 'print'
-K13: print
-K14: {['Animal'] #1, ['Cat'] #0} sizenode=2
+    K6 ['__init']
+K11: 'print'
+K12: print
+K13: {['Animal'] #1, ['Cat'] #0} sizenode=2
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 no_base K8 1 [class Animal (props: 1, methods: 4)]
+NEWCLASS R0 no_base K7 1 [class Animal (props: 1, methods: 3)]
 DUPCLOSURE R2 K2 ['__tostring']
 NEWCLASSMEMBER R0 R2 ['__tostring']
 DUPCLOSURE R2 K4 ['live']
 NEWCLASSMEMBER R0 R2 ['live']
-NEWCLASS R1 R0 K11 0 [class Cat (props: 1, methods: 3)]
+NEWCLASS R1 R0 K10 0 [class Cat (props: 1, methods: 2)]
 NEWCLOSURE R2 P2
 CAPTURE REF R0
 NEWCLASSMEMBER R1 R2 ['__tostring']
-GETIMPORT R2 13 [print]
+GETIMPORT R2 12 [print]
 MOVE R3 R1
 CALL R2 1 0
-DUPTABLE R2 14
+DUPTABLE R2 13
 SETTABLEKS R0 R2 K0 ['Animal']
-SETTABLEKS R1 R2 K9 ['Cat']
+SETTABLEKS R1 R2 K8 ['Cat']
 CLOSEUPVALS R0
 RETURN R2 1
 )");
@@ -930,8 +1076,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_limits")
 {
     // Takes too long to run without optimizations enabled
 #if !(defined(_DEBUG) || defined(_NOOPT))
-    ScopedFastFlag luauCompileExpandLimit{FFlag::LuauCompileExpandLimit, true};
-
     BytecodeBuilder bcb;
     bcb.beginFunction(0, false);
 
@@ -958,8 +1102,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_limits")
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_short_limits")
 {
-    ScopedFastFlag luauCompileExpandShortLimit{FFlag::LuauCompileExpandShortLimit, true};
-
     BytecodeBuilder bcb;
     bcb.beginFunction(0, false);
 
@@ -989,6 +1131,46 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_short_limits")
     bcb.expandJumps(error);
 
     CHECK(!error);
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "call_feedback_slots")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
+
+    std::string_view source = R"(
+        function fn()
+            local a = f()
+            local b = g()
+            local c = h()
+            return a, b, c
+        end
+    )";
+
+    auto fn = buildBytecode(source);
+    REQUIRE(fn);
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+    CHECK_EQ(
+        "\n" + toString(*fn, false),
+        R"(
+; function fn() line 2 maxstacksize: 3 upvalues: 0 flags: 8
+; feedback slot 0: CALLTARGET %1
+; feedback slot 1: CALLTARGET %3
+; feedback slot 2: CALLTARGET %5
+bb_0 (entry):
+; successors: bb_1 [fallthrough]
+  %0 = GETGLOBAL 135, K0 ('f')
+  %1 = CALLFB 0, 1, 0, %0
+  %2 = GETGLOBAL 134, K1 ('g')
+  %3 = CALLFB 0, 1, 1, %2
+  %4 = GETGLOBAL 137, K2 ('h')
+  %5 = CALLFB 0, 1, 2, %4
+  %6 = RETURN 3, %1[0], %3[0], %5[0]
+
+bb_1 (exit):
+; predecessors: bb_0 [fallthrough]
+)"
+    );
 }
 
 TEST_SUITE_END();

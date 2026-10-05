@@ -12,7 +12,7 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 namespace Luau
 {
@@ -387,6 +387,23 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatBlock* b)
 
 ControlFlow DataFlowGraphBuilder::visitBlockWithoutChildScope(AstStatBlock* b)
 {
+    // Classes are hoisted and so can be referred to before their declaration.
+    // Before we do anything, quickly zip through any classes and preallocate
+    // DefIds for them.
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        for (AstStat* stat: b->body)
+        {
+            if (auto d = stat->as<AstStatClass>())
+            {
+                DefId def = defArena->freshCell(d->name, d->name->location);
+                graph.localDefs[d->name] = def;
+                currentScope()->bindings[d->name->name] = def;
+                captures[d->name->name].allVersions.push_back(def);
+            }
+        }
+    }
+
     std::optional<ControlFlow> firstControlFlow;
     for (AstStat* stat : b->body)
     {
@@ -462,7 +479,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
     {
         PushScope ps{scopeStack, thenScope};
 
-        if (FFlag::DebugLuauIfLocalAnalysis && i->conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal)
         {
             DefId def = defArena->freshCell(i->conditionLocal, i->conditionLocal->location, false);
             graph.localDefs[i->conditionLocal] = def;
@@ -871,11 +888,6 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareExternType* d)
 ControlFlow DataFlowGraphBuilder::visit(AstStatClass* d)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-    DefId def = defArena->freshCell(d->name, d->name->location);
-
-    graph.localDefs[d->name] = def;
-    currentScope()->bindings[d->name->name] = def;
-    captures[d->name->name].allVersions.push_back(def);
 
     if (d->super)
         visitExpr(d->super);
@@ -1205,7 +1217,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIfElse* i)
 {
     visitExpr(i->condition);
 
-    if (FFlag::DebugLuauIfLocalAnalysis && i->conditionLocal)
+    if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal)
     {
         DfgScope* thenScope = makeChildScope();
         {

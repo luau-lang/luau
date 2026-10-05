@@ -8,6 +8,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCostModel)
 LUAU_FASTFLAG(LuauCallFeedback)
+LUAU_FASTFLAG(LuauCompileRefactorFeedback)
 
 namespace Luau
 {
@@ -264,12 +265,26 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
     if (FFlag::LuauCallFeedback)
     {
         uint32_t feedbackvecsize = readVarInt(data, offset);
+        fn.feedbackSlots.resize(feedbackvecsize);
+
         for (uint32_t j = 0; j < feedbackvecsize; j++)
         {
             uint8_t slottype = read<uint8_t>(data, offset);
-            LUAU_ASSERT(slottype == LFT_CALLTARGET);
-            // read slot PC. ignore it for now.
-            readVarInt(data, offset);
+
+            BcFeedbackSlot& slot = fn.feedbackSlots[j];
+            slot.kind = static_cast<LuauFeedbackType>(slottype);
+
+            if (slottype == LFT_CALLTARGET)
+            {
+                uint32_t pc = readVarInt(data, offset);
+                LUAU_ASSERT(pc < uint32_t(codesize));
+                LUAU_ASSERT(LUAU_INSN_OP(code[pc]) == LOP_CALLFB);
+                slot.callTarget.inst = pc;
+            }
+            else
+            {
+                LUAU_ASSERT(!"unknown feedback slot kind");
+            }
         }
     }
 
@@ -283,6 +298,12 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
     BytecodeGraphParser<BcVmConst> graphParser(fn);
     if (!graphParser.rebuildGraph(code, codesize, lines, insnsPC))
         return {};
+
+    for (BcFeedbackSlot& slot : fn.feedbackSlots)
+    {
+        if (slot.kind == LFT_CALLTARGET)
+            slot.callTarget.inst = insnsPC[slot.callTarget.inst];
+    }
 
     for (TypedLocal& l : fn.localTypes)
     {
@@ -393,6 +414,29 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
 
     CompTimeBytecodeGraphSerializer serializer(bcb, fn, consts);
     std::vector<uint32_t> insnsPC = serializer.emitBytecode();
+
+    for (uint32_t i = 0; i < fn.feedbackSlots.size(); ++i)
+    {
+        BcFeedbackSlot& slot = fn.feedbackSlots[i];
+        uint32_t slotId = ~0u;
+
+        if (slot.kind == LFT_CALLTARGET)
+        {
+            LUAU_ASSERT(slot.callTarget.inst < insnsPC.size());
+            LUAU_ASSERT(insnsPC[slot.callTarget.inst] != ~0u);
+
+            if (FFlag::LuauCompileRefactorFeedback)
+                slotId = bcb.addCallTargetSlot(insnsPC[slot.callTarget.inst]);
+            else
+                slotId = bcb.addFbSlot_DEPRECATED(LFT_CALLTARGET, insnsPC[slot.callTarget.inst]);
+        }
+        else
+        {
+            LUAU_ASSERT(!"unknown feedback slot kind");
+        }
+
+        LUAU_ASSERT(slotId == i);
+    }
 
     for (auto& local : fn.localTypes)
     {

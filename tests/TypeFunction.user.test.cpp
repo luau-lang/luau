@@ -2,7 +2,7 @@
 
 #include "Luau/Error.h"
 
-#include "ClassFixture.h"
+#include "ExternTypeFixture.h"
 #include "Fixture.h"
 
 #include "doctest.h"
@@ -15,8 +15,6 @@ LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauUdtfErrorHandling)
-LUAU_FASTFLAG(LuauUdtfPopulateEnv)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -557,6 +555,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof_two_things")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_serialization_works")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -576,6 +576,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_methods_work")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -742,6 +744,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_two_negations_type_mismatch")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -761,6 +765,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_types")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -781,6 +787,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_t
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -819,6 +827,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_metatable_methods_work")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -927,6 +937,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_serialization_works2")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_methods_works")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -974,6 +986,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "write_of_readonly_is_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1005,6 +1019,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1037,6 +1053,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_simple_cyclic_serialization_works")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1077,6 +1095,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_metatable")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_complex_cyclic_serialization_works")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1211,7 +1231,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
 
     CheckResult result = check(R"(
         type function first(arg: string)
@@ -1284,7 +1303,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_unordered")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -1326,6 +1344,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1441,6 +1461,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strip_indexer")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1550,6 +1572,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tag_field")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1878,6 +1902,8 @@ local function ok(idx: pass<test>): test return idx end
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_serialization_3")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2487,6 +2513,8 @@ local y: keyof<typeof(x)>
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "blocking_nested_pending_expansions_2")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2504,6 +2532,8 @@ local x: foo<{a: foo<string>, b: foo<number>}> = nil
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "irreducible_pending_expansions")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -2540,6 +2570,8 @@ TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_type_function_name")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2561,6 +2593,8 @@ local y: foo<{b: number}> = { b = 2 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2586,6 +2620,8 @@ local y: bar<{b: number}> = { b = 2 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect_levels")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2615,6 +2651,8 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_values")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2636,6 +2674,8 @@ local y: foo<string> = "a"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unordered")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -3699,6 +3739,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     CheckResult results = check(R"(
@@ -3726,8 +3768,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_handling_pcall")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag luauUdtfErrorHandling{FFlag::LuauUdtfErrorHandling, true};
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
 
     CheckResult result = check(R"(
         type function foo(ty: type)
@@ -3753,7 +3793,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_handling_pcall")
 TEST_CASE_FIXTURE(BuiltinsFixture, "cross_type_function_type_check")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag luauUdtfPopulateEnv{FFlag::LuauUdtfPopulateEnv, true};
 
     CheckResult result = check(R"(
         type function foo(x: number)
@@ -3787,7 +3826,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "error_when_serializing_environment_but_not_arguements")
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_when_serializing_environment_but_not_arguments")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 

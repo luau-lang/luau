@@ -14,7 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTINTVARIABLE(LuauLinterRecursionLimit, 128)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 LUAU_FASTFLAGVARIABLE(LuauImproveDeprecatedLint)
 
@@ -2961,7 +2961,7 @@ private:
             head->condition->visit(this);
             head->thenbody->visit(this);
 
-            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+            if (!FFlag::LuauExperimentalIfLocalAnalysis || !head->conditionLocal)
                 conditions.push_back(head->condition);
 
             if (head->elsebody && head->elsebody->is<AstStatIf>())
@@ -2997,7 +2997,7 @@ private:
             head->condition->visit(this);
             head->trueExpr->visit(this);
 
-            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+            if (!FFlag::LuauExperimentalIfLocalAnalysis || !head->conditionLocal)
                 conditions.push_back(head->condition);
 
             if (head->falseExpr->is<AstExprIfElse>())

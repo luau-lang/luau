@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauFindFullAncestryLooksIntoTypePacks)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauExportTypecheckTypepacks)
@@ -981,6 +982,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_194463_modify_bounds_of_visited_generic_regression")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     fileResolver.source["game/Container"] = R"(
         local Container = {}
 
@@ -1056,6 +1059,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1087,13 +1092,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
     std::optional<TypeId> exports = first(a->returnType);
     REQUIRE(exports);
     CHECK_EQ(
-        "{ read constAlias: { value: number }, read constDirect: { value: number }, read localAlias: { value: number }, read localDirect: { value: number } }",
+        "{ read constAlias: { value: number }, read constDirect: { value: number }, read localAlias: { value: number }, read localDirect: { value: "
+        "number } }",
         toString(*exports)
     );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs_multi")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1121,10 +1129,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs_multi
     CHECK_EQ("{ value: number }", toString(requireType(a, "const3")));
     std::optional<TypeId> exports = first(a->returnType);
     REQUIRE(exports);
-    CHECK_EQ(
-        "{ read const1: { value: number }, read const2: { value: number }, read const3: { value: number } }",
-        toString(*exports)
-    );
+    CHECK_EQ("{ read const1: { value: number }, read const2: { value: number }, read const3: { value: number } }", toString(*exports));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
@@ -1368,7 +1373,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local a: A.Point = A.Point.new { x=2, y=3 }
+        local a: A.Point = A.Point { x=2, y=3 }
 
         local x, y = a.x, a.y
     )";
@@ -1401,7 +1406,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local a: A.Point = A.Point.new { x=2, y=3 }
+        local a: A.Point = A.Point { x=2, y=3 }
     )";
 
     CheckResult result = getFrontend().check("game/B");
@@ -1416,6 +1421,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_uses_binding_type")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sffs[]{
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueSyntax, true},
@@ -1490,7 +1497,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_preferred_over_in
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_binding_is_readonly")
 {
-    ScopedFastFlag sffs[] ={
+    ScopedFastFlag sffs[] = {
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true},
@@ -1533,6 +1540,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_mismatch_errors")
     CheckResult result = getFrontend().check("game/A");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "findAstAncestryOfPosition_descends_into_AstTypePacks")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauFindFullAncestryLooksIntoTypePacks, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/Other"] = R"(
+        export type EmptyTable = {}
+
+        export function OtherFunction()
+        end
+    )";
+
+    fileResolver.source["game/A"] = R"(
+        const Other = require(game.Other)
+
+        type PopulousTable = {x: number, y: number}
+
+        function foo(t: PopulousTable): Other.EmptyTable
+            Other.OtherFunction()
+            return {}
+        end
+    )";
+
+    auto result = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(getFrontend().getSourceModule("game/A")->root, Position{5, 50}, /*includeTypes*/ true);
+
+    REQUIRE(5 == ancestry.size());
+
+    CHECK(ancestry[3]->is<AstTypePackExplicit>());
+
+    auto tr = ancestry[4]->as<AstTypeReference>();
+    REQUIRE(tr != nullptr);
+
+    CHECK(tr->prefix == "Other");
+    CHECK(tr->name == "EmptyTable");
 }
 
 TEST_SUITE_END();

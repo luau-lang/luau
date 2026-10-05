@@ -61,6 +61,23 @@ std::optional<std::pair<RuntimeBcFunction, BcOp>> buildGraphFromProto(Proto* p, 
     for (int i = 0; i < p->sizep; i++)
         fn.protos[i] = i;
 
+    fn.feedbackSlots.resize(p->feedbackvecsize);
+    for (uint32_t i = 0; i < p->feedbackvecsize; ++i)
+    {
+        FeedbackVectorSlot& runtimeSlot = p->feedbackvec[i];
+        BcFeedbackSlot& graphSlot = fn.feedbackSlots[i];
+
+        if (runtimeSlot.kind == FeedbackVectorSlotKind::CALL_TARGET)
+        {
+            graphSlot.kind = LFT_CALLTARGET;
+            graphSlot.callTarget.inst = runtimeSlot.call_target.pc;
+        }
+        else
+        {
+            LUAU_ASSERT(!"unknown feedback slot kind");
+        }
+    }
+
     std::vector<uint32_t> lines(p->sizecode, 0);
     if (p->lineinfo != nullptr && p->abslineinfo != nullptr)
         for (int i = 0; i < p->sizecode; i++)
@@ -72,6 +89,15 @@ std::optional<std::pair<RuntimeBcFunction, BcOp>> buildGraphFromProto(Proto* p, 
     Instruction* code = p->code;
     if (!graphParser.rebuildGraph(code, p->sizecode, lines, insnsPC))
         return {};
+
+    for (BcFeedbackSlot& graphSlot : fn.feedbackSlots)
+    {
+        if (graphSlot.kind == LFT_CALLTARGET)
+        {
+            LUAU_ASSERT(graphSlot.callTarget.inst < insnsPC.size());
+            graphSlot.callTarget.inst = insnsPC[graphSlot.callTarget.inst];
+        }
+    }
 
     BcOp callOp;
     if (callPc)
@@ -179,12 +205,23 @@ Proto* createInlinedProto(lua_State* L, Proto* caller, Proto* target, RuntimeBcF
     memcpy(p->feedbackvec, caller->feedbackvec, caller->feedbackvecsize * sizeof(FeedbackVectorSlot));
     memcpy(p->feedbackvec + caller->feedbackvecsize, target->feedbackvec, target->feedbackvecsize * sizeof(FeedbackVectorSlot));
 
-    for (uint32_t i = 0; i < std::min<uint32_t>(p->feedbackvecsize, uint32_t(codeData.fbSlotPCs.size())); i++)
-        if (codeData.fbSlotPCs[i] != kUnassignedPC)
+    LUAU_ASSERT(graph.feedbackSlots.size() == p->feedbackvecsize);
+    for (uint32_t i = 0; i < p->feedbackvecsize; ++i)
+    {
+        BcFeedbackSlot& graphSlot = graph.feedbackSlots[i];
+        FeedbackVectorSlot& runtimeSlot = p->feedbackvec[i];
+
+        if (graphSlot.kind == LFT_CALLTARGET)
         {
-            LUAU_ASSERT(p->feedbackvec[i].kind == FeedbackVectorSlotKind::CALL_TARGET);
-            p->feedbackvec[i].call_target.pc = codeData.fbSlotPCs[i];
+            LUAU_ASSERT(runtimeSlot.kind == FeedbackVectorSlotKind::CALL_TARGET);
+            if (i < codeData.fbSlotPCs.size() && codeData.fbSlotPCs[i] != kUnassignedPC)
+                runtimeSlot.call_target.pc = codeData.fbSlotPCs[i];
         }
+        else
+        {
+            LUAU_ASSERT(!"unknown feedback slot kind");
+        }
+    }
 
     p->deoptimized = caller;
     caller->optimized = p;
@@ -367,7 +404,7 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
     if (!targetGraph)
         return nullptr;
 
-    if (!inlineCall(callerGraph->first, targetGraph->first, callerGraph->second, targetProto->funid, callerProto->feedbackvecsize))
+    if (!inlineCall(callerGraph->first, targetGraph->first, callerGraph->second, targetProto->funid))
         return nullptr;
 
     // impl must outlive emitCode and createInlinedProto

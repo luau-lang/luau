@@ -7,7 +7,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/RecursionCounter.h"
-#include "Luau/Set.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
@@ -20,11 +20,12 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(LuauAllowIntersectionOfOneTableWithExtern)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAGVARIABLE(LuauFixNormalizeFunctionIntersections)
 
 namespace Luau
 {
@@ -465,7 +466,7 @@ static bool isShallowInhabited(const NormalizedType& norm)
 
 NormalizationResult Normalizer::isInhabited(const NormalizedType* norm)
 {
-    Set<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -477,7 +478,7 @@ NormalizationResult Normalizer::isInhabited(const NormalizedType* norm)
     }
 }
 
-NormalizationResult Normalizer::isInhabited(const NormalizedType* norm, Set<TypeId>& seen)
+NormalizationResult Normalizer::isInhabited(const NormalizedType* norm, DenseHashSet<TypeId>& seen)
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
     if (!withinResourceLimits() || !norm)
@@ -525,7 +526,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty)
             return *result ? NormalizationResult::True : NormalizationResult::False;
     }
 
-    Set<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -544,7 +545,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty)
     }
 }
 
-NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
+NormalizationResult Normalizer::isInhabited(TypeId ty, DenseHashSet<TypeId>& seen)
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
     if (!withinResourceLimits())
@@ -560,7 +561,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
     if (!get<IntersectionType>(ty) && !get<UnionType>(ty) && !get<TableType>(ty) && !get<MetatableType>(ty))
         return NormalizationResult::True;
 
-    if (seen.count(ty))
+    if (seen.contains(ty))
         return NormalizationResult::True;
 
     seen.insert(ty);
@@ -604,7 +605,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
 
 NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
 {
-    Set<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     SeenTablePropPairs seenTablePropPairs;
     try
     {
@@ -617,7 +618,12 @@ NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId righ
     }
 }
 
-NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet)
+NormalizationResult Normalizer::isIntersectionInhabited(
+    TypeId left,
+    TypeId right,
+    SeenTablePropPairs& seenTablePropPairs,
+    DenseHashSet<TypeId>& seenSet
+)
 {
     consumeFuel();
 
@@ -933,9 +939,9 @@ Normalizer::Normalizer(
 {
 }
 
-static bool isCacheable(TypeId ty, Set<TypeId>& seen);
+static bool isCacheable(TypeId ty, DenseHashSet<TypeId>& seen);
 
-static bool isCacheable(TypePackId tp, Set<TypeId>& seen)
+static bool isCacheable(TypePackId tp, DenseHashSet<TypeId>& seen)
 {
     tp = follow(tp);
 
@@ -956,7 +962,7 @@ static bool isCacheable(TypePackId tp, Set<TypeId>& seen)
     return true;
 }
 
-static bool isCacheable(TypeId ty, Set<TypeId>& seen)
+static bool isCacheable(TypeId ty, DenseHashSet<TypeId>& seen)
 {
     if (seen.contains(ty))
         return true;
@@ -987,7 +993,7 @@ static bool isCacheable(TypeId ty, Set<TypeId>& seen)
 
 static bool isCacheable(TypeId ty)
 {
-    Set<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     return isCacheable(ty, seen);
 }
 
@@ -1001,7 +1007,7 @@ std::shared_ptr<const NormalizedType> Normalizer::normalize(TypeId ty)
         return found->second;
 
     NormalizedType norm{builtinTypes};
-    Set<TypeId> seenSetTypes;
+    DenseHashSet<TypeId> seenSetTypes;
     SeenTablePropPairs seenTablePropPairs;
 
     try
@@ -1034,7 +1040,7 @@ NormalizationResult Normalizer::normalizeIntersections(
     const std::vector<TypeId>& intersections,
     NormalizedType& outType,
     SeenTablePropPairs& seenTablePropPairs,
-    Set<TypeId>& seenSet
+    DenseHashSet<TypeId>& seenSet
 )
 {
     if (!arena)
@@ -1861,7 +1867,7 @@ NormalizationResult Normalizer::unionNormalWithTy(
     NormalizedType& here,
     TypeId there,
     SeenTablePropPairs& seenTablePropPairs,
-    Set<TypeId>& seenSetTypes,
+    DenseHashSet<TypeId>& seenSetTypes,
     int ignoreSmallerTyvars
 )
 {
@@ -1891,7 +1897,7 @@ NormalizationResult Normalizer::unionNormalWithTy(
     }
     else if (const UnionType* utv = get<UnionType>(there))
     {
-        if (seenSetTypes.count(there))
+        if (seenSetTypes.contains(there))
             return NormalizationResult::True;
         seenSetTypes.insert(there);
 
@@ -1910,7 +1916,7 @@ NormalizationResult Normalizer::unionNormalWithTy(
     }
     else if (const IntersectionType* itv = get<IntersectionType>(there))
     {
-        if (seenSetTypes.count(there))
+        if (seenSetTypes.contains(there))
             return NormalizationResult::True;
         seenSetTypes.insert(there);
 
@@ -2774,7 +2780,384 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks_INTERNAL(TypePackI
         return arena->addTypePack({});
 }
 
-std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet)
+bool Normalizer::hasStringIndexer(const TableType* tt)
+{
+    if (!tt->indexer.has_value())
+        return false;
+
+    return isIntersectionInhabited(tt->indexer->indexType, builtinTypes->stringType) == NormalizationResult::True;
+}
+
+std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet)
+{
+    if (!FFlag::DebugLuauExactTableTypes)
+        return DEPRECATED_intersectionOfTables(here, there, seenTablePropPairs, seenSet);
+
+    consumeFuel();
+
+    if (here == there)
+        return here;
+
+    RecursionCounter _rc(&sharedState->counters.recursionCount);
+    if (sharedState->counters.recursionLimit > 0 && sharedState->counters.recursionLimit < sharedState->counters.recursionCount)
+        return std::nullopt;
+
+    if (isPrim(here, PrimitiveType::Table))
+        return there;
+    else if (isPrim(there, PrimitiveType::Table))
+        return here;
+
+    if (get<NeverType>(here))
+        return there;
+    else if (get<NeverType>(there))
+        return here;
+    else if (get<AnyType>(here))
+        return there;
+    else if (get<AnyType>(there))
+        return here;
+
+    TypeId htable = here;
+    TypeId hmtable = nullptr;
+    if (const MetatableType* hmtv = get<MetatableType>(here))
+    {
+        htable = follow(hmtv->table);
+        hmtable = follow(hmtv->metatable);
+    }
+    TypeId ttable = there;
+    TypeId tmtable = nullptr;
+    if (const MetatableType* tmtv = get<MetatableType>(there))
+    {
+        ttable = follow(tmtv->table);
+        tmtable = follow(tmtv->metatable);
+    }
+
+    const TableType* httv = get<TableType>(htable);
+    if (!httv)
+        return std::nullopt;
+
+    const TableType* tttv = get<TableType>(ttable);
+    if (!tttv)
+        return std::nullopt;
+
+    if (httv->state == TableState::Free || tttv->state == TableState::Free)
+        return std::nullopt;
+    if (httv->state == TableState::Generic || tttv->state == TableState::Generic)
+        return std::nullopt;
+
+    const bool hereExact = httv->state == TableState::Exact;
+    const bool thereExact = tttv->state == TableState::Exact;
+
+    TableState state = httv->state;
+    if (tttv->state == TableState::Unsealed)
+        state = tttv->state;
+
+    // If either table is exact, the result is either an exact table or never.
+    if (hereExact || thereExact)
+        state = TableState::Exact;
+
+    TypeLevel level = max(httv->level, tttv->level);
+    Scope* scope = max(httv->scope, tttv->scope);
+
+    std::unique_ptr<TableType> result = std::make_unique<TableType>(state, level, scope);
+
+    bool hereSubThere = true;
+    bool thereSubHere = true;
+
+    // An inexact table is never a subtype of an exact table.
+    if (hereExact && !thereExact)
+        thereSubHere = false;
+    if (thereExact && !hereExact)
+        hereSubThere = false;
+
+    // Handle props that are common between the two tables
+    for (const auto& [name, hprop]: httv->props)
+    {
+        auto it = tttv->props.find(name);
+        if (it == tttv->props.end())
+            continue;
+
+        const Property& tprop = it->second;
+        Property prop = hprop;
+
+        if (hprop.readTy.has_value() && tprop.readTy.has_value())
+        {
+            TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
+
+            // If any property is going to get mapped to `never`, we can just call the entire table `never`.
+            // Since this check is syntactic, we may sometimes miss simplifying tables with complex uninhabited properties.
+            // Prior versions of this code attempted to do this semantically using the normalization machinery, but this
+            // mistakenly causes infinite loops when giving more complex recursive table types. As it stands, this approach
+            // will continue to scale as simplification is improved, but we may wish to reintroduce the semantic approach
+            // once we have revisited the usage of seen sets systematically (and possibly with some additional guarding to recognize
+            // when types are infinitely-recursive with non-pointer identical instances of them, or some guard to prevent that
+            // construction altogether). See also: `gh1632_no_infinite_recursion_in_normalization`
+            if (get<NeverType>(ty))
+                return {builtinTypes->neverType};
+
+            prop.readTy = ty;
+            hereSubThere &= (ty == hprop.readTy);
+            thereSubHere &= (ty == tprop.readTy);
+        }
+        else if (hprop.readTy.has_value())
+        {
+            prop.readTy = hprop.readTy;
+            thereSubHere = false;
+        }
+        else if (tprop.readTy.has_value())
+        {
+            prop.readTy = tprop.readTy;
+            hereSubThere = false;
+        }
+
+        if (hprop.writeTy.has_value() && tprop.writeTy.has_value())
+        {
+            prop.writeTy = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.writeTy, *tprop.writeTy).result;
+            hereSubThere &= (prop.writeTy == hprop.writeTy);
+            thereSubHere &= (prop.writeTy == tprop.writeTy);
+        }
+        else if (hprop.writeTy.has_value())
+        {
+            prop.writeTy = hprop.writeTy;
+            thereSubHere = false;
+        }
+        else if (tprop.writeTy.has_value())
+        {
+            prop.writeTy = tprop.writeTy;
+            hereSubThere = false;
+        }
+
+        LUAU_ASSERT(prop.readTy.has_value() || prop.writeTy.has_value());
+        result->props[name] = prop;
+    }
+
+    // When considering props that have no corresponding property on the other
+    // side, there are 3 situations to consider:
+    //
+    // * If the opposite table has a string indexer that intersects with the
+    //   prop, the intersection is inhabited.
+    // * If the opposite table does not have a covering indexer and is exact,
+    //   the intersection is uninhabited.
+    // * If both tables are inexact, the intersection is inhabited per width
+    //   subtyping.
+
+    const bool hereHasStringIndexer = hasStringIndexer(httv);
+    const bool thereHasStringIndexer = hasStringIndexer(tttv);
+
+    enum class HandleResult {
+        Uninhabited,
+        Ok
+    };
+
+    // Reconcile a prop in the left-side table that has no corresponding named prop in the right-side table.
+    // Returns CombineResult::Uninhabited if the indexer is incompatible or if the right side table is exact.
+    // Adds the prop to result->props otherwise.
+    auto handleUnmatchedProp = [&](bool leftExact,
+                          bool rightExact,
+                          bool rightHasStringIndexer,
+                          const std::string& name,
+                          const Property& leftProp,
+                          const std::optional<TableIndexer>& rightIndexer)
+    {
+        if (rightHasStringIndexer)
+        {
+            TypeId indexResultType = result->indexer ? result->indexer->indexResultType : rightIndexer->indexResultType;
+
+            if (leftProp.readTy)
+            {
+                if (NormalizationResult::True != isIntersectionInhabited(indexResultType, *leftProp.readTy))
+                    return HandleResult::Uninhabited;
+
+                if (leftExact)
+                    result->props[name].readTy = leftProp.readTy;
+            }
+
+            const bool indexerIsReadOnly = rightIndexer && rightIndexer->isReadOnly;
+            if (leftProp.writeTy && indexerIsReadOnly)
+                result->props[name].writeTy = leftProp.writeTy;
+
+            else if (leftProp.writeTy)
+            {
+                if (NormalizationResult::True != isIntersectionInhabited(indexResultType, *leftProp.writeTy))
+                    return HandleResult::Uninhabited;
+
+                if (leftExact)
+                    result->props[name].writeTy = leftProp.writeTy;
+            }
+        }
+        else if (rightExact)
+            return HandleResult::Uninhabited;
+        else
+            result->props[name] = leftProp;
+
+        return HandleResult::Ok;
+    };
+
+    // Props only in `here`
+    for (const auto& [name, hprop]: httv->props)
+    {
+        if (0 != tttv->props.count(name))
+            continue;
+
+        thereSubHere = false;
+
+        if (HandleResult::Uninhabited == handleUnmatchedProp(hereExact, thereExact, thereHasStringIndexer, name, hprop, tttv->indexer))
+            return builtinTypes->neverType;
+    }
+
+    // Props only in `there`
+    for (const auto& [name, tprop]: tttv->props)
+    {
+        if (0 != httv->props.count(name))
+            continue;
+
+        hereSubThere = false;
+
+        if (HandleResult::Uninhabited == handleUnmatchedProp(thereExact, hereExact, hereHasStringIndexer, name, tprop, httv->indexer))
+            return builtinTypes->neverType;
+    }
+
+    // Lastly, the tails themselves.
+
+    // Indexer? | Exact? | Outcome
+    //
+    // N/N      | */*    | OK.
+    // Y/Y      | */*    | If both indexers are writable, they must be coincident, else the table must be empty.  If either is read-only, intersect.
+    //
+    // Y/N      | Y/Y    | Uninhabited
+    // Y/N      | N/Y    | The indexer may constrain the exact props, but do not copy it over.
+    // Y/N      | Y/N    | Copy the indexer into the result.
+    // Y/N      | N/N    | Copy the indexer into the result.
+    //
+    // N/Y      | Y/Y    | Uninhabited
+    // N/Y      | Y/N    | The indexer may constrain the exact props, but do not copy it over.
+    // N/Y      | N/Y    | Copy the indexer into the result.
+    // N/Y      | N/N    | Copy the indexer into the result.
+
+    // * If neither table has an indexer, the intersection is inhabited.
+    // * If both tables have indexers and either is exact, the indexers must
+    //   be coincident.
+    // * If both tables have indexers and neither is exact, we combine the
+    //   indexers: Union the key type and intersect the value type.
+    // * If one table is exact and has no indexer and the other table has an
+    //   indexer, the intersection is uninhabited.
+    // * If one table has an indexer and the other is inexact and lacks an
+    //   indexer, the result is inhabited and has the indexer.
+
+    // Compare the tails themselves
+    if (httv->indexer.has_value() && tttv->indexer.has_value())
+    {
+        auto indexersCollide = [&]() {
+            result->indexer.reset();
+            result->state = TableState::Exact;
+
+            hereSubThere = false;
+            thereSubHere = false;
+        };
+
+        if (httv->indexer->isReadOnly && !tttv->indexer->isReadOnly)
+            hereSubThere = false;
+        if (!httv->indexer->isReadOnly && tttv->indexer->isReadOnly)
+            thereSubHere = false;
+
+        if (httv->indexer->isReadOnly || tttv->indexer->isReadOnly)
+        {
+            TypeId indexType = simplifyIntersection(builtinTypes, NotNull{arena}, httv->indexer->indexType, tttv->indexer->indexType).result;
+            TypeId indexResultType =
+                simplifyIntersection(builtinTypes, NotNull{arena}, httv->indexer->indexResultType, tttv->indexer->indexResultType).result;
+            if (is<NeverType>(indexType) || is<NeverType>(indexResultType))
+            {
+                indexersCollide();
+            }
+            else
+            {
+                if (indexType != httv->indexer->indexType || indexResultType != httv->indexer->indexResultType)
+                    hereSubThere = false;
+                if (indexType != tttv->indexer->indexType || indexResultType != tttv->indexer->indexResultType)
+                    thereSubHere = false;
+
+                const bool isReadOnly = httv->indexer->isReadOnly && tttv->indexer->isReadOnly;
+                result->indexer.emplace(indexType, indexResultType, isReadOnly);
+            }
+        }
+        else
+        {
+            if ((Relation::Coincident != relate(httv->indexer->indexType, tttv->indexer->indexType)) ||
+                (Relation::Coincident != relate(httv->indexer->indexResultType, tttv->indexer->indexResultType)))
+            {
+                indexersCollide();
+            }
+            else
+            {
+                result->indexer.emplace(*httv->indexer);
+            }
+        }
+    }
+    else if (hereExact && tttv->indexer.has_value())
+        hereSubThere = false;
+    else if (thereExact && httv->indexer.has_value())
+        thereSubHere = false;
+    else if (tttv->indexer.has_value())
+    {
+        result->indexer = tttv->indexer;
+        hereSubThere = false;
+    }
+    else if (httv->indexer.has_value())
+    {
+        result->indexer = httv->indexer;
+        hereSubThere = false;
+    }
+    else if (!httv->indexer.has_value() && !tttv->indexer.has_value())
+    {
+        // Everything is OK!
+    }
+    else
+    {
+        // All permutations should be handled above.
+        LUAU_ASSERT(!"Should be unreachable!");
+    }
+
+    TypeId table;
+    if (hereSubThere)
+        table = htable;
+    else if (thereSubHere)
+        table = ttable;
+    else
+        table = arena->addType(std::move(*result));
+
+    if (tmtable && hmtable)
+    {
+        // NOTE: this assumes metatables are invariant
+        if (std::optional<TypeId> mtable = intersectionOfTables(hmtable, tmtable, seenTablePropPairs, seenSet))
+        {
+            if (table == htable && *mtable == hmtable)
+                return here;
+            else if (table == ttable && *mtable == tmtable)
+                return there;
+            else
+                return arena->addType(MetatableType{table, *mtable});
+        }
+        else
+            return std::nullopt;
+    }
+    else if (hmtable)
+    {
+        if (table == htable)
+            return here;
+        else
+            return arena->addType(MetatableType{table, hmtable});
+    }
+    else if (tmtable)
+    {
+        if (table == ttable)
+            return there;
+        else
+            return arena->addType(MetatableType{table, tmtable});
+    }
+    else
+        return table;
+}
+
+std::optional<TypeId> Normalizer::DEPRECATED_intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet)
 {
     consumeFuel();
 
@@ -3018,7 +3401,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         return table;
 }
 
-void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSetTypes)
+void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSetTypes)
 {
     consumeFuel();
 
@@ -3041,7 +3424,7 @@ void Normalizer::intersectTables(TypeIds& heres, const TypeIds& theres)
     {
         for (TypeId there : theres)
         {
-            Set<TypeId> seenSetTypes;
+            DenseHashSet<TypeId> seenSetTypes;
             SeenTablePropPairs seenTablePropPairs;
             if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenTablePropPairs, seenSetTypes))
                 tmp.insert(*inter);
@@ -3079,7 +3462,10 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
     }
     else if (hftv->argTypes == tftv->argTypes)
     {
-        std::optional<TypePackId> retTypesOpt = intersectionOfTypePacks_INTERNAL(hftv->argTypes, tftv->argTypes);
+        std::optional<TypePackId> retTypesOpt = FFlag::LuauFixNormalizeFunctionIntersections
+            ? intersectionOfTypePacks_INTERNAL(hftv->retTypes, tftv->retTypes)
+            : intersectionOfTypePacks_INTERNAL(hftv->argTypes, tftv->argTypes);
+
         if (!retTypesOpt)
             return std::nullopt;
         argTypes = hftv->argTypes;
@@ -3273,7 +3659,7 @@ NormalizationResult Normalizer::intersectTyvarsWithTy(
     NormalizedTyvars& here,
     TypeId there,
     SeenTablePropPairs& seenTablePropPairs,
-    Set<TypeId>& seenSetTypes
+    DenseHashSet<TypeId>& seenSetTypes
 )
 {
     consumeFuel();
@@ -3372,7 +3758,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     NormalizedType& here,
     TypeId there,
     SeenTablePropPairs& seenTablePropPairs,
-    Set<TypeId>& seenSetTypes
+    DenseHashSet<TypeId>& seenSetTypes
 )
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
@@ -3476,7 +3862,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     }
     else if (get<ExternType>(there))
     {
-        if (FFlag::LuauAllowIntersectionOfOneTableWithExtern && useNewLuauSolver())
+        if (useNewLuauSolver())
         {
             NormalizedExternType nct = std::move(here.externTypes);
             TypeIds tables = std::move(here.tables);

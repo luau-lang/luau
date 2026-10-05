@@ -203,7 +203,7 @@ int lua_isthreadreset(lua_State* L)
     return L->ci == L->base_ci && L->base == L->top && L->status == LUA_OK;
 }
 
-void lua_setbuffercage(lua_State* L, lua_CageAlloc alloc, void* ud)
+void lua_setmemorycage(lua_State* L, lua_CageAlloc alloc, void* ud)
 {
     global_State* g = L->global;
     g->cagealloc = alloc;

@@ -4,8 +4,6 @@
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHintUpdate)
-
 namespace Luau
 {
 namespace CodeGen
@@ -61,7 +59,7 @@ void IrValueLocationTracking::processStoreLocationHint(const StoreLocationHint* 
 
         if (existingLoc.op.kind != IrOpKind::None)
         {
-            if (FFlag::LuauCodegenDseRestoreHintUpdate && existingLoc.lazy)
+            if (existingLoc.lazy)
             {
                 int prevReg = vmRegOp(existingLoc.op);
 
@@ -89,7 +87,7 @@ void IrValueLocationTracking::processStoreLocationHint(const StoreLocationHint* 
 
             if (logger && logger->options.includeRegSpills)
             {
-                if (FFlag::LuauCodegenDseRestoreHintUpdate && existingLoc.op.kind != IrOpKind::None)
+                if (existingLoc.op.kind != IrOpKind::None)
                     logger->formatAppendWithPrefix("  ; %%%u has a new lazy restore location R%d\n", hint->instIdx, reg);
                 else
                     logger->formatAppendWithPrefix("  ; %%%u has a lazy restore location R%d\n", hint->instIdx, reg);

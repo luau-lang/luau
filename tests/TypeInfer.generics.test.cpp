@@ -837,6 +837,8 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bound_tables_do_not_clone_original_fields")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
 local exports = {}
 local nested = {}
@@ -1555,6 +1557,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_3")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local function foldl<a, b>(arr: {a}, init: b, f: (b, a) -> b)
             local r = init
@@ -2293,6 +2297,8 @@ TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pushing")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     CheckResult result = check(R"(

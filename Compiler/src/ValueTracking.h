@@ -26,8 +26,11 @@ enum class Global
 struct Variable
 {
     AstExpr* init = nullptr; // initial value of the variable; filled by trackValues
+    AstStatBlock* owner = nullptr;    // block statement in which the variable was defined (not necessarily directly)
+    AstExprLocal* lastUsed = nullptr; // last lexical expression where the variable was read
     bool written = false;    // is the variable ever assigned to? filled by trackValues
     bool constant = false;   // is the variable's value a compile-time constant? filled by constantFold
+    bool nonLexicalUse = false; // variable may be used by expressions which do not lexically mention it (like function calls)
 };
 
 void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals);

@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Luau/DenseHash.h"
-#include "Luau/Set.h"
 #include "Luau/SubtypingVariance.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunction.h"
@@ -216,8 +215,8 @@ struct Subtyping
     // a covariant test where an invariant test would otherwise be required.
     const DenseHashSet<TypeId>* uniqueTypes = nullptr;
 
-    using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
-    using SeenTypePackSet = Set<std::pair<TypePackId, TypePackId>, TypePairHash>;
+    using SeenSet = DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash>;
+    using SeenTypePackSet = DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash>;
 
     SeenSet seenTypes;
     SeenTypePackSet seenPacks;

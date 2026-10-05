@@ -9,7 +9,11 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from .discovery import discover_tests, select_tests
+from .discovery import (
+    discover_test_index,
+    load_and_validate_tests,
+    select_test_entries,
+)
 from .executables import resolve_executables
 from .expectations import remove_actual_outputs
 from .models import COMMANDS, CONFIGURATIONS, GoldenError, UpdateMode
@@ -126,6 +130,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
             "examples:\n"
             "  python3 -m tools.golden\n"
             "  python3 -m tools.golden types/generic runtime/assertions\n"
+            "  python3 -m tools.golden tests/golden/types/generic.luau\n"
             "  python3 -m tools.golden --fflags=DebugLuauUserDefinedClasses=true\n"
             "  python3 -m tools.golden --update=strict --config=flags-on types/generic\n"
             "  python3 -m tools.golden --update-all=all --config=all\n"
@@ -135,7 +140,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=GoldenHelpFormatter,
     )
-    _ = parser.add_argument("test_ids", nargs="*", metavar="TEST_ID")
+    _ = parser.add_argument(
+        "test_ids",
+        nargs="*",
+        metavar="TEST",
+        help="test or directory ID, or a Luau source file or directory path",
+    )
     _ = parser.add_argument("--luau", metavar="PATH", help="path to the luau executable")
     _ = parser.add_argument("--luau-analyze", metavar="PATH", help="path to the luau-analyze executable")
     _ = parser.add_argument(
@@ -211,10 +221,10 @@ def main(
         parser.error("--fflags must not be empty")
 
     if args.update and not args.test_ids:
-        parser.error("--update requires at least one TEST_ID")
+        parser.error("--update requires at least one TEST")
 
     if args.update_all and args.test_ids:
-        parser.error("--update-all does not accept TEST_ID arguments")
+        parser.error("--update-all does not accept TEST arguments")
 
     if not (args.update or args.update_all) and args.config:
         parser.error("--config is only valid with --update or --update-all")
@@ -224,7 +234,7 @@ def main(
 
     if args.clean:
         if args.test_ids:
-            parser.error("--clean does not accept TEST_ID arguments")
+            parser.error("--clean does not accept TEST arguments")
         if args.dump:
             parser.error("--clean cannot be combined with --dump")
         if args.update or args.update_all:
@@ -252,12 +262,19 @@ def main(
 
     configs = _selected_matrix_values(args.config, tuple(CONFIGURATIONS), "--config", parser)
 
+    try:
+        test_index = discover_test_index(actual_test_root)
+        selected_entries = select_test_entries(test_index, args.test_ids, actual_cwd)
+    except GoldenError as exc:
+        print(f"golden: error: {exc}", file=sys.stderr)
+        return 2
+
     update: UpdateMode | None = None
     if args.update:
         update = UpdateMode(
             "targeted",
             frozenset(_selected_matrix_values(args.update, tuple(COMMANDS), "--update", parser)),
-            frozenset(args.test_ids),
+            frozenset(entry.test_id for entry in selected_entries),
             frozenset(configs),
         )
     elif args.update_all:
@@ -267,8 +284,9 @@ def main(
         )
 
     try:
-        all_tests = discover_tests(actual_test_root, update)
-        tests = select_tests(all_tests, args.test_ids)
+        all_tests = load_and_validate_tests(test_index, update)
+        selected_test_ids = {entry.test_id for entry in selected_entries}
+        tests = [test for test in all_tests if test.test_id in selected_test_ids]
         executables = resolve_executables(
             args.luau,
             args.luau_analyze,
