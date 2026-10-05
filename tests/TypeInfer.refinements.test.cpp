@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
+LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 
 using namespace Luau;
 
@@ -3854,6 +3855,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_expression_bidirectional_table_anno
     )");
 
     LUAU_REQUIRE_ERROR(result, TypeMismatch);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_not_nil_waits_for_blocked_target")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDontBlockRefinementUnconditionally, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    CheckResult result = check(R"(
+        local M = {}
+        function M.id<T>(v: T): T
+            return v
+        end
+
+        local s = M.id({} :: { a: string?, b: string? })
+        local w = if true then s.a else nil
+        local u = if true then s.a or s.b else nil
+        if w ~= nil then
+            local x = w
+        end
+        if u ~= nil then
+            local y = u
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({10, 22})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({13, 22})));
 }
 
 TEST_SUITE_END();

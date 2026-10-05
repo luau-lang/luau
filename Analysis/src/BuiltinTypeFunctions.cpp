@@ -1311,6 +1311,29 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             if (auto primitive = get<PrimitiveType>(follow(negation->ty)); primitive && primitive->type == PrimitiveType::NilType)
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
+
+                if (FFlag::LuauDontBlockRefinementUnconditionally)
+                {
+                    std::vector<TypeId> blocked;
+                    for (TypeId ty : result.blockedTypes)
+                    {
+                        if (is<BlockedType, PendingExpansionType>(follow(ty)))
+                            blocked.push_back(ty);
+                    }
+
+                    if (auto ut = get<UnionType>(follow(target)))
+                    {
+                        for (TypeId option : ut)
+                        {
+                            if (isBlockedOrUnsolvedType(follow(option)))
+                                blocked.push_back(option);
+                        }
+                    }
+
+                    if (!blocked.empty())
+                        return {nullptr, std::move(blocked)};
+                }
+
                 return {result.result, {}};
             }
         }
