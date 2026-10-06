@@ -258,6 +258,13 @@ do
   check("a\0\0b", "\0\0", "-", nil, "a-b", 1)
   check("a]b", "]", "x", nil, "axb", 1)
   check("hello", "hello", "", nil, "", 1)
+  check("abcabd", "abd", "x", nil, "abcx", 1)
+  check("xabc", "abc", "y", nil, "xy", 1)
+  check("abxab", "ab", "-", nil, "-x-", 2)
+  check("aYbaXb", "aXb", "-", nil, "aYb-", 1)
+  check("abcab", "abc", "Z", nil, "Zab", 1)
+  check("aaab", "aab", "x", nil, "ax", 1)
+  check("ab\0cab\0c", "b\0c", "!", nil, "a!a!", 2)
 
   assert(not pcall(string.gsub, "a)b", ")", "x"))
   assert(not pcall(string.gsub, "a b", " ", "%2"))

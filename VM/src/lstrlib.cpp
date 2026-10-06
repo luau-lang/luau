@@ -831,26 +831,29 @@ static void add_value(MatchState* ms, luaL_Strbuf* b, const char* s, const char*
     luaL_addvalue(b); // add result to accumulator
 }
 
-// checks if a pattern only matches its own text; note that ')' is not in SPECIALS but it is still an error in a pattern
+// checks if a pattern only matches its own text
+// ')' is not in SPECIALS, but it is still an error in a pattern, so it has to take the regular path
+// ']' is intentionally left out: it is only special inside a set, and a set always starts with '[' which is in SPECIALS
 static bool isliteralpattern(const char* p, size_t lp)
 {
+    // lookup table built from SPECIALS and ')', so that each character is checked without a strchr call
+    struct SpecialChars
+    {
+        bool chars[256] = {};
+
+        SpecialChars()
+        {
+            for (const char* c = SPECIALS ")"; *c; c++)
+                chars[uchar(*c)] = true;
+        }
+    };
+
+    static const SpecialChars specials;
+
     for (size_t i = 0; i < lp; i++)
     {
-        switch (p[i])
-        {
-        case '^':
-        case '$':
-        case '*':
-        case '+':
-        case '?':
-        case '.':
-        case '(':
-        case ')':
-        case '[':
-        case '%':
-        case '-':
+        if (specials.chars[uchar(p[i])])
             return false;
-        }
     }
 
     return true;
