@@ -131,14 +131,21 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstS
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    std::string chunkName = name.value;
-
     if (FFlag::LuauUdtfTerseChunkNames)
-        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "ty"]` with just `ty`
+    {
+        std::string chunkName = name.value;
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
 
-    // Load bytecode into Luau state
-    if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
-        return error;
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
+    else
+    {
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError_DEPRECATED(L, name.value, lua_resume(L, nullptr, 0)))
@@ -222,14 +229,21 @@ std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTy
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    std::string chunkName = name.value;
-
     if (FFlag::LuauUdtfTerseChunkNames)
-        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "ty"]` with just `ty`
+    {
+        std::string chunkName = name.value;
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
 
-    // Load bytecode into Luau state
-    if (auto error = checkResultForError(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
-        return error;
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
+    else
+    {
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError(L, name.value, lua_resume(L, nullptr, 0)))
