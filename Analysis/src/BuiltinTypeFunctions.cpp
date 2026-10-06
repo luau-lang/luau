@@ -26,6 +26,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAGVARIABLE(LuauRefineNotNilWaitsForBlockedTarget)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
@@ -1312,7 +1313,7 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
 
-                if (FFlag::LuauDontBlockRefinementUnconditionally)
+                if (FFlag::LuauDontBlockRefinementUnconditionally && FFlag::LuauRefineNotNilWaitsForBlockedTarget)
                 {
                     std::vector<TypeId> blocked;
                     for (TypeId ty : result.blockedTypes)

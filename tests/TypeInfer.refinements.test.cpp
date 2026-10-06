@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAG(LuauRefineNotNilWaitsForBlockedTarget)
 
 using namespace Luau;
 
@@ -3863,6 +3864,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_not_nil_waits_for_blocked_target")
 
     ScopedFastFlag sffs[] = {
         {FFlag::LuauDontBlockRefinementUnconditionally, true},
+        {FFlag::LuauRefineNotNilWaitsForBlockedTarget, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
