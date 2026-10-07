@@ -453,6 +453,48 @@ do
 
   assert(table.find(t4, makeobjb(20)) == 1)
   assert(table.find(t4, makeobjb(500)) == nil)
+
+  -- table.find on numbers
+  local nums = {3, 0, 2.5, 0/0, 7, -1}
+  assert(table.find(nums, 7) == 5)
+  assert(table.find(nums, -0) == 2)
+  assert(table.find(nums, 2.5) == 3)
+  assert(table.find(nums, 0/0) == nil)
+  assert(table.find(nums, "7") == nil)
+  assert(table.find(nums, 3, 2) == nil)
+  assert(table.find(nums, -1, 6) == 6)
+  assert(table.find(nums, -1, 7) == nil)
+
+  -- table.find on values compared by reference
+  local f, ta, tb = function() end, {}, setmetatable({}, {})
+  local refs = {"a", ta, f, tb, "b"}
+  assert(table.find(refs, "b") == 5)
+  assert(table.find(refs, ta) == 2)
+  assert(table.find(refs, tb) == 4)
+  assert(table.find(refs, f) == 3)
+  assert(table.find(refs, {}) == nil)
+  assert(table.find(refs, setmetatable({}, getmetatable(tb))) == nil)
+
+  -- table.find on other value types
+  assert(table.find({1, false, true}, true) == 3)
+  assert(table.find({1, true, false}, false) == 3)
+  assert(table.find({vector.create(1, 2, 3), vector.create(0, 0, 0)}, vector.create(-0, 0, 0)) == 2)
+  assert(table.find({vector.create(1, 2, 3)}, vector.create(1, 2, 4)) == nil)
+
+  -- table.find stops at the first nil in the array part
+  local holes = table.create(10, 1)
+  holes[4] = nil
+  holes[8] = 2
+  assert(table.find(holes, 2) == nil)
+  assert(table.find(holes, 2, 5) == 8)
+
+  -- table.find continues from the array part into the hash part
+  local split = {1, 2, 3}
+  split[5] = 5
+  split[4] = 4
+  assert(table.find(split, 4) == 4)
+  assert(table.find(split, 5) == 5)
+  assert(table.find(split, 6) == nil)
 end
 
 -- test table.concat

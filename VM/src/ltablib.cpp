@@ -12,6 +12,7 @@
 #include "lvm.h"
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableMoveTimeoutFix, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeTableFind, false)
 
 static int foreachi(lua_State* L)
 {
@@ -604,6 +605,61 @@ static int tfind(lua_State* L)
         luaL_argerror(L, 3, "index out of range");
 
     LuaTable* t = hvalue(L->base);
+
+    if (DFFlag::LuauOptimizeTableFind && init <= t->sizearray)
+    {
+        StkId v = L->base + 1;
+
+        // comparisons can only invoke __eq if the searched value has one, otherwise the array part can be scanned directly
+        LuaTable* mt = NULL;
+
+        if (ttistable(v))
+            mt = hvalue(v)->metatable;
+        else if (ttisuserdata(v))
+            mt = uvalue(v)->metatable;
+        else if (ttisobject(v))
+            mt = objectvalue(v)->lclass->instancemetatable;
+
+        if (!fasttm(L, mt, TM_EQ))
+        {
+            int tt = ttype(v);
+            const TValue* array = t->array;
+            int size = t->sizearray;
+            int i = init;
+
+            if (tt == LUA_TNUMBER)
+            {
+                double n = nvalue(v);
+
+                for (; i <= size && !ttisnil(&array[i - 1]); ++i)
+                    if (ttisnumber(&array[i - 1]) && nvalue(&array[i - 1]) == n)
+                        break;
+            }
+            else if (iscollectable(v) && tt != LUA_TVECTOR) // vectors are compared by value even when they are GC objects
+            {
+                GCObject* gc = gcvalue(v);
+
+                for (; i <= size && !ttisnil(&array[i - 1]); ++i)
+                    if (ttype(&array[i - 1]) == tt && gcvalue(&array[i - 1]) == gc)
+                        break;
+            }
+            else
+            {
+                for (; i <= size && !ttisnil(&array[i - 1]); ++i)
+                    if (ttype(&array[i - 1]) == tt && luaO_rawequalObj(&array[i - 1], v))
+                        break;
+            }
+
+            if (i <= size && !ttisnil(&array[i - 1]))
+            {
+                lua_pushinteger(L, i);
+                return 1;
+            }
+
+            // the rest of the search (if any) continues outside of the array part
+            init = i;
+        }
+    }
 
     for (int i = init;; ++i)
     {
