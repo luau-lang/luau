@@ -7,15 +7,12 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauConst2)
-LUAU_FASTFLAG(LuauConstJustReportErrorForUnderfill)
+LUAU_FASTFLAG(LuauExportValueSyntax)
 
 TEST_SUITE_BEGIN("ConstDeclarations");
 
 TEST_CASE_FIXTURE(Fixture, "basic_declarations_work")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         const PI = 3.14
     )"));
@@ -25,10 +22,7 @@ TEST_CASE_FIXTURE(Fixture, "basic_declarations_work")
 
 TEST_CASE_FIXTURE(Fixture, "reassignments_dont_affect_type_state")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
-    };
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueSyntax, true}};
 
     CheckResult results = check(R"(
         const PI = 3.14
@@ -38,7 +32,7 @@ TEST_CASE_FIXTURE(Fixture, "reassignments_dont_affect_type_state")
     LUAU_REQUIRE_ERROR_COUNT(1, results);
     auto err = get<SyntaxError>(results.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("Assigned expression must be a variable or a field", err->message);
+    CHECK_EQ("Variable 'PI' is constant and may not be reassigned", err->message);
     CHECK_EQ("number", toString(requireType("PI")));
 }
 
@@ -47,9 +41,6 @@ TEST_CASE_FIXTURE(Fixture, "empty_domain_is_ok")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
-        // This test used to throw a compiler exception, this flag fixes it.
-        {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
 
     CheckResult results = check(R"(
@@ -69,7 +60,6 @@ TEST_CASE_FIXTURE(Fixture, "const_extra_lvalues_are_nil_and_syntax_error_from_ca
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
     };
 
     CheckResult results = check(R"(
@@ -84,7 +74,7 @@ TEST_CASE_FIXTURE(Fixture, "const_extra_lvalues_are_nil_and_syntax_error_from_ca
     auto err = get<CountMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ(err->actual, 3);
-    CHECK_EQ(err->expected,2);
+    CHECK_EQ(err->expected, 2);
     CHECK_EQ("number", toString(requireType("X")));
     CHECK_EQ("number", toString(requireType("Y")));
     CHECK_EQ("nil", toString(requireType("Z")));
@@ -94,8 +84,6 @@ TEST_CASE_FIXTURE(Fixture, "const_extra_lvalues_are_nil_and_syntax_error_from_un
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
-        {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
 
     CheckResult results = check(R"(
@@ -115,9 +103,6 @@ TEST_CASE_FIXTURE(Fixture, "const_syntax_error_in_annotation")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
-        // This test used to throw a compiler exception, this flag fixes it.
-        {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
 
     std::ignore = check(R"(
@@ -132,7 +117,7 @@ TEST_CASE_FIXTURE(Fixture, "const_syntax_error_in_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "assign_different_values_to_const_x")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
+    ScopedFastFlag _[1]{{FFlag::LuauExportValueSyntax, true}};
 
     CheckResult result = check(R"(
         const x: string? = nil
@@ -144,20 +129,20 @@ TEST_CASE_FIXTURE(Fixture, "assign_different_values_to_const_x")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("Assigned expression must be a variable or a field", err->message);
+    CHECK_EQ("Variable 'x' is constant and may not be reassigned", err->message);
     CHECK("string?" == toString(requireType("a")));
     CHECK("string?" == toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "const_recursive_function_works")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     CheckResult result = check(R"(
         const function f(x)
             f(5)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
@@ -168,8 +153,6 @@ TEST_CASE_FIXTURE(Fixture, "const_recursive_function_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "const_tables_are_still_mutable")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     CheckResult result = check(R"(
         const TABLE = {}
         TABLE.foobar = "the fooest of bars!"
@@ -182,6 +165,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "const_tables_are_still_mutable")
         return TABLE
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     if (FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("{| TAU: number, callback: (number, string) -> boolean, foobar: string |}", toString(requireType("TABLE"), {/* exhaustive */ true}));
@@ -191,8 +176,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "const_tables_are_still_mutable")
 
 TEST_CASE_FIXTURE(Fixture, "const_shadowing")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     CheckResult result = check(R"(
         const X = "huh"
         const X = 3.14
@@ -201,7 +184,7 @@ TEST_CASE_FIXTURE(Fixture, "const_shadowing")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    // TODO CLI-197269: checking the types of `y` and `X` have different 
+    // TODO CLI-197269: checking the types of `y` and `X` have different
     // results on different platforms.
 }
 

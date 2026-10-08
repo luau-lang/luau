@@ -5,8 +5,9 @@
 
 #include <stdlib.h>
 
-LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauIntegerLibrary)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAGVARIABLE(LuauSandboxFreezesVectorMetatable)
 
 static const luaL_Reg lualibs[] = {
     {"", luaopen_base},
@@ -42,7 +43,7 @@ static const luaL_Reg lualibs_NOINTEGER[] = {
 void luaL_openlibs(lua_State* L)
 {
     const luaL_Reg* lib;
-    if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
+    if (FFlag::LuauIntegerLibrary)
         lib = lualibs;
     else
         lib = lualibs_NOINTEGER;
@@ -51,6 +52,13 @@ void luaL_openlibs(lua_State* L)
     {
         lua_pushcfunction(L, lib->func, NULL);
         lua_pushstring(L, lib->name);
+        lua_call(L, 1, 0);
+    }
+
+    if (FFlag::DebugLuauUserDefinedClassesRuntime)
+    {
+        lua_pushcfunction(L, luaopen_class, NULL);
+        lua_pushstring(L, LUA_CLASSLIBNAME);
         lua_call(L, 1, 0);
     }
 }
@@ -77,6 +85,24 @@ void luaL_sandbox(lua_State* L)
     else
     {
         lua_pop(L, 1);
+    }
+
+    if (FFlag::LuauSandboxFreezesVectorMetatable)
+    {
+#if LUA_VECTOR_SIZE == 4
+        lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+        lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
+        if (lua_getmetatable(L, -1))
+        {
+            lua_setreadonly(L, -1, true);
+            lua_pop(L, 2);
+        }
+        else
+        {
+            lua_pop(L, 1);
+        }
     }
 
     // set globals to readonly and activate safeenv since the env is immutable

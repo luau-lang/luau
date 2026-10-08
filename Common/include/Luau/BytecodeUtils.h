@@ -3,6 +3,8 @@
 
 #include "Luau/Bytecode.h"
 
+#include <stdint.h>
+
 namespace Luau
 {
 
@@ -36,6 +38,10 @@ inline int getOpLength(LuauOpcode op)
     case LOP_GETUDATAKS:
     case LOP_SETUDATAKS:
     case LOP_NAMECALLUDATA:
+    case LOP_NEWCLASSMEMBER:
+    case LOP_CALLFB:
+    case LOP_CMPPROTO:
+    case LOP_NEWCLASS:
         return 2;
 
     default:
@@ -52,6 +58,7 @@ inline bool isFastCall(LuauOpcode op)
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
     case LOP_FASTCALL3:
+    case LOP_FASTPCALL:
         return true;
 
     default:
@@ -83,6 +90,7 @@ inline bool isJumpD(LuauOpcode op)
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:
     case LOP_JUMPXEQKS:
+    case LOP_CMPPROTO:
         return true;
 
     default:
@@ -126,6 +134,9 @@ inline bool isFallthrough(LuauOpcode op)
     case LOP_JUMP:
     case LOP_JUMPBACK:
     case LOP_JUMPX:
+    case LOP_FORGPREP:
+    case LOP_FORGPREP_NEXT:
+    case LOP_FORGPREP_INEXT:
         return false;
     default:
         return true;

@@ -1,5 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Ast.h"
+#include "Luau/Common.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePath.h"
@@ -17,7 +19,13 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
+LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
+LUAU_FASTFLAG(LuauSubtypingSkipUnreadReasoning)
 
 using namespace Luau;
 
@@ -119,9 +127,14 @@ struct SubtypeFixture : Fixture
         return arena.addType(TableType{std::move(props), std::nullopt, {}, TableState::Sealed});
     }
 
-    TypeId idx(TypeId keyTy, TypeId valueTy)
+    TypeId tbl_exact(TableType::Props&& props)
     {
-        return arena.addType(TableType{{}, TableIndexer{keyTy, valueTy}, {}, TableState::Sealed});
+        return arena.addType(TableType{std::move(props), std::nullopt, TypeLevel{}, TableState::Exact});
+    }
+
+    TypeId idx(TypeId keyTy, TypeId valueTy, bool isReadOnly = false)
+    {
+        return arena.addType(TableType{{}, TableIndexer{keyTy, valueTy, isReadOnly}, {}, TableState::Sealed});
     }
 
     // `&`
@@ -158,6 +171,16 @@ struct SubtypeFixture : Fixture
         TypeId ty = cls(name);
         getMutable<ExternType>(ty)->props = std::move(props);
         return ty;
+    }
+
+    TypeId obj(const std::string& name, std::optional<TypeId> parent = std::nullopt)
+    {
+        return arena.addType(ExternType{name, {}, parent.value_or(getBuiltins()->objectType), std::nullopt, {}, nullptr, "", std::nullopt});
+    }
+
+    TypeId userDefinedCls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
+    {
+        return arena.addType(ExternType{name, {}, parent.value_or(getBuiltins()->classType), std::nullopt, {}, nullptr, "", std::nullopt});
     }
 
     TypeId opt(TypeId ty)
@@ -897,6 +920,388 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { x: number 
     CHECK_IS_NOT_SUBTYPE(meta({{"x", getBuiltins()->numberType}}), tbl({{"x", getBuiltins()->numberType}}));
 }
 
+// TODO: Delete this fixture class when clipping DebugLuauExactTableTypes and DebugLuauParseExactTables.
+struct ExactTableTypeFixture : SubtypeFixture
+{
+    ScopedFastFlag sff1{FFlag::DebugLuauParseExactTables, true};
+    ScopedFastFlag sff2{FFlag::DebugLuauExactTableTypes, true};
+};
+
+// These could be rewritten to use TEST_IS_SUBTYPE and TEST_IS_NOT_SUBTYPE once the flags are clipped.
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{} <: { ... }")
+{
+    CHECK_IS_SUBTYPE(tbl_exact({}), tbl({}));
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{ ... } <!: {}")
+{
+    CHECK_IS_NOT_SUBTYPE(tbl({}), tbl_exact({}));
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <: {x: number, ...}")
+{
+    CHECK_IS_SUBTYPE(tbl_exact({{"x", getBuiltins()->numberType}}), tbl({{"x", getBuiltins()->numberType}}));
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <: {x: number}")
+{
+    CHECK_IS_SUBTYPE(tbl_exact({{"x", getBuiltins()->numberType}}), tbl_exact({{"x", getBuiltins()->numberType}}));
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <: {read x: number?}")
+{
+    CHECK_IS_SUBTYPE(tbl_exact({{"x", getBuiltins()->numberType}}), tbl_exact({{"x", Property::readonly(getBuiltins()->optionalNumberType)}}));
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{number, ...} <!: {number}")
+{
+    TypeId left = idx(getBuiltins()->numberType, getBuiltins()->numberType);
+    getMutable<TableType>(left)->state = TableState::Sealed;
+
+    TypeId right = idx(getBuiltins()->numberType, getBuiltins()->numberType);
+    getMutable<TableType>(right)->state = TableState::Exact;
+
+    CHECK_IS_NOT_SUBTYPE(left, right);
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{number} <: {number, ...}")
+{
+    TypeId left = idx(getBuiltins()->numberType, getBuiltins()->numberType);
+    getMutable<TableType>(left)->state = TableState::Exact;
+
+    TypeId right = idx(getBuiltins()->numberType, getBuiltins()->numberType);
+    getMutable<TableType>(right)->state = TableState::Sealed;
+
+    CHECK_IS_SUBTYPE(left, right);
+}
+
+// Extra properties — the reverse property-set check (the core of "no width subtyping")
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, y: string, ...} <!: {x: number}")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        tbl({{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}}),
+        tbl_exact({{"x", getBuiltins()->numberType}})
+    );
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, y: string} <!: {x: number}")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        tbl_exact({{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}}),
+        tbl_exact({{"x", getBuiltins()->numberType}})
+    );
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, y: string} <: {x: number, ...}")
+{
+    CHECK_IS_SUBTYPE(
+        tbl_exact({{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}}),
+        tbl({{"x", getBuiltins()->numberType}})
+    );
+}
+
+// Missing properties — exact super demands full match
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <!: {x: number, y: string}")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        tbl_exact({{"x", getBuiltins()->numberType}}),
+        tbl_exact({{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}})
+    );
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, ...} <!: {x: number, y: string}")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        tbl({{"x", getBuiltins()->numberType}}),
+        tbl_exact({{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}})
+    );
+}
+
+// Property type mismatch
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <!: {x: string}")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        tbl_exact({{"x", getBuiltins()->numberType}}),
+        tbl_exact({{"x", getBuiltins()->stringType}})
+    );
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <!: {x: string, ...}")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        tbl_exact({{"x", getBuiltins()->numberType}}),
+        tbl({{"x", getBuiltins()->stringType}})
+    );
+}
+
+// Indexer + props combined
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, [string]: number} <: {x: number, [string]: number, ...}")
+{
+    TypeId left = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+    TypeId right = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Sealed
+    });
+
+    CHECK_IS_SUBTYPE(left, right);
+}
+
+// Exact tables retain ordinary width subtyping when the supertype is inexact,
+// including when the extra part of the subtype is an indexer.
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, [string]: number} <: {x: number, ...}")
+{
+    TypeId left = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+
+    CHECK_IS_SUBTYPE(left, tbl({{"x", getBuiltins()->numberType}}));
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, [string]: number} <!: {x: number}")
+{
+    TypeId left = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+    TypeId right = tbl_exact({{"x", getBuiltins()->numberType}});
+
+    CHECK_IS_NOT_SUBTYPE(left, right);
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <!: {x: number, [string]: number}")
+{
+    TypeId left = tbl_exact({{"x", getBuiltins()->numberType}});
+    TypeId right = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+
+    CHECK_IS_NOT_SUBTYPE(left, right);
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, [string]: number, ...} <!: {x: number, [string]: number}")
+{
+    TypeId left = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Sealed
+    });
+    TypeId right = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+
+    CHECK_IS_NOT_SUBTYPE(left, right);
+}
+
+// Exercises the reverse property-set check when the super has an indexer.
+// Sub has a prop `y` that the super doesn't have; the super has a [string] indexer.
+// This reaches the code path that checks whether the sub's extra prop can be
+// satisfied by the super's indexer.
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, y: string} <!: {x: number, [string]: number}")
+{
+    TypeId sub = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Exact
+    });
+    TypeId sup = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+
+    CHECK_IS_NOT_SUBTYPE(sub, sup);
+}
+
+// An extra write-only property cannot satisfy a read-write indexer.  In
+// particular, this must not dereference the absent read type.
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{write y: number} <!: {[string]: number}")
+{
+    TypeId sub = tbl_exact({{"y", Property::writeonly(getBuiltins()->numberType)}});
+    TypeId sup = arena.addType(TableType{
+        {},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+
+    CHECK_IS_NOT_SUBTYPE(sub, sup);
+}
+
+// Sub has an extra prop `y` not in the super's named props. Super has a
+// [number] indexer, so string keys can't be satisfied by it. Both sides have
+// indexers, so the indexer-presence check doesn't catch it. The reverse check
+// should reject the extra prop.
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number, y: string, [number]: number} <!: {x: number, [number]: number}")
+{
+    TypeId sub = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}},
+        TableIndexer{getBuiltins()->numberType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+    TypeId sup = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->numberType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Exact
+    });
+
+    CHECK_IS_NOT_SUBTYPE(sub, sup);
+}
+
+// Exact sub without an indexer vs sealed super with one.
+// The super is inexact so width subtyping applies, but the sub is exact and
+// cannot gain an indexer.  This should not be a subtype.
+// Exposes Subtyping.cpp:2170 (state != Sealed treats Exact like Unsealed).
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <!: {x: number, [string]: number, ...}")
+{
+    TypeId sub = tbl_exact({{"x", getBuiltins()->numberType}});
+    TypeId sup = arena.addType(TableType{
+        {{"x", getBuiltins()->numberType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        TableState::Sealed
+    });
+
+    CHECK_IS_NOT_SUBTYPE(sub, sup);
+}
+
+// The `table` primitive
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{} <: table")
+{
+    CHECK_IS_SUBTYPE(tbl_exact({}), getBuiltins()->tableType);
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "table <!: {}")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->tableType, tbl_exact({}));
+}
+
+// Metatables wrapping exact tables
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{x: number} <!: setmetatable<{x: number}, {}>")
+{
+    TypeId exactTable = tbl_exact({{"x", getBuiltins()->numberType}});
+    TypeId metatable = arena.addType(MetatableType{exactTable, tbl({})});
+
+    CHECK_IS_NOT_SUBTYPE(exactTable, metatable);
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "setmetatable<{x: number}, {}> <!: {x: number, y: string}")
+{
+    TypeId exactTable = tbl_exact({{"x", getBuiltins()->numberType}});
+    TypeId metatable = arena.addType(MetatableType{exactTable, tbl({})});
+
+    CHECK_IS_NOT_SUBTYPE(metatable, tbl_exact({{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}}));
+}
+
+// Metatables with equal exact metatables: subtyping is decided by the table part.
+// setmetatable<A, T> <: setmetatable<B, T> iff A <: B when T is an exact table.
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "setmetatable<{x: number}, {}> <: setmetatable<{x: number, ...}, {}>")
+{
+    TypeId mt = tbl_exact({});
+    TypeId subMt = arena.addType(MetatableType{tbl_exact({{"x", getBuiltins()->numberType}}), mt});
+    TypeId superMt = arena.addType(MetatableType{tbl({{"x", getBuiltins()->numberType}}), mt});
+
+    CHECK_IS_SUBTYPE(subMt, superMt);
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "setmetatable<{x: number}, {}> <!: setmetatable<{x: number, y: string}, {}>")
+{
+    TypeId mt = tbl_exact({});
+    TypeId subMt = arena.addType(MetatableType{tbl_exact({{"x", getBuiltins()->numberType}}), mt});
+    TypeId superMt = arena.addType(MetatableType{tbl_exact({{"x", getBuiltins()->numberType}, {"y", getBuiltins()->stringType}}), mt});
+
+    CHECK_IS_NOT_SUBTYPE(subMt, superMt);
+}
+
+// Negation
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{} <: ~number")
+{
+    CHECK_IS_SUBTYPE(tbl_exact({}), negate(getBuiltins()->numberType));
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "{} <!: ~table")
+{
+    CHECK_IS_NOT_SUBTYPE(tbl_exact({}), negate(getBuiltins()->tableType));
+}
+
+// Cyclic exact tables
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "cyclic_exact_table_subtypes_itself")
+{
+    TypeId a = arena.addType(BlockedType{});
+    TypeId aTable = arena.addType(TableType{
+        {{"self", a}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Exact
+    });
+    asMutable(a)->ty.emplace<BoundType>(aTable);
+
+    TypeId b = arena.addType(BlockedType{});
+    TypeId bTable = arena.addType(TableType{
+        {{"self", b}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Exact
+    });
+    asMutable(b)->ty.emplace<BoundType>(bTable);
+
+    CHECK_IS_SUBTYPE(aTable, bTable);
+}
+
+TEST_CASE_FIXTURE(ExactTableTypeFixture, "cyclic_exact_table_not_subtype_with_extra_prop")
+{
+    TypeId a = arena.addType(BlockedType{});
+    TypeId aTable = arena.addType(TableType{
+        {{"self", a}, {"extra", getBuiltins()->numberType}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Exact
+    });
+    asMutable(a)->ty.emplace<BoundType>(aTable);
+
+    TypeId b = arena.addType(BlockedType{});
+    TypeId bTable = arena.addType(TableType{
+        {{"self", b}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Exact
+    });
+    asMutable(b)->ty.emplace<BoundType>(bTable);
+
+    CHECK_IS_NOT_SUBTYPE(aTable, bTable);
+}
+
 TEST_IS_SUBTYPE(getBuiltins()->tableType, tbl({}));
 TEST_IS_SUBTYPE(tbl({}), getBuiltins()->tableType);
 
@@ -1000,6 +1405,96 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: userdata")
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), getBuiltins()->externType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "random extern type <!: object")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->externType, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "object <!: class")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->objectType, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class <!: object")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->classType, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "extern(object) <: object")
+{
+    TypeId myObject = obj("MyObject");
+    CHECK_IS_SUBTYPE(myObject, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "extern(class) <: class")
+{
+    TypeId myClass = userDefinedCls("MyClass");
+    CHECK_IS_SUBTYPE(myClass, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "multiple inheritance subclass object <: object")
+{
+    TypeId b = obj("B");
+    TypeId a = obj("A", b);
+    CHECK_IS_SUBTYPE(a, getBuiltins()->objectType);
+    CHECK_IS_SUBTYPE(b, getBuiltins()->objectType);
+    CHECK_IS_NOT_SUBTYPE(b, a);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class A and B class subtypes")
+{
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_SUBTYPE(a, getBuiltins()->classType);
+    CHECK_IS_SUBTYPE(b, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class A and B not subtypes of each other")
+{
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_NOT_SUBTYPE(a, b);
+    CHECK_IS_NOT_SUBTYPE(b, a);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Classes are subtypes of themselves")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_SUBTYPE(a, a);
+    CHECK_IS_SUBTYPE(b, b);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "user-defined class inheritance: grandchild <: grandparent")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    TypeId grandparent = userDefinedCls("Grandparent");
+    TypeId parent = userDefinedCls("Parent", grandparent);
+    TypeId child = userDefinedCls("Child", parent);
+
+    CHECK_IS_SUBTYPE(child, parent);
+    CHECK_IS_SUBTYPE(child, grandparent);
+    CHECK_IS_SUBTYPE(parent, grandparent);
+
+    CHECK_IS_NOT_SUBTYPE(parent, child);
+    CHECK_IS_NOT_SUBTYPE(grandparent, parent);
+    CHECK_IS_NOT_SUBTYPE(grandparent, child);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "user-defined class inheritance: siblings are not subtypes of each other")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    TypeId parent = userDefinedCls("Parent");
+    TypeId childOne = userDefinedCls("ChildOne", parent);
+    TypeId childTwo = userDefinedCls("ChildTwo", parent);
+
+    CHECK_IS_SUBTYPE(childOne, parent);
+    CHECK_IS_SUBTYPE(childTwo, parent);
+    CHECK_IS_NOT_SUBTYPE(childOne, childTwo);
+    CHECK_IS_NOT_SUBTYPE(childTwo, childOne);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: number")
@@ -1205,6 +1700,13 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: { lower
     CHECK_IS_SUBTYPE(base, tableWithLower);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: string")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorStringSemanticSubtyping, true};
+    auto base = meet(join(getBuiltins()->stringType, getBuiltins()->numberType), join(aType, trueSingleton));
+    CHECK_IS_SUBTYPE(base, getBuiltins()->stringType);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: ~~number")
 {
     CHECK_IS_SUBTYPE(getBuiltins()->numberType, negate(negate(getBuiltins()->numberType)));
@@ -1335,6 +1837,15 @@ TEST_IS_NOT_SUBTYPE(
     idx(getBuiltins()->numberType, join(getBuiltins()->stringType, getBuiltins()->numberType))
 );
 
+TEST_CASE_FIXTURE(SubtypeFixture, "{ read [number] : string } <: { read [number] : string | number }")
+{
+    CHECK_IS_SUBTYPE(
+        idx(getBuiltins()->numberType, getBuiltins()->stringType, true),
+        idx(getBuiltins()->numberType, join(getBuiltins()->stringType, getBuiltins()->numberType), true)
+    );
+}
+
+
 TEST_IS_NOT_SUBTYPE(tbl({{"X", getBuiltins()->numberType}}), idx(getBuiltins()->stringType, getBuiltins()->numberType));
 TEST_IS_SUBTYPE(idx(getBuiltins()->stringType, getBuiltins()->numberType), tbl({{"X", getBuiltins()->numberType}}));
 
@@ -1422,8 +1933,15 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
-        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
+        TypePathRenderMetadata subMetadata;
+        TypePathRenderMetadata superMetadata;
+
+        std::optional<TypeOrPack> optSubLeaf = (FFlag::LuauNewTypePathErrorMessages)
+                                                   ? traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena}, &subMetadata)
+                                                   : traverse_DEPRECATED(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeOrPack> optSuperLeaf = (FFlag::LuauNewTypePathErrorMessages)
+                                                     ? traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena}, &superMetadata)
+                                                     : traverse_DEPRECATED(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
 
         if (!optSubLeaf || !optSuperLeaf)
             CHECK(false);
@@ -1763,6 +2281,15 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
     );
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "successful_subtyping_has_no_reasoning")
+{
+    ScopedFastFlag sff{FFlag::LuauSubtypingSkipUnreadReasoning, true};
+
+    SubtypingResult result = isSubtype(getBuiltins()->numberType, negate(getBuiltins()->stringType));
+    CHECK(result.isSubtype);
+    CHECK(result.reasoning.empty());
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 {
     // <A, B>(x: A, y: B) -> (A & ~(false?)) | B
@@ -1815,8 +2342,6 @@ end
 
 TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_suppressing_if_all_mismatches_are_suppressing")
 {
-    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
-
     TypeId tableOne = parseType("{foo: any, bar: any}");
     TypeId tableTwo = parseType("{foo: number, bar: string}");
 
@@ -1828,8 +2353,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_suppressing_if_all_mismatches_a
 
 TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_non_suppressing_if_any_mismatches_are_non_suppressing")
 {
-    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
-
     TypeId tableOne = parseType("{foo: any, bar: string, baz: any}");
     TypeId tableTwo = parseType("{foo: number, bar: number, baz: boolaen}");
 
@@ -1853,8 +2376,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")
                      /* retTypes */ arena.addTypePack({genericT})}
     );
 
-    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+    DenseHashMap<TypeId, TypeId> genericSubstitutions;
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
 
     TypeId freeTy = arena.freshType(getBuiltins(), &scope);
     FreeType* ft = getMutable<FreeType>(freeTy);

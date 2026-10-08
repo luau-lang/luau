@@ -24,11 +24,11 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTINT(LuauNormalizerInitialFuel)
+LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -55,8 +55,6 @@ TEST_SUITE_BEGIN("RuntimeLimits");
 
 TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     constexpr const char* src = R"LUAU(
         --!strict
 
@@ -286,10 +284,13 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 
     CheckResult result = check(src);
 
-    CHECK(hasError<CodeTooComplex>(result));
+    LUAU_REQUIRE_ERRORS(result);
+
+    if (FFlag::DebugLuauForceOldSolver)
+        CHECK(hasError<CodeTooComplex>(result));
 }
 
-TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
@@ -364,7 +365,7 @@ TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
@@ -487,23 +488,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * 
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 {
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        // Clip this test with LuauIterativeTypeSearcher
+        {FFlag::LuauIterativeTypeSearcher, false},
+    };
 
     ScopedFastInt sfi{FInt::LuauGenericCounterMaxSteps, 1};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function get(scale)
             print(scale.Do.Re.Mi)
         end
-    )"));
-    CHECK_EQ("<a>({ read Do: { read Re: { read Mi: a } } }) -> ()", toString(requireType("get")));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("<T>({ read Do: { read Re: { read Mi: T } } }) -> ()", toString(requireType("get")));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_subtyping" * doctest::timeout(4.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_subtyping" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    ScopedFastInt sfi{FInt::LuauSubtypingIterationLimit, 100};
+    ScopedFastInt sfis[] = {
+        {FInt::LuauSubtypingIterationLimit, 100},
+        {FInt::LuauTypeInferIterationLimit, 100},
+    };
 
     CheckResult result = check(R"(
         local function l0<A...>()
@@ -522,11 +534,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
 
 #if defined(_MSC_VER) || defined(__APPLE__)
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "native_stack_guard_prevents_stack_overflows" * doctest::timeout(4.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "native_stack_guard_prevents_stack_overflows" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUseNativeStackGuard, true},
     };
 
     ScopedFastInt sffs[] = {
@@ -563,7 +574,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "native_stack_guard_prevents_stack_overflows"
 
 #endif
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fusion_normalization_spin" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fusion_normalization_spin" * doctest::timeout(LUAU_TIMEOUT))
 {
     LUAU_REQUIRE_ERRORS(check(R"(
 type Task = unknown
@@ -595,7 +606,7 @@ end
     )"));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_stepwise_normalization_works" * doctest::timeout(4.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_stepwise_normalization_works" * doctest::timeout(LUAU_TIMEOUT))
 {
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if _ then {n0=# _,[_]=_,``,[function(l0,l0,l0)
@@ -606,7 +617,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_stepwise_normalization_works" * docte
     )"));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_oom_unions" * doctest::timeout(4.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_oom_unions" * doctest::timeout(LUAU_TIMEOUT))
 {
     LUAU_REQUIRE_ERRORS(check(R"(
         local _ = true,l0

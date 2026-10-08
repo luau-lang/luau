@@ -95,12 +95,13 @@ print(string.format("Sorting %d equal elements in %.2f sec.", limit, os.clock()-
 check(a, function(x,y) return nil end)
 for i,v in pairs(a) do assert(not v or i=='n' and v==limit) end
 
-a = {"álo", "\0first :-)", "alo", "then this one", "45", "and a new"}
+a = {"Ã¡lo", "\0first :-)", "alo", "then this one", "45", "and a new"}
 table.sort(a)
 check(a)
 
+-- check for 'table modified during sorting'
 local ok = pcall(table.sort, a, function (x, y)
-          loadstring(string.format("a[%q] = ''", x))()
+          loadstring("a[7] = ''")() -- hide the modification from the lexical scope
           collectgarbage()
           return x<y
         end)

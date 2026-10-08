@@ -136,6 +136,10 @@ void optimizeMemoryOperandsX64(IrFunction& function)
         if (block.kind == IrBlockKind::Dead)
             continue;
 
+        // Inlining a load into its consumer inside the ExitSync block would will kill the operands listed in VM exit sync info argOps
+        if (block.kind == IrBlockKind::ExitSync)
+            continue;
+
         optimizeMemoryOperandsX64(function, block);
     }
 }

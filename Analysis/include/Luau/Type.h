@@ -97,6 +97,11 @@ struct FreeType
     TypeId upperBound = nullptr;
 
     Polarity polarity = Polarity::Unknown;
+
+    // If set, this free type was created for a primitive literal (string or boolean).
+    // When generalized, it will be resolved to its lower-bound singleton if the upper
+    // bound was narrowed, or to this primitive type otherwise.
+    std::optional<TypeId> primitiveType;
 };
 
 struct GenericType
@@ -398,30 +403,42 @@ struct FunctionType
 
 enum class TableState
 {
-    // Sealed tables have an exact, known shape
+    // A sealed table type describes an inexact subset of a table.  It
+    // participates in width subtyping.
     Sealed,
 
-    // An unsealed table can have extra properties added to it
+    // An unsealed table type represents a table whose construction has been
+    // directly witnessed by the analysis engine.  Adding extra properties to an
+    // unsealed table is permitted.
     Unsealed,
 
-    // Tables which are not yet fully understood.  We are still in the process of learning its shape.
+    // Tables which are not yet fully understood.  We are still in the process
+    // of learning its shape. Only used in the old solver.
     Free,
 
-    // A table which is a generic parameter to a function.  We know that certain properties are required,
-    // but we don't care about the full shape.
+    // A table which is a generic parameter to a function.  We know that certain
+    // properties are required, but we don't care about the full shape.  Only
+    // used in the old solver.
     Generic,
+
+    // An exact table type is similar to a sealed table, but it does not
+    // participate in width subtyping.  It describes the exact exhaustive shape
+    // of the whole table.
+    Exact,
 };
 
 struct TableIndexer
 {
-    TableIndexer(TypeId indexType, TypeId indexResultType)
+    TableIndexer(TypeId indexType, TypeId indexResultType, bool isReadOnly = false)
         : indexType(indexType)
         , indexResultType(indexResultType)
+        , isReadOnly(isReadOnly)
     {
     }
 
     TypeId indexType;
     TypeId indexResultType;
+    bool isReadOnly = false;
 };
 
 struct Property
@@ -541,6 +558,18 @@ struct ClassUserData
     virtual ~ClassUserData() {}
 };
 
+struct Obj
+{
+    TypeId ty;
+};
+
+struct Klass
+{
+    TypeId ty;
+};
+
+using NominalRelation = Variant<Obj, Klass>;
+
 /** The type of an external userdata exposed to Luau.
  *
  * Extern types behave like tables in many ways, but there are some important differences:
@@ -561,7 +590,15 @@ struct ExternType
     std::shared_ptr<ClassUserData> userData;
     ModuleName definitionModuleName;
     std::optional<Location> definitionLocation;
+    bool isOpen = false;
     std::optional<TableIndexer> indexer;
+    /* This field represents a bidirectional relationship between classes and object types
+       Given a Class, this relation should be a Obj in the variant, representing an instantiation of the class
+       Given a Object, this relation should be a Klass in the variant, representing the class prototype
+       Other sources of Extern Types will not have this relation set - this is for the classes fixture so that
+       we can go between class and object easily, given just the extern type
+     */
+    std::optional<NominalRelation> relation;
 
     ExternType(
         Name name,
@@ -571,7 +608,8 @@ struct ExternType
         Tags tags,
         std::shared_ptr<ClassUserData> userData,
         ModuleName definitionModuleName,
-        std::optional<Location> definitionLocation
+        std::optional<Location> definitionLocation,
+        bool isOpen = false
     )
         : name(std::move(name))
         , props(std::move(props))
@@ -581,6 +619,7 @@ struct ExternType
         , userData(std::move(userData))
         , definitionModuleName(std::move(definitionModuleName))
         , definitionLocation(definitionLocation)
+        , isOpen(isOpen)
     {
     }
 
@@ -617,8 +656,8 @@ struct UserDefinedFunctionData
     // References to AST elements are owned by the Module allocator which also stores this type
     AstStatTypeFunction* definition = nullptr;
 
-    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction{""};
-    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias{""};
+    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction;
+    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias;
 };
 
 enum struct TypeFunctionInstanceState
@@ -1012,6 +1051,8 @@ public:
     const TypeId bufferType;
     const TypeId functionType;
     const TypeId externType;
+    const TypeId objectType;
+    const TypeId classType;
     const TypeId tableType;
     const TypeId emptyTableType;
     const TypeId trueType;
@@ -1181,7 +1222,7 @@ private:
     using SavedIterInfo = std::pair<const T*, size_t>;
 
     VecDeque<SavedIterInfo> stack;
-    DenseHashSet<const T*> seen{nullptr}; // Only needed to protect the iterator from hanging the thread.
+    DenseHashSet<const T*> seen; // Only needed to protect the iterator from hanging the thread.
 
     void advance()
     {

@@ -114,6 +114,9 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
 
     if (lhs.indexer && rhs.indexer)
     {
+        if (lhs.indexer->isReadOnly != rhs.indexer->isReadOnly)
+            return false;
+
         if (!areEqual(seen, *lhs.indexer->indexType, *rhs.indexer->indexType))
             return false;
 

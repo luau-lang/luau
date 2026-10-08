@@ -19,7 +19,7 @@ function test()
     end
 
     local ts0 = os.clock()
-    for i=1,100000 do
+    for i=1,1_000_000 do
         local n = Number.new(42)
     end
     local ts1 = os.clock()

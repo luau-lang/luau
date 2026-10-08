@@ -9,8 +9,6 @@
 
 #include "AutocompleteCore.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 namespace Luau
 {
 

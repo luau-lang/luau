@@ -9,7 +9,6 @@
 
 #include <stdarg.h>
 
-LUAU_FASTFLAG(LuauIntegerType)
 namespace Luau
 {
 namespace CodeGen
@@ -52,7 +51,7 @@ static bool isPrintableStringConstant(const char* str, size_t len)
     return true;
 }
 
-static const char* getTagName(uint8_t tag)
+const char* getTagName(uint8_t tag)
 {
     switch (tag)
     {
@@ -84,10 +83,12 @@ static const char* getTagName(uint8_t tag)
         return "tupval";
     case LUA_TDEADKEY:
         return "tdeadkey";
+    case LUA_TCLASS:
+        return "tclass";
+    case LUA_TOBJECT:
+        return "tobject";
     case LUA_TINTEGER:
-        if (FFlag::LuauIntegerType)
-            return "tinteger";
-        [[fallthrough]];
+        return "tinteger";
     default:
         CODEGEN_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();
@@ -284,6 +285,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_EQ_TAG";
     case IrCmd::JUMP_CMP_INT:
         return "JUMP_CMP_INT";
+    case IrCmd::JUMP_CMP_INT64:
+        return "JUMP_CMP_INT64";
     case IrCmd::JUMP_EQ_POINTER:
         return "JUMP_EQ_POINTER";
     case IrCmd::JUMP_CMP_NUM:
@@ -310,6 +313,8 @@ const char* getCmdName(IrCmd cmd)
         return "TRY_CALL_FASTGETTM";
     case IrCmd::NEW_USERDATA:
         return "NEW_USERDATA";
+    case IrCmd::NEW_VECTOR:
+        return "NEW_VECTOR";
     case IrCmd::INT64_TO_NUM:
         return "INT64_TO_NUM";
     case IrCmd::INT_TO_NUM:
@@ -344,6 +349,8 @@ const char* getCmdName(IrCmd cmd)
         return "INVOKE_FASTCALL";
     case IrCmd::CHECK_FASTCALL_RES:
         return "CHECK_FASTCALL_RES";
+    case IrCmd::INVOKE_FASTPCALL:
+        return "INVOKE_FASTPCALL";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
     case IrCmd::DO_LEN:
@@ -370,6 +377,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_NO_METATABLE";
     case IrCmd::CHECK_SAFE_ENV:
         return "CHECK_SAFE_ENV";
+    case IrCmd::CHECK_YIELDABLE:
+        return "CHECK_YIELDABLE";
     case IrCmd::CHECK_ARRAY_SIZE:
         return "CHECK_ARRAY_SIZE";
     case IrCmd::CHECK_SLOT_MATCH:
@@ -524,6 +533,12 @@ const char* getCmdName(IrCmd cmd)
         return "BUFFER_READF64";
     case IrCmd::BUFFER_WRITEF64:
         return "BUFFER_WRITEF64";
+    case IrCmd::BUFFER_READI64:
+        return "BUFFER_READI64";
+    case IrCmd::BUFFER_WRITEI64:
+        return "BUFFER_WRITEI64";
+    case IrCmd::JUMP_CMP_PROTOID:
+        return "JUMP_CMP_PROTOID";
     }
 
     LUAU_UNREACHABLE();
@@ -541,11 +556,104 @@ const char* getBlockKindName(IrBlockKind kind)
         return "bb";
     case IrBlockKind::Linearized:
         return "bb_linear";
+    case IrBlockKind::ExitSync:
+        return "bb_exit";
     case IrBlockKind::Dead:
         return "dead";
     }
 
     LUAU_UNREACHABLE();
+}
+
+const char* getValueKindName(IrValueKind kind)
+{
+    switch (kind)
+    {
+    case IrValueKind::Unknown:
+        return "unknown";
+    case IrValueKind::None:
+        return "none";
+    case IrValueKind::Tag:
+        return "tag";
+    case IrValueKind::Int:
+        return "int";
+    case IrValueKind::Int64:
+        return "int64";
+    case IrValueKind::Pointer:
+        return "pointer";
+    case IrValueKind::Float:
+        return "float";
+    case IrValueKind::Double:
+        return "double";
+    case IrValueKind::Tvalue:
+        return "tvalue";
+    case IrValueKind::Count:
+        CODEGEN_ASSERT(!"invalid value kind");
+    }
+
+    LUAU_UNREACHABLE();
+}
+
+const char* getConversionCmdSuffix(IrCmd conversionCmd)
+{
+    return conversionCmd == IrCmd::INT_TO_NUM ? " as int" : conversionCmd == IrCmd::UINT_TO_NUM ? " as uint" : "";
+}
+
+uint8_t parseTagName(std::string_view name)
+{
+    if (name == "tnil")
+        return LUA_TNIL;
+
+    if (name == "tboolean")
+        return LUA_TBOOLEAN;
+
+    if (name == "tlightuserdata")
+        return LUA_TLIGHTUSERDATA;
+
+    if (name == "tnumber")
+        return LUA_TNUMBER;
+
+    if (name == "tinteger")
+        return LUA_TINTEGER;
+
+    if (name == "tvector")
+        return LUA_TVECTOR;
+
+    if (name == "tstring")
+        return LUA_TSTRING;
+
+    if (name == "ttable")
+        return LUA_TTABLE;
+
+    if (name == "tfunction")
+        return LUA_TFUNCTION;
+
+    if (name == "tuserdata")
+        return LUA_TUSERDATA;
+
+    if (name == "tthread")
+        return LUA_TTHREAD;
+
+    if (name == "tbuffer")
+        return LUA_TBUFFER;
+
+    if (name == "tproto")
+        return LUA_TPROTO;
+
+    if (name == "tupval")
+        return LUA_TUPVAL;
+
+    if (name == "tdeadkey")
+        return LUA_TDEADKEY;
+
+    if (name == "tclass")
+        return LUA_TCLASS;
+
+    if (name == "tobject")
+        return LUA_TOBJECT;
+
+    CODEGEN_ASSERT(!"Unknown type tag");
+    return 0xff;
 }
 
 void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
@@ -610,7 +718,7 @@ static void appendVmConstant(std::string& result, Proto* proto, int index)
     }
     else if (constant.tt == LUA_TVECTOR)
     {
-        const float* v = constant.value.v;
+        const LUA_VECTOR_TYPE* v = vvalue(&constant);
 
 #if LUA_VECTOR_SIZE == 4
         if (v[3] != 0)
@@ -899,6 +1007,41 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
     {
         ctx.result.append("\n");
     }
+
+    if (const VmExitSyncInfo* sync = ctx.vmExitInfo.find(instIdx))
+    {
+        if (!sync->regStores.empty())
+        {
+            append(ctx.result, "   ; exit sync: ");
+
+            bool comma = false;
+
+            for (auto& el : sync->regStores)
+            {
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
+
+                append(ctx.result, "R%d", el.reg);
+            }
+
+            comma = false;
+
+            append(ctx.result, ", {");
+
+            for (auto argOp : sync->argOps)
+            {
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
+
+                toString(ctx, argOp);
+            }
+
+            append(ctx.result, "}");
+            append(ctx.result, "\n");
+        }
+    }
 }
 
 void toStringDetailed(
@@ -992,7 +1135,7 @@ void toStringDetailed(
 std::string toString(IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -1109,7 +1252,7 @@ static void appendBlocks(IrToStringContext& ctx, const IrFunction& function, boo
 std::string toDot(const IrFunction& function, bool includeInst)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1151,7 +1294,7 @@ std::string toDot(const IrFunction& function, bool includeInst)
 std::string toDotCfg(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1174,7 +1317,7 @@ std::string toDotCfg(const IrFunction& function)
 std::string toDotDjGraph(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
 

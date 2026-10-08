@@ -201,6 +201,14 @@ const TypeId& TypePackIterator::operator*()
     return tp->head[currentIndex];
 }
 
+std::optional<TypePackId> TypePackIterator::tryGetHead() const
+{
+    if (currentIndex == 0)
+        return currentTypePack;
+    else
+        return std::nullopt;
+}
+
 std::optional<TypePackId> TypePackIterator::tail()
 {
     LUAU_ASSERT(!tp);
@@ -224,7 +232,7 @@ TypePackIterator end(TypePackId tp)
 
 TypePackId getTail(TypePackId tp)
 {
-    DenseHashSet<TypePackId> seen{nullptr};
+    DenseHashSet<TypePackId> seen;
     while (tp)
     {
         tp = follow(tp);
@@ -354,6 +362,21 @@ std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics)
     }
 
     return std::nullopt;
+}
+
+TypePackId typePackFromIterator(NotNull<TypeArena> arena, TypePackIterator startIter, TypePackIterator endIter)
+{
+    if (auto t = startIter.tryGetHead())
+        return *t;
+
+    TypePack p;
+
+    for (; startIter != endIter; ++startIter)
+        p.head.push_back(*startIter);
+
+    p.tail = startIter.tail();
+
+    return arena->addTypePack(std::move(p));
 }
 
 TypePackVar* asMutable(TypePackId tp)

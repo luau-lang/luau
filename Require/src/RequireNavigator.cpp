@@ -13,8 +13,7 @@
 #include <optional>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauRequireAliasOverrideOrderFix)
-LUAU_FASTFLAGVARIABLE(LuauRequireResolveAliasNullCheck)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauSelfIsSelfAndAlwaysSelf, false)
 
 namespace Luau::Require
 {
@@ -75,10 +74,21 @@ Error Navigator::navigateImpl(std::string_view path)
             }
         );
 
-        if (FFlag::LuauRequireAliasOverrideOrderFix)
+        if (Error error = resetToRequirer())
+            return error;
+
+        if (DFFlag::LuauSelfIsSelfAndAlwaysSelf)
         {
-            if (Error error = resetToRequirer())
-                return error;
+            if (alias == "self")
+            {
+                // If the alias is "@self", we immediately navigate directly
+                // from the requirer's context. Neither embedder-defined
+                // nor user-defined alias overrides are considered.
+                if (Error error = navigateThroughPath(path))
+                    return error;
+
+                return std::nullopt;
+            }
         }
 
         if (auto [error, wasOverridden] = toAliasOverride(alias); error)
@@ -91,12 +101,6 @@ Error Navigator::navigateImpl(std::string_view path)
                 return error;
 
             return std::nullopt;
-        }
-
-        if (!FFlag::LuauRequireAliasOverrideOrderFix)
-        {
-            if (Error error = resetToRequirer())
-                return error;
         }
 
         Config config;
@@ -114,16 +118,23 @@ Error Navigator::navigateImpl(std::string_view path)
         }
         else
         {
-            if (alias == "self")
+            if (DFFlag::LuauSelfIsSelfAndAlwaysSelf)
             {
-                // If the alias is "@self", we reset to the requirer's context and
-                // navigate directly from there.
-                if (Error error = resetToRequirer())
-                    return error;
-                if (Error error = navigateThroughPath(path))
-                    return error;
+                LUAU_ASSERT(alias != "self");
+            }
+            else
+            {
+                if (alias == "self")
+                {
+                    // If the alias is "@self", we reset to the requirer's context and
+                    // navigate directly from there.
+                    if (Error error = resetToRequirer())
+                        return error;
+                    if (Error error = navigateThroughPath(path))
+                        return error;
 
-                return std::nullopt;
+                    return std::nullopt;
+                }
             }
 
             if (Error error = toAliasFallback(alias))
@@ -273,17 +284,10 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias, Co
         {
             if (navigationContext.getConfigBehavior() == NavigationContext::ConfigBehavior::GetAlias)
             {
-                if (FFlag::LuauRequireResolveAliasNullCheck)
-                {
-                    std::optional<std::string> aliasPath = navigationContext.getAlias(desiredAlias);
-                    if (!aliasPath)
-                        return "could not resolve alias \"" + desiredAlias + "\"";
-                    config.setAlias(desiredAlias, *aliasPath, /* configLocation = */ "unused");
-                }
-                else
-                {
-                    config.setAlias(desiredAlias, *navigationContext.getAlias(desiredAlias), /* configLocation = */ "unused");
-                }
+                std::optional<std::string> aliasPath = navigationContext.getAlias(desiredAlias);
+                if (!aliasPath)
+                    return "could not resolve alias \"" + desiredAlias + "\"";
+                config.setAlias(desiredAlias, *aliasPath);
                 break;
             }
 
@@ -293,7 +297,6 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias, Co
 
             Luau::ConfigOptions opts;
             Luau::ConfigOptions::AliasOptions aliasOpts;
-            aliasOpts.configLocation = "unused";
             aliasOpts.overwriteAliases = false;
             opts.aliasOptions = std::move(aliasOpts);
 

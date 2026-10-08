@@ -15,12 +15,32 @@
 
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
-LUAU_FASTFLAG(LuauCodegenFreeBlocks)
 
 namespace Luau
 {
 namespace CodeGen
 {
+
+// PCG32 PRNG helpers for JIT layout randomization.
+// Uses the same algorithm and constants as the Lua VM (lmathlib.cpp) for consistency.
+uint64_t jitRngSeed(uintptr_t ptr)
+{
+    uint64_t state = 0;
+    state = state * 6364136223846793005ULL + (105 | 1);
+    state += uint64_t(ptr);
+    state = state * 6364136223846793005ULL + (105 | 1);
+    return state;
+}
+
+uint32_t jitRngRandom(uint64_t& state)
+{
+    uint64_t oldstate = state;
+    state = oldstate * 6364136223846793005ULL + (105 | 1);
+    uint32_t xorshifted = uint32_t(((oldstate >> 18u) ^ oldstate) >> 27u);
+    uint32_t rot = uint32_t(oldstate >> 59u);
+    return (xorshifted >> rot) | (xorshifted << ((-int32_t(rot)) & 31));
+}
+
 
 static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 
@@ -149,8 +169,7 @@ BaseCodeGenContext::BaseCodeGenContext(size_t blockSize, size_t maxTotalSize, Al
 
 BaseCodeGenContext::~BaseCodeGenContext()
 {
-    if (FFlag::LuauCodegenFreeBlocks)
-        codeAllocator.deallocate(gateAllocationData);
+    codeAllocator.deallocate(gateAllocationData);
 }
 
 [[nodiscard]] bool BaseCodeGenContext::initHeaderFunctions()
@@ -197,46 +216,19 @@ StandaloneCodeGenContext::StandaloneCodeGenContext(
     size_t codeSize
 )
 {
-    if (FFlag::LuauCodegenFreeBlocks)
-    {
-        NativeModuleRef moduleRef = sharedAllocator.insertAnonymousNativeModule(std::move(nativeProtos), data, dataSize, code, codeSize);
+    NativeModuleRef moduleRef = sharedAllocator.insertAnonymousNativeModule(std::move(nativeProtos), data, dataSize, code, codeSize);
 
-        // If we did not get a NativeModule back, allocation failed:
-        if (moduleRef.empty())
-            return {CodeGenCompilationResult::AllocationFailed};
+    // If we did not get a NativeModule back, allocation failed:
+    if (moduleRef.empty())
+        return {CodeGenCompilationResult::AllocationFailed};
 
-        logPerfFunctions(moduleProtos, moduleRef->getModuleBaseAddress(), moduleRef->getNativeProtos());
+    logPerfFunctions(moduleProtos, moduleRef->getModuleBaseAddress(), moduleRef->getNativeProtos());
 
-        // Bind the native protos and acquire an owning reference for each:
-        const uint32_t protosBound = bindNativeProtos<false>(moduleProtos, moduleRef->getNativeProtos());
-        moduleRef->addRefs(protosBound);
+    // Bind the native protos and acquire an owning reference for each:
+    const uint32_t protosBound = bindNativeProtos<false>(moduleProtos, moduleRef->getNativeProtos());
+    moduleRef->addRefs(protosBound);
 
-        return {CodeGenCompilationResult::Success, protosBound};
-    }
-    else
-    {
-        uint8_t* nativeData = nullptr;
-        size_t sizeNativeData = 0;
-        uint8_t* codeStart = nullptr;
-        if (!codeAllocator.allocate_DEPRECATED(data, int(dataSize), code, int(codeSize), nativeData, sizeNativeData, codeStart))
-        {
-            return {CodeGenCompilationResult::AllocationFailed};
-        }
-
-        // Relocate the entry offsets to their final executable addresses:
-        for (const NativeProtoExecDataPtr& nativeProto : nativeProtos)
-        {
-            NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProto.get());
-
-            header.entryOffsetOrAddress = codeStart + reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
-        }
-
-        logPerfFunctions(moduleProtos, codeStart, nativeProtos);
-
-        const uint32_t protosBound = bindNativeProtos<true>(moduleProtos, nativeProtos);
-
-        return {CodeGenCompilationResult::Success, protosBound};
-    }
+    return {CodeGenCompilationResult::Success, protosBound};
 }
 
 void StandaloneCodeGenContext::onCloseState() noexcept
@@ -248,10 +240,7 @@ void StandaloneCodeGenContext::onCloseState() noexcept
 
 void StandaloneCodeGenContext::onDestroyFunction(void* execdata) noexcept
 {
-    if (FFlag::LuauCodegenFreeBlocks)
-        getNativeProtoExecDataHeader(static_cast<const uint32_t*>(execdata)).nativeModule->release();
-    else
-        destroyNativeProtoExecData(static_cast<uint32_t*>(execdata));
+    getNativeProtoExecDataHeader(static_cast<const uint32_t*>(execdata)).nativeModule->release();
 }
 
 
@@ -518,15 +507,17 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext)
 
 template<typename AssemblyBuilder>
 [[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(
+    LogBuilder* logger,
     AssemblyBuilder& build,
     ModuleHelpers& helpers,
     Proto* proto,
     uint32_t& totalIrInstCount,
     const CompilationOptions& options,
-    CodeGenCompilationResult& result
+    CodeGenCompilationResult& result,
+    const VmEnvironmentInfo& envInfo
 )
 {
-    IrBuilder ir(options.hooks);
+    IrBuilder ir(options.hooks, envInfo);
     ir.buildFunctionIr(proto);
 
     unsigned instCount = unsigned(ir.function.instructions.size());
@@ -542,7 +533,7 @@ template<typename AssemblyBuilder>
     AssemblyOptions assemblyOptions;
     assemblyOptions.compilationOptions = options;
 
-    if (!lowerFunction(ir, build, helpers, proto, assemblyOptions, /* stats */ nullptr, result))
+    if (!lowerFunction(ir, logger, build, helpers, proto, assemblyOptions, /* stats */ nullptr, result))
     {
         return {};
     }
@@ -605,18 +596,22 @@ template<typename AssemblyBuilder>
 
 #if defined(CODEGEN_TARGET_A64)
     static unsigned int cpuFeatures = getCpuFeaturesA64();
-    A64::AssemblyBuilderA64 build(/* logText= */ false, cpuFeatures);
+    A64::AssemblyBuilderA64 build(/* logger= */ nullptr, cpuFeatures);
 #else
     static unsigned int cpuFeatures = getCpuFeaturesX64();
-    X64::AssemblyBuilderX64 build(/* logText= */ false, cpuFeatures);
+    X64::AssemblyBuilderX64 build(/* logger= */ nullptr, cpuFeatures);
 #endif
 
     ModuleHelpers helpers;
 #if defined(CODEGEN_TARGET_A64)
-    A64::assembleHelpers(build, helpers);
+    A64::assembleHelpers(/* logger= */ nullptr, build, helpers);
 #else
-    X64::assembleHelpers(build, helpers);
+    X64::assembleHelpers(/* logger= */ nullptr, build, helpers);
 #endif
+
+    VmEnvironmentInfo envInfo;
+    envInfo.hasPcall = L->global->builtinPcall != nullptr;
+    envInfo.hasXpcall = L->global->builtinXpcall != nullptr;
 
     CompilationResult compilationResult;
 
@@ -629,7 +624,8 @@ template<typename AssemblyBuilder>
     {
         CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
 
-        NativeProtoExecDataPtr nativeExecData = createNativeFunction(build, helpers, protos[i], totalIrInstCount, options, protoResult);
+        NativeProtoExecDataPtr nativeExecData =
+            createNativeFunction(nullptr, build, helpers, protos[i], totalIrInstCount, options, protoResult, envInfo);
         if (nativeExecData != nullptr)
         {
             nativeProtos.push_back(std::move(nativeExecData));
@@ -742,7 +738,7 @@ void disableNativeExecutionForFunction(lua_State* L, const int level) noexcept
     const TValue* o = ci->func;
     CODEGEN_ASSERT(ttisfunction(o));
 
-    Proto* proto = clvalue(o)->l.p;
+    Proto* proto = ci->p;
     CODEGEN_ASSERT(proto);
 
     CODEGEN_ASSERT(proto->codeentry != proto->code);

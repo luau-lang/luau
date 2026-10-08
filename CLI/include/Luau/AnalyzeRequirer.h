@@ -20,7 +20,7 @@ struct FileNavigationContext : Luau::Require::NavigationContext
 
     ConfigStatus getConfigStatus() const override;
     ConfigBehavior getConfigBehavior() const override;
-    std::optional<std::string> getAlias(const std::string& alias) const override;
+    std::optional<std::string> getAlias(const std::string& alias) override;
     std::optional<std::string> getConfig() const override;
 
     // Custom capabilities

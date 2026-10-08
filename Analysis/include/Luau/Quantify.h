@@ -22,7 +22,7 @@ template<typename K, typename V>
 struct OrderedMap
 {
     std::vector<K> keys;
-    DenseHashMap<K, V> pairings{nullptr};
+    DenseHashMap<K, V> pairings;
 
     void push(K k, V v)
     {

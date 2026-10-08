@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
+#include "lclass.h"
 #include "lvm.h"
 
 #include "lstate.h"
@@ -7,6 +8,7 @@
 #include "lfunc.h"
 #include "lobject.h"
 #include "lstring.h"
+#include "lvector.h"
 
 #include "lgc.h"
 #include "lmem.h"
@@ -15,8 +17,9 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauIntegerType)
-LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess3)
+LUAU_FASTFLAG(LuauCallFeedback)
+LUAU_FASTFLAGVARIABLE(LuauCostModel)
+LUAU_FASTFLAGVARIABLE(LuauLoadRemapOptionalUserdata)
 
 template<typename T>
 struct TempBuffer
@@ -215,6 +218,19 @@ static void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t i
     }
 }
 
+static uint8_t remapUserdataType(uint8_t type, uint8_t* userdataRemapping, uint32_t count)
+{
+    LUAU_ASSERT(FFlag::LuauLoadRemapOptionalUserdata);
+    uint8_t tag = type & ~LBC_TYPE_OPTIONAL_BIT;
+    uint8_t optional = type & LBC_TYPE_OPTIONAL_BIT;
+    uint32_t index = uint32_t(tag - LBC_TYPE_TAGGED_USERDATA_BASE);
+
+    if (index < count)
+        return userdataRemapping[index] | optional;
+
+    return type;
+}
+
 static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemapping, uint32_t count)
 {
     size_t offset = 0;
@@ -230,10 +246,17 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
         // Skip two bytes of function type introduction
         for (uint32_t i = 2; i < typeSize; i++)
         {
-            uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
+            if (FFlag::LuauLoadRemapOptionalUserdata)
+            {
+                types[i] = remapUserdataType(types[i], userdataRemapping, count);
+            }
+            else
+            {
+                uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
 
-            if (index < count)
-                types[i] = userdataRemapping[index];
+                if (index < count)
+                    types[i] = userdataRemapping[index];
+            }
         }
 
         offset += typeSize;
@@ -245,10 +268,17 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
 
         for (uint32_t i = 0; i < upvalCount; i++)
         {
-            uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
+            if (FFlag::LuauLoadRemapOptionalUserdata)
+            {
+                types[i] = remapUserdataType(types[i], userdataRemapping, count);
+            }
+            else
+            {
+                uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
 
-            if (index < count)
-                types[i] = userdataRemapping[index];
+                if (index < count)
+                    types[i] = userdataRemapping[index];
+            }
         }
 
         offset += upvalCount;
@@ -258,10 +288,17 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
     {
         for (uint32_t i = 0; i < localCount; i++)
         {
-            uint32_t index = uint32_t(data[offset] - LBC_TYPE_TAGGED_USERDATA_BASE);
+            if (FFlag::LuauLoadRemapOptionalUserdata)
+            {
+                data[offset] = char(remapUserdataType(uint8_t(data[offset]), userdataRemapping, count));
+            }
+            else
+            {
+                uint32_t index = uint32_t(data[offset] - LBC_TYPE_TAGGED_USERDATA_BASE);
 
-            if (index < count)
-                data[offset] = userdataRemapping[index];
+                if (index < count)
+                    data[offset] = userdataRemapping[index];
+            }
 
             offset += 2;
             readVarInt(data, size, offset);
@@ -286,7 +323,6 @@ static int loadsafe(
 
     uint8_t version = read<uint8_t>(data, size, offset);
 
-
     // 0 means the rest of the bytecode is the error message
     if (version == 0)
     {
@@ -296,7 +332,7 @@ static int loadsafe(
         return 1;
     }
 
-    if (version < LBC_VERSION_MIN || version > LBC_VERSION_MAX)
+    if ((version < LBC_VERSION_MIN || version > LBC_VERSION_MAX) && version != LBC_VERSION_CLASSES)
     {
         char chunkbuf[LUA_IDSIZE];
         const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
@@ -369,9 +405,14 @@ static int loadsafe(
 
     for (unsigned int i = 0; i < protoCount; ++i)
     {
+        uint32_t protoSize = 0;
+        if (version >= 12)
+            protoSize = readVarInt(data, size, offset);
+        size_t protoStartOffset = offset;
         Proto* p = luaF_newproto(L);
         p->source = source;
         p->bytecodeid = int(i);
+        p->funid = L->global->lastprotoid == 0 ? 0 : L->global->lastprotoid++;
 
         p->maxstacksize = read<uint8_t>(data, size, offset);
         p->numparams = read<uint8_t>(data, size, offset);
@@ -490,7 +531,18 @@ static int loadsafe(
                 float z = read<float>(data, size, offset);
                 float w = read<float>(data, size, offset);
                 (void)w;
-                setvvalue(&p->k[j], x, y, z, w);
+                setvvalue(L, &p->k[j], x, y, z, w);
+                break;
+            }
+
+            case LBC_CONSTANT_VECTORD:
+            {
+                double x = read<double>(data, size, offset);
+                double y = read<double>(data, size, offset);
+                double z = read<double>(data, size, offset);
+                double w = read<double>(data, size, offset);
+                (void)w;
+                setvvalue(L, &p->k[j], x, y, z, w);
                 break;
             }
 
@@ -575,61 +627,84 @@ static int loadsafe(
                 break;
             }
 
-            case LBC_CONSTANT_INTEGER:
-                if (FFlag::LuauIntegerType)
+            case LBC_CONSTANT_CLASS_SHAPE:
+            {
+                uint32_t cnid = readVarInt(data, size, offset);
+                TValue* classname = &p->k[cnid];
+                LUAU_ASSERT(ttisstring(classname));
+                uint32_t numProperties = readVarInt(data, size, offset);
+                uint32_t numMethods = readVarInt(data, size, offset);
+                uint32_t numMembers = numMethods + numProperties;
+                TString** offsetToMember = luaM_newarray(L, numMembers, TString*, L->activememcat);
+                LuaTable* membersToOffset = luaH_new(L, 0, numMembers);
+
+                for (uint32_t idx = 0; idx < numMembers; idx++)
                 {
-                    bool isNegative = read<uint8_t>(data, size, offset);
-                    uint64_t magnitude = readVarInt64(data, size, offset);
-                    setlvalue(&p->k[j], isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude);
-                    break;
+                    uint32_t mid = readVarInt(data, size, offset);
+                    TValue* memberName = &p->k[mid];
+                    LUAU_ASSERT(ttisstring(memberName));
+                    offsetToMember[idx] = tsvalue(memberName);
+                    TValue* val = luaH_setstr(L, membersToOffset, tsvalue(memberName));
+                    setnvalue(val, idx);
                 }
-                [[fallthrough]];
+
+                membersToOffset->readonly = true;
+
+                LuauClass* lco = luaR_newclass(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, envt);
+                setclassvalue(L, &p->k[j], lco);
+                break;
+            }
+
+            case LBC_CONSTANT_INTEGER:
+            {
+                bool isNegative = read<uint8_t>(data, size, offset);
+                uint64_t magnitude = readVarInt64(data, size, offset);
+                setlvalue(&p->k[j], isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude);
+                break;
+            }
 
             default:
                 LUAU_ASSERT(!"Unexpected constant kind");
             }
         }
 
-        if (FFlag::LuauUdataDirectAccess3)
+        for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
         {
-            for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
+            int targetOp = -1;
+
+            switch (LUAU_INSN_OP(*instruction))
             {
-                int targetOp = -1;
+            case LOP_GETTABLEKS:
+                targetOp = LOP_GETUDATAKS;
+                break;
 
-                switch (LUAU_INSN_OP(*instruction))
-                {
-                case LOP_GETTABLEKS:
-                    targetOp = LOP_GETUDATAKS;
-                    break;
+            case LOP_SETTABLEKS:
+                targetOp = LOP_SETUDATAKS;
+                break;
 
-                case LOP_SETTABLEKS:
-                    targetOp = LOP_SETUDATAKS;
-                    break;
-
-                case LOP_NAMECALL:
-                    targetOp = LOP_NAMECALLUDATA;
-                    break;
-                }
-
-                if (targetOp != -1)
-                {
-                    LUAU_ASSERT(instruction[1] < uint32_t(sizek));
-
-                    // We take over the upper 16 bits of AUX - so no constants with big indices.
-                    if (instruction[1] < 0x10000)
-                    {
-                        TValue* k = &p->k[instruction[1]];
-                        TString* s = tsvalue(k);
-
-                        luaS_updateatom(L, s);
-
-                        if (s->atom >= 0)
-                            *instruction = (*instruction & 0xffffff00) | targetOp;
-                    }
-                }
-
-                instruction += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(*instruction)));
+            case LOP_NAMECALL:
+                targetOp = LOP_NAMECALLUDATA;
+                break;
             }
+
+            if (targetOp != -1)
+            {
+                LUAU_ASSERT(instruction[1] < uint32_t(sizek));
+
+                // We take over the upper 16 bits of AUX - so no constants with big indices.
+                if (instruction[1] < 0x10000)
+                {
+                    TValue* k = &p->k[instruction[1]];
+                    TString* s = tsvalue(k);
+
+                    luaS_updateatom(L, s);
+
+                    if (s->atom >= 0)
+                        *instruction = (*instruction & 0xffffff00) | targetOp;
+                }
+            }
+
+            instruction += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(*instruction)));
         }
 
         const int sizep = readVarInt(data, size, offset);
@@ -701,6 +776,38 @@ static int loadsafe(
             {
                 p->upvalues[j] = readString(strings, data, size, offset);
             }
+        }
+
+        if (version >= 11)
+        {
+            p->feedbackvecsize = readVarInt(data, size, offset);
+
+            if (p->feedbackvecsize > 0)
+            {
+                p->feedbackvec = luaM_newarray(L, p->feedbackvecsize, FeedbackVectorSlot, p->memcat);
+            }
+            for (uint32_t j = 0; j < p->feedbackvecsize; j++)
+            {
+                uint8_t slottype = read<uint8_t>(data, size, offset);
+                LUAU_ASSERT(slottype == LFT_CALLTARGET);
+                FeedbackVectorSlot& slot = p->feedbackvec[j];
+                slot.kind = static_cast<FeedbackVectorSlotKind>(slottype);
+                slot.call_target.pc = readVarInt(data, size, offset);
+                slot.call_target.proto = 0;
+                slot.call_target.hits = 0;
+            }
+        }
+
+        if (version >= 12)
+        {
+            if ((p->flags & LPF_INLINABLE) != 0)
+                p->cost = readVarInt64(data, size, offset);
+        }
+
+        if (version >= 12)
+        {
+            // Potentially skipping unknown data at the end of Proto.
+            offset = protoStartOffset + protoSize;
         }
 
         protos[i] = p;

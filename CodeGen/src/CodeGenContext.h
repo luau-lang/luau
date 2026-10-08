@@ -57,8 +57,6 @@ public:
     CodeAllocator codeAllocator;
     std::unique_ptr<UnwindBuilder> unwindBuilder;
 
-    uint8_t* gateData_DEPRECATED = nullptr;
-    size_t gateDataSize_DEPRECATED = 0;
     CodeAllocationData gateAllocationData;
 
     void* userdataRemappingContext = nullptr;
@@ -77,7 +75,7 @@ public:
     [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
         const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
         const uint8_t* data,
         size_t dataSize,
         const uint8_t* code,
@@ -101,7 +99,7 @@ public:
     [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
         const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
         const uint8_t* data,
         size_t dataSize,
         const uint8_t* code,
@@ -114,6 +112,11 @@ public:
 private:
     SharedCodeAllocator sharedAllocator;
 };
+
+// JIT layout randomization helpers
+
+uint64_t jitRngSeed(uintptr_t ptr);
+uint32_t jitRngRandom(uint64_t& state);
 
 } // namespace CodeGen
 } // namespace Luau

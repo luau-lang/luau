@@ -83,47 +83,17 @@ private:
     bool checkReplacementKeys() const;
 };
 
-// A substitution which replaces generic functions by monomorphic functions
-struct Instantiation2 final : Substitution
-{
-    // Mapping from generic types to free types to be used in instantiation.
-    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
-    // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+void resolveGenericSubstitutions(
+    TypeArena* arena,
+    DenseHashMap<TypeId, TypeId>& genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId>& genericPackSubstitutions,
+    NotNull<Subtyping> subtyping,
+    NotNull<Scope> scope
+);
 
-    // Make `NotNull` with LuauInstantiationUsesGenericPolarity
-    Subtyping* subtyping = nullptr;
-    Scope* scope = nullptr;
-
-    Instantiation2(TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions, DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions)
-        : Substitution(TxnLog::empty(), arena)
-        , genericSubstitutions(std::move(genericSubstitutions))
-        , genericPackSubstitutions(std::move(genericPackSubstitutions))
-    {
-    }
-
-    Instantiation2(
-        TypeArena* arena,
-        DenseHashMap<TypeId, TypeId> genericSubstitutions,
-        DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
-        NotNull<Subtyping> subtyping,
-        NotNull<Scope> scope
-    )
-        : Substitution(TxnLog::empty(), arena)
-        , genericSubstitutions(std::move(genericSubstitutions))
-        , genericPackSubstitutions(std::move(genericPackSubstitutions))
-        , subtyping(subtyping)
-        , scope(scope)
-    {
-    }
-
-    bool ignoreChildren(TypeId ty) override;
-    bool isDirty(TypeId ty) override;
-    bool isDirty(TypePackId tp) override;
-    TypeId clean(TypeId ty) override;
-    TypePackId clean(TypePackId tp) override;
-};
-
+// FIXME: This process needs a rename.  It's not really instantiation.  It's the
+// process of substituting generics in a function type for inferred
+// substitutions.
 std::optional<TypeId> instantiate2(
     TypeArena* arena,
     DenseHashMap<TypeId, TypeId> genericSubstitutions,

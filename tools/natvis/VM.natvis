@@ -154,12 +154,12 @@
     <DisplayString Condition="!func">empty</DisplayString>
     <DisplayString Condition="func->tt != lua_Type::LUA_TFUNCTION">none</DisplayString>
 
-    <!-- Lua functions-->
+    <!-- Luau functions-->
     <DisplayString Condition="!isC() &amp;&amp; proto()->debugname">{proto()->source->data,sb}:{line()} function {proto()->debugname->data,sb}()</DisplayString>
     <DisplayString Condition="!isC()">{proto()->source->data,sb}:{line()} function()</DisplayString>
 
     <!-- C functions-->
-    <DisplayString Condition="isC() &amp;&amp; cl().c.debugname">=[C] function {cl().c.debugname,sb}() {cl().c.f,na}</DisplayString>
+    <DisplayString Condition="isC() &amp;&amp; cl().c.debugname">=[C] function {cl().c.debugname->data,sb}() {cl().c.f,na}</DisplayString>
     <DisplayString Condition="isC()">=[C] {cl().c.f,na}</DisplayString>
   </Type>
 

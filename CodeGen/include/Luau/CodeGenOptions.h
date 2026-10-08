@@ -128,6 +128,10 @@ struct CompilationOptions
     const char* const* userdataTypes = nullptr;
 
     bool recordCounters = false;
+
+    // When true, random NOP sleds are inserted between blocks to
+    // make intra-function gadget offsets unpredictable.
+    bool nopPadding = false;
 };
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
@@ -146,7 +150,7 @@ enum class IncludeUseInfo
     Yes
 };
 
-// Output CFG informations like block predecessors, successors and etc
+// Output CFG information like block predecessors, successors and etc
 enum class IncludeCfgInfo
 {
     No,
@@ -181,6 +185,7 @@ struct AssemblyOptions
     bool includeIr = false;
     bool includeOutlinedCode = false;
     bool includeIrTypes = false;
+    bool includeRegSpills = false;
 
     IncludeIrPrefix includeIrPrefix = IncludeIrPrefix::Yes;
     IncludeUseInfo includeUseInfo = IncludeUseInfo::Yes;

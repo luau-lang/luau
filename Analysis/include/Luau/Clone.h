@@ -35,7 +35,7 @@ TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, 
 TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool clonePersistentTypes);
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
-TypeId clone(TypeId tp, TypeArena& dest, CloneState& cloneState);
+TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState);
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState);
 Binding clone(const Binding& binding, TypeArena& dest, CloneState& cloneState);
 

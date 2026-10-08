@@ -11,20 +11,13 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauPcallCallbackCanReturnZeroValues)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
-LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
-LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauNewMathConstantsAnalysis)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "math_things_are_defined")
 {
-    ScopedFastFlag newMathConstants{FFlag::LuauNewMathConstantsAnalysis, true};
-
     CheckResult result = check(R"(
         local a00 = math.frexp
         local a01 = math.ldexp
@@ -81,6 +74,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_ch
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_check")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type Map<K, V> = { [K]: V }
         local map: Map<string, number> = { ["foo"] = 1, ["bar"] = 2, ["baz"] = 3 }
@@ -142,6 +137,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
         local function p(a: number, b: number) return a < b end
         table.sort(t, p)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -206,6 +203,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_checks_for_numbers")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"LUA(
         local b = bit32
     )LUA");
@@ -218,6 +217,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
 {
+    ScopedFastFlag luauRemoveLoadstringFromBuiltinDefinitions{FFlag::LuauRemoveLoadstringFromBuiltinDefinitions, true};
+
     // Extracted from lua5.1
     CheckResult result = check(R"(
         local v__G = _G
@@ -359,7 +360,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
         local v_gcinfo = gcinfo
         local v_pairs = pairs
         local v_rawget = rawget
-        local v_loadstring = loadstring
+        --local v_loadstring = loadstring
         local v_ipairs = ipairs
         local v__VERSION = _VERSION
         --local v_dofile = dofile
@@ -383,6 +384,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type A = {tag: "A", x: number}
         type B = {tag: "B", y: string}
@@ -396,9 +399,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("{ @metatable {  }, A } | { @metatable {  }, B }" == toString(requireTypeAlias("X")));
+        CHECK("setmetatable<A, {  }> | setmetatable<B, {  }>" == toString(requireTypeAlias("X")));
     else
-        CHECK("{ @metatable {|  |}, A } | { @metatable {|  |}, B }" == toString(requireTypeAlias("X")));
+        CHECK("setmetatable<A, {|  |}> | setmetatable<B, {|  |}>" == toString(requireTypeAlias("X")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
@@ -427,6 +430,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local t = table.pack(1, "foo", true)
     )");
@@ -437,6 +442,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_variadic")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
 --!strict
 function f(): (string, ...number)
@@ -452,6 +459,8 @@ local t = table.pack(f())
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local t = table.pack(1, 2, true)
     )");
@@ -462,6 +471,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local t = table.pack("a", "b", "c")
     )");
@@ -469,7 +480,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")
     LUAU_REQUIRE_NO_ERRORS(result);
     auto ty = requireType("t");
 
-    if (FFlag::LuauOverloadGetsInstantiated2 && !FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // FIXME: This is a result of us solving for `table.pack` before we
         // generalize its arguments. After we've solved it, we end up
@@ -537,8 +548,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_a_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local function nifty(x, y)
             print(x, y)
@@ -551,6 +560,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
         local x, y = coroutine.resume(co, 1, 2)
         local answer = coroutine.resume(co, 3)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -600,6 +611,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_types_inference")
             return string.format("%f %d %s", a, b, c)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(number, number, string) -> string", toString(requireType("f")));
@@ -658,6 +671,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier_type_constr
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(string) -> string", toString(requireType("f")));
 }
@@ -683,8 +698,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_functio
     // We have no plans to fix this in the old solver.
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag sff{FFlag::LuauPcallCallbackCanReturnZeroValues, true};
 
     CheckResult result = check(R"(
         local function f(): () end
@@ -1041,11 +1054,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(
-            "Expected this to be 'number', but got 'number?'; \n"
-            "the 2nd component of the union is `nil`, which is not a subtype of `number`",
-            toString(result.errors[0])
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK_EQ(
+                "Expected this to be 'number', but got 'number?'; \n"
+                "`nil` is not a subtype of `number`",
+                toString(result.errors[0])
+            );
+        else
+            CHECK_EQ(
+                "Expected this to be 'number', but got 'number?'; \n"
+                "the 2nd component of the union is `nil`, which is not a subtype of `number`",
+                toString(result.errors[0])
+            );
     }
     else
     {
@@ -1098,6 +1118,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1126,6 +1148,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types3")
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1219,8 +1243,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mutation")
 {
-    ScopedFastFlag _{FFlag::LuauRelateHandlesCoincidentTables, true};
-
     CheckResult result = check(R"(
         local t1 = {a = 42}
 
@@ -1427,6 +1449,8 @@ local function f(x: string)
     return p
 end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1679,14 +1703,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function StringSplit(input, separator)
             string.find(input, separator)
             if not separator then
                 separator = "%s+"
             end
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
@@ -1729,6 +1755,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break")
         return Immutable
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1743,6 +1771,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break_2")
             return new
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1789,26 +1819,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_singleton_types
     REQUIRE(tm);
     CHECK_EQ(tm->wantedType, getBuiltins()->stringType);
     CHECK_EQ(tm->givenType, getBuiltins()->numberType);
-}
-
-// Remove this test with FFlagLuauSilenceDynamicFormatStringErrors.
-TEST_CASE_FIXTURE(BuiltinsFixture, "better_string_format_error_when_format_string_is_dynamic")
-{
-    ScopedFastFlag solver2{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag keepDynamicFormatString{FFlag::LuauSilenceDynamicFormatStringErrors, false};
-
-    CheckResult result = check(R"(
-        local fmt: string = "Hello, %s!"
-        print(string.format(fmt, "hello"))
-        print(string.format(fmt :: any, "hello")) -- no error
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(
-        "We cannot statically check the type of `string.format` when called with a format string that is not statically known.\n"
-        "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.",
-        toString(result.errors[0])
-    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "write_only_table_assertion")
@@ -1934,10 +1944,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vector_lerp_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauExplicitTypeInstantiationSupport, true},
-    };
-
     CheckResult result = check(R"(
         local foo = table.create<<string>>(4)
         local bar = table.unpack<<string>>({})
@@ -1951,7 +1957,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_any_should_not_error")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function foo(): any
@@ -1966,7 +1972,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_any_should_not_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_check_should_not_error")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function maybeFreeze(t: any)
@@ -1981,7 +1987,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_check_should_not_erro
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_args")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         table.freeze()
@@ -1993,7 +1999,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_args")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_pack_should_error")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         table.freeze({x = 5}, {y = "hello"})
@@ -2005,7 +2011,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_pack_should_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_any_should_not_error")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function bar(): ...any
@@ -2020,7 +2026,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_any_should_not_er
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_non_error_suppressing_should_error")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function bar(): ...string
@@ -2055,7 +2061,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "variadic_return_to_single_parameter_function
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_generic_pack")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function foo<T...>(...: T...)
@@ -2073,7 +2079,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_generic_pack")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_function")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function foo(f: () -> ())

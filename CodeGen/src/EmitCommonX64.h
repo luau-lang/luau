@@ -41,12 +41,9 @@ inline constexpr RegisterX64 rBase = r14;          // StkId base
 inline constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
 inline constexpr RegisterX64 rConstants = r12;     // TValue* k
 
-inline constexpr unsigned kExtraLocals = 3;            // Number of 8 byte slots available for specialized local variables specified below
-inline constexpr unsigned kSpillSlots = 13;            // Number of 8 byte slots available for register allocator to spill data into
-inline constexpr unsigned kSpillSlots_NEW = 12;        // TODO: remove with FFlagLuauCodegenNewRegSplit
+inline constexpr unsigned kExtraLocals = 3; // Number of 8 byte slots available for specialized local variables specified below
+inline constexpr unsigned kSpillSlots = 23; // Number of 8 byte slots available for register allocator to spill data into
 static_assert((kExtraLocals + kSpillSlots) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
-inline constexpr unsigned kExtraSpillSlots = 64;
-static_assert(kExtraSpillSlots * 8 <= LUA_EXECUTION_CALLBACK_STORAGE, "can't use more extra slots than Luau global state provides");
 
 inline constexpr uint8_t kWindowsFirstNonVolXmmReg = 6;
 
@@ -232,6 +229,7 @@ void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, in
 void emitUpdatePcForExit(AssemblyBuilderX64& build);
 
 void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers);
+void emitDispatchLuauCall(AssemblyBuilderX64& build, ModuleHelpers& helpers);
 
 } // namespace X64
 } // namespace CodeGen

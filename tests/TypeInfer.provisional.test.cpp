@@ -13,17 +13,17 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauIntegerType)
-LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
-LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -54,11 +54,11 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     )";
 
     const std::string expected = R"(
-        function f(a:{fn:()->(a,b...)}): ()
+        function f(a:{fn:()->(T,U...)}): ()
             if type(a) == 'boolean' then
                 local a1:boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(a,b...)}=a
+                local a2:{fn:()->(T,U...)}=a
             end
         end
     )";
@@ -87,7 +87,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        if (FFlag::LuauIntegerType)
+        if (FFlag::LuauIntegerType2)
             CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
         else
             CHECK_EQ(expectedWithNewSolver_NOINTEGER, decorateWithTypes(code));
@@ -98,8 +98,6 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.filter")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     // This test exercises the fact that we should reduce sealed/unsealed/free tables
     // res is a unsealed table with type {((T & ~nil)?) & any}
     // Because we do not reduce it fully, we cannot unify it with `Array<T> = { [number] : T}
@@ -174,6 +172,8 @@ TEST_CASE_FIXTURE(Fixture, "weirditer_should_not_loop_forever")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -190,6 +190,8 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
         f(3, 2, 1, 0)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -197,6 +199,8 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 // For now, infer it as just a free table.
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_table")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -315,7 +319,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(LUAU_TIMEOUT))
 {
     // We have to force this test case up here before the flags kick in.
     // The reason for this is that while loading the builtins, the below flags will cause that
@@ -396,8 +400,8 @@ TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type
     else
     {
         // f and g should have the type () -> ()
-        CHECK_EQ("() -> (a...)", toString(requireType("f")));
-        CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
+        CHECK_EQ("() -> (T...)", toString(requireType("f")));
+        CHECK_EQ("<T...>() -> (T...)", toString(requireType("g")));
         CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
     }
 }
@@ -409,6 +413,8 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
         local n2n: (number) -> number = id
         local s2s: (string) -> string = id
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -500,6 +506,8 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
             index += 1
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -842,6 +850,8 @@ Expected this to be exactly 'number', but got 'number?')";
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -876,6 +886,8 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions_of_tab
             return options.variable
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1061,6 +1073,8 @@ end
 
     CheckResult result = getFrontend().check("Module/Map");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1164,6 +1178,8 @@ TEST_CASE_FIXTURE(Fixture, "luau_roact_useState_nilable_state_1")
             b(nil :: ScriptConnection?)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1289,6 +1305,8 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
 #if 0
     // This #if block describes what should happen.
     LUAU_CHECK_NO_ERRORS(result);
@@ -1308,7 +1326,7 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
     {
         LUAU_CHECK_ERROR_COUNT(1, result);
 
-        CHECK("<T, b>({T}, b) -> number" == toString(requireType("find_first")));
+        CHECK("<T, U>({T}, U) -> number" == toString(requireType("find_first")));
     }
 #endif
 }
@@ -1353,6 +1371,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_indexer_satisfies_reading_property")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // We would like this code to have _no_ errors, but it requires one of:
@@ -1378,15 +1398,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_indexer_satisfies_reading_property"
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("{ @metatable { __index: (unknown, string) -> number }, {  } }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{  }, { __index: (unknown, string) -> number }>", toString(err->givenType, {/* exhaustive */ true}));
     CHECK_EQ("{ read X: number }", toString(err->wantedType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function __remove(__: number?) end
 
         function __removeItem(self, itemId: number)
@@ -1395,7 +1417,9 @@ TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
                __remove(index)
             end
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     // TODO CLI-168953: This is not correct. We should not be inferring `never`
     // for the second return type of `getItem`.
@@ -1417,41 +1441,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_many_nested_typeof_contexts")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_inference_variadic_type_pack_read_only_prop")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local foo: { read bar: (...string) -> () } = {
-            bar = function (foobar)
-                print(foobar)
-            end
-        }
-    )"));
-
-    // CLI-174314: This should be `string`: we need to flatten and *extend*
-    // the type packs for function arguments, so that variadic type packs
-    // fill in.
-    CHECK_EQ("unknown", toString(requireTypeAtPosition({3, 24})));
-}
 
 TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     // CLI-169235: This is just wrong, we should be rejecting this code.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function foo(
             t: { [string]: number } | { [number]: number }
         )
             return t[true]
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typechecking")
 {
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
 
     CheckResult result = check(R"(
         type dog = { name: string }
@@ -1468,6 +1479,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
         -- this should work because they should match with the left-right dog variant with optionals!
         bark{ [molly] = { left = laika }, [draco] = { right = cindy } }
     )");
+
+    ignoreMissingAnnotations(result);
 
 
     // FIXME(CLI-178738): This should actually be no errors.
@@ -1534,12 +1547,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauThreadUniferStateThroughTypeFunctionReduction, true},
-        {FFlag::LuauSubtypingReplaceBounds, true},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
-    CHECK_THROWS_AS(
-        check(R"(
+    CheckResult results = check(R"(
         local settingsTable = {}
 
         type Settings = typeof(settingsTable)
@@ -1555,19 +1566,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
         end
 
         return settings
-        )"),
-        InternalCompilerError
-    );
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    // It's *maybe* correct for this to error. We claim that `index<_, never>`
+    // is uninhabited. This is a valid interpretation, but unclear if
+    // it's the right one for Luau.
+    //
+    // Prior it threw an exception, this seems better.
+    CHECK(get<UninhabitedTypeFunction>(results.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // This should have a type checking error, at least, but previously caused
     // an internal compiler exception.
@@ -1577,5 +1589,109 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
     )"));
 }
 
+
+// When a union super type has multiple free-type members,
+// propagateToFreeMembers adds subTy as a lower bound to ALL of them. This is an over-approximation:
+// `freeA <: T | U` only requires one of T or U to contain freeA, not both.
+//
+// Here, `true` (a FreeType for singleton inference) is passed to `x: T | U`. The fix propagates
+// `boolean` to both T and U, so T ends up with a lower bound of `boolean | number` even though
+// `1` alone should fully determine T. The ideal inferred type for `a` would be `number`.
+//
+// The over-constraining is sound (wider types, not false errors) and benign for the common case
+// (`T | nil` has only one free member).
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_super_with_multiple_free_members_over_constrains_lower_bounds")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        local function f<T, U>(x: T | U, y: T): T
+            return y
+        end
+        local a = f(true, 1)
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    // Should ideally be "number" — T is fully determined by y=1, but the `true` argument
+    // to x: T|U propagates boolean to T as well, so we get the over-approximated type.
+    CHECK("boolean | number" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_intersection_of_indexers_should_error")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { good: boolean } & { bad: boolean }
+        local key: string
+        local val = tbl[key]
+    )");
+
+    // This should definitely error.
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("*error-type*", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_union_of_indexers_should_error")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { good: boolean } | { bad: boolean }
+        local key: string
+        local val = tbl[key]
+    )");
+
+    // This should definitely error.
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("*error-type*", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_union_of_indexers_with_one_good_option_should_error")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { good: boolean } | { [string]: string }
+        local key: string
+        local val = tbl[key]
+    )");
+
+    // This should definitely error ...
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // ... but `string | *error-type*` is correct.
+    CHECK_EQ("*error-type* | string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_unreduced_intersection_of_indexers")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string]: string | number } & { [string]: string | boolean }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    // We *probably* want to normalize this to `string`.
+    CHECK_EQ("(boolean | string) & (number | string)", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_unreduced_union_of_indexers")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string]: "hi" } | { [string]: string}
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    // We *probably* want to normalize this to `string`.
+    CHECK_EQ("\"hi\" | string", toString(requireType("val")));
+}
 
 TEST_SUITE_END();

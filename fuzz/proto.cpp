@@ -9,6 +9,7 @@
 #include "Luau/Compiler.h"
 #include "Luau/Config.h"
 #include "Luau/Frontend.h"
+#include "Luau/JitInliner.h"
 #include "Luau/Linter.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
@@ -42,6 +43,7 @@ const bool kFuzzVM = getEnvParam("LUAU_FUZZ_VM", true);
 const bool kFuzzPrettyPrint = getEnvParam("LUAU_FUZZ_PRETTY_PRINT", true);
 const bool kFuzzCodegenVM = getEnvParam("LUAU_FUZZ_CODEGEN_VM", true);
 const bool kFuzzCodegenAssembly = getEnvParam("LUAU_FUZZ_CODEGEN_ASM", true);
+const bool kFuzzJitInliner = getEnvParam("LUAU_FUZZ_JIT_INLINER", true);
 
 // Should we generate type annotations?
 const bool kFuzzTypes = getEnvParam("LUAU_FUZZ_GEN_TYPES", true);
@@ -54,8 +56,11 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
+LUAU_FASTINT(DebugLuauTypeFunctionRuntimeHeapLimit)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 const double kTypecheckTimeoutSec = 4.0;
 
@@ -269,6 +274,10 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     FInt::LuauTypeInferIterationLimit.value = 1000;
     FInt::LuauTarjanChildLimit.value = 1000;
     FInt::LuauTableTypeMaximumStringifierLength.value = 100;
+    // Limit the heap size for type functions to ~512 MB to avoid
+    // the fuzzing infrastructure claiming we OOM'd because you can
+    // make a 4GB table.
+    FInt::DebugLuauTypeFunctionRuntimeHeapLimit.value = 512 * 1024 * 1024;
 
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
     {
@@ -278,6 +287,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
     FFlag::DebugLuauFreezeArena.value = true;
     FFlag::DebugLuauAbortingChecks.value = true;
+    FFlag::DebugLuauUserDefinedClasses.value = true;
+    FFlag::DebugLuauUserDefinedClassesRuntime.value = true;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 
@@ -299,6 +310,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
     Luau::ParseOptions parseOptions;
     parseOptions.captureComments = true;
+    parseOptions.storeCstData = kFuzzPrettyPrint;
 
     std::vector<Luau::ParseResult> parseResults;
 
@@ -448,6 +460,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     if (kFuzzVM || kFuzzCodegenVM)
     {
         static lua_State* globalState = createGlobalState();
+        if (kFuzzJitInliner)
+            Luau::JitInliner::setup(globalState);
 
         auto runCode = [](const std::string& bytecode, bool useCodegen)
         {
@@ -468,7 +482,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
             // we'd expect full GC to reclaim all memory allocated by the script
             lua_gc(globalState, LUA_GCCOLLECT, 0);
-            LUAU_ASSERT(heapSize < 256 * 1024);
+            LUAU_ASSERT(heapSize < 320 * 1024);
         };
 
         if (kFuzzVM && !bytecodeO1.empty())

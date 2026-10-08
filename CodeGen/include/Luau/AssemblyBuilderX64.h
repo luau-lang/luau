@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Label.h"
+#include "Luau/LogBuilder.h"
 #include "Luau/ConditionX64.h"
 #include "Luau/OperandX64.h"
 #include "Luau/RegisterX64.h"
@@ -48,8 +49,8 @@ enum class ABIX64
 class AssemblyBuilderX64
 {
 public:
-    explicit AssemblyBuilderX64(bool logText, ABIX64 abi, unsigned int features = 0);
-    explicit AssemblyBuilderX64(bool logText, unsigned int features = 0);
+    explicit AssemblyBuilderX64(LogBuilder* logger, ABIX64 abi, unsigned int features);
+    explicit AssemblyBuilderX64(LogBuilder* logger, unsigned int features);
     ~AssemblyBuilderX64();
 
     // Base two operand instructions with 9 opcode selection
@@ -172,7 +173,7 @@ public:
     void vmovaps(OperandX64 dst, OperandX64 src);
     void vmovupd(OperandX64 dst, OperandX64 src);
     void vmovups(OperandX64 dst, OperandX64 src);
-    void vmovq(OperandX64 lhs, OperandX64 rhs);
+    void vmovq(OperandX64 dst, OperandX64 src);
 
     void vmaxps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
@@ -223,21 +224,18 @@ public:
     OperandX64 f64x2(double x, double y);
     OperandX64 bytes(const void* ptr, size_t size, size_t align = 8);
 
-    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
-
     // Code size is measured in 'code' array units - uint8_t on x64 and uint32_t on arm64
     uint32_t getCodeSize() const;
 
     unsigned getInstructionCount() const;
 
+    static const char* getSizeName(SizeX64 size);
+    static const char* getRegisterName(RegisterX64 reg);
+
     // Resulting data and code that need to be copied over one after the other
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;
     std::vector<uint8_t> code;
-
-    std::string text;
-
-    const bool logText = false;
 
     const ABIX64 abi;
 
@@ -316,8 +314,10 @@ private:
     LUAU_NOINLINE void log(const char* opcode, RegisterX64 reg, Label label);
     void log(OperandX64 op);
 
-    const char* getSizeName(SizeX64 size) const;
-    const char* getRegisterName(RegisterX64 reg) const;
+    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
+
+    LogBuilder* logger = nullptr;
+    const bool logText = false;
 
     uint32_t nextLabel = 1;
     std::vector<Label> pendingLabels;

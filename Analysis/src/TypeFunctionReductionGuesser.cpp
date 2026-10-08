@@ -19,8 +19,8 @@ struct InstanceCollector2 : TypeOnceVisitor
 {
     VecDeque<TypeId> tys;
     VecDeque<TypePackId> tps;
-    DenseHashSet<TypeId> cyclicInstance{nullptr};
-    DenseHashSet<TypeId> instanceArguments{nullptr};
+    DenseHashSet<TypeId> cyclicInstance;
+    DenseHashSet<TypeId> instanceArguments;
 
     InstanceCollector2()
         : TypeOnceVisitor("InstanceCollector2", /* skipBoundTypes */ true)

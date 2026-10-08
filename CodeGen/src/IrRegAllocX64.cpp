@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrRegAllocX64.h"
 
+#include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 #include "Luau/LoweringStats.h"
 
@@ -8,7 +9,8 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenNewRegSplit)
+LUAU_FASTFLAG(DebugCodegenLimitRegs)
+LUAU_FASTFLAGVARIABLE(LuauCodegenX64IntSpillRestore)
 
 namespace Luau
 {
@@ -22,11 +24,12 @@ static_assert(sizeof(kValueDwordSize) / sizeof(kValueDwordSize[0]) == size_t(IrV
 
 static const RegisterX64 kGprAllocOrder[] = {rax, rdx, rcx, rbx, rsi, rdi, r8, r9, r10, r11};
 
-IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, LoweringStats* stats)
-    : build(build)
+IrRegAllocX64::IrRegAllocX64(LogBuilder* logger, AssemblyBuilderX64& build, IrFunction& function, LoweringStats* stats)
+    : logger(logger)
+    , build(build)
     , function(function)
     , stats(stats)
-    , usableXmmRegCount(getXmmRegisterCount(build.abi))
+    , usableXmmRegCount(FFlag::DebugCodegenLimitRegs ? kLimitedSimdRegCount : getXmmRegisterCount(build.abi))
 {
     freeGprMap.fill(true);
     gprInstUsers.fill(kInvalidInstIdx);
@@ -36,6 +39,8 @@ IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, Lo
 
 RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
 {
+    allocActionCount++;
+
     if (size == SizeX64::xmmword)
     {
         for (size_t i = 0; i < usableXmmRegCount; ++i)
@@ -50,13 +55,30 @@ RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
     }
     else
     {
-        for (RegisterX64 reg : kGprAllocOrder)
+        if (FFlag::DebugCodegenLimitRegs)
         {
-            if (freeGprMap[reg.index])
+            for (size_t i = 0; i < kLimitedGprRegCount; ++i)
             {
-                freeGprMap[reg.index] = false;
-                gprInstUsers[reg.index] = instIdx;
-                return RegisterX64{size, reg.index};
+                RegisterX64 reg = kGprAllocOrder[i];
+
+                if (freeGprMap[reg.index])
+                {
+                    freeGprMap[reg.index] = false;
+                    gprInstUsers[reg.index] = instIdx;
+                    return RegisterX64{size, reg.index};
+                }
+            }
+        }
+        else
+        {
+            for (RegisterX64 reg : kGprAllocOrder)
+            {
+                if (freeGprMap[reg.index])
+                {
+                    freeGprMap[reg.index] = false;
+                    gprInstUsers[reg.index] = instIdx;
+                    return RegisterX64{size, reg.index};
+                }
             }
         }
     }
@@ -192,6 +214,130 @@ bool IrRegAllocX64::isLastUseReg(const IrInst& target, uint32_t instIdx) const
     return target.lastUse == instIdx && !target.reusedReg;
 }
 
+void IrRegAllocX64::recordAndFreeLastUse(uint32_t blockIdx, IrInst& target, uint32_t originInstIdx)
+{
+    ExitSyncArgX64 arg;
+    arg.instIdx = function.getInstIndex(target);
+
+    if (target.spilled || target.needsReload)
+    {
+        for (size_t i = 0; i < spills.size(); i++)
+        {
+            if (spills[i].instIdx == arg.instIdx)
+            {
+                const IrSpillX64& spill = spills[i];
+
+                arg.originalReg = spill.originalLoc;
+                arg.stackSlot = spill.stackSlot;
+
+                // Capture restore location state at the current instruction
+                if (arg.stackSlot == kNoStackSlot)
+                    arg.restoreLocation = function.findRestoreLocation(target, /*limitToCurrentBlock*/ false);
+
+                // If this was the last use, free register by not restoring it fully and remove the spill record
+                if (isLastUseReg(target, originInstIdx))
+                {
+                    if (arg.stackSlot != kNoStackSlot)
+                    {
+                        unsigned end = arg.stackSlot + kValueDwordSize[int(spill.valueKind)];
+
+                        for (unsigned pos = arg.stackSlot; pos < end; pos++)
+                            usedSpillSlotHalfs.set(pos, false);
+                    }
+
+                    CODEGEN_ASSERT(target.regX64 == noreg);
+                    target.spilled = false;
+                    target.needsReload = false;
+
+                    spills[i] = spills.back();
+                    spills.pop_back();
+                }
+
+                break;
+            }
+        }
+    }
+    else
+    {
+        CODEGEN_ASSERT(target.regX64 != noreg);
+        arg.reg = target.regX64;
+        arg.originalReg = target.regX64;
+
+        if (isLastUseReg(target, originInstIdx))
+        {
+            freeReg(target.regX64);
+            target.regX64 = noreg;
+        }
+    }
+
+    exitSyncArgs[blockIdx].push_back(arg);
+}
+
+void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
+{
+    updateLastUseLocationsInBlock(function, blockIdx);
+
+    const ExitSyncArgsX64* args = exitSyncArgs.find(blockIdx);
+
+    if (!args)
+        return;
+
+    for (const ExitSyncArgX64& arg : *args)
+    {
+        IrInst& inst = function.instructions[arg.instIdx];
+
+        inst.reusedReg = false;
+        inst.needsReload = false;
+        inst.spilled = false;
+
+        if (arg.reg != noreg)
+        {
+            inst.regX64 = arg.reg;
+
+            takeReg(arg.reg, arg.instIdx);
+        }
+        else if (arg.stackSlot != kNoStackSlot)
+        {
+            inst.regX64 = noreg;
+            inst.spilled = true;
+
+            IrSpillX64 spill;
+            spill.instIdx = arg.instIdx;
+            spill.valueKind = getCmdValueKind(inst.cmd);
+            spill.stackSlot = arg.stackSlot;
+            spill.originalLoc = arg.originalReg;
+
+            spills.push_back(spill);
+
+            // Mark the spill slot as occupied so restore can free it
+            unsigned end = spill.stackSlot + kValueDwordSize[int(spill.valueKind)];
+            for (unsigned pos = spill.stackSlot; pos < end; pos++)
+            {
+                CODEGEN_ASSERT(!usedSpillSlotHalfs.test(pos));
+                usedSpillSlotHalfs.set(pos);
+            }
+        }
+        else
+        {
+            // Value has a restore address (rematerializable)
+            inst.regX64 = noreg;
+            inst.needsReload = true;
+
+            // Re-record the restore location captured at snapshot time
+            // Later instructions in the source block may have invalidated it in IrValueLocationTracking
+            function.recordRestoreLocation(arg.instIdx, arg.restoreLocation);
+
+            IrSpillX64 spill;
+            spill.instIdx = arg.instIdx;
+            spill.valueKind = getCmdValueKind(inst.cmd);
+            spill.stackSlot = kNoStackSlot;
+            spill.originalLoc = arg.originalReg;
+
+            spills.push_back(spill);
+        }
+    }
+}
+
 void IrRegAllocX64::preserve(IrInst& inst)
 {
     IrSpillX64 spill;
@@ -206,49 +352,18 @@ void IrRegAllocX64::preserve(IrInst& inst)
     {
         unsigned i = findSpillStackSlot(spill.valueKind);
 
-        if (isExtraSpillSlot(i))
-        {
-            int extraOffset = getExtraSpillAddressOffset(i);
-
-            // Tricky situation, no registers left, but need a register to calculate an address
-            // We will try to take r11 unless it's actually the register being spilled
-            RegisterX64 emergencyTemp = inst.regX64.size == SizeX64::xmmword || inst.regX64.index != 11 ? r11 : r10;
-
-            build.mov(qword[sTemporarySlot + 0], emergencyTemp);
-
-            build.mov(emergencyTemp, qword[rState + offsetof(lua_State, global)]);
-            build.lea(emergencyTemp, addr[emergencyTemp + offsetof(global_State, ecbdata) + extraOffset]);
-
-            if (spill.valueKind == IrValueKind::Tvalue)
-                build.vmovups(xmmword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Double)
-                build.vmovsd(qword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
-                build.mov(qword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
-                build.mov(dword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Float)
-                build.vmovss(dword[emergencyTemp], inst.regX64);
-            else
-                CODEGEN_ASSERT(!"Unsupported value kind");
-
-            build.mov(emergencyTemp, qword[sTemporarySlot + 0]);
-        }
+        if (spill.valueKind == IrValueKind::Tvalue)
+            build.vmovups(xmmword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Double)
+            build.vmovsd(qword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
+            build.mov(qword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
+            build.mov(dword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Float)
+            build.vmovss(dword[sSpillArea + i * 4], inst.regX64);
         else
-        {
-            if (spill.valueKind == IrValueKind::Tvalue)
-                build.vmovups(xmmword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Double)
-                build.vmovsd(qword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
-                build.mov(qword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
-                build.mov(dword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Float)
-                build.vmovss(dword[sSpillArea + i * 4], inst.regX64);
-            else
-                CODEGEN_ASSERT(!"Unsupported value kind");
-        }
+            CODEGEN_ASSERT(!"Unsupported value kind");
 
         unsigned end = i + kValueDwordSize[int(spill.valueKind)];
 
@@ -263,13 +378,73 @@ void IrRegAllocX64::preserve(IrInst& inst)
 
         if (stats)
             stats->spillsToSlot++;
+
+        if (logger && logger->options.includeRegSpills)
+        {
+            const char* kindName = getValueKindName(spill.valueKind);
+            const char* regName = AssemblyBuilderX64::getRegisterName(spill.originalLoc);
+
+            if (logger->options.includeAssembly)
+                logger->formatAppendWithPrefix("  ; spill %%%u (%s %s) to slot %u\n", spill.instIdx, kindName, regName, spill.stackSlot);
+            else
+                logger->formatAppendWithPrefix("  ; spill %%%u (%s) to slot %u\n", spill.instIdx, kindName, spill.stackSlot);
+        }
     }
     else
     {
+        ValueRestoreLocation loc = function.findRestoreLocation(inst, true);
+
+        // If the value restore location is lazy, we need to materialize it
+        if (loc.lazy)
+        {
+            CODEGEN_ASSERT(loc.op.kind == IrOpKind::VmReg);
+            CODEGEN_ASSERT(loc.conversionCmd == IrCmd::NOP);
+
+            int storeReg = vmRegOp(loc.op);
+
+            if (spill.valueKind == IrValueKind::Tvalue)
+                build.vmovups(luauReg(storeReg), inst.regX64);
+            else if (spill.valueKind == IrValueKind::Double)
+                build.vmovsd(luauRegValue(storeReg), inst.regX64);
+            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
+                build.mov(luauRegValue(storeReg), inst.regX64);
+            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
+                build.mov(luauRegValueInt(storeReg), inst.regX64);
+            else
+                CODEGEN_ASSERT(!"Unsupported value kind for lazy store");
+
+            // Partial value store should not have an interpretation in VM/GC and is protected by 'nil' tag
+            if (spill.valueKind != IrValueKind::Tvalue)
+                build.mov(luauRegTag(storeReg), 0);
+
+            function.materializeRestoreLocation(spill.instIdx);
+        }
+
         inst.needsReload = true;
 
         if (stats)
             stats->spillsToRestore++;
+
+        if (logger && logger->options.includeRegSpills)
+        {
+            const char* kindName = getValueKindName(spill.valueKind);
+            const char* regName = AssemblyBuilderX64::getRegisterName(spill.originalLoc);
+
+            if (logger->options.includeAssembly)
+                logger->formatAppendWithPrefix("  ; evict %%%u (%s %s) into ", spill.instIdx, kindName, regName);
+            else
+                logger->formatAppendWithPrefix("  ; evict %%%u (%s) into ", spill.instIdx, kindName);
+
+            if (loc.op.kind == IrOpKind::VmReg)
+                logger->formatAppend("R%d", vmRegOp(loc.op));
+            else if (loc.op.kind == IrOpKind::VmConst)
+                logger->formatAppend("K%d", vmConstOp(loc.op));
+
+            if (loc.lazy)
+                logger->append(" [lazy]");
+
+            logger->append("\n");
+        }
     }
 
     spills.push_back(spill);
@@ -288,37 +463,18 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
         {
             RegisterX64 reg = intoOriginalLocation ? takeReg(spills[i].originalLoc, instIdx) : allocReg(spills[i].originalLoc.size, instIdx);
 
-            // When restoring the value, we allow cross-block restore because we have commited to the target location at spill time
+            // When restoring the value, we allow cross-block restore because we have committed to the target location at spill time
             ValueRestoreLocation restoreLocation = function.findRestoreLocation(inst, /*limitToCurrentBlock*/ false);
 
             OperandX64 restoreAddr = noreg;
-
-            RegisterX64 emergencyTemp = reg.size == SizeX64::xmmword ? r11 : qwordReg(reg);
 
             // Previous call might have relocated the spill vector, so this reference can't be taken earlier
             const IrSpillX64& spill = spills[i];
 
             if (spill.stackSlot != kNoStackSlot)
             {
-                if (isExtraSpillSlot(spill.stackSlot))
-                {
-                    int extraOffset = getExtraSpillAddressOffset(spill.stackSlot);
-
-                    // Need to calculate an address, but everything might be taken
-                    if (reg.size == SizeX64::xmmword)
-                        build.mov(qword[sTemporarySlot + 0], emergencyTemp);
-
-                    build.mov(emergencyTemp, qword[rState + offsetof(lua_State, global)]);
-                    build.lea(emergencyTemp, addr[emergencyTemp + offsetof(global_State, ecbdata) + extraOffset]);
-
-                    restoreAddr = addr[emergencyTemp];
-                    restoreAddr.memSize = reg.size;
-                }
-                else
-                {
-                    restoreAddr = addr[sSpillArea + spill.stackSlot * 4];
-                    restoreAddr.memSize = reg.size;
-                }
+                restoreAddr = addr[sSpillArea + spill.stackSlot * 4];
+                restoreAddr.memSize = reg.size;
 
                 if (spill.valueKind == IrValueKind::Double || spill.valueKind == IrValueKind::Int64)
                     restoreAddr.memSize = SizeX64::qword;
@@ -343,7 +499,8 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
             {
                 build.vmovsd(reg, restoreAddr);
             }
-            else if (spill.valueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double)
+            else if (spill.valueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double &&
+                     (!FFlag::LuauCodegenX64IntSpillRestore || spill.stackSlot == kNoStackSlot))
             {
                 // Handle restore of an int/uint value from a location storing a double number
                 if (restoreLocation.conversionCmd == IrCmd::INT_TO_NUM)
@@ -367,10 +524,23 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
                 CODEGEN_ASSERT(!"value kind not supported for restore");
             }
 
-            if (spill.stackSlot != kNoStackSlot && isExtraSpillSlot(spill.stackSlot))
+            if (logger && logger->options.includeRegSpills)
             {
-                if (reg.size == SizeX64::xmmword)
-                    build.mov(emergencyTemp, qword[sTemporarySlot + 0]);
+                const char* kindName = getValueKindName(spill.valueKind);
+                const char* regName = AssemblyBuilderX64::getRegisterName(reg);
+                const char* conv = getConversionCmdSuffix(restoreLocation.conversionCmd);
+
+                if (logger->options.includeAssembly)
+                    logger->formatAppendWithPrefix("  ; restore %%%u (%s %s) from ", instIdx, kindName, regName);
+                else
+                    logger->formatAppendWithPrefix("  ; restore %%%u (%s) from ", instIdx, kindName);
+
+                if (spill.stackSlot != kNoStackSlot)
+                    logger->formatAppend("slot %u\n", spill.stackSlot);
+                else if (restoreLocation.op.kind == IrOpKind::VmReg)
+                    logger->formatAppend("R%d%s\n", vmRegOp(restoreLocation.op), conv);
+                else if (restoreLocation.op.kind == IrOpKind::VmConst)
+                    logger->formatAppend("K%d%s\n", vmConstOp(restoreLocation.op), conv);
             }
 
             inst.regX64 = reg;
@@ -429,20 +599,10 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
     }
     else
     {
-        unsigned numHalves = kValueDwordSize[int(valueKind)];
-        unsigned boundary = kSpillSlots * 2;
-
         // Find a free stack slot. Four consecutive slots might be required for 16 byte TValues, so '- 3' is used
         // For 8 and 16 byte types we search in steps of 2 to return slot indices aligned by 2
         for (unsigned i = 0; i < unsigned(usedSpillSlotHalfs.size() - 3); i += 2)
         {
-            // Prevent large value from allocating at stack/extra spill storage boundary
-            if (FFlag::LuauCodegenNewRegSplit && i < boundary && i + numHalves > boundary)
-            {
-                i = boundary - 2;
-                continue;
-            }
-
             if (usedSpillSlotHalfs.test(i) || usedSpillSlotHalfs.test(i + 1))
                 continue;
 
@@ -509,10 +669,11 @@ uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint
         if (regInstUser == kInvalidInstIdx || regInstUser == currInstIdx)
             continue;
 
-        uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx);
+        bool inVmExitSync = false;
+        uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx, inVmExitSync);
 
         // Cannot spill value that is about to be used in the current instruction
-        if (nextUse == currInstIdx)
+        if (nextUse == currInstIdx && !inVmExitSync)
             continue;
 
         if (furthestUseTarget == kInvalidInstIdx || nextUse > furthestUseLocation)
@@ -523,20 +684,6 @@ uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint
     }
 
     return furthestUseTarget;
-}
-
-bool IrRegAllocX64::isExtraSpillSlot(unsigned slot) const
-{
-    CODEGEN_ASSERT(slot != kNoStackSlot);
-
-    return slot >= (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) * 2;
-}
-
-int IrRegAllocX64::getExtraSpillAddressOffset(unsigned slot) const
-{
-    CODEGEN_ASSERT(isExtraSpillSlot(slot));
-
-    return (slot - (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) * 2) * 4;
 }
 
 void IrRegAllocX64::assertFree(RegisterX64 reg) const

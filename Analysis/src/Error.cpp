@@ -17,6 +17,9 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
+LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -461,26 +464,61 @@ struct ErrorConverter
 
     std::string operator()(const Luau::ModuleHasCyclicDependency& e) const
     {
-        if (e.cycle.empty())
-            return "Cyclic module dependency detected";
-
-        std::string s = "Cyclic module dependency: ";
-
-        bool first = true;
-        for (const ModuleName& name : e.cycle)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
-            if (first)
-                first = false;
-            else
-                s += " -> ";
+            if (e.cycle.empty())
+                return "Cyclic dependencies are only supported if all modules in the cycle use 'export' syntax";
 
-            if (fileResolver != nullptr)
-                s += fileResolver->getHumanReadableModuleName(name);
-            else
-                s += name;
+            std::string s =
+                "Cyclic dependencies are only supported if all modules in the cycle use 'export' syntax. The following modules do not use 'export': ";
+
+            bool first = true;
+            for (const ModuleName& name : e.cycle)
+            {
+                if (first)
+                    first = false;
+                else
+                    s += ", ";
+
+                if (fileResolver != nullptr)
+                    s += fileResolver->getHumanReadableModuleName(name);
+                else
+                    s += name;
+            }
+
+            return s;
         }
+        else
+        {
+            if (e.cycle.empty())
+                return "Cyclic module dependency detected";
 
-        return s;
+            std::string s = "Cyclic module dependency: ";
+
+            bool first = true;
+            for (const ModuleName& name : e.cycle)
+            {
+                if (first)
+                    first = false;
+                else
+                    s += " -> ";
+
+                if (fileResolver != nullptr)
+                    s += fileResolver->getHumanReadableModuleName(name);
+                else
+                    s += name;
+            }
+
+            return s;
+        }
+    }
+
+    std::string operator()(const Luau::CyclicModuleTopLevelAccess& e) const
+    {
+        std::string moduleName = fileResolver ? fileResolver->getHumanReadableModuleName(e.cyclicModuleName) : e.cyclicModuleName;
+        std::string access = e.propName.empty() ? e.localName : (e.localName + "." + e.propName);
+        return "Top-level access '" + access + "' from cyclically required module '" + moduleName +
+               "' may fail at runtime depending on module initialization order; try moving this access into a function body";
     }
 
     std::string operator()(const Luau::FunctionExitsWithoutReturning& e) const
@@ -775,12 +813,14 @@ struct ErrorConverter
     std::string operator()(const PropertyAccessViolation& e) const
     {
         const std::string stringKey = isIdentifier(e.key) ? e.key : "\"" + e.key + "\"";
+        const std::string kind = getTableType(e.table) ? "table" : "type";
+
         switch (e.context)
         {
         case PropertyAccessViolation::CannotRead:
-            return "Property " + stringKey + " of table '" + toString(e.table) + "' is write-only";
+            return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is write-only";
         case PropertyAccessViolation::CannotWrite:
-            return "Property " + stringKey + " of table '" + toString(e.table) + "' is read-only";
+            return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is read-only";
         }
 
         LUAU_UNREACHABLE();
@@ -980,6 +1020,70 @@ struct ErrorConverter
     std::string operator()(const AmbiguousFunctionCall& afc) const
     {
         return "Calling function " + toString(afc.function) + " with argument pack " + toString(afc.arguments) + " is ambiguous.";
+    }
+
+    std::string operator()(const UninitializedFieldAccess& afc) const
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        if (afc.fieldName)
+            return "Access to field '" + *afc.fieldName + "' of self before it has been initialized";
+        else
+            return "Access to 'self' before all of its fields have been initialized";
+    }
+
+    std::string operator()(const TypeAnnotationRequired& err) const
+    {
+        ToStringOptions opts;
+        opts.functionTypeArguments = true;
+        opts.ignoreSyntheticName = true;
+        auto tos = toStringDetailed(err.inferredTy, opts);
+        if (!tos.invalid && !tos.truncated && !tos.error)
+            return "Type annotation required here.  Consider " + tos.name;
+        else
+            return "Type annotation required here.  Unable to infer the type of this function.";
+    }
+
+    std::string operator()(const ConstructorsShouldNotReturnAnything&) const
+    {
+        return "Class constructors should not return anything.";
+    }
+
+    std::string operator()(const CyclicClassInheritance& e) const
+    {
+        std::string s = "Cyclic class inheritance detected: ";
+        bool first = true;
+        for (const Name& name : e.cycle)
+        {
+            if (first)
+                first = false;
+            else
+                s += " -> ";
+            s += name;
+        }
+        return s;
+    }
+
+    std::string operator()(const InvalidClassExtension& e) const
+    {
+        switch (e.context)
+        {
+            case InvalidClassExtension::ClassIsNotOpen:
+                return "Non-open class " + toString(e.baseClass) + " cannot be extended";
+            case InvalidClassExtension::BaseIsClassInstance:
+                return "Object of type " + toString(e.baseClass) + " cannot be extended because it is an object, not a class";
+            case InvalidClassExtension::NotAClass:
+                return "Cannot extend non-class of type " + toString(e.baseClass);
+            default:
+                LUAU_ASSERT(0);
+                return "Cannot extend non-class of type " + toString(e.baseClass);
+        }
+    }
+
+    std::string operator()(const IncompatibleClassMethodOverride& e) const
+    {
+        return "Method '" + e.method + "' on class '" + e.className + "' is not a compatible override of the method inherited from superclass '" +
+               e.superName + "'";
     }
 };
 
@@ -1213,6 +1317,21 @@ bool FunctionExitsWithoutReturning::operator==(const FunctionExitsWithoutReturni
     return expectedReturnType == rhs.expectedReturnType;
 }
 
+bool CyclicClassInheritance::operator==(const CyclicClassInheritance& rhs) const
+{
+    return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
+}
+
+bool InvalidClassExtension::operator==(const InvalidClassExtension& rhs) const
+{
+    return context == rhs.context && baseClass == rhs.baseClass;
+}
+
+bool IncompatibleClassMethodOverride::operator==(const IncompatibleClassMethodOverride& rhs) const
+{
+    return method == rhs.method && className == rhs.className && superName == rhs.superName;
+}
+
 int TypeError::code() const
 {
     return minCode() + int(data.index());
@@ -1236,6 +1355,11 @@ bool TypeError::operator==(const TypeError& rhs) const
 bool ModuleHasCyclicDependency::operator==(const ModuleHasCyclicDependency& rhs) const
 {
     return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
+}
+
+bool CyclicModuleTopLevelAccess::operator==(const CyclicModuleTopLevelAccess& rhs) const
+{
+    return cyclicModuleName == rhs.cyclicModuleName && localName == rhs.localName && propName == rhs.propName;
 }
 
 bool IllegalRequire::operator==(const IllegalRequire& rhs) const
@@ -1427,6 +1551,16 @@ bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
     return function == rhs.function && arguments == rhs.arguments;
 }
 
+bool TypeAnnotationRequired::operator==(const TypeAnnotationRequired& rhs) const
+{
+    return inferredTy == rhs.inferredTy;
+}
+
+bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) const
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    return fieldName == rhs.fieldName;
+}
 
 std::string toString(const TypeError& error)
 {
@@ -1547,6 +1681,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CyclicModuleTopLevelAccess>)
     {
     }
     else if constexpr (std::is_same_v<T, IllegalRequire>)
@@ -1683,6 +1820,26 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
         e.function = clone(e.function);
         e.arguments = clone(e.arguments);
+    }
+    else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
+    {
+        e.inferredTy = clone(e.inferredTy);
+    }
+    else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, InvalidClassExtension>)
+    {
+        e.baseClass = clone(e.baseClass);
+    }
+    else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

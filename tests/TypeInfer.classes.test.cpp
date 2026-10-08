@@ -1,1264 +1,1452 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Common.h"
-#include "Luau/Error.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/Type.h"
 
 #include "Fixture.h"
-#include "ClassFixture.h"
 
+#include "Luau/BuiltinDefinitions.h"
+#include "Luau/Error.h"
 #include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
-using std::nullopt;
 
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
-LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
+LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
-TEST_SUITE_BEGIN("TypeInferExternTypes");
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "Luau.Analyze.CLI_crashes_on_this_test")
+namespace
 {
-    CheckResult result = check(R"(
-        local CircularQueue = {}
-CircularQueue.__index = CircularQueue
 
-function CircularQueue:new()
-	local newCircularQueue = {
-		head = nil,
-	}
-	setmetatable(newCircularQueue, CircularQueue)
+struct ClassesFixture : Fixture
+{
+    const std::string definitions = R"LUAU_SRC(
+@checked declare function require(target: any): any
+declare function sqrt(n: number): number
+declare function tostring<T>(value: T): string
 
-	return newCircularQueue
-end
-
-function CircularQueue:push()
-	local newListNode
-
-	if self.head then
-		newListNode = {
-			prevNode = self.head.prevNode,
-			nextNode = self.head,
-		}
-		newListNode.prevNode.nextNode = newListNode
-		newListNode.nextNode.prevNode = newListNode
-	end
-end
-
-return CircularQueue
-
-    )");
+declare class: {
+    isinstance: @checked (o: unknown, c: class) -> boolean,
+    classof: @checked (o: unknown) -> class?
 }
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "call_method_of_a_class")
-{
-    CheckResult result = check(R"(
-        local m = BaseClass.StaticMethod()
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    REQUIRE_EQ("number", toString(requireType("m")));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "call_method_of_a_child_class")
-{
-    CheckResult result = check(R"(
-        local m = ChildClass.StaticMethod()
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    REQUIRE_EQ("number", toString(requireType("m")));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "call_instance_method")
-{
-    CheckResult result = check(R"(
-        local i = ChildClass.New()
-        local result = i:Method()
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("string", toString(requireType("result")));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "call_base_method")
-{
-    CheckResult result = check(R"(
-        local i = ChildClass.New()
-        i:BaseMethod(41)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_call_unknown_method_of_a_class")
-{
-    CheckResult result = check(R"(
-        local m = BaseClass.Nope()
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_call_method_of_child_on_base_instance")
-{
-    CheckResult result = check(R"(
-        local i = BaseClass.New()
-        i:Method()
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_infer_that_a_parameter_must_be_a_particular_class")
-{
-    CheckResult result = check(R"(
-        function makeClone(o)
-            return BaseClass.Clone(o)
-        end
-
-        local a = makeClone(ChildClass.New())
-    )");
-
-    CHECK_EQ("BaseClass", toString(requireType("a")));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class")
-{
-    CheckResult result = check(R"(
-        function makeClone(o)
-            return BaseClass.Clone(o)
-        end
-
-        type Oopsies = { BaseMethod: (Oopsies, number) -> ()}
-
-        local oopsies: Oopsies = {
-            BaseMethod = function (self: Oopsies, i: number)
-                print('gadzooks!')
-            end
-        }
-
-        makeClone(oopsies)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
-    REQUIRE(tm != nullptr);
-
-    CHECK_EQ("Oopsies", toString(tm->givenType));
-    CHECK_EQ("BaseClass", toString(tm->wantedType));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class_using_new_solver")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    CheckResult result = check(R"(
-        function makeClone(o)
-            return BaseClass.Clone(o)
-        end
-
-        type Oopsies = { read BaseMethod: (Oopsies, number) -> ()}
-
-        local oopsies: Oopsies = {
-            BaseMethod = function (self: Oopsies, i: number)
-                print('gadzooks!')
-            end
-        }
-
-        makeClone(oopsies)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
-    REQUIRE(tm != nullptr);
-
-    CHECK_EQ("Oopsies", toString(tm->givenType));
-    CHECK_EQ("BaseClass", toString(tm->wantedType));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "assign_to_prop_of_class")
-{
-    CheckResult result = check(R"(
-        local v = Vector2.New(0, 5)
-        v.X = 55
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "can_read_prop_of_base_class")
-{
-    CheckResult result = check(R"(
-        local c = ChildClass.New()
-        local x = 1 + c.BaseField
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "can_assign_to_prop_of_base_class")
-{
-    CheckResult result = check(R"(
-        local c = ChildClass.New()
-        c.BaseField = 444
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "can_read_prop_of_base_class_using_string")
-{
-    CheckResult result = check(R"(
-        local c = ChildClass.New()
-        local x = 1 + c["BaseField"]
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "can_assign_to_prop_of_base_class_using_string")
-{
-    CheckResult result = check(R"(
-        local c = ChildClass.New()
-        c["BaseField"] = 444
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_unify_class_instance_with_primitive")
-{
-    // This is allowed in the new solver
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
-    CheckResult result = check(R"(
-        local v = Vector2.New(0, 5)
-        v = 444
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "warn_when_prop_almost_matches")
-{
-    CheckResult result = check(R"(
-        Vector2.new(0, 0)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    auto err = get<UnknownPropButFoundLikeProp>(result.errors.at(0));
-    REQUIRE(err != nullptr);
-
-    REQUIRE_EQ(1, err->candidates.size());
-    CHECK_EQ("New", *err->candidates.begin());
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "extern_types_can_have_overloaded_operators")
-{
-    CheckResult result = check(R"(
-        local a = Vector2.New(1, 2)
-        local b = Vector2.New(3, 4)
-        local c = a + b
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("Vector2", toString(requireType("c")));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "extern_types_without_overloaded_operators_cannot_be_added")
-{
-    CheckResult result = check(R"(
-        local a = BaseClass.New()
-        local b = BaseClass.New()
-        local c = a + b
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "function_arguments_are_covariant")
-{
-    CheckResult result = check(R"(
-        function f(b: BaseClass) end
-
-        f(ChildClass.New())
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_arguments_are_contravariant")
-{
-    CheckResult result = check(R"(
-        function apply(f: (BaseClass) -> ())
-            f(ChildClass.New()) -- 2
-        end
-
-        apply(function (c: ChildClass) end) -- 5
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_values_are_covariant")
-{
-    CheckResult result = check(R"(
-        function apply(f: () -> BaseClass)
-            return f()
-        end
-
-        apply(function ()
-            return ChildClass.New()
-        end)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_type_is_not_contravariant")
-{
-    CheckResult result = check(R"(
-        function apply(f: () -> BaseClass)
-            return f()
-        end
-
-        apply(function ()
-            return ChildClass.New()
-        end)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "table_properties_are_invariant")
-{
-    CheckResult result = check(R"(
-        function f(a: {foo: BaseClass})
-            a.foo = AnotherChild.New()
-        end
-
-        local t: {foo: ChildClass}
-        f(t) -- line 6.  Breaks soundness.
-
-        function g(t: {foo: ChildClass})
-        end
-
-        local t2: {foo: BaseClass} = {foo=BaseClass.New()}
-        t2.foo = AnotherChild.New()
-        g(t2) -- line 13.  Breaks soundness
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(6, result.errors.at(0).location.begin.line);
-    CHECK_EQ(13, result.errors[1].location.begin.line);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "table_indexers_are_invariant")
-{
-    CheckResult result = check(R"(
-        function f(a: {[number]: BaseClass})
-            a[1] = AnotherChild.New()
-        end
-
-        local t: {[number]: ChildClass}
-        f(t) -- line 6.  Breaks soundness.
-
-        function g(t: {[number]: ChildClass})
-        end
-
-        local t2: {[number]: BaseClass} = {BaseClass.New()}
-        t2[1] = AnotherChild.New()
-        g(t2) -- line 13.  Breaks soundness
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(6, result.errors.at(0).location.begin.line);
-    CHECK_EQ(13, result.errors[1].location.begin.line);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_errors_for_missing_properties")
-{
-    CheckResult result = check(R"(
-        function foo(bar)
-            bar.Y = 1 -- valid
-            bar.x = 2 -- invalid, wanted 'X'
-            bar.w = 2 -- invalid
-        end
-
-        local a: Vector2
-        foo(a)
-    )");
-
-    if (!FFlag::DebugLuauForceOldSolver)
+)LUAU_SRC";
+    Frontend& getFrontend() override
     {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK("Expected this to be '{ Y: number, w: number, x: number }', but got 'Vector2'" == toString(result.errors[0]));
+        if (frontend)
+            return *frontend;
+
+        Frontend& f = Fixture::getFrontend();
+        Luau::unfreeze(f.globals.globalTypes);
+
+        f.loadDefinitionFile(f.globals, f.globals.globalScope, definitions, "@test", false);
+        AstName reqName = f.globals.globalNames.names->getOrAdd("require");
+        auto it = f.globals.globalScope->bindings.find(reqName);
+        LUAU_ASSERT(it != f.globals.globalScope->bindings.end());
+        attachTag(it->second.typeId, kRequireTagName);
+        attachMagicFunction(it->second.typeId, std::make_shared<MagicRequire>());
+        registerTestTypes();
+        Luau::freeze(f.globals.globalTypes);
+
+
+        return *frontend;
     }
+    ScopedFastFlag sff_DebugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag sff_LuauAllowGlobalDeclarationToBeCalledClass{FFlag::LuauAllowGlobalDeclarationToBeCalledClass, true};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+};
+
+} // namespace
+
+TEST_SUITE_BEGIN("Classes");
+
+TEST_CASE_FIXTURE(Fixture, "classes_arent_in_old_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, true},
+    };
+
+    CheckResult result = check(R"( class Point end )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("class keyword is illegal here", err->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_class_isnt_in_old_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, true},
+    };
+
+    CheckResult result = check(R"( export class Point end )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("class keyword is illegal here", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "empty_class")
+{
+    CheckResult result = check(R"( class Point end )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_decl")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+        end
+
+        local p = Point { x = 2, y = 3 }
+
+        local x = p.x
+        local y = p.y
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    TypeId t = requireTypeAlias("Point");
+    CHECK("Point" == toString(t));
+
+    const ExternType* point = get<ExternType>(t);
+    REQUIRE(point);
+
+    CHECK("Point" == toString(requireType("p")));
+    CHECK("number" == toString(requireType("x")));
+    CHECK("number" == toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "point_class")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function length(self): number
+                return 100
+            end
+
+            function __init(self, x: number, y: number)
+                self.x = x
+                self.y = y
+            end
+        end
+
+        local p = Point(2, 3)
+        local len = p:length()
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    TypeId p = requireType("p");
+    const ExternType* et = get<ExternType>(p);
+    REQUIRE(et);
+
+    CHECK("Point" == toString(requireType("p")));
+    CHECK("number" == toString(requireType("len")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "self_argument_has_self_type")
+{
+    CheckResult result = check(R"(
+        class I
+            function m(self): I
+                return self
+            end
+        end
+
+        local i = I{}
+        local i2 = i:m()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("I" == toString(requireType("i2")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "Point_tostring")
+{
+    ScopedFastFlag sff_DebugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+    auto result = check(R"(
+class Point
+    public x
+    public y
+    function __tostring(self): string
+        return `Point(x={self.x}, y={self.y})`
+    end
+end
+
+local p = Point { x = 1, y = 2 }
+local _ = tostring(p)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+
+TEST_CASE_FIXTURE(ClassesFixture, "Point_eq_mm")
+{
+    auto result = check(R"(
+class Point
+    public x
+    public y
+
+    function __eq(self, other: Point): boolean
+        return self.x == other.x and self.y == other.y
+    end
+    function zero(): Point
+        return Point { x = 0, y = 0 }
+    end
+end
+
+local p1 = Point { x = 1, y = 2 }
+local p2 = Point { x = 1, y = 2 }
+local _ = p1 == p2
+local _ = p1 ~= Point.zero()
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "Box_Point_no_eq")
+{
+    auto result = check(R"(
+class Point
+    public x
+    public y
+end
+
+
+class Box
+    public x
+end
+
+local p1 = Point { x = 1, y = 2 }
+local p2 = Box { x = 1 }
+local _ = p1 == p1
+-- This one too
+local _ = p1 ~= p2
+local _ = Box == Box
+-- This line should error...
+local _ = Point ~= Box
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto e1 = get<CannotCompareUnrelatedTypes>(result.errors[0]);
+    auto e2 = get<CannotCompareUnrelatedTypes>(result.errors[1]);
+    REQUIRE(e1);
+    REQUIRE(e2);
+
+    CHECK(result.errors[0].location.begin.line == 15);
+    CHECK(result.errors[1].location.begin.line == 18);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_mm")
+{
+    auto result = check(R"(
+class Point
+    function __add(self, other: unknown)
+    end
+end
+
+local p = Point {}
+p:__add()
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_structure")
+{
+    auto result = check(R"(
+class Point
+    public x
+    public y
+
+    function magnitude(self): number
+        return sqrt(self.x * self.x + self.y * self.y)
+    end
+
+    function zero(): Point
+        return Point { x = 0, y = 0 }
+    end
+
+    function __tostring(self): string
+        return `Point(x={self.x}, y={self.y})`
+    end
+
+end
+
+local p = Point
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    auto t = requireType("p");
+    auto et = get<ExternType>(t);
+    REQUIRE(et);
+    CHECK(et->parent == builtinTypes->classType);
+
+    CHECK(et->props.count("zero") == 1);
+
+    std::optional<TypeId> metatable = et->metatable;
+    REQUIRE(metatable);
+    auto mt = get<TableType>(*metatable);
+    REQUIRE(mt);
+    CHECK(mt->props.count("__call") == 1);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_unknown_value")
+{
+    ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(v: unknown)
+    if class.isinstance(v, Point) then
+        local s = v
     else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        REQUIRE_EQ("Key 'w' not found in external type 'Vector2'", toString(result.errors.at(0)));
-        REQUIRE_EQ("Key 'x' not found in external type 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
-    }
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 18})));
+    CHECK_EQ(
+        "((userdata & ~Point) | boolean | buffer | function | integer | number | string | table | thread)?", toString(requireTypeAtPosition({9, 18}))
+    );
 }
 
-TEST_CASE_FIXTURE(ExternTypeFixture, "class_unification_type_mismatch_is_correct_order")
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_union_value")
 {
     CheckResult result = check(R"(
-        local p: BaseClass
-        local foo: number = p
-        local foo2: BaseClass = 1
+class Point
+    public x
+end
+
+local function f(v: Point | string)
+    if class.isinstance(v, Point) then
+        local s = v
+    else
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 18})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({9, 18})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "not_isinstance_refines_union")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(v: Point | string)
+    if not class.isinstance(v, Point) then
+        local s = v
+    else
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({7, 18})));
+    CHECK_EQ("Point", toString(requireTypeAtPosition({9, 18})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "not_isinstance_refines_unknown")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(v: unknown)
+    if not class.isinstance(v, Point) then
+        local s = v
+    else
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({9, 18})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_optional_property")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(t: { x: Point? })
+    if t.x and class.isinstance(t.x, Point) then
+        local s = t.x
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 20})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_property_already_typed")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(t: { x: Point })
+    if class.isinstance(t.x, Point) then
+        local s = t.x
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 20})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class")
+{
+    ScopedFastFlag _[2]{{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        export class Point
+            public x: number
+        end
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+
+        local x : unknown = (A.Point { x = 0 } ) :: any
+        if class.isinstance(x, A.Point) then
+            local y = x
+        end
+    )";
+    CheckResult modB = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(modB);
+    CHECK_EQ("Point", toString(requireTypeAtPosition("game/B", {5, 22})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_class")
+{
+    ScopedFastFlag _[2]{{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        export class Point
+            public x: number
+        end
+
+        export const notAPoint = nil
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+
+        local x : unknown = (A.Point { x = 0 } ) :: any
+        if class.isinstance(x, A.notAPoint) then
+            local y = x
+        end
+    )";
+    CheckResult modA = getFrontend().check("game/A");
+    CheckResult modB = getFrontend().check("game/B");
+    LUAU_REQUIRE_ERROR_COUNT(1, modB);
+    // There's an unknown property on A.foo, but
+    LUAU_REQUIRE_ERROR(modB, TypeMismatch);
+    auto err = get<TypeMismatch>(modB.errors[0]);
+    CHECK_EQ("class", toString(err->wantedType));
+    CHECK_EQ("nil", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "typed_self_parameter_after_class_declaration")
+{
+    // Annotations on the self parameter are forbidden, but we still have to
+    // parse this without crashing.
+    CheckResult result = check(R"(
+        class Q
+            function f(self: number) end
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto e0 = get<SyntaxError>(result.errors[0]);
+    REQUIRE(e0);
+    CHECK("The 'self' parameter cannot have a type annotation" == e0->message);
 
-    REQUIRE_EQ("Expected this to be 'number', but got 'BaseClass'", toString(result.errors.at(0)));
-    REQUIRE_EQ("Expected this to be 'BaseClass', but got 'number'", toString(result.errors[1]));
+    auto e1 = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(e1);
+    CHECK("number" == toString(e1->wantedType));
+    CHECK("Q" == toString(e1->givenType));
 }
 
-TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_field_access_error")
+TEST_CASE_FIXTURE(ClassesFixture, "typeof_class_prop_ice")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = 1
+        class Foo
+            public bar: typeof(x)
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "typeof_indexing_ice_in_class_prop_typeof")
+{
+    CheckResult results = check(R"(
+local A = ""
+class B
+    public C: { _: typeof(A.D) }
+end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<UnknownProperty>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("D", err->key);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
 {
     CheckResult result = check(R"(
-local b: Vector2? = nil
-local a = b.X + b.Z
+        class Foo
+            public bar: BarType
+        end
 
-b.X = 2 -- real Vector2.X is also read-only
+        type BarType = number | string
+
+        local function getbar(f: Foo)
+            return f.bar
+        end
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("(Foo) -> number | string", toString(requireType("getbar")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
+{
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    CheckResult result = check(R"(
+        class Foo
+            public bar: number | string
+        end
+
+        local function ofnumbertbl(tbl: { bar: number })
+            return Foo(tbl)
+        end
+
+        local function inference(tbl)
+            return Foo(tbl)
+        end
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("({ bar: number }) -> Foo", toString(requireType("ofnumbertbl")));
+    CHECK_EQ("({ read bar: number | string }) -> Foo", toString(requireType("inference")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "subclass_inherits_superclass_methods")
+{
+    CheckResult result = check(R"(
+        open class Animal
+            function speak(self): string
+                return "hi"
+            end
+
+            function __init(self) end
+        end
+
+        class Dog extends Animal
+            function __init(self) end
+        end
+
+        local d = Dog()
+        local s = d:speak()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("s")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "extends_unknown_name_is_an_error")
+{
+    CheckResult result = check(R"(
+        class Dog extends NonExistentClass
+            function __init(self) end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UnknownSymbol>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "constructors_must_accept_self")
+{
+    CheckResult res = check(R"(
+        class Point2
+            public x: number
+            public y: number
+
+            function __init(x: number, y: number) end
+        end
+
+        class Point3
+            function __init() end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, res);
+    auto e1 = get<SyntaxError>(res.errors[0]);
+    REQUIRE(e1);
+    CHECK_EQ(e1->message, R"(__init's first parameter must be named 'self'.)");
+    auto e2 = get<SyntaxError>(res.errors[1]);
+    REQUIRE(e2);
+    CHECK_EQ(e2->message, R"(__init must have at least one parameter.)");
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "refer_to_uninitialized_field")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public x: number
+            function __init(self)
+                something = self.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    REQUIRE(e->fieldName);
+    CHECK("x" == *e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "refer_to_uninitialized_field_index_string_expr")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public x: number
+            function __init(self)
+                something = self["x"]
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    REQUIRE(e->fieldName);
+    CHECK("x" == *e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "refer_to_uninitialized_field_index_computed_index")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public xy: number
+            function __init(self)
+                something = self["x" .. "y"]
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto e1 = get<DynamicPropertyLookupOnExternTypesUnsafe>(result.errors[0]);
+    REQUIRE(e1);
+    CHECK_EQ("Foo", toString(e1->ty));
+    auto e2 = get<UninitializedFieldAccess>(result.errors[1]);
+    REQUIRE(e2);
+    // The type checker only reports specific field errors for constant strings, so we just report the error on self in this case
+    REQUIRE(!e2->fieldName.has_value());
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "reference_to_shadowed_self_is_absurd_but_ok")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            function __init(self)
+                local self = {}
+                something = self
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "self_referential_assign")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            public y: number
+            function __init(self)
+                self.x, self.y = self.y, self.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto e0 = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e0);
+    REQUIRE(e0->fieldName);
+    auto e1 = get<UninitializedFieldAccess>(result.errors[1]);
+    REQUIRE(e1);
+    REQUIRE(e1->fieldName);
+    // Both `self.x` and `self.y` are read before either is initialized; the
+    // two errors are collected from a hash map, so their order isn't fixed.
+    CHECK(std::set<std::string>{*e0->fieldName, *e1->fieldName} == std::set<std::string>{"x", "y"});
+}
+
+// It would be nice to afford this someday.
+TEST_CASE_FIXTURE(ClassesFixture, "conditional_assignment_is_not_yet_allowed")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            public y: number
+            function __init(self, b: boolean)
+                if b then
+                    self.x = 0
+                else
+                    self.x = 2
+                end
+                self.y = self.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    REQUIRE(e->fieldName);
+    CHECK("x" == *e->fieldName);
+}
+
+// It would be nice to afford this someday.
+TEST_CASE_FIXTURE(ClassesFixture, "ok_conditional_assignment")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            public y: number
+            function __init(self, b: boolean)
+                self.x = if b then 0 else 2
+                self.y = self.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "all_fields_initialized_before_use")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public x: number
+            function __init(self)
+                self.x = 5
+                something = self.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "pass_self_before_initialization")
+{
+    CheckResult result = check(R"(
+        local function doSomething(x: unknown) end
+
+        class Foo
+            public x: number
+            function __init(self)
+                doSomething(self)
+                self.x = 0
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(!e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "pass_self_after_initialization")
+{
+    CheckResult result = check(R"(
+        local function doSomething(x: unknown) end
+
+        class Foo
+            public x: number
+            function __init(self)
+                self.x = 0
+                doSomething(self)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "read_nested_field_of_uninitialized")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public x: {y: number}
+            function __init(self)
+                something = self.x.y
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    REQUIRE(e->fieldName);
+    CHECK("x" == *e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "partial_initialization_order")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public x: number
+            public y: number
+            function __init(self)
+                self.x = 0
+                something = self.x
+                something = self.y
+                self.y = 1
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    REQUIRE(e->fieldName);
+    CHECK("y" == *e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "field_read_inside_closure")
+{
+    // This is technically safe, maybe in the future we have more sophisticated logic to allow this
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            function __init(self)
+                local f = function() return self.x end
+                self.x = 0
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    REQUIRE(e->fieldName);
+    CHECK("x" == *e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "shadowing_self_via_closure")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            function __init(self)
+                local f = function(self) return self.x end
+                self.x = 0
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "no_fields_no_errors")
+{
+    CheckResult result = check(R"(
+        local function doSomething(x: any) end
+
+        class Foo
+            function __init(self)
+                doSomething(self)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "nilable_fields_dont_need_initialization")
+{
+    CheckResult result = check(R"(
+        local function doSomething(...: any) end
+
+        class Foo
+            public x: number
+            public y: number?
+            public z: any
+            public w: unknown
+            function __init(self)
+                doSomething(self.x, self.y, self.z, self.w)
+            end
+        end
+    )");
+
+    // Access to x is bad.  y, z, and w are all fine.
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    REQUIRE(e->fieldName);
+    CHECK("x" == *e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "unannotated_field_doesnt_need_initialization")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x
+            public y: number
+            function __init(self)
+                self.y = 0
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "pass_self_with_nilable_fields_unassigned")
+{
+    CheckResult result = check(R"(
+        local function doSomething(x: unknown) end
+
+        class Foo
+            public x: number
+            public y: string?
+            function __init(self)
+                self.x = 0
+                doSomething(self)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "read_nilable_field_before_assign")
+{
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public x: number?
+            function __init(self)
+                something = self.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "read_error_suppressing_field_before_assign")
+{
+    // TODO: CLI-222651: This shouldn't error because the annotation on x is error suppressing
+    CheckResult result = check(R"(
+        local something
+
+        class Foo
+            public x: string & any
+            function __init(self)
+                something = self.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "type_assertion_loophole")
+{
+    CheckResult result = check(R"(
+        local something: any
+
+        class Foo
+            public x: number
+            function __init(self)
+                something = self :: Foo
+                something = (self :: Foo).x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "method_calls_require_full_initialization")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            function __init(self)
+                self:increment()
+            end
+
+            function increment(self)
+                self.x += 1
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = get<UninitializedFieldAccess>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(!e->fieldName);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "method_calls_on_fully_initialized_instances_are_ok")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            function __init(self)
+                self.x = 0
+                self:increment()
+            end
+
+            function increment(self)
+                self.x += 1
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
+{
+    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        class Foo
+            public values: {number}
+            function __init(self, ...: number)
+                self.values = {...}
+            end
+        end
+
+        local f = Foo(3, 4, 5) -- OK
+        local g = Foo(3, 4, 5, "six") -- Error
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(9 == result.errors[0].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_arguments")
+{
+    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+            public y: string
+            public values: {number}
+            function __init(self, x: number, y: string, ...: number)
+                self.x = x
+                self.y = y
+                self.values = {...}
+            end
+        end
+
+        local f = Foo(3, "four", 5) -- OK
+        local g = Foo(3, "four", 5, "six") -- Error
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(13 == result.errors[0].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_methods_should_be_annotated_except_for_self")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+
+            function __init(self, x)
+                self.x = x
+            end
+
+            function double(this)
+                return Foo(this.x * 2)
+            end
+
+            function double2(self): Foo
+                return Foo(self.x * 2)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK_ERROR_IS(result.errors.at(0), TypeAnnotationRequired);
+    // We can't figure out the multiplication
+    CHECK_ERROR_IS(result.errors.at(1), UninhabitedTypeFunction);
+    CHECK_ERROR_IS(result.errors.at(2), TypeAnnotationRequired);
+
+    CHECK(4 == result.errors.at(0).location.begin.line);
+    CHECK(9 == result.errors.at(1).location.begin.line);
+    CHECK(8 == result.errors.at(2).location.begin.line);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_duplicate_class_definition")
+{
+    CheckResult result = check(R"(
+        class l0
+        end
+        class l0
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "repeat_props")
+{
+    CheckResult result = check(
+        R"(
+class l0
+    public foo
+    public foo
+end
+)"
+    );
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Duplicate class member 'foo'", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "repeat_class_methods")
+{
+    CheckResult result = check(
+        R"(
+class l0
+    function foo()
+    end
+    function foo()
+    end
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Duplicate class member 'foo'", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "repeat_nameless_class_methods")
+{
+    CheckResult result = check(
+        R"(
+class l0
+    function  ()
+    end
+    function ()
+    end
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    auto err1 = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err1);
+    CHECK_EQ("Expected identifier when parsing method name, got '('", err1->message);
+    auto err2 = get<SyntaxError>(result.errors[1]);
+    REQUIRE(err2);
+    CHECK_EQ("Expected identifier when parsing method name, got '('", err2->message);
+    auto err3 = get<SyntaxError>(result.errors[2]);
+    REQUIRE(err3);
+    CHECK_EQ(R"(Duplicate class member '%error-id%')", err3->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_self_referential_class_definition")
+{
+    CheckResult result = check(R"(
+        class l0
+            public _:typeof(l0)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId l0 = requireType("l0");
+    CHECK(is<ExternType>(l0));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "instantiate_duplicate_class")
+{
+    CheckResult result = check(
+        R"(
+class l0
+end
+class l0
+end
+_ = l0 {  }
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+    REQUIRE(get<UnknownSymbol>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "prop_with_typeof_reassigned_class")
+{
+    ScopedFastFlag sff{FFlag::LuauExportValueSyntax, true};
+
+    // This should not assert or crash
+    CheckResult result = check(
+        R"(
+class Animal end
+Animal = nil
+class l0
+public _:typeof(Animal)
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("'Animal' refers to a class and cannot be used as a variable name (defined on line 2)", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_that_shadows_a_type_alias")
+{
+    CheckResult result = check(R"(
+        type AAA = { x: number }
+        class AAA end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
+    REQUIRE(err);
+    CHECK(err->name == "AAA");
+    CHECK(err->previousLocation.has_value());
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_method_field_access")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number?
+            public y: number?
+            function magnitude(self): number
+                return math.sqrt(self.x * self.x + self.y * self.y)
+            end
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors.at(0)));
-    CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[1]));
-    CHECK_EQ("Key 'Z' not found in external type 'Vector2'", toString(result.errors[2]));
-    CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[3]));
-}
 
-TEST_CASE_FIXTURE(ExternTypeFixture, "detailed_class_unification_error")
-{
-    CheckResult result = check(R"(
-local function foo(v)
-    return v.X :: number + string.len(v.Y)
-end
-
-local a: Vector2
-local b = foo
-b(a)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-
-    if (!FFlag::DebugLuauForceOldSolver)
-    {
-        const std::string expected = "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
-                                     "accessing `Y` results in `number` in the latter type and `string` in the former type, "
-                                     "and `number` is not a subtype of `string`";
-        CHECK_EQ(expected, toString(result.errors.at(0)));
-    }
-    else
-    {
-        const std::string expected =
-            R"(Expected this to be '{- X: number, Y: string -}', but got 'Vector2'
-caused by:
-  Property 'Y' is not compatible.
-Expected this to be 'string', but got 'number')";
-
-        CHECK_EQ(expected, toString(result.errors.at(0)));
-    }
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "class_type_mismatch_with_name_conflict")
-{
-    CheckResult result = check(R"(
-local i = ChildClass.New()
-type ChildClass = { x: number }
-local a: ChildClass = i
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Expected this to be 'ChildClass' from 'MainModule', but got 'ChildClass' from 'Test'", toString(result.errors.at(0)));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "intersections_of_unions_of_extern_types")
-{
-    CheckResult result = check(R"(
-        local x : (BaseClass | Vector2) & (ChildClass | AnotherChild)
-        local y : (ChildClass | AnotherChild)
-        x = y
-        y = x
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "unions_of_intersections_of_extern_types")
-{
-    CheckResult result = check(R"(
-        local x : (BaseClass & ChildClass) | (BaseClass & AnotherChild) | (BaseClass & Vector2)
-        local y : (ChildClass | AnotherChild)
-        x = y
-        y = x
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "index_instance_property")
-{
-    CheckResult result = check(R"(
-        local function execute(object: BaseClass, name: string)
-            print(object[name])
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Attempting a dynamic property access on type 'BaseClass' is unsafe and may cause exceptions at runtime", toString(result.errors.at(0)));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "index_instance_property_nonstrict")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-
-        local function execute(object: BaseClass, name: string)
-            print(object[name])
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "type_mismatch_invariance_required_for_error")
-{
-    CheckResult result = check(R"(
-type A = { x: ChildClass }
-type B = { x: BaseClass }
-
-local a: A = { x = ChildClass.New() }
-local b: B = a
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-
-    if (!FFlag::DebugLuauForceOldSolver)
-    {
-        CHECK(
-            "Expected this to be 'B', but got 'A'; \n"
-            "accessing `x` results in `ChildClass` in the latter type and `BaseClass` in the former type, and `ChildClass` is not "
-            "exactly `BaseClass`" == toString(result.errors.at(0))
-        );
-    }
-    else
-    {
-        const std::string expected =
-            R"(Expected this to be exactly 'B', but got 'A'
-caused by:
-  Property 'x' is not compatible.
-Expected this to be exactly 'BaseClass', but got 'ChildClass')";
-        CHECK_EQ(expected, toString(result.errors.at(0)));
-    }
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_casts_work_in_new_solver")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    CheckResult result = check(R"(
-        type A = { x: ChildClass }
-        type B = { x: BaseClass }
-
-        local a = { x = ChildClass.New() } :: A
-        local opt_a = a :: A?
-        local b = { x = BaseClass.New() } :: B
-        local opt_b = b :: B?
-        local b_from_a = a :: B
-        local b_from_opt_a = opt_a :: B
-        local opt_b_from_a = a :: B?
-        local opt_b_from_opt_a = opt_a :: B?
-        local a_from_b = b :: A
-        local a_from_opt_b = opt_b :: A
-        local opt_a_from_b = b :: A?
-        local opt_a_from_opt_b = opt_b :: A?
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "callable_extern_types")
-{
-    CheckResult result = check(R"(
-        local x : CallableClass
-        local y = x("testing")
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("number", toString(requireType("y")));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
-{
-    // Test reading from an index
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            local y = x.stringKey
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            local y = x["stringKey"]
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            local str : string
-            local y = x[str]            -- Index with a non-const string
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            local y = x[7]              -- Index with a numeric key
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-
-    // Test writing to an index
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            x.stringKey = 42
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            x["stringKey"] = 42
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            local str : string
-            x[str] = 42                 -- Index with a non-const string
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            x[1] = 42                   -- Index with a numeric key
-        )");
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-
-    // Try to index the class using an invalid type for the key (key type is 'number | string'.)
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            local y = x[true]
-        )");
-
-        if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
-        {
-            // clang-format off
-            const std::string expected =
-                "Expected this to be 'number | string', but got 'boolean';\n"
-                "this is because\n"
-                "\t* the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
-                "\t* the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
-            ;
-            // clang-format on
-            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-        }
-        else if (!FFlag::DebugLuauForceOldSolver)
-        {
-            CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
-        }
-        else
-            CHECK_EQ(
-                toString(result.errors.at(0)), "Expected this to be 'number | string', but got 'boolean'; none of the union options are compatible"
-            );
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            x[true] = 42
-        )");
-
-        if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
-        {
-            // clang-format off
-            const std::string expected =
-                "Expected this to be 'number | string', but got 'boolean';\n"
-                "this is because\n"
-                "\t * the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
-                "\t * the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
-            ;
-            // clang-format on
-            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-        }
-        else if (!FFlag::DebugLuauForceOldSolver)
-        {
-            CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
-        }
-        else
-            CHECK_EQ(
-                toString(result.errors.at(0)), "Expected this to be 'number | string', but got 'boolean'; none of the union options are compatible"
-            );
-    }
-
-    // Test type checking for the return type of the indexer (i.e. a number)
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            x.key = "string value"
-        )");
-
-        if (!FFlag::DebugLuauForceOldSolver)
-        {
-            // Disabled for now.  CLI-115686
-        }
-        else
-            CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableClass
-            local str : string = x.key
-        )");
-
-        CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'string', but got 'number'");
-    }
-
-    // Check that we string key are rejected if the indexer's key type is not compatible with string
-    {
-        CheckResult result = check(R"(
-            local x : IndexableNumericKeyClass
-            x.key = 1
-        )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableNumericKeyClass
-            x["key"] = 1
-        )");
-        if (!FFlag::DebugLuauForceOldSolver)
-            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
-        else
-            CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableNumericKeyClass
-            local str : string
-            x[str] = 1                  -- Index with a non-const string
-        )");
-
-        CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableNumericKeyClass
-            local y = x.key
-        )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableNumericKeyClass
-            local y = x["key"]
-        )");
-        if (!FFlag::DebugLuauForceOldSolver)
-            CHECK(toString(result.errors.at(0)) == "Key 'key' not found in external type 'IndexableNumericKeyClass'");
-        else
-            CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
-    }
-    {
-        CheckResult result = check(R"(
-            local x : IndexableNumericKeyClass
-            local str : string
-            local y = x[str]            -- Index with a non-const string
-        )");
-
-        CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
-    }
-}
-
-TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    TypeArena& arena = getFrontend().globals.globalTypes;
-
-    unfreeze(arena);
-
-    TypeId instanceType = arena.addType(ExternType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ExternType>(instanceType)->props = {{"Parent", Property::rw(instanceType)}};
-
-    //
-
-    TypeId workspaceType = arena.addType(ExternType{"Workspace", {}, nullopt, nullopt, {}, {}, "Test", {}});
-
-    TypeId scriptType =
-        arena.addType(ExternType{"Script", {{"Parent", Property::rw(workspaceType, instanceType)}}, instanceType, nullopt, {}, {}, "Test", {}});
-
-    TypeId partType = arena.addType(
-        ExternType{
-            "Part",
-            {{"BrickColor", Property::rw(getBuiltins()->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
-            instanceType,
-            nullopt,
-            {},
-            {},
-            "Test",
-            {}
-        }
-    );
-
-    getMutable<ExternType>(workspaceType)->props = {{"Script", Property::readonly(scriptType)}, {"Part", Property::readonly(partType)}};
-
-    getFrontend().globals.globalScope->bindings[getFrontend().globals.globalNames.names->getOrAdd("script")] = Binding{scriptType};
-
-    freeze(arena);
-
-    CheckResult result = check(R"(
-        script.Parent.Part.BrickColor = 0xFFFFFF
-        script.Parent.Part.Parent = script
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK(Location{{1, 40}, {1, 48}} == result.errors[0].location);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK(getBuiltins()->stringType == tm->wantedType);
-    CHECK(getBuiltins()->numberType == tm->givenType);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_index_a_class_with_no_indexer")
-{
-    CheckResult result = check(R"(
-        local a = BaseClass.New()
-
-        local c = a[1]
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK_MESSAGE(
-        get<DynamicPropertyLookupOnExternTypesUnsafe>(result.errors[0]),
-        "Expected DynamicPropertyLookupOnExternTypesUnsafe but got " << result.errors[0]
-    );
-
-    CHECK(getBuiltins()->errorType == requireType("c"));
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible_with_extern_types")
-{
-    /*
-     * This is technically documenting a case where we are intentionally
-     * unsound.
-     *
-     * Our builtins are essentially defined like so:
-     *
-     * declare class BaseClass
-     *     BaseField: number
-     *     function BaseMethod(self, number): ()
-     *     read Touched: Connection
-     * end
-     *
-     * declare class Connection
-     *     Connect: (Connection, (BaseClass) -> ()) -> ()
-     * end
-     *
-     * The type we infer for `onTouch` is
-     *
-     * (t1) -> () where t1 = { read BaseField: unknown, read BaseMethod: (t1, number) -> () }
-     *
-     * In order to validate that onTouch can be passed to Connect, we must
-     * verify the following relation:
-     *
-     * BaseClass <: t1 where t1 = { read BaseField: unknown, read BaseMethod: (t1, number) -> () }
-     *
-     * However, the cycle between the table and the function gums up the works
-     * here and the worst thing is that it's perfectly reasonable in principle.
-     * Just from these types, we cannot see that BaseMethod will only be passed
-     * t1.  Without that guarantee, BaseClass cannot be used as a subtype of t1.
-     *
-     * I think the theoretically-correct way to untangle this would be to infer
-     * t1 as a bounded existential type.
-     *
-     * For now, we have a subtyping has a rule that provisionally substitutes
-     * the table for the class type when performing the subtyping test.  We
-     * essentially assume that, for all cyclic functions, that the table and the
-     * class are mutually subtypes of one another.
-     *
-     * For more information, read uses of Subtyping::substitutions.
-     */
-
-    CheckResult result = check(R"(
-        local c = BaseClass.New()
-
-        function requiresNothing() end
-
-        function onTouch(other)
-            requiresNothing(other:BaseMethod(0))
-            print(other.BaseField)
-        end
-
-        c.Touched:Connect(onTouch)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(ExternTypeFixture, "ice_while_checking_script_due_to_scopes_not_being_solver_agnostic")
-{
-    // This is intentional - if LuauSolverV2 is false, but we elect the new solver, we should still follow
-    // new solver code paths.
-    // This is necessary to repro an ice that can occur in studio
-    ScopedFastFlag luauSolverOff{FFlag::DebugLuauForceOldSolver, true};
-    getFrontend().setLuauSolverMode(SolverMode::New);
-
-    auto result = check(R"(
-local function ExitSeat(player, character, seat, weld)
-    --Find vehicle model
-    local model
-    local newParent = seat
-    repeat
-        model = newParent
-        newParent = model.Parent
-    until newParent.ClassName ~= "Model"
-    local part, _ = Raycast(seat.Position, dir, dist, {character, model})
-end
-)");
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "extern_type_check_missing_key")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type Foobar with
-            Enabled: boolean
-            function Disable(self): ()
-        end
-    )");
-
-    CheckResult results = check(R"(
-        local isUsingGamepad = false
-        local isModalVisible = false
-
-        local function updateGamepadCursor(foo: Foobar)
-            local shouldEnableCursor = isUsingGamepad and isModalVisible
-
-            if foo.IsEnabled == shouldEnableCursor then
-                return
-            end
-
-            if not shouldEnableCursor then
-                foo:Disable()
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, results);
-    auto err = get<UnknownProperty>(results.errors[0]);
-    CHECK_EQ("IsEnabled", err->key);
-}
-
-TEST_CASE_FIXTURE(Fixture, "extern_type_check_present_key_in_superclass")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type FoobarParent with
-            IsEnabled: boolean
-        end
-        declare extern type Foobar extends FoobarParent with
-            function Disable(self): ()
-        end
-    )");
-
-    CheckResult results = check(R"(
-        local isUsingGamepad = false
-        local isModalVisible = false
-
-        local function updateGamepadCursor(foo: Foobar)
-            local shouldEnableCursor = isUsingGamepad and isModalVisible
-
-            if foo.IsEnabled == shouldEnableCursor then
-                return
-            end
-
-            if not shouldEnableCursor then
-                foo:Disable()
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(results);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type Foobar with
-            IsEnabled: string
-        end
-
-        declare extern type Bing with
-            IsEnabled: number
-        end
-    )");
-
-    CheckResult results = check(R"(
-        local function update(foo: Foobar | Bing)
-            assert(type(foo.IsEnabled) == "number")
-            return foo
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(results);
-    CHECK_EQ("(Bing | Foobar) -> Bing", toString(requireType("update")));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type Foobar with
-            IsEnabled: string | boolean
-        end
-    )");
-
-    CheckResult results = check(R"(
-        local function update(foo: Foobar)
-            assert(type(foo.IsEnabled) == "string")
-            return foo
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(results);
-    CHECK_EQ("(Foobar) -> Foobar & { read IsEnabled: string }", toString(requireType("update")));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
-{
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type Foobar with
-            IsEnabled: string
-        end
-    )");
-
-    CheckResult results = check(R"(
-        local function update(foo: Foobar)
-            assert(type(foo.IsEnabled) == "string" or type(foo.IsEnabled) == "number")
-            return foo
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(results);
-    CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type Foobar with
-            IsEnabled: string
-        end
-    )");
-
-    CheckResult results = check(R"(
-        local function update(foo: Foobar)
-            assert(type(foo.IsEnabled) == "string")
-            return foo
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(results);
-    CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local function f(obj: { [any]: any }, functionName: string)
-            if typeof(obj) == "userdata" then
-                local _ = obj[functionName]
-            end
-        end
-    )"));
-
-    CHECK_EQ("userdata & { [any]: any }", toString(requireTypeAtPosition({3, 28})));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type Foobar with
-            [string]: unknown
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local function update(obj: Foobar)
-            assert(typeof(obj.Baz) == "number")
-            return obj
-        end
-    )"));
-
-    CHECK_EQ("(Foobar) -> Foobar & { read Baz: number }", toString(requireType("update")));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_table")
-{
-    loadDefinition(R"(
-        declare extern type Color3 with
-        end
-    )");
-
-    CheckResult result = check(R"(
-        local function f(c: Color3): { Color3 }
-            return c
-        end
-    )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<TypeMismatch>(result.errors[0]);
-    CHECK_EQ("Color3", toString(err->givenType));
-    CHECK_EQ("{Color3}", toString(err->wantedType));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_overload")
-{
-    loadDefinition(R"(
-        declare extern type Color3 with
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local f : ((Color3) -> ()) & (({Color3}) -> ())
-        local c: Color3
-        f(c)
-    )"));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_indexer_interactions")
-{
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-
-    loadDefinition(R"(
-        declare extern type Container with
-            [string | number]: boolean | string
-        end
-
-        declare extern type Point with
-            X: number
-            Y: number
-        end
-    )");
-
-    CheckResult result = check(R"(
-        local c: Container
-        local p: Point
-        local _: { [ string | number ]: boolean | string } = c -- OK
-        local _: { [string]: boolean | string } = c -- not OK
-        local _: { [ string | number ]: boolean } = c -- not OK
-        local _: { [string]: number } = p -- not OK
-    )");
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
     for (const auto& err : result.errors)
-        CHECK(get<TypeMismatch>(err));
+    {
+        auto* utf = get<UninhabitedTypeFunction>(err);
+        REQUIRE(utf);
+        CHECK_EQ(toString(utf->ty), "mul<number?, number?>");
+    }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_1")
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_annotations")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExternTypesNormalizeWithShapes, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
     };
 
-    loadDefinition(R"(
-        declare extern type Instance with
-            name: string
-        end
-
-        declare extern type WithBrushes extends Instance with
-            brushes: Instance
-        end
-    )");
-
     CheckResult result = check(R"(
-        function take(thing: WithBrushes & { brushes: Instance })
-            print(thing)
-            print(thing.brushes.name)
+        class Point
+            public x: number
+            public y: number
+            public name: string
+            function magnitude(self): string
+                -- self.name is not a number
+                self.name = self.x
+
+                -- This function is declared to return string.
+                return math.sqrt(self.x * self.x + self.y * self.y)
+            end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    // These two types are entirely coincident, so we could imagine a world where this becomes simply `WithBrushes`, but
-    // the principal here is that the user wrote the annotation in this way, and so we're propagating that without normalizing.
-    CHECK_EQ("WithBrushes & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR(result, TypeMismatch);
+    LUAU_REQUIRE_ERROR(result, TypePackMismatch);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
+
+TEST_CASE_FIXTURE(ClassesFixture, "read_unknown_property_from_class_object_or_instance")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExternTypesNormalizeWithShapes, true},
-    };
-
-    loadDefinition(R"(
-        declare extern type Instance with
-            name: string
-        end
-
-        declare extern type WithBrushes extends Instance with
-            brushes: Instance
-        end
-    )");
-
     CheckResult result = check(R"(
-        function take(thing: Instance & { brushes: Instance })
-            print(thing)
-            print(thing.brushes.name)
+        class Point
+            public x: number
+            public y: number
+
+            function zero(): Point
+                return Point {x=0, y=0}
+            end
         end
+
+        local p = Point.zero()
+        local a = p.z
+        local b = Point.z
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK_EQ("Instance & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
+    auto* up0 = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(up0);
+    CHECK(up0->key == "z");
+
+    auto* up1 = get<UnknownProperty>(result.errors[1]);
+    REQUIRE(up1);
+    CHECK(up1->key == "z");
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "writes_to_class_object_properties_are_forbidden")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero(): Point
+                return Point {x=0, y=0}
+            end
+
+            function magnitude(self): number
+                return 5 -- stochastic approximation for performance
+            end
+        end
+
+        Point.magnitude = function(p: Point) return 3 end
+        Point.zero = function() return Point { x = 1, y = 1 } end
+        Point.one = function() return Point { x = 1, y = 1 } end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav0);
+    CHECK(pav0->key == "magnitude");
+    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
+    REQUIRE(pav1);
+    CHECK(pav1->key == "zero");
+    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
+    REQUIRE(pav2);
+    CHECK(pav2->key == "one");
+    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "writes_to_unknown_class_instance_properties_are_forbidden")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero(): Point
+                return Point {x=0, y=0}
+            end
+
+            function magnitude(self): number
+                return 5 -- stochastic approximation for performance
+            end
+        end
+
+        local p = Point.zero()
+
+        p.magnitude = function(p: Point) return 3 end
+        p.zero = function() return Point { x = 1, y = 1 } end
+        p.one = function() return Point { x = 1, y = 1 } end
+
+        p.__index = {}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav0);
+    CHECK(pav0->key == "magnitude");
+    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
+    REQUIRE(pav1);
+    CHECK(pav1->key == "zero");
+    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
+    REQUIRE(pav2);
+    CHECK(pav2->key == "one");
+    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav3 = get<PropertyAccessViolation>(result.errors[3]);
+    REQUIRE(pav3);
+    CHECK(pav3->key == "__index");
+    CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
 }
 
 TEST_SUITE_END();

@@ -80,6 +80,24 @@ function test()
         bodies[1].vel = -p / SOLAR_MASS
     end
 
+    local function energy(bodies: {Body}, nbody: number)
+        local e = 0
+
+        for i = 1, nbody do
+            local bi = bodies[i]
+            local vel = bi.vel
+            e += 0.5 * bi.mass * vector.dot(vel, vel)
+
+            for j = i + 1, nbody do
+                local bj = bodies[j]
+                local distance = vector.magnitude(bi.pos - bj.pos)
+                e -= (bi.mass * bj.mass) / distance
+            end
+        end
+
+        return e
+    end
+
     local N = 20000
     local nbody = #bodies
 
@@ -87,6 +105,8 @@ function test()
     offsetMomentum(bodies, nbody)
     for i = 1, N do advance(bodies, nbody, 0.01) end
     local ts1 = os.clock()
+
+    assert(math.abs(energy(bodies, nbody) + 0.169085) < 1e-4)
 
     return ts1 - ts0
 end

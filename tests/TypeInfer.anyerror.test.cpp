@@ -148,6 +148,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         // CLI-97375(awe): `bar()` is returning `nil` here, which isn't wrong necessarily,
@@ -276,11 +278,7 @@ TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
     REQUIRE(err != nullptr);
 
     CHECK_EQ("unknown", err->name);
-
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("any", toString(requireType("a")));
-    else
-        CHECK_EQ("*error-type*", toString(requireType("a")));
+    CHECK_EQ("*error-type*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
@@ -289,10 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
         local a = Utility.Create "Foo" {}
     )");
 
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("any", toString(requireType("a")));
-    else
-        CHECK_EQ("*error-type*", toString(requireType("a")));
+    CHECK_EQ("*error-type*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_complex_function_with_any")
@@ -359,6 +354,8 @@ end
 function T:construct(index)
 end
 )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -427,7 +424,18 @@ function foo(x: any, y)
 end
 )");
 
-    CHECK("(any, any) -> any" == toString(requireType("foo")));
+    if (!FFlag::DebugLuauForceOldSolver)
+    {
+        // This is an artifact of formalizing `any = unknown | *error-type*`.
+        // We refine `any` to `*error-type* | ~(false?)`, and then index
+        // into it, versus the old solver path where we just claim refining
+        // `any` means `any`.
+        CHECK("(any, *error-type*) -> *error-type*" == toString(requireType("foo")));
+    }
+    else
+    {
+        CHECK("(any, any) -> any" == toString(requireType("foo")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "cast_to_table_of_any")

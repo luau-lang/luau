@@ -168,7 +168,9 @@ do
 end
 
 -- C stack overflow
-if not limitedstack then
+local ehline
+
+local function cstackoverflows(triggerfunc)
   local count = 1
   local cso = setmetatable({}, {
     __index = function(self, i)
@@ -185,7 +187,6 @@ if not limitedstack then
     end
   })
 
-  local ehline
   local function ehassert(cond)
     if not cond then
       ehline = debug.info(2, "l")
@@ -197,7 +198,7 @@ if not limitedstack then
   getmetatable(userdata).__index = print
   assert(debug.info(print, "s") == "[C]")
 
-  local s, e = xpcall(tostring, function(e)
+  return xpcall(triggerfunc, function(e)
     ehassert(string.find(e, "C stack overflow"))
     print("after __tostring C stack overflow", count) -- 198: 1 resume + 1 xpcall + 198 luaB_tostring calls (which runs our __tostring successfully 197 times, erroring on the last attempt)
     ehassert(count > 1)
@@ -237,9 +238,32 @@ if not limitedstack then
 
     return true
   end, cso)
+end
 
-  assert(not s)
-  assert(e == true, "error in xpcall eh, line " .. tostring(ehline))
+if not limitedstack then
+  -- xpcall error handler on immediate path
+  do
+    local s, e = cstackoverflows(tostring)
+    
+    assert(not s)
+    assert(e == true, "error in xpcall eh, line " .. tostring(ehline))
+  end
+
+  -- xpcall error handler on a resume after yielded path
+  do
+    local wrap = coroutine.wrap(function()
+      return cstackoverflows(function(x)
+        coroutine.yield()
+        return tostring(x)
+      end)
+    end)
+
+    wrap()
+
+    local s, e = wrap()
+    assert(not s)
+    assert(e == true, "error in xpcall eh, line " .. tostring(ehline))
+  end
 end
 
 --[[

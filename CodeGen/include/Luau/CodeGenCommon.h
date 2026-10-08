@@ -15,4 +15,14 @@
 #define CODEGEN_TARGET_X64
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #define CODEGEN_TARGET_A64
+
+#ifdef __has_feature
+#if __has_feature(ptrauth_calls)
+#define CODEGEN_TARGET_A64_PTRAUTH_CALLS
+#endif
+
+#if __has_feature(ptrauth_returns)
+#define CODEGEN_TARGET_A64_PTRAUTH_RETURNS
+#endif
+#endif
 #endif

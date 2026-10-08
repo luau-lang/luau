@@ -14,6 +14,10 @@ option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
 option(LUAU_BUILD_SHARED "Build as a shared library" OFF)
 
+# Compile time options for Luau features
+option(LUAU_VECTOR_DOUBLE "Use 64-bit doubles for vector components" OFF)
+option(LUAU_VECTOR_FOUR_WIDE "Enable 4-wide mode for vectors, adding a 'w' component" OFF)
+
 if(LUAU_BUILD_SHARED AND NOT LUAU_EXTERN_C)
     message(FATAL_ERROR "LUAU_BUILD_SHARED requires LUAU_EXTERN_C to be ON")
 endif()
@@ -33,6 +37,7 @@ if (LUAU_BUILD_SHARED)
     add_library(Luau.CLI.lib SHARED)
     add_library(Luau.Ast SHARED)
     add_library(Luau.Bytecode SHARED)
+    add_library(Luau.Inliner SHARED)
     add_library(Luau.Compiler SHARED)
     add_library(Luau.Config SHARED)
     add_library(Luau.Analysis SHARED)
@@ -45,6 +50,7 @@ else()
     add_library(Luau.CLI.lib STATIC)
     add_library(Luau.Ast STATIC)
     add_library(Luau.Bytecode STATIC)
+    add_library(Luau.Inliner STATIC)
     add_library(Luau.Compiler STATIC)
     add_library(Luau.Config STATIC)
     add_library(Luau.Analysis STATIC)
@@ -100,6 +106,12 @@ target_link_libraries(Luau.Ast PUBLIC Luau.Common)
 target_compile_features(Luau.Bytecode PUBLIC cxx_std_17)
 target_include_directories(Luau.Bytecode PUBLIC Bytecode/include)
 target_link_libraries(Luau.Bytecode PUBLIC Luau.Common)
+
+target_compile_features(Luau.Inliner PUBLIC cxx_std_17)
+target_include_directories(Luau.Inliner PUBLIC Inliner/include)
+target_include_directories(Luau.Inliner PRIVATE Bytecode/src)
+target_link_libraries(Luau.Inliner PRIVATE Luau.VM Luau.VM.Internals)
+target_link_libraries(Luau.Inliner PUBLIC Luau.Bytecode)
 
 target_compile_features(Luau.Compiler PUBLIC cxx_std_17)
 target_include_directories(Luau.Compiler PUBLIC Compiler/include)
@@ -207,6 +219,14 @@ if(LUAU_EXTERN_C)
     endif()
 endif()
 
+if(LUAU_VECTOR_DOUBLE)
+    target_compile_definitions(Luau.VM PUBLIC "LUA_VECTOR_DOUBLE=1")
+endif()
+
+if(LUAU_VECTOR_FOUR_WIDE)
+    target_compile_definitions(Luau.VM PUBLIC "LUA_VECTOR_SIZE=4")
+endif()
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER_EQUAL 1924)
     # disable partial redundancy elimination which regresses interpreter codegen substantially in VS2022:
     # https://developercommunity.visualstudio.com/t/performance-regression-on-a-complex-interpreter-lo/1631863
@@ -222,12 +242,15 @@ if(MSVC AND LUAU_BUILD_CLI)
     # the default stack size that MSVC linker uses is 1 MB; we need more stack space in Debug because stack frames are larger
     set_target_properties(Luau.Analyze.CLI PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
     set_target_properties(Luau.Repl.CLI PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
-    set_target_properties(Luau.UnitTest PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
 endif()
 
 if(MSVC AND LUAU_BUILD_TESTS)
     # the default stack size that MSVC linker uses is 1 MB; we need more stack space in Debug because stack frames are larger
     set_target_properties(Luau.CLI.Test PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
+    set_target_properties(Luau.Conformance PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
+    set_target_properties(Luau.UnitTest PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
+    set_target_properties(Luau.CLI.Test PROPERTIES LINK_FLAGS_OPTIMIZED /STACK:2097152)
+    set_target_properties(Luau.Conformance PROPERTIES LINK_FLAGS_OPTIMIZED /STACK:2097152)
 endif()
 
 # embed .natvis inside the library debug information
@@ -262,7 +285,7 @@ if(LUAU_BUILD_CLI)
 
     target_include_directories(Luau.Repl.CLI PRIVATE extern extern/isocline/include)
 
-    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM Luau.Require Luau.CLI.lib isocline)
+    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.Inliner Luau.Config Luau.CodeGen Luau.VM Luau.Require Luau.CLI.lib isocline)
 
     target_link_libraries(Luau.Repl.CLI PRIVATE osthreads)
     target_link_libraries(Luau.Reduce.CLI PRIVATE osthreads)
@@ -286,14 +309,14 @@ endif()
 
 if(LUAU_BUILD_TESTS)
     target_compile_options(Luau.UnitTest PRIVATE ${LUAU_OPTIONS})
-    target_compile_definitions(Luau.UnitTest PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY)
+    target_compile_definitions(Luau.UnitTest PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY DOCTEST_CONFIG_USE_STD_HEADERS)
     target_include_directories(Luau.UnitTest PRIVATE extern)
     target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Bytecode Luau.Compiler Luau.CodeGen)
 
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
-    target_compile_definitions(Luau.Conformance PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY)
-    target_include_directories(Luau.Conformance PRIVATE extern)
-    target_link_libraries(Luau.Conformance PRIVATE Luau.Analysis Luau.Bytecode Luau.Compiler Luau.CodeGen Luau.VM)
+    target_compile_definitions(Luau.Conformance PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY DOCTEST_CONFIG_USE_STD_HEADERS)
+    target_include_directories(Luau.Conformance PRIVATE extern VM/src)
+    target_link_libraries(Luau.Conformance PRIVATE Luau.Analysis Luau.Bytecode Luau.Inliner Luau.Compiler Luau.CodeGen Luau.VM)
     if(CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
         set(LUAU_CONFORMANCE_SOURCE_DIR "Client/Luau/tests/conformance")
     else ()
@@ -302,11 +325,34 @@ if(LUAU_BUILD_TESTS)
     target_compile_definitions(Luau.Conformance PRIVATE LUAU_CONFORMANCE_SOURCE_DIR="${LUAU_CONFORMANCE_SOURCE_DIR}")
 
     target_compile_options(Luau.CLI.Test PRIVATE ${LUAU_OPTIONS})
+    target_compile_definitions(Luau.CLI.Test PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
     target_include_directories(Luau.CLI.Test PRIVATE extern CLI)
-    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM Luau.Require Luau.CLI.lib isocline)
+    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.Inliner Luau.Config Luau.CodeGen Luau.VM Luau.Require Luau.CLI.lib isocline)
     target_link_libraries(Luau.CLI.Test PRIVATE osthreads)
 
     add_subdirectory(fuzz)
+endif()
+
+if(LUAU_BUILD_CLI AND LUAU_BUILD_TESTS)
+    if(CMAKE_VERSION VERSION_LESS 3.12)
+        find_package(PythonInterp 3 REQUIRED)
+        set(LUAU_PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}")
+    else()
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        set(LUAU_PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
+    endif()
+    add_custom_target(Luau.GoldenTest
+        COMMAND ${LUAU_PYTHON_EXECUTABLE} -m tools.golden.selftest
+            --luau "$<TARGET_FILE:Luau.Repl.CLI>"
+            --luau-analyze "$<TARGET_FILE:Luau.Analyze.CLI>"
+        COMMAND ${LUAU_PYTHON_EXECUTABLE} -m tools.golden
+            --luau "$<TARGET_FILE:Luau.Repl.CLI>"
+            --luau-analyze "$<TARGET_FILE:Luau.Analyze.CLI>"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        USES_TERMINAL
+        VERBATIM
+    )
+    add_dependencies(Luau.GoldenTest Luau.Repl.CLI Luau.Analyze.CLI)
 endif()
 
 if(LUAU_BUILD_WEB)

@@ -107,13 +107,12 @@ struct CostVisitor : AstVisitor
     CostVisitor(const DenseHashMap<AstExprCall*, int>& builtins, const DenseHashMap<AstExpr*, Constant>& constants)
         : builtins(builtins)
         , constants(constants)
-        , vars(nullptr)
     {
     }
 
     Cost model(AstExpr* node)
     {
-        if (constants.contains(node))
+        if (const Constant* c = constants.find(node))
             return Cost(0, Cost::kLiteral);
 
         if (AstExprGroup* expr = node->as<AstExprGroup>())
@@ -145,7 +144,7 @@ struct CostVisitor : AstVisitor
             // thus we use a cheaper baseline, don't account for function, and assume constant/local copy is free
             const int* bfid = builtins.find(expr);
             bool builtin = bfid != nullptr && *bfid != LBF_NONE;
-            bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
+            bool builtinShort = builtin && expr->args.size <= 3u; // FASTCALL1/2/3
 
             Cost cost = builtin ? 2 : 3;
 
@@ -204,7 +203,13 @@ struct CostVisitor : AstVisitor
         }
         else if (AstExprIfElse* expr = node->as<AstExprIfElse>())
         {
-            return model(expr->condition) + model(expr->trueExpr) + model(expr->falseExpr) + 2;
+            Cost cond = model(expr->condition);
+
+            // propagate constant mask from condition to the local variable if it exists
+            if (expr->conditionLocal && cond.constant != 0)
+                vars[expr->conditionLocal] = cond.constant;
+
+            return cond + model(expr->trueExpr) + model(expr->falseExpr) + 2;
         }
         else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
         {
@@ -300,6 +305,14 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatIf* node) override
     {
+        if (node->conditionLocal)
+        {
+            Cost arg = model(node->condition);
+
+            if (arg.constant != 0)
+                vars[node->conditionLocal] = arg.constant;
+        }
+
         if (isConstantFalse(constants, node->condition))
         {
             if (node->elsebody)
@@ -428,8 +441,8 @@ uint64_t modelCost(
 
 uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount)
 {
-    DenseHashMap<AstExprCall*, int> builtins{nullptr};
-    DenseHashMap<AstExpr*, Constant> constants{nullptr};
+    DenseHashMap<AstExprCall*, int> builtins;
+    DenseHashMap<AstExpr*, Constant> constants;
 
     return modelCost(root, vars, varCount, builtins, constants);
 }

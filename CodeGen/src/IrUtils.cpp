@@ -18,9 +18,7 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
-LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenConsistentHasResult)
+LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 
 namespace Luau
 {
@@ -59,6 +57,10 @@ int getOpLength(LuauOpcode op)
     case LOP_GETUDATAKS:
     case LOP_SETUDATAKS:
     case LOP_NAMECALLUDATA:
+    case LOP_NEWCLASSMEMBER:
+    case LOP_CALLFB:
+    case LOP_CMPPROTO:
+    case LOP_NEWCLASS:
         return 2;
 
     default:
@@ -90,6 +92,7 @@ bool isJumpD(LuauOpcode op)
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:
     case LOP_JUMPXEQKS:
+    case LOP_CMPPROTO:
         return true;
 
     default:
@@ -118,6 +121,7 @@ bool isFastCall(LuauOpcode op)
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
     case LOP_FASTCALL3:
+    case LOP_FASTPCALL:
         return true;
 
     default:
@@ -266,6 +270,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_CMP_INT:
+    case IrCmd::JUMP_CMP_INT64:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_FLOAT:
@@ -285,6 +290,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Int;
     case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::NEW_USERDATA:
+    case IrCmd::NEW_VECTOR:
         return IrValueKind::Pointer;
     case IrCmd::INT64_TO_NUM:
     case IrCmd::INT_TO_NUM:
@@ -314,6 +320,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::INVOKE_FASTCALL:
         return IrValueKind::Int;
     case IrCmd::CHECK_FASTCALL_RES:
+    case IrCmd::INVOKE_FASTPCALL:
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
@@ -329,6 +336,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_READONLY:
     case IrCmd::CHECK_NO_METATABLE:
     case IrCmd::CHECK_SAFE_ENV:
+    case IrCmd::CHECK_YIELDABLE:
     case IrCmd::CHECK_ARRAY_SIZE:
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
@@ -397,16 +405,21 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::BUFFER_READU16:
     case IrCmd::BUFFER_READI32:
         return IrValueKind::Int;
+    case IrCmd::BUFFER_READI64:
+        return IrValueKind::Int64;
     case IrCmd::BUFFER_WRITEI8:
     case IrCmd::BUFFER_WRITEI16:
     case IrCmd::BUFFER_WRITEI32:
     case IrCmd::BUFFER_WRITEF32:
     case IrCmd::BUFFER_WRITEF64:
+    case IrCmd::BUFFER_WRITEI64:
         return IrValueKind::None;
     case IrCmd::BUFFER_READF32:
         return IrValueKind::Float;
     case IrCmd::BUFFER_READF64:
         return IrValueKind::Double;
+    case IrCmd::JUMP_CMP_PROTOID:
+        return IrValueKind::None;
     }
 
     LUAU_UNREACHABLE();
@@ -1133,6 +1146,15 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
         }
         break;
+    case IrCmd::JUMP_CMP_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            if (compare(function.int64Op(OP_A(inst)), function.int64Op(OP_B(inst)), conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
+        }
+        break;
     case IrCmd::JUMP_CMP_NUM:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
@@ -1677,23 +1699,20 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             substitute(function, inst, build.constInt(countrz(unsigned(function.intOp(OP_A(inst))))));
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        if (FFlag::LuauCodegenBufferRangeMerge4)
+        if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
         {
-            if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
-            {
-                // If base offset and base offset source double value are both constants, we can get rid of that check or fallback
-                if (double(function.intOp(OP_B(inst))) == function.doubleOp(OP_E(inst)))
-                    replace(function, OP_E(inst), build.undef()); // This disables equality check at runtime
-                else
-                    replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
-            }
-            else if (OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
-            {
-                // If only the base offset source double value is a constant, it means we couldn't constant-fold NUM_TO_INT
-                CODEGEN_ASSERT(function.instOp(OP_B(inst)).cmd == IrCmd::NUM_TO_INT && OP_A(function.instOp(OP_B(inst))) == OP_E(inst));
-
+            // If base offset and base offset source double value are both constants, we can get rid of that check or fallback
+            if (double(function.intOp(OP_B(inst))) == function.doubleOp(OP_E(inst)))
+                replace(function, OP_E(inst), build.undef()); // This disables equality check at runtime
+            else
                 replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
-            }
+        }
+        else if (OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
+        {
+            // If only the base offset source double value is a constant, it means we couldn't constant-fold NUM_TO_INT
+            CODEGEN_ASSERT(function.instOp(OP_B(inst)).cmd == IrCmd::NUM_TO_INT && OP_A(function.instOp(OP_B(inst))) == OP_E(inst));
+
+            replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
         }
         break;
     default:
@@ -1758,6 +1777,17 @@ void killUnusedBlocks(IrFunction& function)
     }
 }
 
+static int getBlockKindPriority(IrBlockKind kind)
+{
+    if (kind == IrBlockKind::Fallback)
+        return 1;
+
+    if (kind == IrBlockKind::ExitSync)
+        return 2;
+
+    return 0;
+}
+
 std::vector<uint32_t> getSortedBlockOrder(IrFunction& function)
 {
     std::vector<uint32_t> sortedBlocks;
@@ -1773,9 +1803,9 @@ std::vector<uint32_t> getSortedBlockOrder(IrFunction& function)
             const IrBlock& a = function.blocks[idxA];
             const IrBlock& b = function.blocks[idxB];
 
-            // Place fallback blocks at the end
-            if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
-                return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
+            // Place fallback blocks at the end followed by exit sync blocks
+            if (getBlockKindPriority(a.kind) != getBlockKindPriority(b.kind))
+                return getBlockKindPriority(a.kind) < getBlockKindPriority(b.kind);
 
             // Try to order by instruction order
             if (a.sortkey != b.sortkey)
@@ -1844,11 +1874,13 @@ void propagateTagsFromPredecessors(
     std::function<void(size_t, uint8_t)> setTag
 )
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenPropagateTagsAcrossChains2);
-
     uint32_t blockIdx = function.getBlockIndex(block);
 
     if (blockIdx >= function.cfg.predecessorsOffsets.size())
+        return;
+
+    // Entry block has an implicit edge as the function start and it has no tag info at that moment
+    if (FFlag::LuauCodegenPropagateFallbackTags && function.entryBlock == blockIdx)
         return;
 
     BlockIteratorWrapper preds = predecessors(function.cfg, blockIdx);
@@ -1862,6 +1894,9 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
+        if (function.blocks[predIdx].kind == IrBlockKind::Dead)
+            continue;
+
         if (predIdx >= numBlockExitTags)
             return;
 
@@ -1874,6 +1909,9 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
+        if (function.blocks[predIdx].kind == IrBlockKind::Dead)
+            continue;
+
         const std::vector<uint8_t>& predTags = function.blockExitTags[predIdx];
 
         CODEGEN_ASSERT(minRegsKnown <= predTags.size());

@@ -93,6 +93,8 @@ for i=1,N do
 end
 print(S)
 
+assert(N ~= 64 or S == 109250)
+
 end
 
 bench.runCode(test, "mandel")

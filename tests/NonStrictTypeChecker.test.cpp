@@ -20,7 +20,6 @@ LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
 LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 using namespace Luau;
@@ -67,7 +66,6 @@ using namespace Luau;
 
 struct NonStrictTypeCheckerFixture : Fixture
 {
-
     NonStrictTypeCheckerFixture() = default;
 
     CheckResult checkNonStrict(const std::string& code)
@@ -462,8 +460,6 @@ end
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_instantiation")
 {
-    ScopedFastFlag semantics{FFlag::LuauExplicitTypeInstantiationSupport, true};
-
     CheckResult result = checkNonStrict(R"(
         function array<T>(): {T}
             return {}
@@ -791,6 +787,8 @@ function passThrough(module)
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(0, result);
     // We should still warn about dynamic requires in strict mode
     result = check(Mode::Strict, R"(
@@ -798,6 +796,8 @@ function passThrough(module)
     require(module)
 end
 )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const UnknownRequire* req = get<UnknownRequire>(result.errors[0]);
@@ -896,5 +896,26 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_expr_recursion_l
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 #endif
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "typecheck_class_method_bodies")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    CheckResult result = checkNonStrict(R"(
+        --!nonstrict
+        class Student
+            public name: number
+            function greet(self)
+                return `Hello, {lower(self.name)}!`
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, CheckedFunctionCallError);
+}
 
 TEST_SUITE_END();

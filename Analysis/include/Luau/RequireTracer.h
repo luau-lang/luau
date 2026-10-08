@@ -16,7 +16,7 @@ class AstStatBlock;
 
 struct RequireTraceResult
 {
-    DenseHashMap<const AstNode*, ModuleInfo> exprs{nullptr};
+    DenseHashMap<const AstNode*, ModuleInfo> exprs;
 
     std::vector<std::pair<ModuleName, Location>> requireList;
 };

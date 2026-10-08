@@ -2,8 +2,6 @@
 
 #include "Luau/Scope.h"
 
-LUAU_FASTFLAG(LuauSolverV2);
-
 namespace Luau
 {
 
@@ -238,6 +236,7 @@ void Scope::inheritRefinements(const ScopePtr& childScope)
             refinements[k] = a;
     }
 }
+
 
 bool Scope::shouldWarnGlobal(std::string name) const
 {

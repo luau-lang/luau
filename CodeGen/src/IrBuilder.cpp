@@ -12,7 +12,10 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
+LUAU_FASTFLAG(LuauCallFeedback)
+LUAU_FASTFLAG(LuauBackedgeHeapCheck)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
+LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
 
 namespace Luau
 {
@@ -21,10 +24,10 @@ namespace CodeGen
 
 constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 
-IrBuilder::IrBuilder(const HostIrHooks& hostHooks)
+IrBuilder::IrBuilder(const HostIrHooks& hostHooks, const VmEnvironmentInfo& envInfo)
     : hostHooks(hostHooks)
-    , constantMap({IrConstKind::Tag, ~0ull})
 {
+    function.envInfo = envInfo;
 }
 
 static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
@@ -40,11 +43,10 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 
 static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 {
-    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState3 ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
+    const BytecodeTypeInfo& typeInfo = build.function.bcOriginalTypeInfo;
     CODEGEN_ASSERT(hasTypedParameters(typeInfo));
 
-    if (FFlag::LuauCodegenSetBlockEntryState3)
-        build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
+    build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
 
     for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
     {
@@ -68,8 +70,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(fallbackCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState3)
-                build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
+            build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
         }
 
         switch (tag)
@@ -125,8 +126,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(nextCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState3)
-                build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
+            build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
         }
     }
 
@@ -329,8 +329,12 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstSetGlobal(*this, pc, i);
         break;
     case LOP_CALL:
+    case LOP_CALLFB:
         inst(IrCmd::INTERRUPT, constUint(i));
-        inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
+        if (FFlag::LuauCallFeedback)
+            inst(IrCmd::SET_SAVEDPC, constUint(i + getOpLength(op)));
+        else
+            inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
 
         inst(IrCmd::CALL, vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1), constInt(LUAU_INSN_C(*pc) - 1));
 
@@ -589,6 +593,10 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
             IrOp fallback = fallbackBlock(i);
 
             inst(IrCmd::INTERRUPT, constUint(i));
+
+            if (FFlag::LuauBackedgeHeapCheck)
+                inst(IrCmd::CHECK_GC);
+
             loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
 
             inst(IrCmd::FORGLOOP, vmReg(ra), constInt(aux), loopRepeat, loopExit);
@@ -634,7 +642,18 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_NAMECALL:
     case LOP_NAMECALLUDATA:
         if (translateInstNamecall(*this, pc, i))
-            cmdSkipTarget = i + 3;
+        {
+            if (FFlag::LuauCallFeedback)
+            {
+                static const int namecall = getOpLength(static_cast<LuauOpcode>(LOP_NAMECALL));
+                int callOp = LUAU_INSN_OP(*(pc + namecall));
+                LUAU_ASSERT(callOp == LOP_CALL || callOp == LOP_CALLFB);
+                int call = getOpLength(static_cast<LuauOpcode>(callOp));
+                cmdSkipTarget = i + namecall + call;
+            }
+            else
+                cmdSkipTarget = i + 3;
+        }
         break;
     case LOP_PREPVARARGS:
         inst(IrCmd::FALLBACK_PREPVARARGS, constUint(i), constInt(LUAU_INSN_A(*pc)));
@@ -655,6 +674,39 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         inst(IrCmd::FALLBACK_FORGPREP, constUint(i), vmReg(LUAU_INSN_A(*pc)), loopStart);
         break;
     }
+    // We do not support classes in NCG at the moment, so if we see a class
+    // operation then unconditionally exit to the VM.
+    case LOP_NEWCLASSMEMBER:
+    case LOP_NEWCLASS:
+        inst(IrCmd::JUMP, vmExit(i));
+        break;
+
+    case LOP_CMPPROTO:
+        translateInstCmpProto(*this, pc, i);
+        break;
+
+    case LOP_FASTPCALL:
+        // When flag is disabled, by skipping the translation we execute the fallback path
+        if (!FFlag::LuauCodeGenFastpcall)
+        {
+            IrOp next = blockAtInst(i + getOpLength(op));
+            inst(IrCmd::JUMP, next);
+            beginBlock(next);
+            break;
+        }
+
+        if (std::optional<IrOp> block = translateFastPcall(*this, pc, i))
+        {
+            handleFastcallFallback(*block, pc, i);
+        }
+        else
+        {
+            IrOp next = blockAtInst(i + getOpLength(op));
+            inst(IrCmd::JUMP, next);
+            beginBlock(next);
+        }
+        break;
+
     default:
         CODEGEN_ASSERT(!"Unknown instruction");
     }
@@ -721,7 +773,7 @@ void IrBuilder::checkSafeEnv(int pcpos)
 
 void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
 {
-    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+    DenseHashMap<uint32_t, uint32_t> instRedir;
 
     auto redirect = [&instRedir](IrOp& op)
     {

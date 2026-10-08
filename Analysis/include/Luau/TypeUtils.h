@@ -84,18 +84,22 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
 
 bool occursCheck(TypeId needle, TypeId haystack);
 
+// NOTE: This uses a custom enum as it is replacing several bespoke
+// implementations of the same logic.
+enum class OccursCheckResult
+{
+    Pass,
+    Fail
+};
+
+OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack);
+
 // Returns the minimum and maximum number of types the argument list can accept.
 std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp, bool includeHiddenVariadics = false);
 
 // Extend the provided pack to at least `length` types.
 // Returns a temporary TypePack that contains those types plus a tail.
-TypePack extendTypePack(
-    TypeArena& arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    TypePackId pack,
-    size_t length,
-    std::vector<std::optional<TypeId>> overrides = {}
-);
+TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length);
 
 /**
  * Reduces a union by decomposing to the any/error type if it appears in the
@@ -253,18 +257,6 @@ std::optional<Ty> follow(std::optional<Ty> ty)
 bool isLiteral(const AstExpr* expr);
 
 /**
- * Given a function call and a mapping from expression to type, determine
- * whether the type of any argument in said call in depends on a blocked types.
- * This is used as a precondition for bidirectional inference: be warned that
- * the behavior of this algorithm is tightly coupled to that of bidirectional
- * inference.
- * @param expr Expression to search
- * @param astTypes Mapping from AST node to TypeID
- * @returns A vector of blocked types
- */
-std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
-
-/**
  * Given a scope and a free type, find the closest parent that has a present
  * `interiorFreeTypes` and append the given type to said list. This list will
  * be generalized when the requisite `GeneralizationConstraint` is resolved.
@@ -283,7 +275,14 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy);
  * @param exprType Type of the expression to match
  * @return An element of `tables` that best matches `exprType`.
  */
-std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+
+std::optional<TypeId> extractMatchingTableType(
+    const UnionType* expectedUnion,
+    TypeId exprType,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+);
 
 /**
  * @param item A member of a table in an AST
@@ -382,24 +381,6 @@ private:
 
 TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
-
-struct ContainsAnyGeneric final : public TypeOnceVisitor
-{
-    bool found = false;
-
-    explicit ContainsAnyGeneric();
-
-    bool visit(TypeId ty) override;
-    bool visit(TypePackId ty) override;
-
-    bool visit(TypeId ty, const ExternType&) override;
-
-    /**
-     * @returns if there is _any_ generic in `ty`
-     */
-    static bool hasAnyGeneric(TypeId ty);
-    static bool hasAnyGeneric(TypePackId tp);
-};
 
 /**
  * @returns if `ty` contains a generic in the set `generics`.

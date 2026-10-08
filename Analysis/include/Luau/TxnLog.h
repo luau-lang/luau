@@ -66,17 +66,12 @@ T* getMutable(PendingTypePack* pending)
 struct TxnLog
 {
     explicit TxnLog()
-        : typeVarChanges(nullptr)
-        , typePackChanges(nullptr)
-        , ownedSeen()
-        , sharedSeen(&ownedSeen)
+        : sharedSeen(&ownedSeen)
     {
     }
 
     explicit TxnLog(TxnLog* parent)
-        : typeVarChanges(nullptr)
-        , typePackChanges(nullptr)
-        , parent(parent)
+        : parent(parent)
     {
         if (parent)
         {
@@ -89,9 +84,7 @@ struct TxnLog
     }
 
     explicit TxnLog(std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen)
-        : typeVarChanges(nullptr)
-        , typePackChanges(nullptr)
-        , sharedSeen(sharedSeen)
+        : sharedSeen(sharedSeen)
     {
     }
 

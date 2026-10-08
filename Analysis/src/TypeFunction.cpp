@@ -32,8 +32,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAG(LuauTypeFunctionsCaptureNestedInstances)
-LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
 
 namespace Luau
 {
@@ -42,11 +40,11 @@ using TypeOrTypePackIdSet = DenseHashSet<const void*>;
 
 struct InstanceCollector : TypeOnceVisitor
 {
-    DenseHashSet<TypeId> recordedTys{nullptr};
+    DenseHashSet<TypeId> recordedTys;
     VecDeque<TypeId> tys;
-    DenseHashSet<TypePackId> recordedTps{nullptr};
+    DenseHashSet<TypePackId> recordedTps;
     VecDeque<TypePackId> tps;
-    TypeOrTypePackIdSet shouldGuess{nullptr};
+    TypeOrTypePackIdSet shouldGuess;
     std::vector<const void*> typeFunctionInstanceStack;
     std::vector<TypeId> cyclicInstance;
 
@@ -206,7 +204,7 @@ struct TypeFunctionReducer
     VecDeque<TypePackId> queuedTps;
     TypeOrTypePackIdSet shouldGuess;
     std::vector<TypeId> cyclicTypeFunctions;
-    TypeOrTypePackIdSet irreducible{nullptr};
+    TypeOrTypePackIdSet irreducible;
     FunctionGraphReductionResult result;
     bool force = false;
 
@@ -260,7 +258,7 @@ struct TypeFunctionReducer
     SkipTestResult testForSkippability(TypeId ty)
     {
         VecDeque<TypeId> queue;
-        DenseHashSet<TypeId> seen{nullptr};
+        DenseHashSet<TypeId> seen;
 
         queue.push_back(follow(ty));
 
@@ -383,31 +381,15 @@ struct TypeFunctionReducer
         if (reduction.result)
         {
             replace(subject, *reduction.result);
-            if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
+            for (auto ty : ctx->freshInstances)
             {
-                for (auto ty : ctx->freshInstances)
-                {
-                    queuedTys.push_back(ty);
-                    if (ctx->solver)
-                        ctx->pushConstraint(ReduceConstraint{ty});
-                }
-            }
-            else
-            {
-                for (auto ty : reduction.freshTypes_DEPRECATED)
-                {
-                    if constexpr (std::is_same_v<T, TypeId>)
-                        queuedTys.push_back(ty);
-                    else if constexpr (std::is_same_v<T, TypePackId>)
-                        queuedTps.push_back(ty);
-                }
+                queuedTys.push_back(ty);
+                if (ctx->solver)
+                    ctx->pushConstraint(ReduceConstraint{ty});
             }
         }
         else
         {
-            if (!FFlag::LuauTypeFunctionsCaptureNestedInstances)
-                LUAU_ASSERT(reduction.freshTypes_DEPRECATED.empty());
-
             irreducible.insert(subject);
 
             if (reduction.error.has_value())
@@ -467,8 +449,7 @@ struct TypeFunctionReducer
                 LUAU_ASSERT(!"Unreachable");
         }
 
-        if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
-            ctx->freshInstances.clear();
+        ctx->freshInstances.clear();
     }
 
     bool done() const

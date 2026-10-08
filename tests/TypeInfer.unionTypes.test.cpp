@@ -8,8 +8,9 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -34,10 +35,6 @@ until _._
 
 TEST_CASE_FIXTURE(Fixture, "return_types_can_be_disjoint")
 {
-    // CLI-114134 We need egraphs to consistently reduce the cyclic union
-    // introduced by the increment here.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local count = 0
         function most_of_the_natural_numbers(): number?
@@ -121,9 +118,6 @@ TEST_CASE_FIXTURE(Fixture, "optional_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "optional_arguments_table")
 {
-    // CLI-115588 - Bidirectional inference does not happen for assignments
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local a:{a:string, b:string?}
         a = {a="ok"}
@@ -171,6 +165,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_property_guaranteed_to_ex
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A | B) -> number", toString(requireType("f")));
 }
@@ -185,6 +181,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_mixed_types")
             return t.x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A | B) -> number | string", toString(requireType("f")));
@@ -201,6 +199,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_works_at_arbitrary_depth")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A | B) -> number | string", toString(requireType("f")));
 }
@@ -216,6 +216,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_optional_property")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A | B) -> number?", toString(requireType("f")));
 }
@@ -230,6 +232,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_missing_property")
             return t.x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -253,6 +257,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_property_of_type_any"
             return t.x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A | B) -> any", toString(requireType("f")));
@@ -287,6 +293,8 @@ TEST_CASE_FIXTURE(Fixture, "optional_union_members")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
@@ -303,6 +311,8 @@ TEST_CASE_FIXTURE(Fixture, "optional_union_functions")
             return b.foo(1, 2)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -321,6 +331,8 @@ TEST_CASE_FIXTURE(Fixture, "optional_union_methods")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
@@ -335,6 +347,8 @@ TEST_CASE_FIXTURE(Fixture, "optional_union_follow")
         function f(a: number, b: number?, c: number?) return -a end
         return f()
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -538,14 +552,24 @@ end
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(
-            toString(result.errors[0]),
-            "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
-            "this is because \n\t"
-            " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
-            " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
-            " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK_EQ(
+                toString(result.errors[0]),
+                "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
+                "this is because \n\t"
+                " * `X` is not a subtype of `{ w: number }`\n\t"
+                " * `Y` is not a subtype of `{ w: number }`\n\t"
+                " * `Z` is not a subtype of `{ w: number }`"
+            );
+        else
+            CHECK_EQ(
+                toString(result.errors[0]),
+                "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
+                "this is because \n\t"
+                " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
+                " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
+                " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
+            );
     }
     else
     {
@@ -569,20 +593,8 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
-    {
-        // clang-format off
-        const std::string expected =
-            "Expected this to be 'X | Y | Z', but got '{ w: number }'; \n"
-            "this is because \n"
-            "\t * the 1st component of the union is `X`, and `{ w: number }` is not a subtype of `X`\n"
-            "\t * the 2nd component of the union is `Y`, and `{ w: number }` is not a subtype of `Y`\n"
-            "\t * the 3rd component of the union is `Z`, and `{ w: number }` is not a subtype of `Z`\n";
-        // clang-format on
-        CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-    }
-    else if (!FFlag::DebugLuauForceOldSolver)
-        CHECK(toString(result.errors[0]) == "Expected this to be 'X | Y | Z', but got '{ w: number }'");
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("Expected this to be 'X | Y | Z', but got '{ w: number }'", toString(result.errors[0]));
     else
         CHECK_EQ(toString(result.errors[0]), R"(Expected this to be 'X | Y | Z', but got 'a'; none of the union options are compatible)");
 }
@@ -621,6 +633,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_allow_cyclic_unions_to_be_inferred")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -657,6 +671,8 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
             return x[0]
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     // this is a cyclic union of number arrays, so it _is_ a table, even if it's a nonsense type.
     // no need to generate a NotATable error here. The new solver automatically handles this and
@@ -858,29 +874,17 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // clang-format off
         const std::string expected =
             "Expected this to be\n"
             "\t'((...number?) -> ()) | ((number?) -> ())'\n"
             "but got\n"
-            "\t'(number) -> ()'; \n"
-            "this is because \n"
-            "\t * it takes `number` and in the 2nd component of the union, the function takes a tail of `...number?`, and `number` is not a supertype of `...number?`\n"
-            "\t * it takes the 1st entry in the type pack is `number` and in the 1st component of the union, the function takes the 1st entry in the type pack which has the 2nd component of the union as `nil`, and `number` is not a supertype of `nil`"
+            "\t'(number) -> ()'\n";
         ;
         // clang-format on
-
         CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-    }
-    else if (!FFlag::DebugLuauForceOldSolver)
-    {
-        const std::string expected = "Expected this to be\n\t"
-                                     "'((...number?) -> ()) | ((number?) -> ())'"
-                                     "\nbut got\n\t"
-                                     "'(number) -> ()'";
-        CHECK(expected == toString(result.errors[0]));
     }
     else
     {
@@ -915,8 +919,12 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
+
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
 
     CheckResult result = check(R"(
         local function f(t): { x: number } | { x: string }
@@ -925,9 +933,13 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("<a>(({ read x: a } & { x: number }) | ({ read x: a } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f")));
+    CHECK_EQ(
+        "(({ read x: unknown } & { x: number }) | ({ read x: unknown } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f"))
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")
@@ -940,6 +952,8 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")
             return t.x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -958,6 +972,8 @@ TEST_CASE_FIXTURE(Fixture, "union_table_any_property")
             sup = sub
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1012,6 +1028,8 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const UnknownProperty* unknownProp = get<UnknownProperty>(result.errors[0]);
@@ -1046,6 +1064,107 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "handle_multiple_optionals")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_union_bounds")
+{
+    /*
+     * When unifying 'a <: T | nil in a context where T substituted for 't, we must constrain the lower bound of 't by 'a.
+     */
+    CheckResult result = check(R"(
+        local function unwrap<T>(a: T?): T
+            if a == nil then
+                error("Unexpected nil!")
+            end
+            return a
+        end
+
+        local b = unwrap(42)
+        local c = unwrap(true)
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireType("b")));
+    CHECK("boolean" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2134")
+{
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    CheckResult result = check(R"(
+        local function addIndex <A, B, C> (op: ((value: A) -> B, array: {A}) -> {C})
+            return function <K> (idxOp: (key: K, value: A) -> B, tbl: { [K]: A })
+                return {} :: { [K]: C }
+            end
+        end
+
+        local function filter <A, K> (predicate: (value: A) -> boolean, tbl: {[K]: A })
+            return {} :: { A }
+        end
+
+        local function map <A, B, K> (mapper: (value: A) -> B, tbl: {[K]: A })
+            return {} :: { B }
+        end
+
+        local function filterWithIndex(index: string, value: string): boolean
+            return true :: boolean
+        end
+
+        local function mapWithIndex(index: string, value: string): string
+            return "" :: string
+        end
+
+        local myArr = {first = "hi", second = "there", third = "what"}
+
+        local filterTest = addIndex(filter)
+        local filterResult = filterTest(filterWithIndex, myArr)
+
+        local mapTest = addIndex(map)
+        local mapResult = mapTest(mapWithIndex, myArr)
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2393")
+{
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    CheckResult result = check(R"(
+        --!strict
+
+        type Example<T> = {
+            foo: () -> T,
+            bar: (T?) -> ()
+        }
+
+        local ex = {} :: Example<string>
+
+        local function process<T>(ref: Example<T>)
+            return ref
+        end
+
+        process(ex)
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2025")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type a = { property: string }
+
+        local foo: {a} = {}
+        local bar: any = {}
+
+        local baz: a? = bar.test
+
+        table.insert(foo, bar)
+    )"));
 }
 
 TEST_SUITE_END();

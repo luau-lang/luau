@@ -46,12 +46,6 @@ public:
     NativeModule(
         SharedCodeAllocator* allocator,
         const std::optional<ModuleId>& moduleId,
-        const uint8_t* moduleBaseAddress,
-        std::vector<NativeProtoExecDataPtr> nativeProtos
-    ) noexcept;
-    NativeModule(
-        SharedCodeAllocator* allocator,
-        const std::optional<ModuleId>& moduleId,
         CodeAllocationData codeAllocationData,
         std::vector<NativeProtoExecDataPtr> nativeProtos
     ) noexcept;
@@ -90,7 +84,6 @@ private:
 
     SharedCodeAllocator* allocator = nullptr;
     std::optional<ModuleId> moduleId = {};
-    const uint8_t* moduleBaseAddress_DEPRECATED = nullptr;
     CodeAllocationData codeAllocationData;
 
     std::vector<NativeProtoExecDataPtr> nativeProtos = {};

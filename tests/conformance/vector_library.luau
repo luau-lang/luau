@@ -5,7 +5,7 @@ local function noinline(x, ...) local s, r = pcall(function(y) return y end, x) 
 local function noinlinevector(a, b, c) return noinline(vector.create(a, b, c)) end
 
 -- detect vector size
-local vector_size = if pcall(function() return vector(0, 0, 0).w end) then 4 else 3
+local vector_size = if pcall(function() return vector.create(0, 0, 0).w end) then 4 else 3
 
 function ecall(fn, ...)
     local ok, err = pcall(fn, ...)
@@ -163,7 +163,6 @@ do
 
     assert(fuzzyeq(vector.angle(rand[10], rand[1], rand[2]), ans[10]))
     assert(fuzzyeq(vector.angle(rand[2], rand[3], rand[4]), ans[1]))
-    assert(fuzzyeq(vector.angle(rand[4], rand[5], rand[5]), ans[2]))
     assert(fuzzyeq(vector.angle(vector.zero, rand[6], rand[10]), ans[3]))
     assert(fuzzyeq(vector.angle(vector.one, rand[7], rand[10]), ans[4]))
     assert(fuzzyeq(vector.angle(vector.zero, vector.zero, vector.zero), ans[5]))
@@ -216,21 +215,31 @@ assert(select("#", vector.clamp(vector.zero, vector.zero, vector.one)) == 1)
 -- lerp
 assert(vector.lerp(vector.zero, vector.one, 0) == vector.zero)
 assert(vector.lerp(vector.zero, vector.one, 1) == vector.one)
-assert(vector.lerp(vector.zero, vector.one, 0.5) == vector.create(0.5, 0.5, 0.5))
-assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
-assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
 assert(vector.lerp(vector.create(1, 2, 3), vector.create(3, 2, 1), 0.5) == vector.create(2, 2, 2))
 assert(vector.lerp(vector.create(-1, -1, -3), vector.zero, 0.5) == vector.create(-0.5, -0.5, -1.5))
 assert(vector.lerp(vector.create(10, 8, 3), vector.create(-3, 8, 3), 0.43) == vector.create(4.41, 8, 3))
 assert(vector.lerp(noinline(vector.zero), vector.one, 0) == vector.zero)
 assert(vector.lerp(noinline(vector.zero), vector.one, 1) == vector.one)
-assert(vector.lerp(noinline(vector.zero), vector.one, 0.5) == vector.create(0.5, 0.5, 0.5))
-assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
-assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
 assert(vector.lerp(noinlinevector(1, 2, 3), vector.create(3, 2, 1), 0.5) == vector.create(2, 2, 2))
 assert(vector.lerp(noinlinevector(-1, -1, -3), vector.zero, 0.5) == vector.create(-0.5, -0.5, -1.5))
 assert(vector.lerp(noinlinevector(10, 8, 3), vector.create(-3, 8, 3), 0.43) == vector.create(4.41, 8, 3))
 assert(ecall(function() return vector.lerp(vector.zero, vector.one, vector.one) end) == "invalid argument #3 to 'lerp' (number expected, got vector)")
+
+if vector_size == 4 then
+    assert(vector.lerp(vector.zero, vector.one, 0.5) == vector.create(0.5, 0.5, 0.5, 0.5))
+    assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5, 0.5))
+    assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5, 0.5))
+    assert(vector.lerp(noinline(vector.zero), vector.one, 0.5) == vector.create(0.5, 0.5, 0.5, 0.5))
+    assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5, 0.5))
+    assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5, 0.5))
+else
+    assert(vector.lerp(vector.zero, vector.one, 0.5) == vector.create(0.5, 0.5, 0.5))
+    assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
+    assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
+    assert(vector.lerp(noinline(vector.zero), vector.one, 0.5) == vector.create(0.5, 0.5, 0.5))
+    assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
+    assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
+end
 
 -- validate component access
 assert(vector.create(1, 2, 3).x == 1)

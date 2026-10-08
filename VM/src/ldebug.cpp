@@ -8,25 +8,26 @@
 #include "lgc.h"
 #include "ldo.h"
 #include "lbytecode.h"
+#include "lvm.h"
 
 #include <string.h>
 #include <stdio.h>
 
-static const char* getfuncname(Closure* f);
+static const char* getfuncname(Closure* cl);
 
 static int currentpc(lua_State* L, CallInfo* ci)
 {
-    return pcRel(ci->savedpc, ci_func(ci)->l.p);
+    return pcRel(ci->savedpc, ci->p);
 }
 
 static int currentline(lua_State* L, CallInfo* ci)
 {
-    return luaG_getline(ci_func(ci)->l.p, currentpc(L, ci));
+    return luaG_getline(ci->p, currentpc(L, ci));
 }
 
 static Proto* getluaproto(CallInfo* ci)
 {
-    return (isLua(ci) ? cast_to(Proto*, ci_func(ci)->l.p) : NULL);
+    return cast_to(Proto*, ci->p);
 }
 
 int lua_getargument(lua_State* L, int level, int n)
@@ -47,13 +48,13 @@ int lua_getargument(lua_State* L, int level, int n)
         if (n <= fp->numparams)
         {
             luaC_threadbarrier(L);
-            luaA_pushobject(L, ci->base + (n - 1));
+            luaA_pushvalue(L, ci->base + (n - 1));
             res = 1;
         }
         else if (fp->is_vararg && n < ci->base - ci->func)
         {
             luaC_threadbarrier(L);
-            luaA_pushobject(L, ci->func + n);
+            luaA_pushvalue(L, ci->func + n);
             res = 1;
         }
     }
@@ -76,7 +77,7 @@ const char* lua_getlocal(lua_State* L, int level, int n)
     if (var)
     {
         luaC_threadbarrier(L);
-        luaA_pushobject(L, ci->base + var->reg);
+        luaA_pushvalue(L, ci->base + var->reg);
     }
     const char* name = var ? getstr(var->varname) : NULL;
     return name;
@@ -121,10 +122,10 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
             }
             else
             {
-                TString* source = f->l.p->source;
+                TString* source = (ci != nullptr ? ci->p : f->l.p)->source;
                 ar->source = getstr(source);
                 ar->what = "Lua";
-                ar->linedefined = f->l.p->linedefined;
+                ar->linedefined = (ci != nullptr ? ci->p : f->l.p)->linedefined;
                 ar->short_src = luaO_chunkid(ar->ssbuf, sizeof(ar->ssbuf), getstr(source), source->len);
             }
             break;
@@ -156,8 +157,23 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
             }
             else
             {
-                ar->isvararg = f->l.p->is_vararg;
-                ar->nparams = f->l.p->numparams;
+                ar->isvararg = (ci != nullptr ? ci->p : f->l.p)->is_vararg;
+                ar->nparams = (ci != nullptr ? ci->p : f->l.p)->numparams;
+            }
+            break;
+        }
+        case 'p':
+        {
+            if (f->isC)
+            {
+                ar->protoid = 0;
+                ar->bytecodeid = -1;
+            }
+            else
+            {
+                Proto* p = ci != nullptr ? ci->p : f->l.p;
+                ar->protoid = int(p->funid);
+                ar->bytecodeid = p->bytecodeid;
             }
             break;
         }
@@ -175,6 +191,14 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
         }
     }
     return cl;
+}
+
+void lua_callhook(lua_State* L, lua_Hook hook, void* userdata)
+{
+    api_check(L, hook != nullptr);
+    api_check(L, L->ci != L->base_ci);
+
+    return luau_callhook(L, hook, userdata);
 }
 
 int lua_stackdepth(lua_State* L)
@@ -223,10 +247,8 @@ static const char* getfuncname(Closure* cl)
 {
     if (cl->isC)
     {
-        if (cl->c.debugname)
-        {
-            return cl->c.debugname;
-        }
+        if (TString* str = cl->c.debugname)
+            return getstr(str);
     }
     else
     {
@@ -293,6 +315,14 @@ l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
         luaG_runerror(L, "attempt to index %s with '%s'", t1, getstr(key));
     else
         luaG_runerror(L, "attempt to index %s with %s", t1, t2);
+}
+
+l_noret luaG_missingmembererror(lua_State* L, const TValue* p1, const TValue* p2)
+{
+    if (!ttisstring(p2))
+        luaG_runerrorL(L, "cannot index %s with a %s", luaT_objtypename(L, p1), luaT_objtypename(L, p2));
+    else
+        luaG_runerrorL(L, "this %s does not have a key named '%s'", luaT_objtypename(L, p1), getstr(tsvalue(p2)));
 }
 
 l_noret luaG_methoderror(lua_State* L, const TValue* p1, const TString* p2)
@@ -513,6 +543,11 @@ int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
         luaG_breakpoint(L, p, target, bool(enabled));
 
     return target;
+}
+
+int lua_atbreakpoint(lua_State* L)
+{
+    return luaG_onbreak(L) ? 1 : 0;
 }
 
 static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* context, lua_Coverage callback)

@@ -8,6 +8,7 @@
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
+#include "Luau/TypeUtils.h"
 
 #include <optional>
 #include <vector>
@@ -19,12 +20,6 @@ namespace Luau
 struct InternalErrorReporter;
 struct Scope;
 struct TypeArena;
-
-enum class OccursCheckResult
-{
-    Pass,
-    Fail
-};
 
 enum class UnifyResult
 {
@@ -55,15 +50,15 @@ struct Unifier2
     NotNull<InternalErrorReporter> ice;
     TypeCheckLimits limits;
 
-    DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash> seenTypePairings{{nullptr, nullptr}};
-    DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash> seenTypePackPairings{{nullptr, nullptr}};
+    DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash> seenTypePairings;
+    DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash> seenTypePackPairings;
 
-    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes{nullptr};
+    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes;
 
     // Mapping from generic types to free types to be used in instantiation.
-    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
+    DenseHashMap<TypeId, TypeId> genericSubstitutions;
     // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
 
     // Unification sometimes results in the creation of new free types.
     // We collect them here so that other systems can perform necessary
@@ -109,6 +104,7 @@ private:
     UnifyResult unify_(TypeId subTy, const FunctionType* superFn);
     UnifyResult unify_(const UnionType* subUnion, TypeId superTy);
     UnifyResult unify_(TypeId subTy, const UnionType* superUnion);
+    UnifyResult unify_(const IntersectionType* subIntersection, const IntersectionType* superIntersection);
     UnifyResult unify_(const IntersectionType* subIntersection, TypeId superTy);
     UnifyResult unify_(TypeId subTy, const IntersectionType* superIntersection);
     UnifyResult unify_(TableType* subTable, const TableType* superTable);
@@ -121,8 +117,6 @@ private:
 
     UnifyResult unify_(const MetatableType* subMetatable, const AnyType*);
     UnifyResult unify_(const AnyType*, const MetatableType* superMetatable);
-
-    UnifyResult unify_DEPRECATED(TypePackId subTp, TypePackId superTp);
 
     UnifyResult unify_(TypePackId subTp, TypePackId superTp);
 
@@ -138,14 +132,6 @@ private:
      * @returns simplify(left & right)
      */
     TypeId mkIntersection(TypeId left, TypeId right);
-
-    // Returns true if needle occurs within haystack already.  ie if we bound
-    // needle to haystack, would a cyclic type result?
-    OccursCheckResult occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
-
-    // Returns true if needle occurs within haystack already.  ie if we bound
-    // needle to haystack, would a cyclic TypePack result?
-    OccursCheckResult occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
     TypeId freshType(NotNull<Scope> scope, Polarity polarity);
     TypePackId freshTypePack(NotNull<Scope> scope, Polarity polarity);

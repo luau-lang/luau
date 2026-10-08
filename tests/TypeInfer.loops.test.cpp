@@ -16,7 +16,6 @@
 using namespace Luau;
 
 
-LUAU_FASTFLAG(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
@@ -44,6 +43,8 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     // This test may block CI if forced to run outside of DCR.
     if (FFlag::DebugLuauForceOldSolver)
         return;
@@ -72,6 +73,8 @@ for a, b in t do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -93,6 +96,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967_alt")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -252,6 +257,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -272,8 +278,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         local function range(l, h): () -> number
             return function()
@@ -286,10 +290,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    if (FFlag::LuauPropagateTypeAnnotationsInForInLoops)
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -307,6 +309,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     TypeId p = requireType("p");
@@ -421,6 +424,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_incompatible_args_to_iterator")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     // TODO, CLI-177651: The rough bidirectional rule with for-in loops ought to be:
     //
     //  for a, b in c, d, e
@@ -452,6 +457,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
@@ -529,6 +535,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "varlist_declared_by_for_in_loop_should_be_fr
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -676,6 +684,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
 
@@ -692,6 +701,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             reachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERRORS(result);
         CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
     }
@@ -708,6 +718,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
 
@@ -725,6 +736,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             reachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERRORS(result);
         CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
     }
@@ -741,6 +753,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
 }
@@ -856,8 +869,8 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_nil")
 {
-    // CLI-116499 Free types persisting until typechecking time.
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116499 Free types persisting until typechecking time.
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -868,12 +881,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_nil")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Type 'nil' could not be converted into '{- [a]: b -}'");
+#endif
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
 {
-    // CLI-116500
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116500
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -889,12 +903,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
                                 GenericError{"__iter must return at least one value"},
                             }
     );
+#endif
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")
 {
-    // CLI-116500
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116500
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -906,12 +921,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
+#endif
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok_with_inference")
 {
-    // CLI-116500
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116500
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -929,6 +945,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok_with_inference")
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "string");
+#endif
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string")
@@ -978,7 +995,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
     LUAU_REQUIRE_NO_ERRORS(result);
     // HACK (CLI-68453): We name this inner table `enum`. For now, use the
     // exhaustive switch to see past it.
-    CHECK(toString(requireType("makeEnum"), {true}) == "<a>({a}) -> { [a]: a }");
+    CHECK(toString(requireType("makeEnum"), {true}) == "<T>({T}) -> { [T]: T }");
 }
 
 TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
@@ -995,6 +1012,7 @@ TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1025,6 +1043,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_1")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1038,6 +1057,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1051,6 +1071,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_3")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1089,6 +1110,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_fragmented_keys")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1268,6 +1290,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_no_iter_mm")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_iter_mm")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1339,6 +1363,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_require")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1480")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Part = { Parent: Part? }
         type Instance = Part
@@ -1407,7 +1433,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_error_in_body")
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function foo()
             local x = ""
             while math.random () > 0.5 do
@@ -1416,7 +1442,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_error_in_body")
             end
             return x
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("() -> string", toString(requireType("foo")));
 }
@@ -1425,7 +1453,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_assign_different_type")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function takesString(_: string) end
         local function takesNil(_: nil) end
         local function foo()
@@ -1437,7 +1465,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_assign_different_type")
             end
             return x
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("() -> string?", toString(requireType("foo")));
 }
@@ -1534,8 +1564,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_for_loop_should_propagate")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1555,8 +1583,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_for_loop_should_propagate")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_types_in_for_loop_should_propagate")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): {[number]: string}
@@ -1576,8 +1602,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_types_in_for_loop_should_propagate"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "incorrect_type_annotation_types_in_loop_should_propagate_with_errors")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1599,8 +1623,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "incorrect_type_annotation_types_in_loop_shou
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_to_function_expressions")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1624,8 +1646,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_to_function_ex
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any

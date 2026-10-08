@@ -16,15 +16,6 @@ struct ExpectedTypeVisitor : public AstVisitor
         NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
         NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
         NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes,
-        NotNull<TypeArena> arena,
-        NotNull<BuiltinTypes> builtinTypes,
-        NotNull<Scope> rootScope
-    );
-
-    explicit ExpectedTypeVisitor(
-        NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-        NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
-        NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes,
         NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes,
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtinTypes,
@@ -77,8 +68,7 @@ private:
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
     NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes;
-    // Make NotNull when clipping LuauOverloadGetsInstantiated
-    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes;
+    NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes;
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<Scope> rootScope;
