@@ -755,6 +755,10 @@ enum LuauBuiltinFunction
     // buffer.readinteger / buffer.writeinteger (int64_t)
     LBF_BUFFER_READINTEGER,
     LBF_BUFFER_WRITEINTEGER,
+
+    // table.create / table.clear
+    LBF_TABLE_CREATE,
+    LBF_TABLE_CLEAR,
 };
 
 // Capture type, used in LOP_CAPTURE
