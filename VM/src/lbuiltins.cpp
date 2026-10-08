@@ -2573,23 +2573,20 @@ static int luauF_tablecreate(lua_State* L, StkId res, TValue* arg0, int nresults
         int size;
         luai_num2int(size, n);
 
-        if (size >= 0 && size <= 1000000)
+        if (size < 0 || luaC_needsGC(L))
+            return -1;
+
+        LuaTable* t = luaH_new(L, size, 0);
+
+        if (nparams >= 2)
         {
-            if (luaC_needsGC(L))
-                return -1;
-
-            LuaTable* t = luaH_new(L, size, 0);
-
-            if (nparams >= 2)
-            {
-                TValue* v = args;
-                for (int i = 0; i < size; ++i)
-                    setobj2t(L, &t->array[i], v);
-            }
-
-            sethvalue(L, res, t);
-            return 1;
+            TValue* v = args;
+            for (int i = 0; i < size; ++i)
+                setobj2t(L, &t->array[i], v);
         }
+
+        sethvalue(L, res, t);
+        return 1;
     }
 
     return -1;
