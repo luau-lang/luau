@@ -505,11 +505,7 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
                 if (!classStat->exported)
                     continue;
 
-                TypeId ty = builtinTypes->errorType;
-                if (auto found = moduleScope->lookup(Symbol{classStat->name->name}))
-                    ty = follow(*found);
-
-                props[classStat->name->name.value] = Property::readonly(ty);
+                props[classStat->name->name.value] = Property::readonly(lookupExportedBindingType(classStat->name));
                 props[classStat->name->name.value].location = classStat->name->location;
             }
         }

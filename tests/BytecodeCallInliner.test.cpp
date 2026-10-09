@@ -19,7 +19,6 @@ using namespace Luau;
 using namespace Luau::Bytecode;
 
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCallFeedback)
 
 namespace
 {
@@ -1619,7 +1618,6 @@ L4: RETURN R0 0
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_block")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
 
     std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
         local function caller()
@@ -1667,7 +1665,6 @@ bb_1 (exit):
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_scc")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
 
     std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
         local function caller(x)
@@ -1861,7 +1858,6 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "folds_inlined_function_with_dead_loop
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "feedback_slots_after_inlining")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
 
     auto res = compileAndInline(
         R"(
@@ -1925,7 +1921,6 @@ bb_1 (exit):
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "inlinee_feedback_slots_after_inlining")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFeedback{FFlag::LuauCallFeedback, true};
 
     auto res = compileAndInline(
         R"(
@@ -1982,6 +1977,76 @@ bb_3:
   %5 = GETGLOBAL 134, K1 ('g')
   %6 = CALLFB 0, 1, 2, %5
   %7 = RETURN 3, %1[0], phi.0, %6[0]
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "construct_feedback_slot_after_inlining")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+
+    auto res = compileAndInline(R"(
+        class Point
+            public x
+            public y
+        end
+
+        local function inlinee(Class, x)
+            local result = Class { x = x, y = 42 }
+            return result
+        end
+
+        local function caller(x)
+            local marker = "caller"
+            local value = inlinee(Point, x)
+            return marker, value
+        end
+    )");
+    REQUIRE(res);
+    REQUIRE_EQ(verifyUseConsistency(res->second), true);
+
+    CHECK_EQ(
+        "\n" + toString(res->second, false),
+        R"(
+; function caller($arg0) line 12 maxstacksize: 11 upvalues: 2 flags: 0
+; feedback slot 0: CALLTARGET %4
+; feedback slot 1: CONSTRUCT K3 ({...})
+bb_0 (entry):
+; successors: bb_4 [fallthrough], bb_2 [branch]
+  %0 = LOADK K0 ('caller')
+  %1 = GETUPVAL U0
+  %2 = GETUPVAL U1
+  %3 = MOVE R0
+  %6 = CMPPROTO %1, 0, bb_2
+
+bb_4:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_3 [fallthrough]
+  %7 = MOVE %2
+  %8 = CONSTRUCT %7, 1
+  %9 = LOADK K1 ('x')
+  %10 = SETTABLE %3, %8, %9
+  %11 = LOADK K2 ('y')
+  %12 = LOADK K4 (42)
+  %13 = SETTABLE %12, %8, %11
+  %14 = FINCONSTRUCT %8, 0
+  %15 = CALL 1, 1, %7, %8
+  %17 = MOVE %15[0]
+
+bb_2:
+; predecessors: bb_0 [branch]
+; successors: bb_3 [fallthrough]
+  %4 = CALLFB 2, 1, -1, %1, %2, %3
+
+bb_3:
+; predecessors: bb_2 [fallthrough], bb_4 [fallthrough]
+; successors: bb_1 [fallthrough]
+  phi.0 = %4[0], %17 from bb_4
+  %5 = RETURN 2, %0, phi.0
 
 bb_1 (exit):
 ; predecessors: bb_3 [fallthrough]

@@ -25,7 +25,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
-LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauRefineNotNilWaitsForBlockedTarget)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
@@ -1276,17 +1275,6 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         }
     }
 
-    if (!FFlag::LuauDontBlockRefinementUnconditionally)
-    {
-        // If we have a blocked type in the target, we *could* potentially
-        // refine it, but more likely we end up with some type explosion in
-        // normalization.
-        FindRefinementBlockers frb;
-        frb.traverse(targetTy);
-        if (!frb.found.empty())
-            return {std::nullopt, Reduction::MaybeOk, {frb.found.begin(), frb.found.end()}, {}};
-    }
-
     int stepRefineCount = 0;
 
     // Refine a target type and a discriminant one at a time.
@@ -1313,7 +1301,7 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
 
-                if (FFlag::LuauDontBlockRefinementUnconditionally && FFlag::LuauRefineNotNilWaitsForBlockedTarget)
+                if (FFlag::LuauRefineNotNilWaitsForBlockedTarget)
                 {
                     std::vector<TypeId> blocked;
                     for (TypeId ty : result.blockedTypes)
@@ -1377,21 +1365,18 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         if (!normIntersection || !normType)
             return {nullptr, {}};
 
-        if (FFlag::LuauDontBlockRefinementUnconditionally)
+        std::vector<TypeId> blockedTypes;
+
+        // Iteration through an unordered map. Not good!
+        for (const auto& [ty, _] : normIntersection->tyvars)
         {
-            std::vector<TypeId> blockedTypes;
-
-            // Iteration through an unordered map. Not good!
-            for (const auto& [ty, _] : normIntersection->tyvars)
-            {
-                auto followed = follow(ty);
-                if (is<BlockedType>(followed))
-                    blockedTypes.emplace_back(followed);
-            }
-
-            if (!blockedTypes.empty())
-                return {nullptr, std::move(blockedTypes)};
+            auto followed = follow(ty);
+            if (is<BlockedType>(followed))
+                blockedTypes.emplace_back(followed);
         }
+
+        if (!blockedTypes.empty())
+            return {nullptr, std::move(blockedTypes)};
 
         TypeId resultTy = ctx->normalizer->typeFromNormal(*normIntersection);
         // include the error type if the target type is error-suppressing and the intersection we computed is not

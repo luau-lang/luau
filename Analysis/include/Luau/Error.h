@@ -542,11 +542,11 @@ struct RecursiveRestraintViolation
 // Error during subtyping when the inferred bounds of a generic type are incompatible
 struct GenericBoundsMismatch
 {
-    std::string_view genericName;
+    std::string genericName;
     std::vector<TypeId> lowerBounds;
     std::vector<TypeId> upperBounds;
 
-    GenericBoundsMismatch(std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
+    GenericBoundsMismatch(std::string genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
 
     bool operator==(const GenericBoundsMismatch& rhs) const;
 };

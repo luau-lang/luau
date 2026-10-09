@@ -10,13 +10,13 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
-LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauRefineNotNilWaitsForBlockedTarget)
 
 using namespace Luau;
@@ -854,7 +854,7 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
         // depending on which tests are run and in which order. I'm not sure
         // where the nondeterminism is coming from.
         TypeArena arena;
-        UnifierSharedState state{NotNull{&getFrontend().iceHandler}};
+        UnifierSharedState state{NotNull{&ice}};
         Normalizer normalizer{&arena, getBuiltins(), NotNull{&state}, SolverMode::New};
         auto a = normalizer.normalize(requireTypeAtPosition({3, 36}));
         CHECK(toString(normalizer.typeFromNormal(*a)) == "string?"); // a == b
@@ -1612,7 +1612,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "typeguard_cast_free_table_to_vec
 {
     // CLI-115286 - Refining via type(x) == 'vector' does not work in the new solver
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
-    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
+
     CheckResult result = check(R"(
         local function f(vec)
             local X, Y, Z = vec.X, vec.Y, vec.Z
@@ -3115,9 +3115,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
 
 TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
+    ScopedFastFlag sffs[]{
+        {FFlag::LuauIterativeTypeSearcher, true},
+        {FFlag::LuauDecomposeIntersectionOfFreeType, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
 
     CheckResult results = check(R"(
         local function track(instance): boolean
@@ -3131,14 +3135,6 @@ TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
     )");
 
     ignoreMissingAnnotations(results);
-
-    // NOTE: This should have *no* errors but due to a constraint cycle
-    // between the `and` type function and the subtype constraint of the
-    // return type, we end up sometimes being unable to reduce this properly.
-
-    // This flip-flops as the constraint forcing _sometimes_ means we correctly
-    // claim a lack of errors.
-
     LUAU_REQUIRE_NO_ERRORS(results);
 }
 
@@ -3528,10 +3524,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_f
 
         table.sort(keys, sorter)
     )");
+
     ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
+}
 
-    CHECK_EQ("(unknown, unknown) -> boolean", toString(requireType("sorter")));
+TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function __remove(__: number?) end
+
+        function __removeItem(self, itemId: number)
+            local index = self.getItem(itemId)
+            if index then
+               __remove(index)
+            end
+        end
+    )"));
+
+    CHECK_EQ("({ read getItem: (number) -> ((false | number)?, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_narrows_to_truthy")
@@ -3990,7 +4005,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_not_nil_waits_for_blocked_target")
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauDontBlockRefinementUnconditionally, true},
         {FFlag::LuauRefineNotNilWaitsForBlockedTarget, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };

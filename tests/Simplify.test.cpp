@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 namespace
 {
@@ -65,7 +66,8 @@ struct SimplifyFixture : Fixture
     TypeId unrelatedClassTy = nullptr;
 
     // This only affects type stringification.
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff2{FFlag::LuauDecomposeIntersectionOfFreeType, true};
 
     SimplifyFixture()
     {
@@ -114,6 +116,16 @@ struct SimplifyFixture : Fixture
     TypeId union_(TypeId a, TypeId b)
     {
         return simplifyUnion(getBuiltins(), arena, a, b).result;
+    }
+
+    TypeId unionOfNegation(TypeId target, TypeId toBeNegated)
+    {
+        return simplifyWithUnionOfNegation(getBuiltins(), arena, target, toBeNegated).result;
+    }
+
+    std::string unionOfNegationStr(TypeId target, TypeId toBeNegated)
+    {
+        return toString(unionOfNegation(target, toBeNegated), opts);
     }
 };
 
@@ -568,6 +580,113 @@ TEST_CASE_FIXTURE(SimplifyFixture, "negations_of_extern_types")
 
     CHECK(notParentClassTy == intersect(notChildClassTy, notParentClassTy));
     CHECK(notParentClassTy == intersect(notParentClassTy, notChildClassTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_drops_disjoint_target")
+{
+    // number | ~string => ~string
+    CHECK("~string" == unionOfNegationStr(numberTy, stringTy));
+    // number | ~"hello" => ~"hello"
+    CHECK("~\"hello\"" == unionOfNegationStr(numberTy, helloTy));
+    // { x: number } | ~string => ~string
+    CHECK("~string" == unionOfNegationStr(mkTable({{"x", numberTy}}), stringTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_never_target_is_negation")
+{
+    // never | ~number => ~number
+    CHECK("~number" == unionOfNegationStr(neverTy, numberTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_intersects_stays_union")
+{
+    // "hello" | ~string cannot be simplified further
+    CHECK("\"hello\" | ~string" == unionOfNegationStr(helloTy, stringTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_of_never_is_unknown")
+{
+    // T | ~never => unknown
+    CHECK(unknownTy == unionOfNegation(stringTy, neverTy));
+    CHECK(unknownTy == unionOfNegation(nilTy, neverTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_of_unknown_drops_negation")
+{
+    // T | ~unknown => T
+    CHECK(stringTy == unionOfNegation(stringTy, unknownTy));
+
+    TypeId numberOrString = arena->addType(UnionType{{numberTy, stringTy}});
+    CHECK(numberOrString == unionOfNegation(numberOrString, unknownTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_of_any")
+{
+    // any = *error-type* | unknown, so T | ~any = *error-type* | T
+    CHECK("*error-type* | string" == unionOfNegationStr(stringTy, anyTy));
+
+    // any | ~any => any
+    CHECK(anyTy == unionOfNegation(anyTy, anyTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_double_negation_cancels")
+{
+    // string | ~~number => string | number
+    CHECK("number | string" == unionOfNegationStr(stringTy, mkNegation(numberTy)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_truthy_falsy_canonicalization")
+{
+    // mkNegation(falsy) == truthy, so truthy | truthy => truthy
+    CHECK(truthyTy == unionOfNegation(truthyTy, falsyTy));
+    // mkNegation(truthy) == falsy; falsy is a union, so the result is re-minted
+    CHECK("false?" == unionOfNegationStr(falsyTy, truthyTy));
+
+    // nil | ~truthy => falsy
+    CHECK(falsyTy == unionOfNegation(nilTy, truthyTy));
+    // false | ~truthy => falsy
+    CHECK(falsyTy == unionOfNegation(falseTy, truthyTy));
+
+    // number | ~truthy stays a union: truthy is not canonicalized from the target side
+    CHECK("number | ~(false?)" == unionOfNegationStr(numberTy, falsyTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_extern_types")
+{
+    // Child | ~Parent cannot be simplified (Child intersects ~Parent)
+    CHECK("Child | ~Parent" == unionOfNegationStr(childClassTy, parentClassTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_union_targets")
+{
+    // (never | string) | ~nil => ~nil
+    TypeId neverOrString = arena->addType(UnionType{{neverTy, stringTy}});
+    CHECK("~nil" == unionOfNegationStr(neverOrString, nilTy));
+
+    // (number | string) | ~string stays a union; toString lexically sorts the options
+    TypeId numberOrString = arena->addType(UnionType{{numberTy, stringTy}});
+    CHECK("string | ~string" == unionOfNegationStr(numberOrString, stringTy));
+
+    // string | ~(number | string) stays a union. This *could* be ~number.
+    TypeId numberAndString = arena->addType(UnionType{{numberTy, stringTy}});
+    CHECK("string | ~(number | string)" == unionOfNegationStr(stringTy, numberAndString));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_implication_semantics")
+{
+    // number & (string | ~number) => never
+    CHECK(neverTy == intersect(unionOfNegation(stringTy, numberTy), numberTy));
+
+    // ("hello" | ~string) & string => "hello"
+    CHECK(helloTy == intersect(unionOfNegation(helloTy, stringTy), stringTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_free_type")
+{
+    CHECK("'a | ~number" == unionOfNegationStr(freeTy, numberTy));
+
+    auto res = simplifyWithUnionOfNegation(getBuiltins(), arena, freeTy, numberTy);
+    CHECK(res.blockedTypes.empty());
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "intersection_of_intersection_of_a_free_type_can_result_in_removal_of_that_free_type")

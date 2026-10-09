@@ -5,6 +5,7 @@
 #include "Luau/CodeGenOptions.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct Proto;

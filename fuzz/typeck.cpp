@@ -42,7 +42,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
 
     if (parseResult.errors.empty())
     {
-        Luau::TypeChecker typeck(frontend.globals.globalScope, &frontend.moduleResolver, frontend.builtinTypes, &frontend.iceHandler);
+        Luau::InternalErrorReporter iceHandler;
+        Luau::TypeChecker typeck(frontend.globals.globalScope, &frontend.moduleResolver, frontend.builtinTypes, &iceHandler);
 
         Luau::SourceModule module;
         module.root = parseResult.root;

@@ -21,8 +21,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
-LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizeFunctionIntersections)
@@ -3828,25 +3826,15 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             TypeIds tables = std::move(here.tables);
             clearNormal(here);
 
-            if (FFlag::LuauAlwaysIntersectTablesWithTables)
+            // We intersect this table against the table part of the
+            // normalized type, which may include the top table type.
+            intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+            if (!externTypes.isNever())
             {
-                // We intersect this table against the table part of the
-                // normalized type, which may include the top table type.
-                intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
-                if (!externTypes.isNever())
-                {
-                    // If we have extern types present, intersect this table
-                    // as a shape against the extern types of this normalized
-                    // type.
-                    intersectExternTypesWithShape(externTypes, there);
-                }
-            }
-            else
-            {
-                if (externTypes.isNever())
-                    intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
-                else
-                    intersectExternTypesWithShape(externTypes, there);
+                // If we have extern types present, intersect this table
+                // as a shape against the extern types of this normalized
+                // type.
+                intersectExternTypesWithShape(externTypes, there);
             }
 
             here.tables = std::move(tables);
@@ -4085,7 +4073,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
     if (isTop(builtinTypes, norm.externTypes))
     {
-        if (FFlag::LuauIncludeExternTypeExtensionsWithTopExternType && !norm.externTypes.shapeExtensions.empty())
+        if (!norm.externTypes.shapeExtensions.empty())
         {
             std::vector<TypeId> intersection;
             intersection.reserve(norm.externTypes.shapeExtensions.size() + 1);

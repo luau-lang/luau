@@ -4,7 +4,6 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAGVARIABLE(LuauReferenceCountInitializerIsIterative)
 
 namespace Luau
@@ -194,8 +193,7 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypesIn(NotNull<TypeA
         for (TypeId ty : itc->variables)
             rci.run(ty);
 
-        if (FFlag::LuauIterableConstraintMutatesIterator)
-            rci.run(itc->iterator);
+        rci.run(itc->iterator);
     }
     else if (auto nc = get<NameConstraint>(*this))
     {
@@ -311,10 +309,7 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypes_DEPRECATED() co
     {
         for (TypeId ty : itc->variables)
             rci.traverse(ty);
-        if (FFlag::LuauIterableConstraintMutatesIterator)
-        {
-            rci.traverse(itc->iterator);
-        }
+        rci.traverse(itc->iterator);
     }
     else if (auto nc = get<NameConstraint>(*this))
     {

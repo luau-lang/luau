@@ -1,0 +1,1 @@
+./analysis/singletons/singleton_when_type_is_blocked.luau(3,16): FunctionUnused: Function 'foobar' is never used; prefix with '_' to silence

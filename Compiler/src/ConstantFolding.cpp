@@ -12,6 +12,7 @@
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAGVARIABLE(LuauCompileTableFoldFix)
 
 namespace Luau
 {
@@ -660,7 +661,7 @@ struct TableMutationTracker : AstVisitor
         }
     }
 
-    void markEscapedTableIndex(AstExpr* expr, bool isLvalue)
+    void markEscapedTableIndex(AstExpr* expr, bool isLvalue_DEPRECATED)
     {
         if (AstExprIndexName* idx = expr->as<AstExprIndexName>())
         {
@@ -670,9 +671,31 @@ struct TableMutationTracker : AstVisitor
         {
             markEscaped(idx->expr);
 
-            if (isLvalue)
+            if (!FFlag::LuauCompileTableFoldFix && isLvalue_DEPRECATED)
                 markEscaped(idx->index);
         }
+    }
+
+    void markEscapedBinaryOp(AstExpr* lhs, AstExpr* rhs, AstExprBinary::Op op)
+    {
+        // Comparisons do not support operands with different metamethods, and/or don't have a metamethod
+        switch (op)
+        {
+        case AstExprBinary::CompareLt:
+        case AstExprBinary::CompareLe:
+        case AstExprBinary::CompareGt:
+        case AstExprBinary::CompareGe:
+        case AstExprBinary::CompareEq:
+        case AstExprBinary::CompareNe:
+        case AstExprBinary::And:
+        case AstExprBinary::Or:
+            return;
+        default:
+            break;
+        }
+
+        markEscaped(lhs);
+        markEscaped(rhs);
     }
 
     bool visit(AstExprCall* node) override
@@ -698,6 +721,22 @@ struct TableMutationTracker : AstVisitor
 
             markEscaped(item.value);
         }
+
+        return true;
+    }
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscapedBinaryOp(node->left, node->right, node->op);
+
+        return true;
+    }
+
+    bool visit(AstExprIndexExpr* node) override
+    {
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscaped(node->index);
 
         return true;
     }
@@ -728,6 +767,10 @@ struct TableMutationTracker : AstVisitor
     {
         // LHS index expressions mutate the table
         markEscapedTableIndex(node->var, true);
+
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscapedBinaryOp(node->var, node->value, node->op);
+
         return true;
     }
 

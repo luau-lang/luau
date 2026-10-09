@@ -1261,7 +1261,7 @@ end
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("'Animal' refers to a class and cannot be used as a variable name (defined on line 2)", err->message);
+    CHECK_EQ("Variable 'Animal' is constant and may not be reassigned", err->message);
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "class_that_shadows_a_type_alias")

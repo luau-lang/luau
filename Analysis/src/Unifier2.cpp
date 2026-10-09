@@ -2,6 +2,7 @@
 
 #include "Luau/Unifier2.h"
 
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/Scope.h"
@@ -25,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAGVARIABLE(LuauInferReadOnlyIndexers)
+LUAU_FASTFLAGVARIABLE(LuauDecomposeIntersectionOfFreeType)
 
 namespace Luau
 {
@@ -105,6 +107,101 @@ static bool isIrresolvable(TypePackId tp)
     return get<BlockedTypePack>(tp) || get<TypeFunctionInstanceTypePack>(tp);
 }
 
+namespace
+{
+struct ContainsUntestableType : TypeOnceVisitor
+{
+
+    bool found = false;
+
+    ContainsUntestableType()
+        : TypeOnceVisitor("ContainsUntestableType", true)
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        found = true;
+        return !found;
+    }
+
+    bool visit(TypeId ty, const PrimitiveType& ptv) override
+    {
+        return !found;
+    }
+
+    bool visit(TypeId ty, const ExternType& etv) override
+    {
+        // nominal types are testable *and* we do not need to descend into them.
+        return false;
+    }
+
+    bool visit(TypeId ty, const IntersectionType& itv) override
+    {
+        return !found;
+    }
+
+    bool visit(TypeId ty, const UnionType& utv) override
+    {
+        return !found;
+    }
+
+    bool visit(TypeId ty, const SingletonType& stv) override
+    {
+        return !found;
+    }
+
+    bool visit(TypeId ty, const NegationType& ntv) override
+    {
+        return !found;
+    }
+};
+
+/**
+ * Determines whether `ty` is testable by checking for the presence of an
+ * untestable type, such as a non-primitive function or table type.
+ */
+bool isTestableType(TypeId ty)
+{
+    ContainsUntestableType cut;
+    cut.traverse(ty);
+    return !cut.found;
+}
+
+} // namespace
+
+/**
+ * Try to determine whether `itv` is of the shape:
+ *
+ *  'a & T0 & T1 & Tn
+ *
+ * ... where all Tx are testable, meaning we can express their negation in
+ * Luau's semantic subtyping model.
+ */
+std::optional<TypeId> static findFreeTypeForAlgebraicRewrite(const IntersectionType* itv)
+{
+    TypeId freeTy = nullptr;
+
+    for (const auto ty : itv)
+    {
+        if (is<FreeType>(ty))
+        {
+            if (freeTy == nullptr)
+                freeTy = ty;
+            else if (ty != freeTy)
+                return std::nullopt;
+        }
+        else if (!isTestableType(ty))
+            return std::nullopt;
+    }
+
+    if (!freeTy)
+        return std::nullopt;
+
+    return {freeTy};
+}
+
+
 Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice)
     : arena(arena)
     , builtinTypes(builtinTypes)
@@ -175,6 +272,39 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     if (subTy == superTy)
         return UnifyResult::Ok;
 
+    /**
+     * Several of the dispatch rules here depend on the boolean-algebraic
+     * properties of negation. See https://doi.org/10.1145/3563304, section 3.3.1.
+     *
+     * Constraints such as:
+     *
+     *  A <: 'b | C, 'd & E <: F
+     *
+     * Pose a problem for us. Concretely consider the constraint:
+     *
+     *  'a & string <: string?
+     *
+     * Naively, dispatching this as `'a <: string?` means that we'd be
+     * overconstraining `'a`: there are no bounds on `'a` as in this
+     * context we consider its intersection with `string`, which would
+     * already be a subtype of `string?`.
+     *
+     * We can perform the rewrites:
+     *
+     *  A <: 'b | C => A & ~C <: 'b (not implemented yet)
+     *  'd & E <: F => 'd <: F | ~E (implemented!)
+     *
+     * For the above example we'd get:
+     *
+     *  'a <: ~string | string?
+     *
+     * ... which would just be ...
+     *
+     * 'a <: unknown
+     *
+     * ... unbound, as claimed prior.
+     */
+
     // We have potentially done some unifications while dispatching either `SubtypeConstraint` or `PackSubtypeConstraint`,
     // so rather than implementing backtracking or traversing the entire type graph multiple times, we could push
     // additional constraints as we discover blocked types along with their proper bounds.
@@ -182,13 +312,90 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     // But we exclude these two subtyping patterns, they are tautological:
     //   - never <: *blocked*
     //   - *blocked* <: unknown
-    if ((isIrresolvable(subTy) || isIrresolvable(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
+    if (FFlag::LuauDecomposeIntersectionOfFreeType)
     {
-        if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
+        if (is<NeverType>(subTy) || is<UnknownType>(superTy))
             return UnifyResult::Ok;
 
-        incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
-        return UnifyResult::Ok;
+        if (is<BlockedType>(subTy) || is<BlockedType>(superTy))
+        {
+            incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
+            return UnifyResult::Ok;
+        }
+
+        auto subTfit = get<TypeFunctionInstanceType>(subTy);
+
+        //  or<A, B> <: C
+        //
+        // ... is equivalent to ...
+        //
+        //  (A & ~(false?) | B) <: C
+        //
+        // ... which is equivalent to ...
+        //
+        //  A <: C | false?, B <: C
+        if (subTfit && subTfit->function->name == builtinTypes->typeFunctions->orFunc.name && subTfit->typeArguments.size() == 2)
+        {
+            auto tempSuperUnion = simplifyUnion(builtinTypes, arena, superTy, builtinTypes->falsyType).result;
+            UnifyResult res = UnifyResult::Ok;
+            res &= unify_(subTfit->typeArguments.at(0), tempSuperUnion);
+            res &= unify_(subTfit->typeArguments.at(1), superTy);
+            return res;
+        }
+
+        //  and<A, B> <: C
+        //
+        // ... is equivalent to ...
+        //
+        //  (A & false? | B) <: C
+        //
+        // ... which is equivalent to ...
+        //
+        //  A <: C | ~(false?), B <: C
+        if (subTfit && subTfit->function->name == builtinTypes->typeFunctions->andFunc.name && subTfit->typeArguments.size() == 2)
+        {
+            auto tempSuperUnion = simplifyUnion(builtinTypes, arena, superTy, builtinTypes->truthyType).result;
+            UnifyResult res = UnifyResult::Ok;
+            res &= unify_(subTfit->typeArguments.at(0), tempSuperUnion);
+            res &= unify_(subTfit->typeArguments.at(1), superTy);
+            return res;
+        }
+
+        //  refine<A, B> <: C
+        //
+        // ... is equivalent to ...
+        //
+        //  A & B <: C
+        //
+        // ... which is equivalent to ...
+        //
+        //  A <: C | ~B
+        if (subTfit && subTfit->function->name == builtinTypes->typeFunctions->refineFunc.name && subTfit->typeArguments.size() == 2 &&
+            isTestableType(subTfit->typeArguments.at(1)))
+        {
+            auto tempSuperUnion = simplifyWithUnionOfNegation(builtinTypes, arena, superTy, subTfit->typeArguments.at(1)).result;
+            return unify_(subTfit->typeArguments.at(0), tempSuperUnion);
+        }
+
+        if (isIrresolvable(subTy) || isIrresolvable(superTy))
+        {
+            if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
+                return UnifyResult::Ok;
+
+            incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
+            return UnifyResult::Ok;
+        }
+    }
+    else
+    {
+        if ((isIrresolvable(subTy) || isIrresolvable(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
+        {
+            if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
+                return UnifyResult::Ok;
+
+            incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
+            return UnifyResult::Ok;
+        }
     }
 
     FreeType* subFree = getMutable<FreeType>(subTy);
@@ -214,13 +421,44 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     auto subUnion = get<UnionType>(subTy);
     auto superUnion = get<UnionType>(superTy);
+
+    auto subIntersection = get<IntersectionType>(subTy);
+    auto superIntersection = get<IntersectionType>(superTy);
+
+    if (FFlag::LuauDecomposeIntersectionOfFreeType)
+    {
+        // Here we check to see if we can perform an algebraic rewrite.
+        if (subIntersection)
+        {
+            // This needs to fire *before* the union fallback cases.
+            if (auto freeTy = findFreeTypeForAlgebraicRewrite(subIntersection))
+            {
+                LUAU_ASSERT(is<FreeType>(*freeTy));
+
+                TypeId res = superTy;
+
+                for (auto part : subIntersection)
+                {
+                    if (part != *freeTy)
+                        res = simplifyWithUnionOfNegation(builtinTypes, arena, res, part).result;
+                }
+                return unify_(*freeTy, res);
+            }
+        }
+    }
+
+    // As per MLStruct, we probably want to prioritize
+    //
+    //  (A | B | C) <: T
+    //  T <: (D & E & F)
+    //
+    // ... as these are the two cases for which decomposition is
+    // always correct without backtracking.
+
     if (subUnion)
         return unify_(subUnion, superTy);
     else if (superUnion)
         return unify_(subTy, superUnion);
-
-    auto subIntersection = get<IntersectionType>(subTy);
-    auto superIntersection = get<IntersectionType>(superTy);
 
     if (subIntersection && superIntersection)
         return unify_(subIntersection, superIntersection);
