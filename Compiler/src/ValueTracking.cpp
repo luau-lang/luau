@@ -17,33 +17,25 @@ struct ValueVisitor : AstVisitor
 
     DenseHashMap<AstName, Global>& globals;
     DenseHashMap<AstLocal*, Variable>& variables;
-    DenseHashMap<AstName, AstLocal*>& classLocals;
     DenseHashSet<AstLocal*>* exportedFunctions = nullptr;
     std::vector<AstLocal*>* exportedVariables = nullptr;
     SmallVector<AstStatBlock*, 4> blockOwnerStack;
 
     // with LuauOptimizeExportTable, remove this constructor
-    ValueVisitor(
-        DenseHashMap<AstName, Global>& globals,
-        DenseHashMap<AstLocal*, Variable>& variables,
-        DenseHashMap<AstName, AstLocal*>& classLocals
-    )
+    ValueVisitor(DenseHashMap<AstName, Global>& globals, DenseHashMap<AstLocal*, Variable>& variables)
         : globals(globals)
         , variables(variables)
-        , classLocals(classLocals)
     {
     }
 
     ValueVisitor(
         DenseHashMap<AstName, Global>& globals,
         DenseHashMap<AstLocal*, Variable>& variables,
-        DenseHashMap<AstName, AstLocal*>& classLocals,
         DenseHashSet<AstLocal*>* exportedFunctions,
         std::vector<AstLocal*>* exportedVariables
     )
         : globals(globals)
         , variables(variables)
-        , classLocals(classLocals)
         , exportedFunctions(exportedFunctions)
         , exportedVariables(exportedVariables)
     {
@@ -211,17 +203,6 @@ struct ValueVisitor : AstVisitor
         return true;
     }
 
-    bool visit(AstStatClass* decl) override
-    {
-        if (!FFlag::DebugLuauUserDefinedClasses)
-            return false;
-
-        classLocals[decl->name->name] = decl->name;
-        variables[decl->name].written = true;
-
-        return true;
-    }
-
     bool visit(AstStatBlock* block) override
     {
         if (FFlag::LuauCompileReuseLocalRegs)
@@ -253,23 +234,17 @@ void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& n
 void trackValues(
     DenseHashMap<AstName, Global>& globals,
     DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstName, AstLocal*>& classLocals,
     DenseHashSet<AstLocal*>& exportedFunctions,
     std::vector<AstLocal*>& exportedVariables,
     AstNode* root
 )
 {
-    ValueVisitor visitor{globals, variables, classLocals, &exportedFunctions, &exportedVariables};
+    ValueVisitor visitor{globals, variables, &exportedFunctions, &exportedVariables};
     root->visit(&visitor);
 }
-void trackValues_DEPRECATED(
-    DenseHashMap<AstName, Global>& globals,
-    DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstName, AstLocal*>& classLocals,
-    AstNode* root
-)
+void trackValues_DEPRECATED(DenseHashMap<AstName, Global>& globals, DenseHashMap<AstLocal*, Variable>& variables, AstNode* root)
 {
-    ValueVisitor visitor{globals, variables, classLocals};
+    ValueVisitor visitor{globals, variables};
     root->visit(&visitor);
 }
 

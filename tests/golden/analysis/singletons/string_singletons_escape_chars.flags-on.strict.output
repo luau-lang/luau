@@ -1,0 +1,2 @@
+./analysis/singletons/string_singletons_escape_chars.luau(1,17): TypeError: Expected this to be '"\n"', but got '"\000\r"'
+./analysis/singletons/string_singletons_escape_chars.luau(1,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence

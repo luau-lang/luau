@@ -1,0 +1,2 @@
+./analysis/refinements/refinement_should_create_union_of_options.luau(13,8): TypeError: Expected this to be '(number | ~((boolean | buffer | function | integer | number | table | thread | userdata)?)) & unknown', but got 'boolean'; 
+`boolean` is not a subtype of `number | ~((boolean | buffer | function | integer | number | table | thread | userdata)?)`

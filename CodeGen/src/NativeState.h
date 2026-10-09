@@ -64,6 +64,8 @@ struct NativeContext
     const TValue* (*luaT_gettm)(LuaTable* events, TMS event, TString* ename) = nullptr;
     const TString* (*luaT_objtypenamestr)(lua_State* L, const TValue* o) = nullptr;
 
+    void (*luaR_tryconstructobject)(lua_State* L, StkId target, StkId maybeclass, uint32_t slotid) = nullptr;
+
     double (*libm_exp)(double) = nullptr;
     double (*libm_pow)(double, double) = nullptr;
     double (*libm_fmod)(double, double) = nullptr;

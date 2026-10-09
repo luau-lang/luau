@@ -1,0 +1,10 @@
+./analysis/singletons/oss_2613_variadic_intersection.luau(8,4): TypeError: Expected this to be
+	'("Lit1" | "Lit2") & ("invalid literal 1" | "invalid literal 2")'
+but got
+	'"invalid literal 1"'; 
+the 2nd component of the intersection is `"Lit1" | "Lit2"`, and `"invalid literal 1"` is not a subtype of `"Lit1" | "Lit2"`
+./analysis/singletons/oss_2613_variadic_intersection.luau(8,25): TypeError: Expected this to be
+	'("Lit1" | "Lit2") & ("invalid literal 1" | "invalid literal 2")'
+but got
+	'"invalid literal 2"'; 
+the 2nd component of the intersection is `"Lit1" | "Lit2"`, and `"invalid literal 2"` is not a subtype of `"Lit1" | "Lit2"`

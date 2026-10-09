@@ -1,0 +1,1 @@
+./analysis/singletons/function_call_with_singletons_mismatch.luau(2,9): TypeError: Expected this to be '"foo"', but got '"bar"'

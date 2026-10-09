@@ -16,8 +16,8 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauCompileRefactorFeedback)
-LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
+LUAU_FASTFLAGVARIABLE(LuauCompileCallFbRemap)
 LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
 LUAU_FASTFLAGVARIABLE(LuauCompileEmitVectorDouble)
 LUAU_FLAGVERSION(LuauCompileEmitVectorDouble, 2)
@@ -222,7 +222,7 @@ void BytecodeBuilder::clearState()
     protos.clear();
     jumps.clear();
 
-    if (FFlag::LuauCompileRefactorFeedback)
+    if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
         fbSlots.clear();
     else
         fbSlots_DEPRECATED.clear();
@@ -271,38 +271,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
     currentFunction = ~0u;
 
     totalInstructionCount += insns.size();
-    if (FFlag::LuauVirtualBcBuilder)
-    {
-        clearState();
-    }
-    else
-    {
-        insns.clear();
-        lines.clear();
-        constants.clear();
-        protos.clear();
-        jumps.clear();
-
-        if (FFlag::LuauCompileRefactorFeedback)
-            fbSlots.clear();
-        else
-            fbSlots_DEPRECATED.clear();
-
-        tableShapes.clear();
-
-        debugLocals.clear();
-        debugUpvals.clear();
-
-        typedLocals.clear();
-        typedUpvals.clear();
-
-        constantMap.clear();
-        tableShapeMap.clear();
-        protoMap.clear();
-
-        debugRemarks.clear();
-        debugRemarkBuffer.clear();
-    }
+    clearState();
 }
 
 void BytecodeBuilder::setMainFunction(uint32_t fid)
@@ -506,10 +475,19 @@ uint32_t BytecodeBuilder::addFbSlot_DEPRECATED(LuauFeedbackType t, uint32_t pc)
 
 uint32_t BytecodeBuilder::addCallTargetSlot(uint32_t pc)
 {
-    LUAU_ASSERT(FFlag::LuauCompileRefactorFeedback);
+    LUAU_ASSERT(FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses);
     fbSlots.push_back({});
     fbSlots.back().kind = LFT_CALLTARGET;
     fbSlots.back().callTarget.pc = pc;
+    return uint32_t(fbSlots.size() - 1);
+}
+
+uint32_t BytecodeBuilder::addConstructSlot(uint32_t shapecid)
+{
+    LUAU_ASSERT(FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses);
+    fbSlots.push_back({});
+    fbSlots.back().kind = LFT_CONSTRUCT;
+    fbSlots.back().construct.shape = shapecid;
     return uint32_t(fbSlots.size() - 1);
 }
 
@@ -1089,10 +1067,10 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
         writeByte(ss, 0);
     }
 
-    if (FFlag::LuauEmitCallFeedback)
+    if (FFlag::LuauEmitCallFeedback || FFlag::DebugLuauUserDefinedClasses)
     {
         // Feedback Slots
-        if (FFlag::LuauCompileRefactorFeedback)
+        if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
         {
             writeVarInt(ss, fbSlots.size());
 
@@ -1102,6 +1080,8 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
 
                 if (slot.kind == LFT_CALLTARGET)
                     writeVarInt(ss, slot.callTarget.pc);
+                else if (slot.kind == LFT_CONSTRUCT)
+                    writeVarInt(ss, slot.construct.shape);
             }
         }
         else
@@ -1192,41 +1172,8 @@ void BytecodeBuilder::writeLineInfo(std::string& ss) const
 {
     LUAU_ASSERT(!lines.empty());
 
-    // this function encodes lines inside each span as a 8-bit delta to span baseline
-    // span is always a power of two; depending on the line info input, it may need to be as low as 1
-    int span = 1 << 24;
-
     // first pass: determine span length
-    if (FFlag::LuauVirtualBcBuilder)
-    {
-        span = calcLinesSpan();
-    }
-    else
-    {
-        for (size_t offset = 0; offset < lines.size(); offset += span)
-        {
-            size_t next = offset;
-
-            int min = lines[offset];
-            int max = lines[offset];
-
-            for (; next < lines.size() && next < offset + span; ++next)
-            {
-                min = std::min(min, lines[next]);
-                max = std::max(max, lines[next]);
-
-                if (max - min > 255)
-                    break;
-            }
-
-            if (next < lines.size() && next - offset < size_t(span))
-            {
-                // since not all lines in the range fit in 8b delta, we need to shrink the span
-                // next iteration will need to reprocess some lines again since span changed
-                span = 1 << log2(int(next - offset));
-            }
-        }
-    }
+    int span = calcLinesSpan();
 
     // second pass: compute span base
     int baselineOne = 0;
@@ -1241,24 +1188,7 @@ void BytecodeBuilder::writeLineInfo(std::string& ss) const
         baseline = baselineScratch.data();
     }
 
-    if (FFlag::LuauVirtualBcBuilder)
-    {
-        fillBaselineInfo(span, baseline, baselineSize);
-    }
-    else
-    {
-        for (size_t offset = 0; offset < lines.size(); offset += span)
-        {
-            size_t next = offset;
-
-            int min = lines[offset];
-
-            for (; next < lines.size() && next < offset + span; ++next)
-                min = std::min(min, lines[next]);
-
-            baseline[offset / span] = min;
-        }
-    }
+    fillBaselineInfo(span, baseline, baselineSize);
 
     // third pass: write resulting data
     int logspan = log2(span);
@@ -1554,6 +1484,23 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
         typedLocal.startpc = remap[typedLocal.startpc];
     }
 
+    if (FFlag::LuauCompileCallFbRemap)
+    {
+        if (FFlag::LuauCompileRefactorFeedback)
+        {
+            for (FeedbackSlot& slot : fbSlots)
+            {
+                if (slot.kind == LFT_CALLTARGET)
+                    slot.callTarget.pc = remap[slot.callTarget.pc];
+            }
+        }
+        else
+        {
+            for (uint32_t& pc : fbSlots_DEPRECATED)
+                pc = remap[pc];
+        }
+    }
+
     return remap;
 }
 
@@ -1629,11 +1576,12 @@ void BytecodeBuilder::validateInstructions() const
 #define VREG(v) LUAU_ASSERT(unsigned(v) < func.maxstacksize)
 #define VREGRANGE(v, count) LUAU_ASSERT(unsigned(v + (count < 0 ? 0 : count)) <= func.maxstacksize)
 #define VUPVAL(v) LUAU_ASSERT(unsigned(v) < func.numupvalues)
-#define VCONST(v, kind) \
-    FFlag::LuauVirtualBcBuilder ? validateConst(v, Constant::Type_##kind) \
-                                : LUAU_ASSERT(unsigned(v) < constants.size() && constants[v].type == Constant::Type_##kind)
-#define VCONSTANY(v) FFlag::LuauVirtualBcBuilder ? validateConst(v) : LUAU_ASSERT(unsigned(v) < constants.size())
+#define VCONST(v, kind) validateConst(v, Constant::Type_##kind)
+#define VCONSTANY(v) validateConst(v)
 #define VJUMP(v) LUAU_ASSERT(size_t(i + 1 + v) < insns.size() && insnvalid[i + 1 + v])
+#define VSLOT(v, k) \
+    (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses ? LUAU_ASSERT(unsigned(v) < fbSlots.size() && fbSlots[v].kind == (k)) \
+                                                                              : LUAU_ASSERT(unsigned(v) < fbSlots_DEPRECATED.size()))
 
     LUAU_ASSERT(currentFunction != ~0u);
 
@@ -1735,17 +1683,7 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_NEWCLOSURE:
         {
             VREG(LUAU_INSN_A(insn));
-            unsigned int numupvalues;
-            if (FFlag::LuauVirtualBcBuilder)
-            {
-                numupvalues = validateProto(LUAU_INSN_D(insn));
-            }
-            else
-            {
-                LUAU_ASSERT(unsigned(LUAU_INSN_D(insn)) < protos.size());
-                LUAU_ASSERT(protos[LUAU_INSN_D(insn)] < functions.size());
-                numupvalues = functions[protos[LUAU_INSN_D(insn)]].numupvalues;
-            }
+            unsigned int numupvalues = validateProto(LUAU_INSN_D(insn));
 
             for (unsigned int j = 0; j < numupvalues; ++j)
             {
@@ -1764,6 +1702,15 @@ void BytecodeBuilder::validateInstructions() const
             break;
 
         case LOP_CALL:
+        {
+            int nparams = LUAU_INSN_B(insn) - 1;
+            int nresults = LUAU_INSN_C(insn) - 1;
+            VREG(LUAU_INSN_A(insn));
+            VREGRANGE(LUAU_INSN_A(insn) + 1, nparams); // 1..nparams
+            VREGRANGE(LUAU_INSN_A(insn), nresults);    // 1..nresults
+        }
+        break;
+
         case LOP_CALLFB:
         {
             int nparams = LUAU_INSN_B(insn) - 1;
@@ -1771,6 +1718,8 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VREGRANGE(LUAU_INSN_A(insn) + 1, nparams); // 1..nparams
             VREGRANGE(LUAU_INSN_A(insn), nresults);    // 1..nresults
+            if (insns[i + 1] != ~0u)                   // if not sealed
+                VSLOT(insns[i + 1], LFT_CALLTARGET);
         }
         break;
 
@@ -1933,17 +1882,7 @@ void BytecodeBuilder::validateInstructions() const
         {
             VREG(LUAU_INSN_A(insn));
             VCONST(LUAU_INSN_D(insn), Closure);
-            unsigned int numupvalues;
-            if (FFlag::LuauVirtualBcBuilder)
-            {
-                numupvalues = validateClosure(LUAU_INSN_D(insn));
-            }
-            else
-            {
-                unsigned int proto = constants[LUAU_INSN_D(insn)].valueClosure;
-                LUAU_ASSERT(proto < functions.size());
-                numupvalues = functions[proto].numupvalues;
-            }
+            unsigned int numupvalues = validateClosure(LUAU_INSN_D(insn));
 
             for (unsigned int j = 0; j < numupvalues; ++j)
             {
@@ -2075,6 +2014,18 @@ void BytecodeBuilder::validateInstructions() const
             VCONST(insns[i + 1], ClassShape);
         }
         break;
+
+        case LOP_CONSTRUCT:
+            VREG(LUAU_INSN_A(insn));
+            VREG(LUAU_INSN_B(insn));
+            VSLOT(insns[i + 1], LFT_CONSTRUCT);
+            break;
+
+        case LOP_FINCONSTRUCT:
+            VREG(LUAU_INSN_A(insn));
+            VJUMP(LUAU_INSN_C(insn));
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            break;
 
         default:
             LUAU_ASSERT(!"Unsupported opcode");
@@ -3091,6 +3042,15 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         code++;
         break;
 
+    case LOP_CONSTRUCT:
+        formatAppend(result, "CONSTRUCT R%d R%d slot %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code);
+        code++;
+        break;
+
+    case LOP_FINCONSTRUCT:
+        formatAppend(result, "FINCONSTRUCT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        break;
+
     default:
         LUAU_ASSERT(!"Unsupported opcode");
     }
@@ -3217,6 +3177,32 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
             formatAppend(result, "K%d: ", int(i));
             dumpConstant(result, int(i), true);
             formatAppend(result, "\n");
+        }
+
+        if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
+        {
+            for (size_t i = 0; i < fbSlots.size(); ++i)
+            {
+                const FeedbackSlot& data = fbSlots[i];
+
+                switch (data.kind)
+                {
+                case LFT_CALLTARGET:
+                    formatAppend(result, "slot %d: call target at pc %u\n", int(i), data.callTarget.pc);
+                    break;
+                case LFT_CONSTRUCT:
+                    formatAppend(result, "slot %d: shape K%u\n", int(i), data.construct.shape);
+                    break;
+                }
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < fbSlots_DEPRECATED.size(); ++i)
+            {
+                uint32_t pc = fbSlots_DEPRECATED[i];
+                formatAppend(result, "slot %d: call target at pc %u\n", int(i), pc);
+            }
         }
     }
 

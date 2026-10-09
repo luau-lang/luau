@@ -8,7 +8,9 @@
 
 #include <algorithm>
 #include <limits>
+
 #include <math.h>
+#include <stdio.h>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)

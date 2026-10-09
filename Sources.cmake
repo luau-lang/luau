@@ -598,6 +598,7 @@ if(TARGET Luau.Conformance)
     # Luau.Conformance Sources
     target_sources(Luau.Conformance PRIVATE
         tests/BufferCage.h
+        tests/BufferCage.cpp
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
         tests/ConformanceIrHooks.h
