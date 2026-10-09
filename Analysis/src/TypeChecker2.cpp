@@ -1362,7 +1362,11 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
         module->astTypes.erase(&fake);
     }
 
-    TypeId varTy = lookupType(stat->var);
+    // A compound assignment writes its target, so the result has to satisfy the variable's binding
+    // type, the same thing visit(AstStatAssign) checks the stored value against. Testing it against
+    // lookupType(stat->var) instead compares it against whatever refinement happens to be in scope,
+    // which rejects `a ..= x` inside `if a ~= "" then` even though `a = a .. x` is accepted there.
+    TypeId varTy = getBindingType(stat->var).value_or(lookupType(stat->var));
 
     testIsSubtype(*resultTy, varTy, stat->location);
 }
