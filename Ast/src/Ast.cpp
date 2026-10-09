@@ -239,6 +239,7 @@ AstExprCall::AstExprCall(
     AstExpr* func,
     const AstArray<AstExpr*>& args,
     bool self,
+    bool tableCall,
     const AstArray<AstTypeOrPack>& explicitTypes,
     const Location& argLocation
 )
@@ -247,6 +248,7 @@ AstExprCall::AstExprCall(
     , typeArguments(explicitTypes)
     , args(args)
     , self(self)
+    , tableCall(tableCall)
     , argLocation(argLocation)
 {
 }

@@ -608,6 +608,12 @@ enum class IrCmd : uint8_t
     // B: Rn
     DO_LEN,
 
+    // Construct a class object or a table, if the constructor is a class and shape in the CONSTRUCT feedback slot matches it
+    // A: Rn (where to store the result)
+    // B: Rn (constructor)
+    // C: unsigned int (feedback slot id)
+    CONSTRUCT,
+
     // Lookup a value in TValue of any type using a key of any type
     // A: Rn (where to store the result)
     // B: Rn

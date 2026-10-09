@@ -1,0 +1,1 @@
+./analysis/singletons/bidirectionally_infer_indexers_errored.luau(3,7): LocalUnused: Variable 'getOpposite' is never used; prefix with '_' to silence

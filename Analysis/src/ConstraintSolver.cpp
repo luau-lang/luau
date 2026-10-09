@@ -50,9 +50,9 @@ LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
-LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 namespace Luau
 {
@@ -948,12 +948,33 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
 
 bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Constraint> constraint)
 {
-    if (isBlocked(c.subType))
-        return block(c.subType, constraint);
-    else if (isBlocked(c.superType))
-        return block(c.superType, constraint);
+    if (FFlag::LuauDecomposeIntersectionOfFreeType)
+    {
+        auto subTy = follow(c.subType);
+        auto superTy = follow(c.superType);
 
-    unify(constraint, c.subType, c.superType);
+        // In either of these cases, the constraint is vacuous and it doesn't
+        // matter that the other type is blocked, so early return.
+        if (is<NeverType>(subTy) || is<UnknownType>(superTy))
+            return true;
+
+        if (isBlocked(subTy))
+            return block(subTy, constraint);
+
+        if (isBlocked(superTy))
+            return block(superTy, constraint);
+
+        unify(constraint, subTy, superTy);
+    }
+    else
+    {
+        if (isBlocked(c.subType))
+            return block(c.subType, constraint);
+        else if (isBlocked(c.superType))
+            return block(c.superType, constraint);
+
+        unify(constraint, c.subType, c.superType);
+    }
 
     return true;
 }
@@ -3204,10 +3225,8 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         {
             std::vector<TypeId> expectedVariables;
             // Add an intersection ReduceConstraint for the indexer result type to denote it can't be nil
-            const TypeId intersectionWithNotNil = arena->addTypeFunction(
-                FFlag::LuauIterableConstraintMutatesIterator ? builtinTypes->typeFunctions->refineFunc : builtinTypes->typeFunctions->intersectFunc,
-                {iteratorTable->indexer->indexResultType, builtinTypes->notNilType}
-            );
+            const TypeId intersectionWithNotNil =
+                arena->addTypeFunction(builtinTypes->typeFunctions->refineFunc, {iteratorTable->indexer->indexResultType, builtinTypes->notNilType});
 
             if (FFlag::LuauCyclicRequireTypeInference)
                 pushConstraint(constraint->scope, constraint->location, ReduceConstraint{intersectionWithNotNil}, constraint->moduleName);

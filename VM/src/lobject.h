@@ -340,7 +340,15 @@ typedef struct LuauVector
 
 enum FeedbackVectorSlotKind
 {
-    CALL_TARGET
+    CALL_TARGET,
+    CONSTRUCT,
+};
+
+enum LuauClassConstructMatch
+{
+    LCM_MISMATCH,
+    LCM_MATCH,
+    LCM_MATCH_ZEROED,
 };
 
 struct FeedbackVectorSlot
@@ -355,6 +363,13 @@ struct FeedbackVectorSlot
             uint32_t proto;
             uint32_t hits;
         } call_target;
+
+        struct
+        {
+            uint32_t shape;
+            uint32_t classid;
+            LuauClassConstructMatch match;
+        } construct;
     };
 };
 
@@ -561,6 +576,9 @@ typedef struct LuauClass
     GCObject* gclist;
 
     TString* name;
+
+    // Used to match feedback vector construction slots
+    uint32_t id;
 
     // The superclass of this class. NULL if this class doesn't inherit.
     LuauClass* super;

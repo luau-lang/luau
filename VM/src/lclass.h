@@ -60,6 +60,8 @@ LUAI_FUNC int luaR_defaultcreateobject(lua_State* L);
  */
 LUAI_FUNC int luaR_constructobject(lua_State* L);
 
+LUAI_FUNC void luaR_tryconstructobject(lua_State* L, StkId target, StkId maybeclass, uint32_t slotid);
+
 LUAI_FUNC void luaR_freeobject(lua_State* L, LuauObject* classinstance, lua_Page* page);
 
 #define luaR_checkoffsetinbounds(inst, offset) (offset < (inst)->lclass->numberofallmembers)

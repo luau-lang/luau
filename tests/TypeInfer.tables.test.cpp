@@ -28,15 +28,14 @@ LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
-LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
-LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
-LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauInferReadOnlyIndexers)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 namespace
 {
@@ -7689,8 +7688,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_strings_and_then_concat")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_always_intersects_table")
 {
-    ScopedFastFlag _{FFlag::LuauAlwaysIntersectTablesWithTables, true};
-
     CheckResult result = check(R"(
         local tbl = {}
 
@@ -7712,10 +7709,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2597_constraint_forcing_bad_refinement")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauDontBlockRefinementUnconditionally, true},
-        {FFlag::DebugLuauAssertOnForcedConstraint, true},
-    };
+    ScopedFastFlag  _{FFlag::DebugLuauAssertOnForcedConstraint, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         const MyClass = {
@@ -7747,7 +7741,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_1")
     ExactTableFlags exactTableFlags;
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {{FFlag::LuauIterableConstraintMutatesIterator, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauDecomposeIntersectionOfFreeType, true},
+        {FFlag::LuauRefactorStringSemanticSubtyping, true},
+    };
 
     CheckResult result = check(R"(
         local function setupRootMappingMove(rootMapping)
@@ -7763,7 +7761,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_1")
     ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("({ read RootToDescendantCountMap: { [string]: number, ... }, ... }) -> ()", toString(requireType("setupRootMappingMove")));
+    CHECK_EQ("({ read RootToDescendantCountMap: { [string?]: number, ... }, ... }) -> ()", toString(requireType("setupRootMappingMove")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
@@ -7771,7 +7769,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     ExactTableFlags exactTableFlags;
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {{FFlag::LuauIterableConstraintMutatesIterator, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
+    ScopedFastFlag _{FFlag::DebugLuauAssertOnForcedConstraint, true};
 
     CheckResult result = check(R"(
         local function setupRootMappingMove(rootMapping)

@@ -1,0 +1,2 @@
+_luau_print (7, 16): ((("A") -> string) & (("B") -> number)) -> (string, number)
+

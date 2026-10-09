@@ -1,0 +1,3 @@
+./analysis/singletons/overloaded_function_call_with_singletons_mismatch.luau(2,5): TypeError: None of the overloads for function that accept 2 arguments are compatible.
+./analysis/singletons/overloaded_function_call_with_singletons_mismatch.luau(2,5): TypeError: Available overloads: (true, string) -> (); and (false, number) -> ()
+./analysis/singletons/overloaded_function_call_with_singletons_mismatch.luau(1,10): FunctionUnused: Function 'f' is never used; prefix with '_' to silence
