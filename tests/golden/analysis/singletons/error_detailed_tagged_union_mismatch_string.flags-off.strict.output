@@ -1,0 +1,2 @@
+./analysis/singletons/error_detailed_tagged_union_mismatch_string.luau(5,19): TypeError: Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood'
+./analysis/singletons/error_detailed_tagged_union_mismatch_string.luau(5,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence

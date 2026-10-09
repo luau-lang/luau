@@ -1,0 +1,4 @@
+./analysis/refinements/refinement_should_create_union_of_options.luau(11,8): TypeError: Expected this to be 'number & unknown', but got 'string'; 
+the 2nd component of the intersection is `number`, and `string` is not a subtype of `number`
+./analysis/refinements/refinement_should_create_union_of_options.luau(13,8): TypeError: Expected this to be 'number & unknown', but got 'boolean'; 
+the 2nd component of the intersection is `number`, and `boolean` is not a subtype of `number`

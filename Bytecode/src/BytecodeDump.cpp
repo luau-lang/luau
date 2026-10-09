@@ -245,6 +245,10 @@ const char* getLuauOpcodeName(LuauOpcode cmd)
         return "FASTPCALL";
     case LOP_NEWCLASS:
         return "NEWCLASS";
+    case LOP_CONSTRUCT:
+        return "CONSTRUCT";
+    case LOP_FINCONSTRUCT:
+        return "FINCONSTRUCT";
     default:
         LUAU_ASSERT(!"Unsupported opcode");
         return "unknown";

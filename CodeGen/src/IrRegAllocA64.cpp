@@ -11,7 +11,9 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenExitSyncUpdate)
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
+LUAU_FASTFLAGVARIABLE(LuauCodegenScopedSpillKeepLazy)
 LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
 
 namespace Luau
@@ -159,7 +161,7 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
         // Try to find and spill a register that is not used in the current instruction and has the furthest next use
         if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(set); furthestUseTarget != kInvalidInstIdx)
         {
-            spill(set, index, furthestUseTarget);
+            spill(set, index, furthestUseTarget, /* keepLazyLocations */ false);
             CODEGEN_ASSERT(set.free != 0);
         }
         else
@@ -191,7 +193,7 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
         // Try to find and spill a register that is not used in the current instruction and has the furthest next use
         if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(set); furthestUseTarget != kInvalidInstIdx)
         {
-            spill(set, currInstIdx, furthestUseTarget);
+            spill(set, currInstIdx, furthestUseTarget, /* keepLazyLocations */ false);
             CODEGEN_ASSERT(set.free != 0);
         }
         else
@@ -377,6 +379,17 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
     if (!args)
         return;
 
+    // Collect VM registers that the ExitSync stores will write to
+    const VmExitSyncInfo* syncInfo = nullptr;
+
+    SmallVector<uint32_t, 8> argumentsToRestore;
+
+    if (FFlag::LuauCodegenExitSyncUpdate)
+    {
+        if (const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx))
+            syncInfo = function.vmExitInfo.find(*guardInstIdx);
+    }
+
     for (const ExitSyncArgA64& arg : *args)
     {
         IrInst& inst = function.instructions[arg.instIdx];
@@ -413,11 +426,46 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
             function.recordRestoreLocation(arg.instIdx, arg.restoreLocation);
 
             spills.push_back({arg.instIdx, arg.originalReg, arg.slot});
+
+            // If the restore VM register will be clobbered by a store in this block, restore it immediately
+            if (FFlag::LuauCodegenExitSyncUpdate && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
+            {
+                uint8_t vmReg = vmRegOp(arg.restoreLocation.op);
+
+                for (const VmExitStoreInfo& regStore : syncInfo->regStores)
+                {
+                    if (regStore.reg != vmReg)
+                        continue;
+
+                    // If store is the user of the argument, there is no conflict
+                    bool argUsedHere = false;
+
+                    for (const VmExitStoreRecord& record : regStore.stores)
+                    {
+                        for (const auto& op : record.backup.ops)
+                        {
+                            if (op.kind == IrOpKind::Inst && op.index == arg.instIdx)
+                                argUsedHere = true;
+                        }
+                    }
+
+                    if (!argUsedHere)
+                        argumentsToRestore.push_back(function.getInstIndex(inst));
+
+                    break;
+                }
+            }
         }
+    }
+
+    if (FFlag::LuauCodegenExitSyncUpdate)
+    {
+        for (uint32_t instIdx : argumentsToRestore)
+            restoreReg(function.instructions[instIdx]);
     }
 }
 
-size_t IrRegAllocA64::spill(uint32_t index, std::initializer_list<RegisterA64> live)
+size_t IrRegAllocA64::spill(uint32_t index, std::initializer_list<RegisterA64> live, bool keepLazyLocations)
 {
     static const KindA64 sets[] = {KindA64::x, KindA64::q};
 
@@ -463,7 +511,7 @@ size_t IrRegAllocA64::spill(uint32_t index, std::initializer_list<RegisterA64> l
             CODEGEN_ASSERT(targetInstIdx != kInvalidInstIdx);
             CODEGEN_ASSERT(function.instructions[targetInstIdx].regA64.index == reg);
 
-            spill(set, index, targetInstIdx);
+            spill(set, index, targetInstIdx, keepLazyLocations);
 
             regs &= ~(1u << reg);
         }
@@ -596,7 +644,7 @@ void IrRegAllocA64::restore(const IrRegAllocA64::Spill& s, RegisterA64 reg)
     inst.regA64 = reg;
 }
 
-void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
+void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx, bool keepLazyLocations)
 {
     IrInst& def = function.instructions[targetInstIdx];
     int reg = def.regA64.index;
@@ -628,7 +676,8 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
             if (loc.kind != IrValueKind::Tvalue)
                 build.str(wzr, mem(rBase, storeReg * sizeof(TValue) + offsetof(TValue, tt)));
 
-            function.materializeRestoreLocation(targetInstIdx);
+            if (!FFlag::LuauCodegenScopedSpillKeepLazy || !keepLazyLocations)
+                function.materializeRestoreLocation(targetInstIdx);
         }
 
         // when checking if value has a restore operation to spill it, we only allow it in the same block

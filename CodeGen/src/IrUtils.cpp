@@ -13,6 +13,7 @@
 #include "lnumutils.h"
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include <limits.h>
@@ -61,6 +62,7 @@ int getOpLength(LuauOpcode op)
     case LOP_CALLFB:
     case LOP_CMPPROTO:
     case LOP_NEWCLASS:
+    case LOP_CONSTRUCT:
         return 2;
 
     default:
@@ -122,6 +124,7 @@ bool isFastCall(LuauOpcode op)
     case LOP_FASTCALL2K:
     case LOP_FASTCALL3:
     case LOP_FASTPCALL:
+    case LOP_FINCONSTRUCT:
         return true;
 
     default:
@@ -323,6 +326,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::INVOKE_FASTPCALL:
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
+    case IrCmd::CONSTRUCT:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
     case IrCmd::GET_CACHED_IMPORT:
@@ -1963,6 +1967,10 @@ std::optional<uint8_t> tryGetLuauTagForBcType(uint8_t bcType, bool ignoreOptiona
         return LUA_TVECTOR;
     case LBC_TYPE_BUFFER:
         return LUA_TBUFFER;
+    case LBC_TYPE_CLASS:
+        return LUA_TCLASS;
+    case LBC_TYPE_OBJECT:
+        return LUA_TOBJECT;
     default:
         if (bcType >= LBC_TYPE_TAGGED_USERDATA_BASE && bcType < LBC_TYPE_TAGGED_USERDATA_END)
             return LUA_TUSERDATA;

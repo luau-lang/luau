@@ -318,7 +318,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
             }
             else
             {
-                TypeChecker typeChecker(getFrontend().globals.globalScope, &moduleResolver, getBuiltins(), &getFrontend().iceHandler);
+                TypeChecker typeChecker(getFrontend().globals.globalScope, &moduleResolver, getBuiltins(), &ice);
                 ModulePtr module = typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict), std::nullopt);
 
                 Luau::lint(sourceModule->root, *sourceModule->names, getFrontend().globals.globalScope, module.get(), sourceModule->hotcomments, {});
@@ -591,9 +591,7 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
 
 TypeId Fixture::parseType(std::string_view src)
 {
-    return getFrontend().parseType(
-        NotNull{&allocator}, NotNull{&nameTable}, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, NotNull{&arena}, src
-    );
+    return getFrontend().parseType(NotNull{&allocator}, NotNull{&nameTable}, NotNull{&ice}, TypeCheckLimits{}, NotNull{&arena}, src);
 }
 
 std::string Fixture::decorateWithTypes(const std::string& code)

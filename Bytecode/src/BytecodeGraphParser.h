@@ -1047,6 +1047,18 @@ struct BytecodeGraphParser
                 addProducer(LUAU_INSN_A(insn), nodeOp);
                 break;
 
+            case LOP_CONSTRUCT:
+                LUAU_ASSERT(aux < func.feedbackSlots.size());
+                LUAU_ASSERT(func.feedbackSlots[aux].kind == LFT_CONSTRUCT);
+                addVmRegInput(node, LUAU_INSN_B(insn));
+                addImmInput(node, static_cast<int32_t>(aux));
+                addProducer(LUAU_INSN_A(insn), nodeOp);
+                break;
+
+            case LOP_FINCONSTRUCT:
+                addVmRegInput(node, LUAU_INSN_A(insn));
+                addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
+                break;
 
             case LOP__COUNT:
                 LUAU_UNREACHABLE();
