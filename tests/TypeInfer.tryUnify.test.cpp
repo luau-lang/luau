@@ -232,6 +232,7 @@ TEST_CASE_FIXTURE(Fixture, "typepack_unification_should_trim_free_tails")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("(number) -> boolean", toString(requireType("f")));
 }
@@ -277,6 +278,8 @@ TEST_CASE_FIXTURE(Fixture, "variadics_should_use_reversed_properly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
 
     CheckResult result = check(R"(
         --!strict

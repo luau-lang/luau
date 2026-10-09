@@ -67,6 +67,12 @@ void check(
     Module* module
 );
 
+enum class AnnotationCheckMode {
+    Function,
+    Method,
+    Constructor,
+};
+
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
@@ -115,6 +121,7 @@ private:
     void checkForInternalTypeFunction(TypeId ty, Location location);
     TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location);
     TypePackId lookupPack(AstExpr* expr) const;
+    std::optional<TypeId> tryLookupType(AstExpr* expr);
     TypeId lookupType(AstExpr* expr);
     TypeId lookupAnnotation(AstType* annotation);
     std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation) const;
@@ -137,6 +144,7 @@ private:
     void reportErrorsFromAssigningToNever(AstExpr* lhs, TypeId rhsType);
     void visit(AstStatAssign* assign);
     void visit(AstStatCompoundAssign* stat);
+    void checkFunctionAnnotations(AstExprFunction* func, AnnotationCheckMode mode, Location location);
     void visit(AstStatFunction* stat);
     void visit(AstStatLocalFunction* stat);
     void visit(const AstTypeList* typeList);
@@ -146,8 +154,10 @@ private:
     void visit(AstStatDeclareFunction* stat);
     void visit(AstStatDeclareGlobal* stat);
     void visit(AstStatDeclareExternType* stat);
+    void checkExtendsClause(AstStatClass* stat);
     void visit(AstStatClass* stat);
     void visitConstructor(AstStatClass* stat, const AstClassMethod* method);
+    void checkMethodOverride(AstStatClass* stat, const AstClassMethod* method);
     void visit(AstStatError* stat);
     void visit(AstExpr* expr, ValueContext context);
     void visit(AstExprGroup* expr, ValueContext context);
@@ -199,6 +209,7 @@ private:
 
     bool testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType);
 
+    std::optional<bool> testSetMetatableCallIsSubtype(AstExpr* expr, TypeId expectedType);
     bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType);
 
     void maybeReportSubtypingError(TypeId subTy, TypeId superTy, const Location& location);

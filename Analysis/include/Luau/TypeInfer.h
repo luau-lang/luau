@@ -77,6 +77,13 @@ struct TypeChecker
 
     ControlFlow check(const ScopePtr& scope, const AstStat& program);
     ControlFlow check(const ScopePtr& scope, const AstStatBlock& block);
+    WithPredicate<TypeId> checkLocalBinding(
+        const ScopePtr& scope,
+        const ScopePtr& bindingScope,
+        AstLocal* local,
+        const WithPredicate<TypeId>& result,
+        std::optional<TypeId> expectedType
+    );
     ControlFlow check(const ScopePtr& scope, const AstStatIf& statement);
     ControlFlow check(const ScopePtr& scope, const AstStatWhile& statement);
     ControlFlow check(const ScopePtr& scope, const AstStatRepeat& statement);

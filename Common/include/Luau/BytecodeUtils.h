@@ -3,6 +3,8 @@
 
 #include "Luau/Bytecode.h"
 
+#include <stdint.h>
+
 namespace Luau
 {
 
@@ -132,6 +134,9 @@ inline bool isFallthrough(LuauOpcode op)
     case LOP_JUMP:
     case LOP_JUMPBACK:
     case LOP_JUMPX:
+    case LOP_FORGPREP:
+    case LOP_FORGPREP_NEXT:
+    case LOP_FORGPREP_INEXT:
         return false;
     default:
         return true;

@@ -1,0 +1,1 @@
+./analysis/type-functions/index_union_table.luau(9,26): TypeError: Property '"b"' does not exist on type 'First | Second'

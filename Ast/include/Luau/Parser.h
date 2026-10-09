@@ -361,6 +361,12 @@ private:
     // TODO: Add grammar rules here?
     AstExpr* parseIfElseExpr();
 
+    // (`if' | `elseif') (`local' | `const') binding `=' exp then exp ... else exp -- parses an entire `if local`/`if const` expression
+    AstExpr* parseIfElseExprLocalCondition(const Location& start);
+
+    // Parse the trailing `else exp` / `elseif ...` shared by `parseIfElseExpr` and `parseIfElseExprLocalCondition`
+    AstExpr* parseIfElseExprTail(bool& hasElse, bool& isElseIf);
+
     // stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
     AstExpr* parseInterpString();
 

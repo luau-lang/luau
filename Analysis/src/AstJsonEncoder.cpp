@@ -8,8 +8,7 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauTrackPrefixLocal)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 namespace Luau
 {
@@ -569,6 +568,10 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(trueExpr);
                 PROP(hasElse);
                 PROP(falseExpr);
+                if (FFlag::LuauExperimentalIfLocalAnalysis && node->conditionLocal)
+                {
+                    write("conditionLocal", node->conditionLocal);
+                }
             }
         );
     }
@@ -742,10 +745,9 @@ struct AstJsonEncoder : public AstVisitor
                 if (node->elsebody)
                     PROP(elsebody);
                 write("hasThen", node->thenLocation.has_value());
-                if (FFlag::DebugLuauIfLocalAnalysis && node->conditionLocal)
+                if (FFlag::LuauExperimentalIfLocalAnalysis && node->conditionLocal)
                 {
-                    write("conditionLocal", node->conditionLocal->name.value);
-                    write("conditionIsConst", node->conditionIsConst);
+                    write("conditionLocal", node->conditionLocal);
                 }
             }
         );
@@ -1024,7 +1026,7 @@ struct AstJsonEncoder : public AstVisitor
                     PROP(prefix);
                 if (node->prefixLocation)
                     write("prefixLocation", *node->prefixLocation);
-                if (FFlag::LuauTrackPrefixLocal && node->prefixLocal)
+                if (node->prefixLocal)
                     write("prefixLocal", node->prefixLocal);
                 PROP(name);
                 PROP(nameLocation);

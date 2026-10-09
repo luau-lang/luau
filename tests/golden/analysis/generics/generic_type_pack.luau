@@ -1,0 +1,6 @@
+local function forward<T...>(...: T...): T...
+    return ...
+end
+
+local count: number, message: string = forward(42, "hello")
+assert(count == 42 and message == "hello")

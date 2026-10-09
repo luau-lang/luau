@@ -27,10 +27,11 @@ LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingSkipUnreadReasoning)
 
 
 namespace Luau
@@ -304,6 +305,11 @@ SubtypingResult& SubtypingResult::withBothComponent(TypePath::Component componen
 
 SubtypingResult& SubtypingResult::withSubComponent(TypePath::Component component)
 {
+    // Nothing reads the reasoning of a successful result: andAlso and orElse drop it, and negate
+    // discards it.
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{Path(std::move(component)), TypePath::kEmpty});
     else
@@ -317,6 +323,9 @@ SubtypingResult& SubtypingResult::withSubComponent(TypePath::Component component
 
 SubtypingResult& SubtypingResult::withSuperComponent(TypePath::Component component)
 {
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{TypePath::kEmpty, Path(std::move(component))});
     else
@@ -335,6 +344,9 @@ SubtypingResult& SubtypingResult::withBothPath(TypePath::Path path)
 
 SubtypingResult& SubtypingResult::withSubPath(TypePath::Path path)
 {
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{std::move(path), TypePath::kEmpty});
     else
@@ -348,6 +360,9 @@ SubtypingResult& SubtypingResult::withSubPath(TypePath::Path path)
 
 SubtypingResult& SubtypingResult::withSuperPath(TypePath::Path path)
 {
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{TypePath::kEmpty, std::move(path)});
     else
@@ -724,7 +739,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         return {true};
 
     std::pair<TypeId, TypeId> typePair{subTy, superTy};
-    if (!seenTypes.insert(typePair))
+    if (!seenTypes.try_insert(typePair))
     {
         /* TODO: Caching results for recursive types is really tricky to think
          * about.
@@ -947,10 +962,14 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
-        const bool forceCovariantTest =
-            FFlag::LuauBidirectionalInferenceSimplifyTables ? false : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
+        const bool forceCovariantTest = false;
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
-        if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
+
+        bool tableIsMutable = p.first->state != TableState::Sealed;
+        if (FFlag::DebugLuauExactTableTypes && p.first->state == TableState::Exact)
+            tableIsMutable = false;
+
+        if (result.isSubtype && !p.first->indexer && p.second->indexer && tableIsMutable)
         {
             // FIXME CLI-182960
             //
@@ -1007,7 +1026,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     superTp = follow(superTp);
 
     std::pair<TypePackId, TypePackId> typePair = {subTp, superTp};
-    if (!seenPacks.insert(typePair))
+    if (!seenPacks.try_insert(typePair))
         return SubtypingResult{true, false, false};
     ScopedSeenSet<Subtyping::SeenTypePackSet, std::pair<TypePackId, TypePackId>> popper{seenPacks, std::move(typePair)};
 
@@ -1528,6 +1547,9 @@ template<typename SubTy, typename SuperTy>
 SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, SubTy subTy, SuperTy superTy, NotNull<Scope> scope)
 {
     SubtypingResult result = isCovariantWith(env, superTy, subTy, scope);
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && result.isSubtype)
+        return result;
+
     if (result.reasoning.empty())
         result.reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Contravariant});
     else
@@ -1559,6 +1581,9 @@ SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, SubTy subT
 {
     SubtypingResult result = isCovariantWith(env, subTy, superTy, scope);
     result.andAlso(isContravariantWith(env, subTy, superTy, scope));
+
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && result.isSubtype)
+        return result;
 
     if (result.reasoning.empty())
         result.reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invariant});
@@ -1647,7 +1672,14 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         if (next.isSubtype)
             return next;
 
-        result.andAlso(next.withSuperComponent(TypePath::Index{index, TypePath::Index::Variant::Union}));
+        if (FFlag::LuauSubtypingSkipUnreadReasoning)
+        {
+            // The failed reasoning emitted when subtyping `T <: A | B | C` is always cleared before returning, so we can simply skip its inclusion.
+            next.reasoning.clear();
+            result.andAlso(std::move(next));
+        }
+        else
+            result.andAlso(next.withSuperComponent(TypePath::Index{index, TypePath::Index::Variant::Union}));
         ++index;
     }
 
@@ -2033,7 +2065,7 @@ SubtypingResult Subtyping::isCovariantWith(
     SubtypingResult result{true};
 
     // Either this flag is off or `forceCovariantTest` is false.
-    LUAU_ASSERT(!FFlag::LuauBidirectionalInferenceSimplifyTables || !forceCovariantTest);
+    LUAU_ASSERT(!forceCovariantTest);
 
     if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
     {
@@ -2044,6 +2076,18 @@ SubtypingResult Subtyping::isCovariantWith(
         // Unsealed tables are always sealed by the time inference completes, so this should never affect the
         // type checking phase.
         return {false};
+    }
+
+    if (FFlag::DebugLuauExactTableTypes)
+    {
+        // Sealed </: Exact
+        // Unsealed <: Exact (but I guess we should seal it and make it exact?)
+
+        // Inexact tables are never subtypes of exact tables.
+        if (superTable->state == TableState::Exact && subTable->state != TableState::Exact)
+        {
+            return {false};
+        }
     }
 
     // This is an unfortunately complicated state machine. Consider something like:
@@ -2155,6 +2199,23 @@ SubtypingResult Subtyping::isCovariantWith(
         }
     }
 
+    if (FFlag::DebugLuauExactTableTypes && superTable->state == TableState::Exact)
+    {
+        // We have already handled the inexact </: exact case.
+        LUAU_ASSERT(subTable->state == TableState::Exact);
+
+        if (subTable->indexer.has_value() != superTable->indexer.has_value())
+            return {false};
+
+        for (const auto& [name, subProp]: subTable->props)
+        {
+            // If the supertype table is exact, then every subtype table
+            // property must map to the supertype somewhere.
+            if (0 == superTable->props.count(name))
+                return {false};
+        }
+    }
+
     if (superTable->indexer)
     {
         if (subTable->indexer)
@@ -2164,6 +2225,8 @@ SubtypingResult Subtyping::isCovariantWith(
             // result type.
             record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
         }
+        else if (subTable->state == TableState::Exact)
+            return {false};
         else if (subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table
@@ -2486,7 +2549,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
 {
     SubtypingResult result{false};
     if (superPrim->type == PrimitiveType::Table)
+    {
         result.isSubtype = true;
+    }
 
     return result;
 }
@@ -2516,7 +2581,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
     }
     else if (subPrim->type == PrimitiveType::Table)
     {
-        const bool isSubtype = superTable->props.empty() && (!superTable->indexer.has_value() || superTable->state == TableState::Generic);
+        bool isSubtype = superTable->props.empty() && (!superTable->indexer.has_value() || superTable->state == TableState::Generic);
+
+        if (FFlag::DebugLuauExactTableTypes && superTable->state == TableState::Exact)
+            isSubtype = false;
+
         return {isSubtype};
     }
 

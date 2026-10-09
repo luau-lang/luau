@@ -1031,6 +1031,60 @@ struct ErrorConverter
         else
             return "Access to 'self' before all of its fields have been initialized";
     }
+
+    std::string operator()(const TypeAnnotationRequired& err) const
+    {
+        ToStringOptions opts;
+        opts.functionTypeArguments = true;
+        opts.ignoreSyntheticName = true;
+        auto tos = toStringDetailed(err.inferredTy, opts);
+        if (!tos.invalid && !tos.truncated && !tos.error)
+            return "Type annotation required here.  Consider " + tos.name;
+        else
+            return "Type annotation required here.  Unable to infer the type of this function.";
+    }
+
+    std::string operator()(const ConstructorsShouldNotReturnAnything&) const
+    {
+        return "Class constructors should not return anything.";
+    }
+
+    std::string operator()(const CyclicClassInheritance& e) const
+    {
+        std::string s = "Cyclic class inheritance detected: ";
+        bool first = true;
+        for (const Name& name : e.cycle)
+        {
+            if (first)
+                first = false;
+            else
+                s += " -> ";
+            s += name;
+        }
+        return s;
+    }
+
+    std::string operator()(const InvalidClassExtension& e) const
+    {
+        switch (e.context)
+        {
+            case InvalidClassExtension::ClassIsNotOpen:
+                return "Non-open class " + toString(e.baseClass) + " cannot be extended";
+            case InvalidClassExtension::BaseIsClassInstance:
+                return "Object of type " + toString(e.baseClass) + " cannot be extended because it is an object, not a class";
+            case InvalidClassExtension::NotAClass:
+                return "Cannot extend non-class of type " + toString(e.baseClass);
+            default:
+                LUAU_ASSERT(0);
+                return "Cannot extend non-class of type " + toString(e.baseClass);
+        }
+    }
+
+    std::string operator()(const IncompatibleClassMethodOverride& e) const
+    {
+        return "Method '" + e.method + "' on class '" + e.className + "' is not a compatible override of the method inherited from superclass '" +
+               e.superName + "'";
+    }
 };
 
 struct InvalidNameChecker
@@ -1263,6 +1317,21 @@ bool FunctionExitsWithoutReturning::operator==(const FunctionExitsWithoutReturni
     return expectedReturnType == rhs.expectedReturnType;
 }
 
+bool CyclicClassInheritance::operator==(const CyclicClassInheritance& rhs) const
+{
+    return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
+}
+
+bool InvalidClassExtension::operator==(const InvalidClassExtension& rhs) const
+{
+    return context == rhs.context && baseClass == rhs.baseClass;
+}
+
+bool IncompatibleClassMethodOverride::operator==(const IncompatibleClassMethodOverride& rhs) const
+{
+    return method == rhs.method && className == rhs.className && superName == rhs.superName;
+}
+
 int TypeError::code() const
 {
     return minCode() + int(data.index());
@@ -1482,12 +1551,16 @@ bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
     return function == rhs.function && arguments == rhs.arguments;
 }
 
+bool TypeAnnotationRequired::operator==(const TypeAnnotationRequired& rhs) const
+{
+    return inferredTy == rhs.inferredTy;
+}
+
 bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) const
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
     return fieldName == rhs.fieldName;
 }
-
 
 std::string toString(const TypeError& error)
 {
@@ -1749,6 +1822,23 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.arguments = clone(e.arguments);
     }
     else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
+    {
+        e.inferredTy = clone(e.inferredTy);
+    }
+    else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, InvalidClassExtension>)
+    {
+        e.baseClass = clone(e.baseClass);
+    }
+    else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
     {
     }
     else

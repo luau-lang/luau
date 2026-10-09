@@ -146,6 +146,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "recursive_local_function")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -156,6 +158,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "recursive_function")
             f(5)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -212,6 +216,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types_2"
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("(nil) -> number?" == toString(requireType("f")));
 }
@@ -224,6 +230,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_is_some_type_or_optional_then_a
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("(number?) -> number" == toString(requireType("f")));
@@ -628,7 +636,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1575")
 
 TEST_CASE_FIXTURE(Fixture, "capture_upvalue_in_returned_function")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         function def()
             local i : number = 0
             local function Counter()
@@ -637,7 +645,9 @@ TEST_CASE_FIXTURE(Fixture, "capture_upvalue_in_returned_function")
             end
             return Counter
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("() -> () -> number", toString(requireType("def")));
 }
 
@@ -874,8 +884,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
 
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, {/* exhaustive */ true}));
-    CHECK_EQ("{ foo: number }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{ foo: number }, { bar: number }>", toString(err->wantedType, {/* exhaustive */ true}));
+    CHECK_EQ("{ foo: number }", toString(err->givenType, { /* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

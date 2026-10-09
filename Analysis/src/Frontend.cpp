@@ -43,7 +43,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
-LUAU_FASTFLAGVARIABLE(LuauFrontendSourceNodeErase)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
@@ -2207,7 +2206,7 @@ void Frontend::traverseDependents(const ModuleName& name, std::function<bool(Sou
         if (!processSubtree(sourceNode))
             continue;
 
-        const Set<ModuleName>& dependents = sourceNode.dependents;
+        const DenseHashSet<ModuleName>& dependents = sourceNode.dependents;
         queue.insert(queue.end(), dependents.begin(), dependents.end());
     }
 }
@@ -2649,29 +2648,22 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& 
 
     if (!source)
     {
-        if (FFlag::LuauFrontendSourceNodeErase)
+        if (auto it = sourceNodes.find(name); it != sourceNodes.end())
         {
-            if (auto it = sourceNodes.find(name); it != sourceNodes.end())
+            // Remove this module from the dependents set of each of its dependencies
+            for (const ModuleName& dep : it->second->requireSet)
             {
-                // Remove this module from the dependents set of each of its dependencies
-                for (const ModuleName& dep : it->second->requireSet)
-                {
-                    if (auto depIt = sourceNodes.find(dep); depIt != sourceNodes.end())
-                        depIt->second->dependents.erase(name);
-                }
-
-                sourceNodes.erase(it);
+                if (auto depIt = sourceNodes.find(dep); depIt != sourceNodes.end())
+                    depIt->second->dependents.erase(name);
             }
 
-            sourceModules.erase(name);
-            requireTrace.erase(name);
-            moduleResolver.eraseModule(name);
-            moduleResolverForAutocomplete.eraseModule(name);
+            sourceNodes.erase(it);
         }
-        else
-        {
-            sourceModules.erase(name);
-        }
+
+        sourceModules.erase(name);
+        requireTrace.erase(name);
+        moduleResolver.eraseModule(name);
+        moduleResolverForAutocomplete.eraseModule(name);
 
         return {nullptr, nullptr};
     }

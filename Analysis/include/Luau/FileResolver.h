@@ -79,6 +79,12 @@ struct RequireNode
 
     // A list of the aliases available to this node.
     virtual std::vector<RequireAlias> getAvailableAliases() const = 0;
+
+    // Whether this node supports relative require paths (./ and ../).
+    virtual bool permitsRelativeRequirePaths() const
+    {
+        return true;
+    }
 };
 
 struct RequireSuggestion

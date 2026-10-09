@@ -31,11 +31,8 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAGVARIABLE(LuauUdtfErrorHandling)
-LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
-LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
-LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 
 namespace Luau
 {
@@ -134,9 +131,21 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstS
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    // Load bytecode into Luau state
-    if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
-        return error;
+    if (FFlag::LuauUdtfTerseChunkNames)
+    {
+        std::string chunkName = name.value;
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
+
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
+    else
+    {
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError_DEPRECATED(L, name.value, lua_resume(L, nullptr, 0)))
@@ -220,9 +229,21 @@ std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTy
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    // Load bytecode into Luau state
-    if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
-        return error;
+    if (FFlag::LuauUdtfTerseChunkNames)
+    {
+        std::string chunkName = name.value;
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
+
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
+    else
+    {
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError(L, name.value, lua_resume(L, nullptr, 0)))
@@ -375,21 +396,8 @@ void pushType(lua_State* L, TypeFunctionTypeId type)
 {
     luaL_checkstack(L, 2, "allocating type");
 
-    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
-    {
-        TypeFunctionTypeId* ptr =
-            static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
-        *ptr = type;
-    }
-    else
-    {
-        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
-        *ptr = type;
-
-        // set the new userdata's metatable to type metatable
-        luaL_getmetatable(L, "type");
-        lua_setmetatable(L, -2);
-    }
+    TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+    *ptr = type;
 }
 
 // Pushes a new type userdata onto the stack
@@ -398,23 +406,9 @@ void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen)
     luaL_checkstack(L, 2, "allocating type");
 
     // allocate a new type userdata
-    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
-    {
-        TypeFunctionTypeId* ptr =
-            static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
-        *ptr = allocateTypeFunctionType(L, std::move(type));
-        const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
-    }
-    else
-    {
-        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
-        *ptr = allocateTypeFunctionType(L, std::move(type));
-        const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
-
-        // set the new userdata's metatable to type metatable
-        luaL_getmetatable(L, "type");
-        lua_setmetatable(L, -2);
-    }
+    TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+    *ptr = allocateTypeFunctionType(L, std::move(type));
+    const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
 }
 
 void deallocTypeUserData(lua_State* L, void* data)
@@ -424,25 +418,12 @@ void deallocTypeUserData(lua_State* L, void* data)
 
 bool isTypeUserData(lua_State* L, int idx)
 {
-    if (!FFlag::LuauUdtfTypeUseTaggedMetatable && !lua_isuserdata(L, idx))
-        return false;
-
     return lua_touserdatatagged(L, idx, kTypeUserdataTag) != nullptr;
 }
 
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx)
 {
-    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
-    {
-        return *static_cast<TypeFunctionTypeId*>(luaL_checkudatatagged(L, idx, kTypeUserdataTag));
-    }
-    else
-    {
-        if (auto typ = static_cast<TypeFunctionTypeId*>(lua_touserdatatagged(L, idx, kTypeUserdataTag)))
-            return *typ;
-
-        luaL_typeerrorL(L, idx, "type");
-    }
+    return *static_cast<TypeFunctionTypeId*>(luaL_checkudatatagged(L, idx, kTypeUserdataTag));
 }
 
 std::optional<TypeFunctionTypeId> optionalTypeUserData(lua_State* L, int idx)
@@ -604,10 +585,7 @@ static int createSingleton(lua_State* L)
         return 1;
     }
 
-    if (FFlag::LuauUdtfCreateSingletonFixErrorMessage)
-        luaL_error(L, "types.singleton: can't create a singleton from a %s", luaL_typename(L, 1));
-    else
-        luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
+    luaL_error(L, "types.singleton: can't create a singleton from a %s", luaL_typename(L, 1));
 }
 
 // Luau: `types.generic(name: string, ispack: boolean?) -> type
@@ -2080,11 +2058,8 @@ void registerTypeUserData(lua_State* L)
     lua_pushcfunction(L, isEqualToType, "__eq");
     lua_setfield(L, -2, "__eq");
 
-    if (FFlag::LuauUdtfTypeToStringMetamethod)
-    {
-        lua_pushcfunction(L, typeToString, "__tostring");
-        lua_setfield(L, -2, "__tostring");
-    }
+    lua_pushcfunction(L, typeToString, "__tostring");
+    lua_setfield(L, -2, "__tostring");
 
     // Indexing will be a dynamic function because some type fields are dynamic
     lua_newtable(L);
@@ -2099,11 +2074,8 @@ void registerTypeUserData(lua_State* L)
 
     lua_setreadonly(L, -1, true);
 
-    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
-        // Sets up the metatable for the type userdata.
-        lua_setuserdatametatable(L, kTypeUserdataTag);
-    else
-        lua_pop(L, 1);
+    // Sets up the metatable for the type userdata.
+    lua_setuserdatametatable(L, kTypeUserdataTag);
 
     // Sets up a destructor for the type userdata.
     lua_setuserdatadtor(L, kTypeUserdataTag, deallocTypeUserData);
@@ -2170,25 +2142,12 @@ void setTypeFunctionEnvironment(lua_State* L)
     luaopen_base(L);
     lua_pop(L, 1);
 
-    if (FFlag::LuauUdtfErrorHandling)
+    // Remove certain global functions from the base library
+    static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv"};
+    for (auto& name : unavailableGlobals)
     {
-        // Remove certain global functions from the base library
-        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv"};
-        for (auto& name : unavailableGlobals)
-        {
-            lua_pushcfunction(L, unsupportedFunction, name);
-            lua_setglobal(L, name);
-        }
-    }
-    else
-    {
-        // Remove certain global functions from the base library
-        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
-        for (auto& name : unavailableGlobals)
-        {
-            lua_pushcfunction(L, unsupportedFunction, name);
-            lua_setglobal(L, name);
-        }
+        lua_pushcfunction(L, unsupportedFunction, name);
+        lua_setglobal(L, name);
     }
 
     lua_pushcfunction(L, print, "print");

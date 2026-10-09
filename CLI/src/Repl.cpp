@@ -43,6 +43,7 @@
 
 #include <locale.h>
 #include <signal.h>
+#include <stdlib.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
@@ -172,7 +173,7 @@ void* createCliRequireContext(lua_State* L)
     void* ctx = lua_newuserdatadtor(
         L,
         sizeof(ReplRequirer),
-        [](void* ptr)
+        [](lua_State*, void* ptr)
         {
             static_cast<ReplRequirer*>(ptr)->~ReplRequirer();
         }

@@ -619,6 +619,52 @@ struct UninitializedFieldAccess
     bool operator==(const UninitializedFieldAccess& rhs) const;
 };
 
+struct TypeAnnotationRequired
+{
+    TypeId inferredTy;
+
+    bool operator==(const TypeAnnotationRequired& rhs) const;
+};
+
+struct ConstructorsShouldNotReturnAnything
+{
+    bool operator==(const ConstructorsShouldNotReturnAnything&) const
+    {
+        return true;
+    }
+};
+
+struct CyclicClassInheritance
+{
+    std::vector<Name> cycle;
+
+    bool operator==(const CyclicClassInheritance& rhs) const;
+};
+
+struct InvalidClassExtension
+{
+    enum Context
+    {
+        ClassIsNotOpen,
+        NotAClass,
+        BaseIsClassInstance,
+    };
+
+    Context context;
+    TypeId baseClass;
+
+    bool operator==(const InvalidClassExtension& rhs) const;
+};
+
+struct IncompatibleClassMethodOverride
+{
+    Name method;
+    Name className;
+    Name superName;
+
+    bool operator==(const IncompatibleClassMethodOverride& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -684,7 +730,12 @@ using TypeErrorData = Variant<
     InstantiateGenericsOnNonFunction,
     TypeInstantiationCountMismatch,
     AmbiguousFunctionCall,
-    UninitializedFieldAccess>;
+    UninitializedFieldAccess,
+    TypeAnnotationRequired,
+    ConstructorsShouldNotReturnAnything,
+    CyclicClassInheritance,
+    InvalidClassExtension,
+    IncompatibleClassMethodOverride>;
 
 struct TypeErrorSummary
 {

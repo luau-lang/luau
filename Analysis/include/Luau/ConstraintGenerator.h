@@ -15,7 +15,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
-#include "Luau/Set.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeIds.h"
@@ -69,8 +69,21 @@ struct Checkpoint
 
 struct ClassDeclRecord
 {
+    ClassDeclRecord(TypeId classTy, TypeId instanceTy, DenseHashMap<AstName, TypeId> memberTypes)
+        : classTy(classTy)
+        , instanceTy(instanceTy)
+        , memberTypes(std::move(memberTypes))
+    {
+        LUAU_ASSERT(classTy);
+        LUAU_ASSERT(instanceTy);
+    }
+
+    // The type of the class object itself.
+    TypeId classTy;
+
     // The type of an instance of the class.
-    TypeId ty = nullptr;
+    TypeId instanceTy;
+
     DenseHashMap<AstName, TypeId> memberTypes;
 };
 
@@ -201,7 +214,7 @@ private:
 
     std::vector<TypeId> unionsToSimplify;
 
-    Set<AstName> uninitializedGlobals;
+    DenseHashSet<AstName> uninitializedGlobals;
 
     Polarity polarity = Polarity::None;
 
@@ -293,6 +306,7 @@ private:
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     LUAU_NOINLINE void prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block);
+    void prototypeClass(const ScopePtr& scope, AstStatClass* classDecl, TypeId classObjectTy);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 
@@ -329,13 +343,14 @@ private:
         bool generalize = true
     );
 
-    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call);
+    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call, std::optional<TypeId> expectedType = std::nullopt);
     InferencePack checkExprCall(
         const ScopePtr& scope,
         AstExprCall* call,
         TypeId fnType,
         Checkpoint funcBeginCheckpoint,
-        Checkpoint funcEndCheckpoint
+        Checkpoint funcEndCheckpoint,
+        std::optional<TypeId> expectedType
     );
 
     /**

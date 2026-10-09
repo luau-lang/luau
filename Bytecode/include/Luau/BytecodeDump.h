@@ -102,14 +102,13 @@ void toString(ToStringContext& ctx, BcFunction<VmConst>& function, const BcInst&
 {
     size_t start = ctx.result.size();
 
-    append(ctx.result, "  %%%u = %s ", index, getLuauOpcodeName(inst.op));
+    append(ctx.result, "  %%%u = %s", index, getLuauOpcodeName(inst.op));
 
     bool comma = false;
 
     for (const BcOp& op : inst.ops)
     {
-        if (comma)
-            append(ctx.result, ", ");
+        append(ctx.result, comma ? ", " : " ");
         comma = true;
 
         toString(ctx, function, op);
@@ -263,6 +262,16 @@ std::string toString(BcFunction<VmConst>& function, bool includeDetailColumn)
 
     toStringFunctionHeader(ctx, function);
     append(ctx.result, "\n");
+
+    for (uint32_t i = 0; i < function.feedbackSlots.size(); ++i)
+    {
+        const BcFeedbackSlot& slot = function.feedbackSlots[i];
+
+        if (slot.kind == LFT_CALLTARGET)
+            append(ctx.result, "; feedback slot %u: CALLTARGET %%%u\n", i, slot.callTarget.inst);
+        else
+            LUAU_ASSERT(!"unknown feedback slot kind");
+    }
 
     std::vector<BcOp> sortedBlocks;
     sortedBlocks.reserve(function.blocks.size());

@@ -121,7 +121,7 @@ class Bitboard
 	end
 
 	function from(l, h)
-		return Bitboard.new({ l = l, h = h })
+		return Bitboard { l = l, h = h }
 	end
 
 	function up(self)
@@ -314,7 +314,7 @@ class Board
 	end
 
 	function fromFen(fen)
-		local b = Board.new()
+		local b = Board()
 		local i = 0
 		local rank = 7
 		local file = 0
@@ -707,7 +707,7 @@ class Board
 
 
 	function applyMove(self, move)
-		local out = Board.new()
+		local out = Board()
 		table.move(self.state, 1, 12, 1, out.state)
 		local from = bit32.extract(move, 6, 6)
 		local to = bit32.extract(move, 0, 6)

@@ -12,8 +12,6 @@
 #include <memory>
 #include <string>
 
-LUAU_FASTFLAG(LuauDirectFieldGet)
-
 // For ease of testing, this counter is static. Tests that use it should reset
 // its value to 0 at startup and verify its value after code has run.
 static int handlerHitCount = 0;
@@ -62,8 +60,6 @@ TEST_SUITE_BEGIN("DirectFieldAccess");
 
 TEST_CASE("handler_setnumber_result")
 {
-    ScopedFastFlag sff{FFlag::LuauDirectFieldGet, true};
-
     std::unique_ptr<lua_State, void (*)(lua_State*)> state(luaL_newstate(), lua_close);
     lua_State* L = state.get();
 
@@ -92,8 +88,6 @@ TEST_CASE("handler_setnumber_result")
 
 TEST_CASE("handler_setboolean_result")
 {
-    ScopedFastFlag sff{FFlag::LuauDirectFieldGet, true};
-
     std::unique_ptr<lua_State, void (*)(lua_State*)> state(luaL_newstate(), lua_close);
     lua_State* L = state.get();
 
@@ -132,8 +126,6 @@ TEST_CASE("handler_setboolean_result")
 
 TEST_CASE("repeated_access_handler_called_every_iteration")
 {
-    ScopedFastFlag sff{FFlag::LuauDirectFieldGet, true};
-
     std::unique_ptr<lua_State, void (*)(lua_State*)> state(luaL_newstate(), lua_close);
     lua_State* L = state.get();
 
@@ -169,8 +161,6 @@ TEST_CASE("repeated_access_handler_called_every_iteration")
 
 TEST_CASE("unregistered_tag_falls_through_to_index_metamethod")
 {
-    ScopedFastFlag sff{FFlag::LuauDirectFieldGet, true};
-
     std::unique_ptr<lua_State, void (*)(lua_State*)> state(luaL_newstate(), lua_close);
     lua_State* L = state.get();
     luaL_openlibs(L);
@@ -225,8 +215,6 @@ TEST_CASE("unregistered_tag_falls_through_to_index_metamethod")
 
 TEST_CASE("multiple_fields_same_type_dispatch_independently")
 {
-    ScopedFastFlag sff{FFlag::LuauDirectFieldGet, true};
-
     std::unique_ptr<lua_State, void (*)(lua_State*)> state(luaL_newstate(), lua_close);
     lua_State* L = state.get();
 
@@ -265,8 +253,6 @@ TEST_CASE("multiple_fields_same_type_dispatch_independently")
 
 TEST_CASE("same_field_name_different_tags_dispatch_independently")
 {
-    ScopedFastFlag sff{FFlag::LuauDirectFieldGet, true};
-
     std::unique_ptr<lua_State, void (*)(lua_State*)> state(luaL_newstate(), lua_close);
     lua_State* L = state.get();
     luaL_openlibs(L);

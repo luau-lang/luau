@@ -143,6 +143,8 @@ TEST_CASE_FIXTURE(Fixture, "skip_over_tables")
 
 TEST_CASE_FIXTURE(Fixture, "detects_cycles")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     // Alas.  parseType() can't be used to create a cyclic type.
     // F where
     //     F = (T, number) -> number
@@ -191,6 +193,8 @@ TEST_CASE_FIXTURE(Fixture, "can_be_configured_not_to_skip_bound_types")
 
 TEST_CASE_FIXTURE(Fixture, "visitOnce")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     // An acyclic type that has redundant interior structure.
     // ({x: number}, {x: number}) -> {x: number}
 

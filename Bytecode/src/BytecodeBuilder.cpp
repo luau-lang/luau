@@ -7,13 +7,15 @@
 
 #include <algorithm>
 #include <array>
+
+#include <stdlib.h>
 #include <string.h>
-#include <climits>
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauCompileExpandLimit)
+LUAU_FASTFLAGVARIABLE(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
+LUAU_FASTFLAGVARIABLE(LuauCompileRefactorFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
 LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
@@ -219,7 +221,12 @@ void BytecodeBuilder::clearState()
     constants.clear();
     protos.clear();
     jumps.clear();
-    fbSlots.clear();
+
+    if (FFlag::LuauCompileRefactorFeedback)
+        fbSlots.clear();
+    else
+        fbSlots_DEPRECATED.clear();
+
     tableShapes.clear();
 
     debugLocals.clear();
@@ -275,7 +282,12 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
         constants.clear();
         protos.clear();
         jumps.clear();
-        fbSlots.clear();
+
+        if (FFlag::LuauCompileRefactorFeedback)
+            fbSlots.clear();
+        else
+            fbSlots_DEPRECATED.clear();
+
         tableShapes.clear();
 
         debugLocals.clear();
@@ -476,10 +488,28 @@ int32_t BytecodeBuilder::addConstantClosure(uint32_t fid)
     return addConstant(k, c);
 }
 
-uint32_t BytecodeBuilder::addFbSlot(LuauFeedbackType t)
+uint32_t BytecodeBuilder::addFbSlot_DEPRECATED(LuauFeedbackType t)
 {
+    LUAU_ASSERT(!FFlag::LuauCompileRefactorFeedback);
     LUAU_ASSERT(t == LuauFeedbackType::LFT_CALLTARGET);
-    fbSlots.push_back(uint32_t(getInstructionCount()));
+    fbSlots_DEPRECATED.push_back(uint32_t(getInstructionCount()));
+    return uint32_t(fbSlots_DEPRECATED.size() - 1);
+}
+
+uint32_t BytecodeBuilder::addFbSlot_DEPRECATED(LuauFeedbackType t, uint32_t pc)
+{
+    LUAU_ASSERT(!FFlag::LuauCompileRefactorFeedback);
+    LUAU_ASSERT(t == LuauFeedbackType::LFT_CALLTARGET);
+    fbSlots_DEPRECATED.push_back(pc);
+    return uint32_t(fbSlots_DEPRECATED.size() - 1);
+}
+
+uint32_t BytecodeBuilder::addCallTargetSlot(uint32_t pc)
+{
+    LUAU_ASSERT(FFlag::LuauCompileRefactorFeedback);
+    fbSlots.push_back({});
+    fbSlots.back().kind = LFT_CALLTARGET;
+    fbSlots.back().callTarget.pc = pc;
     return uint32_t(fbSlots.size() - 1);
 }
 
@@ -552,6 +582,43 @@ void BytecodeBuilder::undoEmit(LuauOpcode op)
     LUAU_ASSERT(!insns.empty());
     LUAU_ASSERT((insns.back() & 0xff) == op);
 
+    // Adjust local ranges referencing this instruction
+    if (FFlag::LuauCompileUndoEmitAdjust)
+    {
+        for (size_t i = 0; i < debugLocals.size();)
+        {
+            DebugLocal& l = debugLocals[i];
+
+            // If live range start has been removed, the local never existed
+            if (l.startpc == insns.size())
+            {
+                debugLocals.erase(debugLocals.begin() + i);
+                continue;
+            }
+
+            if (l.endpc == insns.size())
+                l.endpc--;
+            i++;
+        }
+
+        for (size_t i = 0; i < typedLocals.size();)
+        {
+            TypedLocal& l = typedLocals[i];
+
+            // If live range start has been removed, the local never existed
+            if (l.startpc == insns.size())
+            {
+                typedLocals.erase(typedLocals.begin() + i);
+                continue;
+            }
+
+            if (l.endpc == insns.size())
+                l.endpc--;
+            i++;
+        }
+    }
+
+    // Remove the instruction
     insns.pop_back();
     lines.pop_back();
 }
@@ -1025,11 +1092,27 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
     if (FFlag::LuauEmitCallFeedback)
     {
         // Feedback Slots
-        writeVarInt(ss, fbSlots.size());
-        for (uint32_t pc : fbSlots)
+        if (FFlag::LuauCompileRefactorFeedback)
         {
-            writeByte(ss, LFT_CALLTARGET);
-            writeVarInt(ss, pc);
+            writeVarInt(ss, fbSlots.size());
+
+            for (FeedbackSlot& slot : fbSlots)
+            {
+                writeByte(ss, slot.kind);
+
+                if (slot.kind == LFT_CALLTARGET)
+                    writeVarInt(ss, slot.callTarget.pc);
+            }
+        }
+        else
+        {
+            writeVarInt(ss, fbSlots_DEPRECATED.size());
+
+            for (uint32_t pc : fbSlots_DEPRECATED)
+            {
+                writeByte(ss, LFT_CALLTARGET);
+                writeVarInt(ss, pc);
+            }
         }
     }
     else if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::LuauCompileFastpcall || FFlag::DebugLuauUserDefinedClasses)
@@ -1365,7 +1448,7 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
         {
             int offset = int(jumps[currentJump].target) - int(jumps[currentJump].source) - 1;
 
-            if (abs(offset) > kMaxJumpDistanceConservative)
+            if (abs(offset) >= kMaxJumpDistanceConservative)
             {
                 // insert jump trampoline as described above; we keep JUMPX offset uninitialized in this pass
                 newinsns.push_back(LOP_JUMP | (1 << 16));
@@ -1404,12 +1487,12 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
         int offset = int(jump.target) - int(jump.source) - 1;
         int newoffset = int(remap[jump.target]) - int(remap[jump.source]) - 1;
 
-        if (FFlag::LuauCompileExpandLimit && abs(newoffset) + 1 >= kMaxJumpDistance)
+        if (abs(newoffset) + 1 >= kMaxJumpDistance)
         {
             hasLongJumpError = true;
             return {};
         }
-        else if (abs(offset) > kMaxJumpDistanceConservative)
+        else if (abs(offset) >= kMaxJumpDistanceConservative)
         {
             // fix up jump trampoline
             uint32_t& insnt = newinsns[remap[jump.source] - 1];
@@ -2603,11 +2686,11 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_GETUPVAL:
-        formatAppend(result, "GETUPVAL R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "GETUPVAL R%d U%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
         break;
 
     case LOP_SETUPVAL:
-        formatAppend(result, "SETUPVAL R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "SETUPVAL R%d U%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
         break;
 
     case LOP_CLOSEUPVALS:
@@ -3064,12 +3147,18 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
         {
             const DebugLocal& l = debugLocals[i];
 
+            if ((dumpFlags & Dump_Code) != 0)
+                formatAppend(result, "local %d (%.*s): ", int(i), int(debugStrings[l.name - 1].length), debugStrings[l.name - 1].data);
+            else
+                formatAppend(result, "local %d: ", int(i));
+
+            formatAppend(result, "reg %d, start pc %d line %d, ", l.reg, l.startpc, lines[l.startpc]);
+
             if (l.startpc == l.endpc)
             {
                 LUAU_ASSERT(l.startpc < lines.size());
 
-                // it would be nice to emit name as well but it requires reverse lookup through stringtable
-                formatAppend(result, "local %d: reg %d, start pc %d line %d, no live range\n", int(i), l.reg, l.startpc, lines[l.startpc]);
+                formatAppend(result, "no live range\n");
             }
             else
             {
@@ -3077,17 +3166,7 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
                 LUAU_ASSERT(l.startpc < lines.size());
                 LUAU_ASSERT(l.endpc <= lines.size()); // endpc is exclusive in the debug info, but it's more intuitive to print inclusive data
 
-                // it would be nice to emit name as well but it requires reverse lookup through stringtable
-                formatAppend(
-                    result,
-                    "local %d: reg %d, start pc %d line %d, end pc %d line %d\n",
-                    int(i),
-                    l.reg,
-                    l.startpc,
-                    lines[l.startpc],
-                    l.endpc - 1,
-                    lines[l.endpc - 1]
-                );
+                formatAppend(result, "end pc %d line %d\n", l.endpc - 1, lines[l.endpc - 1]);
             }
         }
     }

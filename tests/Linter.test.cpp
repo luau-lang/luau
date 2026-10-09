@@ -8,7 +8,11 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+
+LUAU_FASTFLAG(LuauImproveDeprecatedLint)
 
 using namespace Luau;
 
@@ -541,6 +545,31 @@ return foo1
 )");
 
     REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "UnreachableCodeGroupedErrorCall")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    LintResult result = lint(R"(
+function ungrouped()
+    error("message")
+    print("unreachable")
+end
+
+function grouped()
+    (error)("message")
+    print("unreachable")
+end
+
+return ungrouped, grouped
+)");
+
+    REQUIRE(2 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].location.begin.line, 3);
+    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always errors)");
+    CHECK_EQ(result.warnings[1].location.begin.line, 8);
+    CHECK_EQ(result.warnings[1].text, "Unreachable code (previous statement always errors)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeErrorReturnNonSilentBranchy")
@@ -1872,8 +1901,6 @@ end
 
     // @deprecated works on anonymous functions assigned to locals
     {
-        ScopedFastFlag sflag{FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true};
-
         LintResult result = lint(R"(
 local foo = @deprecated function()
 end
@@ -1884,6 +1911,126 @@ foo()
         REQUIRE(1 == result.warnings.size());
         checkDeprecatedWarning(result.warnings[0], Position(4, 0), Position(4, 3), "Function 'foo' is deprecated");
     }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTable")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
+
+    LintResult result = lint(R"(
+        local module = {}
+
+        @deprecated
+        function module:foo(arg: string?): number?
+            return 0
+        end
+
+        local intersection = module :: typeof(module) & {}
+        intersection:foo()
+
+        local union = module :: typeof(module) | { foo: typeof(module.foo), extra: boolean }
+        union:foo()
+
+        type WithMetatable = setmetatable<typeof(module), {}>
+        local withMetatable: WithMetatable = nil :: any
+        withMetatable:foo()
+
+        type WithIndex = setmetatable<{}, { __index: typeof(module) }>
+        local withIndex: WithIndex = nil :: any
+        withIndex:foo()
+    )");
+
+    REQUIRE(4 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Member 'foo' is deprecated");
+    CHECK_EQ(result.warnings[1].text, "Member 'foo' is deprecated");
+    CHECK_EQ(result.warnings[2].text, "Member 'foo' is deprecated");
+    CHECK_EQ(result.warnings[3].text, "Member 'foo' is deprecated");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTable2")
+{
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
+
+    LintResult result = lint(R"(
+        local module = {}
+
+        @deprecated
+        function module:foo(arg: string?): number?
+            return 0
+        end
+
+        type A = typeof(module) & {}
+        type B = (A | { }) & {}
+
+        local intersection = module :: B
+        intersection:foo()
+
+        local union = module :: B | { foo: typeof(module.foo), extra: boolean }
+        union:foo()
+
+        type WithMetatable = setmetatable<B, {}>
+        local withMetatable: WithMetatable = nil :: any
+        withMetatable:foo()
+
+        type WithIndex = setmetatable<{}, { __index: B }>
+        local withIndex: WithIndex = nil :: any
+        withIndex:foo()
+    )");
+
+    REQUIRE(4 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Member 'foo' is deprecated");
+    CHECK_EQ(result.warnings[1].text, "Member 'foo' is deprecated");
+    CHECK_EQ(result.warnings[2].text, "Member 'foo' is deprecated");
+    CHECK_EQ(result.warnings[3].text, "Member 'foo' is deprecated");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnNestedCompositeFunctions")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
+
+    LintResult result = lint(R"(
+        local deprecatedNumber = @deprecated function(value: number): number
+            return value
+        end
+        local deprecatedString = @deprecated function(value: string): string
+            return value
+        end
+        local deprecatedBoolean = @deprecated function(value: boolean): boolean
+            return value
+        end
+        local deprecatedThread = @deprecated function(value: thread): thread
+            return value
+        end
+        local deprecatedTable = @deprecated function(value: {}): {}
+            return value
+        end
+        local deprecatedNil = @deprecated function(value: nil): nil
+            return value
+        end
+
+        type UnionOfIntersections =
+            (typeof(deprecatedNumber) & typeof(deprecatedString) & typeof(deprecatedBoolean)) |
+            (typeof(deprecatedBoolean) & typeof(deprecatedThread)) |
+            (typeof(deprecatedTable) & typeof(deprecatedNil))
+        local unionContainer: { foo: UnionOfIntersections } = nil :: any
+        local _ = unionContainer.foo
+
+        type IntersectionOfUnions =
+            (typeof(deprecatedNumber) | typeof(deprecatedString) | typeof(deprecatedBoolean)) &
+            (typeof(deprecatedBoolean) | typeof(deprecatedThread)) &
+            (typeof(deprecatedTable) | typeof(deprecatedNil))
+        local intersectionContainer: { foo: IntersectionOfUnions } = nil :: any
+        local _ = intersectionContainer.foo
+    )");
+
+    REQUIRE(2 == result.warnings.size());
+    checkDeprecatedWarning(result.warnings[0], Position(25, 18), Position(25, 36), "Member 'foo' is deprecated");
+    checkDeprecatedWarning(result.warnings[1], Position(32, 18), Position(32, 43), "Member 'foo' is deprecated");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeWithParams")
@@ -2399,6 +2546,92 @@ end
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
+}
+
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfLocalExcluded")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    LintOptions options;
+    options.setDefaults();
+    options.enableWarning(LintWarning::Code_DuplicateCondition);
+
+    LintResult result = lint(
+        R"(
+local x = ...
+if local a = x then
+elseif local b = x then
+elseif const c = x then
+end
+)",
+        options
+    );
+
+    CHECK_EQ(0, result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsMixedWithIfLocal")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    LintOptions options;
+    options.setDefaults();
+    options.enableWarning(LintWarning::Code_DuplicateCondition);
+
+    LintResult result = lint(
+        R"(
+local x = ...
+if x then
+elseif local b = x then
+elseif x then
+end
+)",
+        options
+    );
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 3");
+    CHECK_EQ(result.warnings[0].code, LintWarning::Code_DuplicateCondition);
+}
+
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfLocalExpressionExcluded")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    LintOptions options;
+    options.setDefaults();
+    options.enableWarning(LintWarning::Code_DuplicateCondition);
+
+    LintResult result = lint(
+        R"(
+local x = ...
+return if local a = x then a elseif local b = x then b elseif const c = x then c else nil
+)",
+        options
+    );
+
+    CHECK_EQ(0, result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsMixedWithIfLocalExpression")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    LintOptions options;
+    options.setDefaults();
+    options.enableWarning(LintWarning::Code_DuplicateCondition);
+
+    LintResult result = lint(
+        R"(
+local x = ...
+return if x then 1 elseif local b = x then b elseif x then 3 else 0
+)",
+        options
+    );
+
+    // The middle `elseif local b = x` binding is excluded, so only the two plain `x` conditions collide.
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].code, LintWarning::Code_DuplicateCondition);
 }
 
 TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")

@@ -12,8 +12,7 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 namespace Luau
 {
@@ -227,47 +226,28 @@ void DataFlowGraphBuilder::join(DfgScope* p, DfgScope* a, DfgScope* b)
 
 void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b)
 {
-    if (FFlag::LuauAvoidTrivialPhis)
+    auto join = [&](auto sym, auto def1, auto def2)
     {
-        auto join = [&](auto sym, auto def1, auto def2)
-        {
-            // Refinements are keyed on `DefId`s, meaning that allocating
-            // a trivial phi node like this *breaks* refinements.
-            if (def1 == def2)
-                p->bindings[sym] = def1;
-            else
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{def2});
-        };
+        // Refinements are keyed on `DefId`s, meaning that allocating
+        // a trivial phi node like this *breaks* refinements.
+        if (def1 == def2)
+            p->bindings[sym] = def1;
+        else
+            p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{def2});
+    };
 
-        for (const auto& [sym, def1] : a.bindings)
-        {
-            if (auto def2 = b.bindings.find(sym))
-                join(sym, def1, *def2);
-            else if (auto def2 = p->lookup(sym))
-                join(sym, def1, *def2);
-        }
-
-        for (const auto& [sym, def1] : b.bindings)
-        {
-            if (auto def2 = p->lookup(sym))
-                join(sym, def1, *def2);
-        }
+    for (const auto& [sym, def1] : a.bindings)
+    {
+        if (auto def2 = b.bindings.find(sym))
+            join(sym, def1, *def2);
+        else if (auto def2 = p->lookup(sym))
+            join(sym, def1, *def2);
     }
-    else
-    {
-        for (const auto& [sym, def1] : a.bindings)
-        {
-            if (auto def2 = b.bindings.find(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-            else if (auto def2 = p->lookup(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-        }
 
-        for (const auto& [sym, def1] : b.bindings)
-        {
-            if (auto def2 = p->lookup(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-        }
+    for (const auto& [sym, def1] : b.bindings)
+    {
+        if (auto def2 = p->lookup(sym))
+            join(sym, def1, *def2);
     }
 }
 
@@ -407,6 +387,23 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatBlock* b)
 
 ControlFlow DataFlowGraphBuilder::visitBlockWithoutChildScope(AstStatBlock* b)
 {
+    // Classes are hoisted and so can be referred to before their declaration.
+    // Before we do anything, quickly zip through any classes and preallocate
+    // DefIds for them.
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        for (AstStat* stat: b->body)
+        {
+            if (auto d = stat->as<AstStatClass>())
+            {
+                DefId def = defArena->freshCell(d->name, d->name->location);
+                graph.localDefs[d->name] = def;
+                currentScope()->bindings[d->name->name] = def;
+                captures[d->name->name].allVersions.push_back(def);
+            }
+        }
+    }
+
     std::optional<ControlFlow> firstControlFlow;
     for (AstStat* stat : b->body)
     {
@@ -482,7 +479,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
     {
         PushScope ps{scopeStack, thenScope};
 
-        if (FFlag::DebugLuauIfLocalAnalysis && i->conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal)
         {
             DefId def = defArena->freshCell(i->conditionLocal, i->conditionLocal->location, false);
             graph.localDefs[i->conditionLocal] = def;
@@ -891,11 +888,6 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareExternType* d)
 ControlFlow DataFlowGraphBuilder::visit(AstStatClass* d)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-    DefId def = defArena->freshCell(d->name, d->name->location);
-
-    graph.localDefs[d->name] = def;
-    currentScope()->bindings[d->name->name] = def;
-    captures[d->name->name].allVersions.push_back(def);
 
     if (d->super)
         visitExpr(d->super);
@@ -1224,7 +1216,26 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIfElse* i)
 {
     visitExpr(i->condition);
-    visitExpr(i->trueExpr);
+
+    if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal)
+    {
+        DfgScope* thenScope = makeChildScope();
+        {
+            PushScope ps{scopeStack, thenScope};
+
+            DefId def = defArena->freshCell(i->conditionLocal, i->conditionLocal->location, false);
+            graph.localDefs[i->conditionLocal] = def;
+            thenScope->bindings[i->conditionLocal] = def;
+            captures[i->conditionLocal].allVersions.push_back(def);
+
+            visitExpr(i->trueExpr);
+        }
+    }
+    else
+    {
+        visitExpr(i->trueExpr);
+    }
+
     visitExpr(i->falseExpr);
 
     return {defArena->freshCell(Symbol{}, i->location), nullptr};

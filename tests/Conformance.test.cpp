@@ -21,6 +21,7 @@
 
 #include "doctest.h"
 #include "ScopedFlags.h"
+#include "BufferCage.h"
 #include "ConformanceIrHooks.h"
 
 #include <cstdlib>
@@ -54,30 +55,37 @@ void luaC_validate(lua_State* L);
 #endif
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenA64FarRefs)
-LUAU_FASTFLAG(LuauCodegenProtectData)
 LUAU_FASTFLAG(LuauBytecodeFold)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
+LUAU_FASTFLAG(LuauTableArrayAdjustCheck)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
-LUAU_FASTFLAG(LuauXpcallFixMessageYieldPath)
-LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
+LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAG(LuauEnumMoreEdges)
 LUAU_DYNAMIC_FASTFLAG(LuauTableMoveTimeoutFix)
+LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
 LUAU_FASTFLAG(LuauFastpcallInterrupt)
-LUAU_FASTFLAG(LuauMathRoundNegZero)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
 LUAU_FASTFLAG(LuauVirtualBcBuilder)
 LUAU_FASTFLAG(LuauNewPointerEncode)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
+LUAU_FASTFLAG(LuauBufferCage)
+LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
+LUAU_FASTFLAG(DebugLuauCoroutineFinally)
+LUAU_FASTFLAG(DebugLuauCoroutineFinallyAnalysis)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_DYNAMIC_FASTFLAG(LuauTableRobustOom)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -511,6 +519,8 @@ static StateRef runConformance(
     return globalState;
 }
 
+static unsigned reallocSizeLimit = 0;
+
 static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 {
     if (nsize == 0)
@@ -518,9 +528,9 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
         free(ptr);
         return nullptr;
     }
-    else if (nsize > 8 * 1024 * 1024)
+    else if (nsize > (reallocSizeLimit == 0 ? 8 * 1024 * 1024 : reallocSizeLimit))
     {
-        // For testing purposes return null for large allocations so we can generate errors related to memory allocation failures
+        // For testing purposes return null for large (or custom) allocations so we can generate errors related to memory allocation failures
         return nullptr;
     }
     else
@@ -1278,10 +1288,32 @@ TEST_CASE("Buffers")
     );
 }
 
+#ifdef LUAU_BUFFER_CAGE_SUPPORTED
+static BufferCage* bufferCage;
+
+static void setupBufferCage(lua_State* L)
+{
+    setupNativeHelpers(L);
+    lua_setmemorycage(L, &bufferCage->frealloc, bufferCage);
+}
+
+TEST_CASE("BuffersWithCage")
+{
+    ScopedFastFlag luauBufferCage{FFlag::LuauBufferCage, true};
+
+    BufferCage cage;
+    bufferCage = &cage;
+    StateRef state = runConformance("buffers.luau", setupBufferCage);
+
+    CHECK(cage.lastAllocationType == LUA_TBUFFER);
+
+    state.reset();
+    bufferCage = nullptr;
+}
+#endif
+
 TEST_CASE("Math")
 {
-    ScopedFastFlag luauMathRoundNegZero{FFlag::LuauMathRoundNegZero, true};
-
     runConformance("math.luau");
 }
 
@@ -1315,6 +1347,10 @@ TEST_CASE("Integers")
 
 TEST_CASE("Tables")
 {
+    ScopedFastFlag luauTableRobustOom{DFFlag::LuauTableRobustOom, true};
+
+    reallocSizeLimit = 0;
+
     runConformance(
         "tables.luau",
         [](lua_State* L)
@@ -1339,7 +1375,22 @@ TEST_CASE("Tables")
                 "makelud"
             );
             lua_setglobal(L, "makelud");
-        }
+
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L)
+                {
+                    reallocSizeLimit = luaL_checkunsigned(L, 1);
+                    return 0;
+                },
+                "setallocationlimit",
+                0,
+                nullptr
+            );
+            lua_setglobal(L, "setallocationlimit");
+        },
+        nullptr,
+        lua_newstate(limitedRealloc, nullptr)
     );
 }
 
@@ -1356,6 +1407,7 @@ TEST_CASE("Sort")
 TEST_CASE("Move")
 {
     ScopedFastFlag luauTableMoveTimeoutFix{DFFlag::LuauTableMoveTimeoutFix, true};
+    ScopedFastFlag luauTableArrayAdjustCheck{FFlag::LuauTableArrayAdjustCheck, true};
 
     runConformance("move.luau");
 }
@@ -1392,8 +1444,6 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
-    ScopedFastFlag luauXpcallFixMessageYieldPath{FFlag::LuauXpcallFixMessageYieldPath, true};
-
     runConformance("errors.luau");
 }
 
@@ -1423,13 +1473,18 @@ TEST_CASE("Attrib")
 }
 
 // Exercises the runtime JIT inliner with constant folding
-// Initially designed to catch pointer ASAN issues with TempTValueBacking
 TEST_CASE("JitInliner")
 {
     ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauBytecodeFold{FFlag::LuauBytecodeFold, true};
     ScopedFastFlag luauVirtualBuilder{FFlag::LuauVirtualBcBuilder, true};
+
+    // Test it even when it is not enabled for all tests
+    bool wasEnabled = jitInliner;
+    jitInliner = true;
+
     StateRef globalState = runConformance("jit_inliner.luau", nullptr, nullptr, nullptr, nullptr, /*skipCodegen=*/true);
+    jitInliner = wasEnabled;
 
     lua_State* L = globalState.get();
 
@@ -1447,7 +1502,7 @@ TEST_CASE("JitInliner")
             luaL_error(L, "timeout");
     };
 
-    for (int test = 1; test <= 2; ++test)
+    for (int test = 1; test <= 3; ++test)
     {
         lua_State* T = lua_newthread(L);
 
@@ -1517,7 +1572,53 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
+    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+
     runConformance("coroutine.luau");
+}
+
+TEST_CASE("CoroutineHost")
+{
+    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+
+    runConformance(
+        "coroutinehost.luau",
+        [](lua_State* L)
+        {
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L) -> int
+                {
+                    luaL_checktype(L, 1, LUA_TTHREAD);
+                    lua_State* co = lua_tothread(L, 1);
+
+                    int status = lua_resume(co, nullptr, 0);
+
+                    if (status == LUA_YIELD || status == LUA_BREAK)
+                        return 0;
+
+                    if (lua_hasfinalizers(co))
+                    {
+                        lua_State* NL = lua_newthread(L);
+                        lua_pushfinalizerfunction(NL);
+                        lua_xpush(L, NL, 1);
+                        status = lua_resume(NL, nullptr, 1);
+                        int results = status == LUA_OK ? lua_gettop(NL) : 1;
+                        lua_pushboolean(L, status == LUA_OK);
+                        lua_xmove(NL, L, results);
+                        return results + 1;
+                    }
+
+                    // no need to handle 'co' results here, test cases here all use finalizers
+                    return 0;
+                },
+                "hostresume",
+                0,
+                nullptr
+            );
+            lua_setglobal(L, "hostresume");
+        }
+    );
 }
 
 static int cxxthrow(lua_State* L)
@@ -1848,6 +1949,7 @@ TEST_CASE("CYield")
 TEST_CASE("Vector")
 {
     ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
+    ScopedFastFlag luauCompileNoFoldVectorEqW{FFlag::LuauCompileNoFoldVectorEqW, true};
 
     lua_CompileOptions copts = defaultOptions();
     Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
@@ -2015,6 +2117,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 TEST_CASE("Types")
 {
     ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag DebugLuauCoroutineFinallyAnalysis{FFlag::DebugLuauCoroutineFinallyAnalysis, FFlag::DebugLuauCoroutineFinally};
 
     runConformance(
         "types.luau",
@@ -2050,8 +2153,25 @@ TEST_CASE("Debug")
     runConformance("debug.luau");
 }
 
+bool findLocal(lua_State* L, int level, const char* name)
+{
+    int n = 1;
+
+    while (const char* localName = lua_getlocal(L, level, n++))
+    {
+        if (strcmp(name, localName) == 0)
+            return true;
+
+        lua_pop(L, 1);
+    }
+
+    return false;
+}
+
 TEST_CASE("Debugger")
 {
+    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+
     static int breakhits = 0;
     static lua_State* interruptedthread = nullptr;
     static bool singlestep = false;
@@ -2149,9 +2269,7 @@ TEST_CASE("Debugger")
                 lua_pop(L, 1);
 
                 // test lua_getlocal
-                const char* l = lua_getlocal(L, 0, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "b") == 0);
+                REQUIRE(findLocal(L, 0, "b"));
                 CHECK(lua_tointeger(L, -1) == 50);
                 lua_pop(L, 1);
 
@@ -2168,45 +2286,35 @@ TEST_CASE("Debugger")
             else if (breakhits == 3)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 0, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 0, "a"));
                 CHECK(lua_tointeger(L, -1) == 6);
                 lua_pop(L, 1);
             }
             else if (breakhits == 5)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 1, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 1, "a"));
                 CHECK(lua_tointeger(L, -1) == 7);
                 lua_pop(L, 1);
             }
             else if (breakhits == 7)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 1, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 1, "a"));
                 CHECK(lua_tointeger(L, -1) == 8);
                 lua_pop(L, 1);
             }
             else if (breakhits == 9)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 1, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 1, "a"));
                 CHECK(lua_tointeger(L, -1) == 9);
                 lua_pop(L, 1);
             }
             else if (breakhits == 13)
             {
                 // validate assignment via lua_getlocal
-                const char* l = lua_getlocal(L, 0, 1);
-                REQUIRE(l);
-                CHECK(strcmp(l, "a") == 0);
+                REQUIRE(findLocal(L, 0, "a"));
                 CHECK(lua_isnil(L, -1));
                 lua_pop(L, 1);
             }
@@ -2220,6 +2328,23 @@ TEST_CASE("Debugger")
 
                 const char* a1 = lua_getlocal(L, 2, 2);
                 REQUIRE(!a1);
+            }
+            else if (breakhits == 17 || breakhits == 19 || breakhits == 23 || breakhits == 25)
+            {
+                REQUIRE(interruptedthread);
+                const char* x = lua_getlocal(interruptedthread, 0, 1);
+                REQUIRE(x);
+                CHECK(strcmp(x, "arg") == 0);
+                CHECK(lua_tointeger(interruptedthread, -1) == 21);
+                lua_pop(interruptedthread, 1);
+            }
+            else if (breakhits == 21)
+            {
+                const char* x = lua_getlocal(L, 0, 2);
+                REQUIRE(x);
+                CHECK(strcmp(x, "value") == 0);
+                CHECK(lua_tointeger(L, -1) == 42);
+                lua_pop(L, 1);
             }
 
             if (interruptedthread)
@@ -2235,7 +2360,7 @@ TEST_CASE("Debugger")
         /* skipCodegen */ true
     ); // Native code doesn't support debugging yet
 
-    CHECK(breakhits == 16); // 2 hits per breakpoint
+    CHECK(breakhits == 26); // 2 hits per breakpoint
 
     if (singlestep)
         CHECK(stephits > 100); // note; this will depend on number of instructions which can vary, so we just make sure the callback gets hit often
@@ -2415,7 +2540,7 @@ TEST_CASE("Reference")
     lua_newuserdatadtor(
         L,
         0,
-        [](void*)
+        [](lua_State*, void*)
         {
             dtorhits++;
         }
@@ -2423,7 +2548,7 @@ TEST_CASE("Reference")
     lua_newuserdatadtor(
         L,
         0,
-        [](void*)
+        [](lua_State*, void*)
         {
             dtorhits++;
         }
@@ -2461,7 +2586,7 @@ TEST_CASE("NewUserdataOverflow")
         [](lua_State* L1)
         {
             // The following userdata request might cause an overflow.
-            lua_newuserdatadtor(L1, SIZE_MAX, [](void* d) {});
+            lua_newuserdatadtor(L1, SIZE_MAX, [](lua_State*, void* d) {});
             // The overflow might segfault in the following call.
             lua_getmetatable(L1, -1);
             return 0;
@@ -3087,6 +3212,52 @@ TEST_CASE("ApiAlloc")
     CHECK(udCheck == &ud);
 }
 
+TEST_CASE("ApiAllocationRateAfterFullGC")
+{
+    ScopedFastFlag luauGcHeapShrinkFix{DFFlag::LuauGcHeapShrinkFix, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    // data that stays alive, so that allocating after the full collection doesn't immediately start a new cycle
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 10000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
+    // grow the heap so that incremental collection cycles complete
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 100000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+    lua_pop(L, 1);
+
+    // full collection shrinks the heap below its size at the end of the last incremental cycle
+    lua_gc(L, LUA_GCCOLLECT, 0);
+
+    // allocation rate is only measured over intervals longer than 1ms
+    double start = lua_clock();
+    while (lua_clock() - start < 0.002)
+    {
+    }
+
+    CHECK(lua_allocationrate(L) >= 0);
+
+    // allocations after the full collection are measured from its end
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 1000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
+    CHECK(lua_allocationrate(L) > 0);
+}
+
 TEST_CASE("ApiEncode")
 {
     StateRef globalState(luaL_newstate(), lua_close);
@@ -3241,7 +3412,7 @@ TEST_CASE("IfElseExpression")
 
 TEST_CASE("IfLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauCompileUndoEmitAdjust, true}};
     runConformance("iflocal.luau");
 }
 
@@ -3525,7 +3696,7 @@ foo()
 class HeapClass
     public value
 end
-local object = HeapClass.new { value = x }
+local object = HeapClass { value = x }
 
 return f, object
 )";
@@ -3820,7 +3991,7 @@ TEST_CASE("UserdataApi")
     void* ud3 = lua_newuserdatadtor(
         L,
         4,
-        [](void* data)
+        [](lua_State*, void* data)
         {
             dtorhits += *(int*)data;
         }
@@ -3829,7 +4000,7 @@ TEST_CASE("UserdataApi")
     void* ud4 = lua_newuserdatadtor(
         L,
         1,
-        [](void* data)
+        [](lua_State*, void* data)
         {
             dtorhits += *(char*)data;
         }
@@ -4090,7 +4261,7 @@ TEST_CASE("UserdataAlignment")
 
         for (int i = 0; i < 10; i++)
         {
-            void* data = lua_newuserdatadtor(L, size, [](void*) {});
+            void* data = lua_newuserdatadtor(L, size, [](lua_State*, void*) {});
             LUAU_ASSERT(uintptr_t(data) % 16 == 0);
             lua_pop(L, 1);
         }
@@ -4517,7 +4688,6 @@ TEST_CASE("Native")
 TEST_CASE("NativeIntegerSpills")
 {
     ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
-    ScopedFastFlag luauCodegenDseRestoreHintUpdate{FFlag::LuauCodegenDseRestoreHintUpdate, true};
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -4919,11 +5089,50 @@ TEST_CASE("LargeNestedClosure")
     CHECK(lua_tonumber(L, -1) == kCount);
 }
 
+TEST_CASE("ExportEdgeCase")
+{
+    ScopedFastFlag luauExportValueSyntax{FFlag::LuauExportValueSyntax, true};
+
+    std::string source = "local t = {\n";
+
+    for (size_t idx = 0; idx < 1030; ++idx)
+    {
+        source += "k" + std::to_string(idx) + " = " + "\"v" + std::to_string(idx) + "\",\n";
+    }
+    source += "k1030 = \"v1030\"}\n";
+    source += "export local x = 33\n";
+    source += "local function a(...) end a(x)";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    if (codegen && (luau_codegen_supported() != 0))
+        luau_codegen_create(L);
+
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    validateBytecodeGraph(source, defaultOptions());
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+    int result = luau_load(L, "=ExportEdgeCase", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    if (codegen && (luau_codegen_supported() != 0))
+    {
+        Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
+        Luau::CodeGen::compile(L, -1, nativeOptions);
+    }
+
+    int status = lua_resume(L, nullptr, 0);
+    REQUIRE(status == 0);
+}
+
 TEST_CASE("LargeModuleA64")
 {
-    ScopedFastFlag luauCodegenA64FarRefs{FFlag::LuauCodegenA64FarRefs, true};
-    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, true};
-
     std::string source;
 
     for (int i = 0; i < 60; i++)
@@ -5299,11 +5508,98 @@ TEST_CASE("BytecodeDumpLinked")
 {
     Luau::Bytecode::CompTimeBcFunction cbc{};
 
-    CHECK_EQ(toString(cbc, true), "; function() line 0 maxstacksize: 0 upvalues: 0 flags: 0\n");
+    CHECK_EQ(toString(cbc, true), "; function() maxstacksize: 0 upvalues: 0 flags: 0\n");
 
     Luau::Bytecode::BcFunction<TValue*> rbc{};
 
-    CHECK_EQ(toString(rbc, true), "; function() line 0 maxstacksize: 0 upvalues: 0 flags: 0\n");
+    CHECK_EQ(toString(rbc, true), "; function() maxstacksize: 0 upvalues: 0 flags: 0\n");
+}
+
+TEST_CASE("SandboxFreezesVectorMetatable")
+{
+    ScopedFastFlag freezeVectorMetatable{FFlag::LuauSandboxFreezesVectorMetatable, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    luaL_newmetatable(L, "Vector7");
+    lua_pushboolean(L, true);
+    lua_setfield(L, -2, "Supported");
+
+    lua_setmetatable(L, -2);
+
+    luaL_sandbox(L);
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    CHECK(lua_getmetatable(L, -1));
+    CHECK(lua_getreadonly(L, -1));
+}
+
+TEST_CASE("ClassInheritanceRepeatedCallMemberOffsetCorruption")
+{
+    // This test ensures that inheritance doesn't mutate the original class object loaded into the constant table.
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true},
+    };
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+    luaL_openlibs(L);
+
+    static const char* source = R"(
+        open class Parent
+            public x: number
+        end
+
+        class Child extends Parent
+            public y: number
+        end
+    )";
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source, strlen(source), nullptr, &bytecodeSize);
+    int loadResult = luau_load(L, "=ClassCorruption", bytecode, bytecodeSize, 0);
+    free(bytecode);
+    REQUIRE(loadResult == 0);
+
+    // Call the SAME loaded main closure repeatedly. Each call re-executes NEWCLASS for Child, which clones the shared template and re-runs
+    // luaR_inheritclass on the shared memberstooffset table.
+    for (int i = 0; i < 1000; ++i)
+    {
+        lua_pushvalue(L, -1); // duplicate the main closure; the original stays on the stack for the next iteration
+        int status = lua_pcall(L, 0, 0, 0);
+        REQUIRE(status == LUA_OK);
+    }
+}
+
+TEST_CASE("SandboxFreezesVectorMetatable")
+{
+    ScopedFastFlag freezeVectorMetatable{FFlag::LuauSandboxFreezesVectorMetatable, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    luaL_newmetatable(L, "Vector7");
+    lua_pushboolean(L, true);
+    lua_setfield(L, -2, "Supported");
+
+    lua_setmetatable(L, -2);
+
+    luaL_sandbox(L);
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    CHECK(lua_getmetatable(L, -1));
+    CHECK(lua_getreadonly(L, -1));
 }
 
 TEST_SUITE_END();
