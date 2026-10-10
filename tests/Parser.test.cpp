@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
@@ -2853,8 +2854,77 @@ type C<X...> = Packed<(number, X...)>
     REQUIRE(stat != nullptr);
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_named_type_pack_names")
+{
+    ScopedFastFlag flag{FFlag::LuauNamedTypePacks, true};
+
+    AstStatBlock* block = parse(R"(
+        type Callback<T...> = (T...) -> ()
+        type Example = Callback<(name: string, number, enabled: boolean)>
+    )");
+
+    REQUIRE(block);
+    REQUIRE_EQ(block->body.size, 2);
+
+    auto alias = block->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+
+    auto reference = alias->type->as<AstTypeReference>();
+    REQUIRE(reference);
+    REQUIRE_EQ(reference->parameters.size, 1);
+
+    auto packNode = reference->parameters.data[0].typePack;
+    REQUIRE(packNode);
+
+    auto pack = packNode->as<AstTypePackExplicit>();
+    REQUIRE(pack);
+    REQUIRE_EQ(pack->typeList.types.size, 3);
+    REQUIRE_EQ(pack->names.size, 3);
+
+    REQUIRE(pack->names.data[0].has_value());
+    CHECK(pack->names.data[0].value().first == "name");
+
+    CHECK_FALSE(pack->names.data[1].has_value());
+
+    REQUIRE(pack->names.data[2].has_value());
+    CHECK(pack->names.data[2].value().first == "enabled");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_named_type_pack_single_element")
+{
+    ScopedFastFlag flag{FFlag::LuauNamedTypePacks, true};
+
+    AstStatBlock* block = parse(R"(
+        type Callback<T...> = (T...) -> ()
+        type Example = Callback<(value: number)>
+    )");
+
+    REQUIRE(block);
+    REQUIRE_EQ(block->body.size, 2);
+
+    auto alias = block->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+
+    auto reference = alias->type->as<AstTypeReference>();
+    REQUIRE(reference);
+    REQUIRE_EQ(reference->parameters.size, 1);
+
+    auto packNode = reference->parameters.data[0].typePack;
+    REQUIRE(packNode);
+
+    auto pack = packNode->as<AstTypePackExplicit>();
+    REQUIRE(pack);
+    REQUIRE_EQ(pack->typeList.types.size, 1);
+    REQUIRE_EQ(pack->names.size, 1);
+
+    REQUIRE(pack->names.data[0].has_value());
+    CHECK(pack->names.data[0].value().first == "value");
+}
+
 TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 {
+    ScopedFastFlag flag{FFlag::LuauNamedTypePacks, false};
+
     matchParseError("type A = (b: number)", "Expected '->' when parsing function type, got <eof>");
     matchParseError("type P<T...> = () -> T... type B = P<(x: number, y: string)>", "Expected '->' when parsing function type, got '>'");
     matchParseError("type F<T... = (a: string)> = (T...) -> ()", "Expected '->' when parsing function type, got '>'");

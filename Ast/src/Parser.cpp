@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauParseExactTables)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
+LUAU_FASTFLAGVARIABLE(LuauNamedTypePacks)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -3021,7 +3022,7 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
 
     AstArray<AstType*> paramTypes = copy(params);
 
-    if (!names.empty())
+    if (!names.empty() && (!FFlag::LuauNamedTypePacks || !allowPack))
         forceFunctionType = true;
 
     bool returnTypeIntroducer = lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':';
@@ -3031,7 +3032,7 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
     {
         if (allowPack)
         {
-            AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr});
+            AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr}, copy(names));
             if (options.storeCstData)
                 cstNodeMap[node] = allocator.alloc<CstTypePackExplicit>(
                     openArgsFound ? parameterStart.location.begin : Position::missing(),
@@ -3053,7 +3054,7 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
 
     if (!forceFunctionType && !returnTypeIntroducer && allowPack)
     {
-        AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation});
+        AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation}, copy(names));
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstTypePackExplicit>(
                 openArgsFound ? parameterStart.location.begin : Position::missing(),
