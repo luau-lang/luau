@@ -1627,6 +1627,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         NotNull{&typeFunctionRuntime},
         NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED}
     };
+    subtyping.limits = typeCheckLimits;
 
     ConstraintSolver cs{
         NotNull{&normalizer},
@@ -2350,6 +2351,7 @@ ModulePtr check(
     typeFunctionRuntime.allowEvaluation = true;
 
     Subtyping subtyping{builtinTypes, NotNull{module->internalTypes.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
+    subtyping.limits = limits;
 
     std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
 

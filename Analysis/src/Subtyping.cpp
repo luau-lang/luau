@@ -702,6 +702,12 @@ SubtypingResult Subtyping::cache(SubtypingEnvironment& env, SubtypingResult resu
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId subTy, TypeId superTy, NotNull<Scope> scope)
 {
+    if (--limitCheckCountdown <= 0)
+    {
+        limitCheckCountdown = kLimitCheckInterval;
+        checkTypeCheckLimits(limits, iceReporter->moduleName);
+    }
+
     NonExceptionalRecursionLimiter nerl(&normalizer->sharedState->counters.recursionCount);
     if (!nerl.isOk(DFInt::LuauSubtypingRecursionLimit))
         return SubtypingResult{false, true};

@@ -3,6 +3,7 @@
 
 #include "Luau/Cancellation.h"
 #include "Luau/Error.h"
+#include "Luau/TimeTrace.h"
 
 #include <memory>
 #include <optional>
@@ -37,5 +38,18 @@ struct TypeCheckLimits
 
     std::shared_ptr<FrontendCancellationToken> cancellationToken;
 };
+
+// Throw TimeLimitError naming `moduleName` once the finish time of `limits` has passed, and
+// UserCancelError once its cancellation token has been requested. A pass that can run long
+// without returning to the solver's own check calls it, so the module's time limit and a
+// cancellation reach every phase of a check.
+inline void checkTypeCheckLimits(const TypeCheckLimits& limits, const std::string& moduleName)
+{
+    if (limits.finishTime && TimeTrace::getClock() > *limits.finishTime)
+        throw TimeLimitError(moduleName);
+
+    if (limits.cancellationToken && limits.cancellationToken->requested())
+        throw UserCancelError(moduleName);
+}
 
 } // namespace Luau
