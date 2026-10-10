@@ -258,6 +258,10 @@ struct Subtyping
 private:
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> resultCache;
 
+    // How many type pairs are compared between two reads of `limits`.
+    static constexpr int kLimitCheckInterval = 64;
+    int limitCheckCountdown = 0;
+
     SubtypingResult cache(SubtypingEnvironment& env, SubtypingResult res, TypeId subTy, TypeId superTy);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, TypeId superTy, NotNull<Scope> scope);

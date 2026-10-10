@@ -12,6 +12,7 @@
 #include "Fixture.h"
 
 #include "Luau/Error.h"
+#include "Luau/TimeTrace.h"
 #include "doctest.h"
 
 #include <algorithm>
@@ -631,6 +632,77 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_oom_unions" * doctest::timeout(LUAU_T
         do end
         _.readstring += _
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "the_module_time_limit_stops_the_new_solvers_checking_pass" * doctest::timeout(LUAU_TIMEOUT))
+{
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+
+    // Constraint solving finishes quickly; the checking pass after it spends tens of seconds in
+    // subtyping reducing type functions for the call of `bcell`. The time limit stops it.
+    constexpr const char* src = R"LUAU(
+--!strict
+local CYAN   = "#22e6ff"
+local ORANGE = "#ff8a1e"
+local MAGENTA = "#ff2d95"
+local DIM      = "#5f8a92"
+local LINE     = "rgba(34,230,255,0.35)"
+local MONO     = "\"Courier New\",Consolas,monospace"
+local function loop(map, dur, easing, opts)
+  local a = { keyframes = map, duration = dur, easing = easing or "ease-in-out", iterations = "infinite" }
+  if opts then for k, v in pairs(opts) do a[k] = v end end
+  return a
+end
+local function label(text, style) return { type = "label", props = { text = text }, style = style } end
+local function heart(heights)
+  local kids = {}
+  for i, h in ipairs(heights) do
+    kids[i] = { type = "vertical", style = { width = 5, height = h, background = MAGENTA, boxShadow = "0 0 6px " .. MAGENTA, opacity = 0.85,
+      animation = loop({
+        ["0%"]   = { transform = "scaleY(0.45)" },
+        ["50%"]  = { transform = "scaleY(1.25)" },
+        ["100%"] = { transform = "scaleY(0.45)" },
+      }, 0.9, "ease-in-out", { stagger = i * 0.06, direction = "alternate" }) } }
+  end
+  return { type = "horizontal", style = { alignItems = "flex-end", gap = 2, height = 26, marginTop = 4 }, children = kids }
+end
+local function bcell(cap, big, bigTone, sub, extra, name, selected)
+  local bc = bigTone == "o" and ORANGE or CYAN
+  local kids = {
+    label(cap, { fontFamily = MONO, fontSize = 9, letterSpacing = 2, color = selected and CYAN or DIM, marginBottom = 6 }),
+    label(big, { fontFamily = MONO, fontSize = 30, color = bc, textShadow = "0 0 5px " .. bc, letterSpacing = 1 }),
+  }
+  if sub then kids[#kids + 1] = label(sub, { fontFamily = MONO, fontSize = 9, color = DIM, marginTop = 6, letterSpacing = 1 }) end
+  if extra then kids[#kids + 1] = extra end
+  return { type = "vertical", onClick = "module:" .. name, style = {
+      flex = 1, paddingTop = 12, paddingBottom = 12, paddingLeft = 16, paddingRight = 16,
+      borderRightWidth = 1, borderColor = LINE,
+      borderTopWidth = selected and 2 or 0, borderTopColor = selected and CYAN or nil,
+      background = selected and "rgba(20,44,60,0.6)" or nil,
+      boxShadow = selected and ("inset 0 3px 14px rgba(34,230,255,0.22)") or nil,
+      transition = "background 150ms ease-out, boxShadow 150ms ease-out",
+      hover = { background = "rgba(16,34,50,0.7)" },
+      active = { background = "rgba(24,52,72,0.85)" },
+    }, children = kids }
+end
+local state = { bpm = 128, selected = "AMMO" }
+local function build()
+  return {
+    bcell("PILOT VITALS", string.format("%d BPM", state.bpm), nil, nil, heart({ 8, 14, 6, 22, 26, 10, 6, 16, 24, 9, 5, 13, 20, 7 }), "VITALS", state.selected == "VITALS"),
+  }
+end
+return build
+)LUAU";
+
+    FrontendOptions options;
+    options.moduleTimeLimitSec = 0.5;
+
+    double start = TimeTrace::getClock();
+    CheckResult result = check(Mode::Strict, src, options);
+    double elapsed = TimeTrace::getClock() - start;
+
+    CHECK(result.timeoutHits.size() == 1);
+    CHECK(elapsed < 5.0);
 }
 
 TEST_CASE_FIXTURE(Fixture, "comparison_to_nil_when_normalization_fails_should_not_crash")
