@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <vector>
+#include <string>
 
 namespace Luau
 {
@@ -74,6 +75,7 @@ struct TypePack
 {
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
+	std::vector<std::optional<std::string>> names;
 };
 
 struct VariadicTypePack
