@@ -66,6 +66,9 @@ static void normalizeStateOffsets(std::string& text)
             line = std::regex_replace(line, deref, "[" + pendingReg + "+<offset>]");
         }
 
+        // NativeContext offsets depend on host pointer size
+        line = std::regex_replace(line, std::regex(R"(\[r13\+[^\]]+\])"), "[r13+<offset>]");
+
         result += line;
         if (eol < text.size())
             result += '\n';
@@ -796,7 +799,7 @@ bb_0:
  vmovsd      qword ptr [r14+040h],xmm0
  mov         dword ptr [r14+04Ch],0
   ; evict %5 (double xmm0) into R4 [lazy]
- call        qword ptr [r13+0C8h]
+ call        qword ptr [r13+<offset>]
  mov         r14,qword ptr [r15+<offset>]
  vmovsd      xmm0,qword ptr [r14+040h]
   ; restore %5 (double xmm0) from R4
