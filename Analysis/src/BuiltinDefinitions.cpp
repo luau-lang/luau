@@ -1606,7 +1606,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
     // in the old solver, nonstrict in particular is really bad about inferring `...any` for things that are definitely present
     // and the only real way for us to deal with this is to just be more permissive here
-    const auto& [paramTypes, paramTail] = extendTypePack(arena, typechecker.builtinTypes, paramPack, 1);
+    const auto& [paramTypes, paramTail, paramNames] = extendTypePack(arena, typechecker.builtinTypes, paramPack, 1);
     if (paramTypes.empty() || expr.args.size == 0)
     {
         typechecker.reportError(expr.argLocation, CountMismatch{1, std::nullopt, 0});
@@ -1731,7 +1731,7 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
     const DataFlowGraph* dfg = context.solver->dfg.get();
     Scope* scope = context.constraint->scope.get();
 
-    const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
+    const auto& [paramTypes, paramTail, paramNames] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
     if (paramTypes.empty() || context.callSite->args.size == 0)
         return false;
 

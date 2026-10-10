@@ -285,7 +285,7 @@ struct BidirectionalTypePusher
             if (lambdaTy && expectedLambdaTy)
             {
                 const auto& [lambdaArgTys, _lambdaTail] = flatten(lambdaTy->argTypes);
-                const auto& [expectedLambdaArgTys, _expectedLambdaTail] =
+                const auto& [expectedLambdaArgTys, _expectedLambdaTail, _expectedLambdaNames] =
                     extendTypePack(*solver->arena, solver->builtinTypes, expectedLambdaTy->argTypes, exprLambda->args.size);
 
                 auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
