@@ -115,6 +115,39 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_union_containing_
     CHECK_EQ("T | number", toString(mismatch->givenType));
 }
 
+TEST_CASE_FIXTURE(Fixture, "generic_return_accepts_union_of_refined_generic")
+{
+    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
+
+    CheckResult result = check(R"(
+        local function first<T>(xs: { T }): T
+            local out: { T } = {}
+            for _, x in xs do
+                out = { x }
+            end
+            return out[1]
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_return_accepts_refined_generic")
+{
+    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
+
+    CheckResult result = check(R"(
+        local function f<T>(a: T, b: T): T
+            if a ~= nil then
+                return a
+            end
+            return b
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_nested_in_table_accepts_incompatible_property")
 {
     ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
