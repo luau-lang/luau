@@ -1,12 +1,16 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
+#include "Luau/TypeUtils.h"
+#include "Luau/Scope.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
 using namespace Luau;
+
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 namespace
 {
@@ -209,6 +213,64 @@ TEST_CASE("content_reassignment")
     CHECK(get<ErrorTypePack>(futureError) != nullptr);
     CHECK(!futureError->persistent);
     CHECK(futureError->owningArena == &arena);
+}
+
+TEST_CASE_FIXTURE(TypePackFixture, "type_pack_from_iterator_preserves_names")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    TypeArena arena;
+
+    TypePack sourcePack;
+    sourcePack.head = {types[3], types[2], types[1]}; // string, number, boolean
+    sourcePack.names = {"name", std::nullopt, "enabled"};
+
+    TypePackId original = arena.addTypePack(std::move(sourcePack));
+
+    auto start = begin(original);
+    start++;
+
+    TypePackId sliced = typePackFromIterator(NotNull{&arena}, start, end(original));
+
+    auto pack = get<TypePack>(follow(sliced));
+    REQUIRE(pack);
+    REQUIRE_EQ(pack->head.size(), 2);
+    REQUIRE_EQ(pack->names.size(), 2);
+
+    CHECK_FALSE(pack->names[0]);
+
+    REQUIRE(pack->names[1].has_value());
+    CHECK(pack->names[1].value() == "enabled");
+}
+
+TEST_CASE_FIXTURE(Fixture, "slice_type_pack_preserves_names_across_heads")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    auto builtinTypes = getBuiltins();
+
+    TypePack suffix;
+    suffix.head = {builtinTypes->stringType, builtinTypes->numberType, builtinTypes->booleanType};
+    suffix.names = {"name", std::nullopt, "enabled"};
+
+    TypePack prefix;
+    prefix.head = {builtinTypes->booleanType};
+    prefix.names = {"prefix"};
+    prefix.tail = arena.addTypePack(std::move(suffix));
+
+    TypePackId original = arena.addTypePack(std::move(prefix));
+    auto [head, tail] = flatten(original);
+
+    TypePackId sliced = sliceTypePack(2, original, head, tail, builtinTypes, NotNull{&arena});
+
+    auto pack = get<TypePack>(follow(sliced));
+    REQUIRE(pack);
+    REQUIRE_EQ(pack->head.size(), 2);
+    CHECK_EQ(pack->head[0], builtinTypes->numberType);
+    CHECK_EQ(pack->head[1], builtinTypes->booleanType);
+
+    REQUIRE_EQ(pack->names.size(), 2);
+    CHECK_FALSE(pack->names[0].has_value());
+    REQUIRE(pack->names[1].has_value());
+    CHECK(pack->names[1].value() == "enabled");
 }
 
 TEST_SUITE_END();
