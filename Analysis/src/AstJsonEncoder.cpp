@@ -9,6 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 namespace Luau
 {
@@ -1159,6 +1160,9 @@ struct AstJsonEncoder : public AstVisitor
             [&]()
             {
                 PROP(typeList);
+
+                if (FFlag::LuauNamedTypePacks && node->names.size > 0)
+                    PROP(names);
             }
         );
     }
