@@ -30,6 +30,7 @@ LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 using namespace Luau;
 
@@ -1334,6 +1335,109 @@ TEST_CASE_FIXTURE(Fixture, "types_stored_in_astResolvedTypes")
     auto annotation = arg->annotation;
 
     CHECK_EQ(*getMainModule()->astResolvedTypes.find(annotation), *ty);
+}
+
+TEST_CASE_FIXTURE(Fixture, "named_type_pack_names_are_resolved")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        type Callback<T...> = (T...) -> ()
+        type Example = Callback<(name: string, number, enabled: boolean)>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto source = getMainSourceModule();
+    REQUIRE(source);
+    REQUIRE(source->root);
+
+    auto block = source->root;
+    REQUIRE_EQ(block->body.size, 2);
+
+    auto alias = block->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+
+    auto reference = alias->type->as<AstTypeReference>();
+    REQUIRE(reference);
+    REQUIRE_EQ(reference->parameters.size, 1);
+
+    auto packNode = reference->parameters.data[0].typePack;
+    REQUIRE(packNode);
+
+    auto module = getMainModule();
+    REQUIRE(module);
+
+    auto resolved = module->astResolvedTypePacks.find(packNode);
+    REQUIRE(resolved);
+
+    auto pack = get<TypePack>(follow(*resolved));
+    REQUIRE(pack);
+    REQUIRE_EQ(pack->head.size(), 3);
+    REQUIRE_EQ(pack->names.size(), 3);
+
+    REQUIRE(pack->names[0].has_value());
+    CHECK(pack->names[0].value() == "name");
+
+    CHECK_FALSE(pack->names[1].has_value());
+
+	REQUIRE(pack->names[2].has_value());
+    CHECK(pack->names[2].value() == "enabled");
+
+	auto function = get<FunctionType>(requireTypeAlias("Example"));
+	REQUIRE(function);
+
+	auto arguments = get<TypePack>(follow(function->argTypes));
+	REQUIRE(arguments);
+
+	REQUIRE_EQ(arguments->head.size(), 3);
+    REQUIRE_EQ(arguments->names.size(), 3);
+
+    REQUIRE(arguments->names[0].has_value());
+    CHECK(arguments->names[0].value() == "name");
+
+    CHECK_FALSE(arguments->names[1].has_value());
+
+	REQUIRE(arguments->names[2].has_value());
+    CHECK(arguments->names[2].value() == "enabled");
+}
+
+TEST_CASE_FIXTURE(Fixture, "named_type_pack_after_prefix")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        type Callback<T...> = (prefix: boolean, T...) -> ()
+        type Example = Callback<(name: string, number, enabled: boolean)>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto function = get<FunctionType>(requireTypeAlias("Example"));
+    REQUIRE(function);
+
+    auto arguments = get<TypePack>(follow(function->argTypes));
+    REQUIRE(arguments);
+    REQUIRE_EQ(arguments->head.size(), 1);
+    REQUIRE_EQ(arguments->names.size(), 1);
+
+    REQUIRE(arguments->names[0].has_value());
+    CHECK(arguments->names[0].value() == "prefix");
+
+    REQUIRE(arguments->tail.has_value());
+
+    auto tailPack = get<TypePack>(follow(arguments->tail.value()));
+    REQUIRE(tailPack);
+    REQUIRE_EQ(tailPack->head.size(), 3);
+    REQUIRE_EQ(tailPack->names.size(), 3);
+
+    REQUIRE(tailPack->names[0].has_value());
+	CHECK(tailPack->names[0].value() == "name");
+
+	CHECK_FALSE(tailPack->names[1].has_value());
+
+	REQUIRE(tailPack->names[2].has_value());
+	CHECK(tailPack->names[2].value() == "enabled");
 }
 
 TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_higher_order_function")

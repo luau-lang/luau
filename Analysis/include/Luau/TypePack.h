@@ -169,6 +169,9 @@ struct TypePackIterator
 
     const TypeId& operator*();
 
+    // Returns the current element's name, or nullptr if it has no name.
+    const std::string* getName() const;
+
     // If the iterator currently points at the head of a type pack, return that
     // pack.  Else return nullopt.
     std::optional<TypePackId> tryGetHead() const;

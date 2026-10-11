@@ -20,6 +20,7 @@
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
 
 /*
@@ -1268,10 +1269,12 @@ struct TypePackStringifier
     const std::vector<std::optional<FunctionArgument>> elemNames;
     static inline const std::vector<std::optional<FunctionArgument>> dummyElemNames = {};
     unsigned elemIndex = 0;
+	bool includeTypePackNames = false;
 
     explicit TypePackStringifier(StringifierState& state, const std::vector<std::optional<FunctionArgument>>& elemNames)
         : state(state)
         , elemNames(elemNames)
+		, includeTypePackNames(true)
     {
     }
 
@@ -1331,6 +1334,7 @@ struct TypePackStringifier
         }
 
         bool first = true;
+        std::size_t headIndex = 0;
 
         for (const auto& typeId : tp.head)
         {
@@ -1345,8 +1349,14 @@ struct TypePackStringifier
                 state.emit(elemNames[elemIndex]->name);
                 state.emit(": ");
             }
+            else if (FFlag::LuauNamedTypePacks && includeTypePackNames && headIndex < tp.names.size() && tp.names[headIndex].has_value())
+            {
+                state.emit(tp.names[headIndex].value());
+                state.emit(": ");
+            }
 
             elemIndex++;
+            headIndex++;
 
             stringify(typeId);
         }
@@ -1855,6 +1865,11 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
     size_t idx = 0;
     while (argPackIter != end(ftv.argTypes))
     {
+        const std::string* packName = nullptr;
+
+        if (FFlag::LuauNamedTypePacks)
+            packName = argPackIter.getName();
+
         // ftv takes a self parameter as the first argument, skip it if specified in option
         if (idx == 0 && ftv.hasSelf && opts.hideFunctionSelfArgument)
         {
@@ -1875,6 +1890,10 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
         else if (idx < ftv.argNames.size() && ftv.argNames[idx])
         {
             state.emit(ftv.argNames[idx]->name + ": ");
+        }
+        else if (packName)
+        {
+            state.emit(*packName + ": ");
         }
         else
         {
