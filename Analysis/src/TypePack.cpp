@@ -531,7 +531,34 @@ TypePackId sliceTypePack(
         for (size_t i = 0; i < sliceIndex; ++i)
             ++superHeadIter;
         std::vector<TypeId> headSlice(std::move(superHeadIter), end(head));
-        return arena->addTypePack(std::move(headSlice), tail);
+
+        TypePack result;
+        result.head = std::move(headSlice);
+        result.tail = tail;
+
+        if (FFlag::LuauNamedTypePacks)
+        {
+            auto nameIter = begin(toBeSliced);
+
+            for (std::size_t i = 0; i < sliceIndex; ++i)
+                ++nameIter;
+
+            for (std::size_t i = 0; i < result.head.size(); ++i)
+            {
+                if (const std::string* name = nameIter.getName())
+                {
+                    result.names.push_back(*name);
+                }
+                else
+                {
+                    result.names.push_back(std::nullopt);
+                }
+
+                ++nameIter;
+            }
+        }
+
+        return arena->addTypePack(std::move(result));
     }
 }
 

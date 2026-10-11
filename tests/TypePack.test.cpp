@@ -362,4 +362,35 @@ TEST_CASE_FIXTURE(Fixture, "extend_type_pack_preserves_name_slots_with_error_tai
     CHECK_EQ(extended.head[2], builtinTypes->errorType);
 }
 
+TEST_CASE_FIXTURE(Fixture, "slice_type_pack_preserves_names_across_heads")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    auto builtinTypes = getBuiltins();
+
+    TypePack suffix;
+    suffix.head = {builtinTypes->stringType, builtinTypes->numberType, builtinTypes->booleanType};
+    suffix.names = {"name", std::nullopt, "enabled"};
+
+    TypePack prefix;
+    prefix.head = {builtinTypes->booleanType};
+    prefix.names = {"prefix"};
+    prefix.tail = arena.addTypePack(std::move(suffix));
+
+    TypePackId original = arena.addTypePack(std::move(prefix));
+    auto [head, tail] = flatten(original);
+
+    TypePackId sliced = sliceTypePack(2, original, head, tail, builtinTypes, NotNull{&arena});
+
+    auto pack = get<TypePack>(follow(sliced));
+    REQUIRE(pack);
+    REQUIRE_EQ(pack->head.size(), 2);
+    CHECK_EQ(pack->head[0], builtinTypes->numberType);
+    CHECK_EQ(pack->head[1], builtinTypes->booleanType);
+
+    REQUIRE_EQ(pack->names.size(), 2);
+    CHECK_FALSE(pack->names[0].has_value());
+    REQUIRE(pack->names[1].has_value());
+    CHECK(pack->names[1].value() == "enabled");
+}
+
 TEST_SUITE_END();

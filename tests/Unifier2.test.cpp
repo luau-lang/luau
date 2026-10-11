@@ -14,6 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 struct Unifier2Fixture
 {
@@ -223,6 +224,34 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_result_of_and_expr")
     // Not an amazing type, this should really be `'a <: ~(false?)`
     CHECK("('a <: string | ~(false?))" == toString(freeTyX));
     CHECK("('b <: string)" == toString(freeTyY));
+}
+
+TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_pack_preserves_remaining_names")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+
+    TypePack sourcePack;
+    sourcePack.head = {
+        builtinTypes.stringType,
+        builtinTypes.numberType,
+        builtinTypes.booleanType
+    };
+    sourcePack.names = {"name", std::nullopt, "enabled"};
+
+    TypePackId source = arena.addTypePack(std::move(sourcePack));
+    TypePackId freeTail = arena.freshTypePack(&scope);
+    TypePackId target = arena.addTypePack({builtinTypes.stringType}, freeTail);
+
+    REQUIRE(u2.unify(source, target) == UnifyResult::Ok);
+
+    auto pack = get<TypePack>(follow(freeTail));
+    REQUIRE(pack);
+    REQUIRE_EQ(pack->head.size(), 2);
+    REQUIRE_EQ(pack->names.size(), 2);
+
+    CHECK_FALSE(pack->names[0].has_value());
+    REQUIRE(pack->names[1].has_value());
+    CHECK(pack->names[1].value() == "enabled");
 }
 
 TEST_SUITE_END();
