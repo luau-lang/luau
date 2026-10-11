@@ -7,6 +7,7 @@
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
+#include "Luau/TypeAttach.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -1438,6 +1439,34 @@ TEST_CASE_FIXTURE(Fixture, "named_type_pack_after_prefix")
 
     REQUIRE(tailPack->names[2].has_value());
     CHECK(tailPack->names[2].value() == "enabled");
+}
+
+TEST_CASE_FIXTURE(Fixture, "named_type_pack_names_are_rehydrated")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        type Callback<T...> = (T...) -> ()
+        type Example = Callback<(name: string, number, enabled: boolean)>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto annotation = rehydrateAnnotation(requireTypeAlias("Example"), &allocator);
+    REQUIRE(annotation);
+
+    auto function = annotation->as<AstTypeFunction>();
+    REQUIRE(function);
+    REQUIRE_EQ(function->argTypes.types.size, 3);
+    REQUIRE_EQ(function->argNames.size, 3);
+
+    REQUIRE(function->argNames.data[0].has_value());
+    CHECK(function->argNames.data[0]->first == "name");
+
+    CHECK_FALSE(function->argNames.data[1].has_value());
+
+    REQUIRE(function->argNames.data[2].has_value());
+    CHECK(function->argNames.data[2]->first == "enabled");
 }
 
 TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_higher_order_function")
