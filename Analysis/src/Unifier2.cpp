@@ -27,6 +27,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAGVARIABLE(LuauInferReadOnlyIndexers)
 LUAU_FASTFLAGVARIABLE(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 namespace Luau
 {
@@ -1001,14 +1002,24 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         if (newSuper)
             return *newSuper;
 
-        std::vector<TypeId> newHead;
+        TypePack newPack;
         while (iter != endIter)
         {
-            newHead.push_back(*iter);
+            newPack.head.push_back(*iter);
+
+            if (FFlag::LuauNamedTypePacks)
+            {
+                if (const std::string* name = iter.getName())
+                    newPack.names.push_back(*name);
+                else
+                    newPack.names.push_back(std::nullopt);
+            }
+
             ++iter;
         }
 
-        return arena->addTypePack(std::move(newHead), iter.tail());
+        newPack.tail = iter.tail();
+        return arena->addTypePack(std::move(newPack));
     };
 
     /* If either type pack is blocked, record a constraint so that the solver
