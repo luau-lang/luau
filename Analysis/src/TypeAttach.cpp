@@ -13,6 +13,8 @@
 
 #include <string>
 
+LUAU_FASTFLAG(LuauNamedTypePacks)
+
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
     char* result = (char*)allocator.allocate(contents.size() + 1);
@@ -347,17 +349,27 @@ public:
             argTailAnnotation = rehydrate(*argTail);
 
         AstArray<std::optional<AstArgumentName>> argNames;
-        argNames.size = ftv.argNames.size();
+        argNames.size = FFlag::LuauNamedTypePacks ? argTypes.size : ftv.argNames.size();
         argNames.data = static_cast<std::optional<AstArgumentName>*>(allocator->allocate(sizeof(std::optional<AstArgumentName>) * argNames.size));
-        size_t i = 0;
-        for (const auto& el : ftv.argNames)
-        {
-            std::optional<AstArgumentName>* arg = &argNames.data[i++];
 
-            if (el)
-                new (arg) std::optional<AstArgumentName>(AstArgumentName(AstName(el->name.c_str()), Location()));
+        auto argPackIter = begin(ftv.argTypes);
+        for (size_t i = 0; i < argNames.size; ++i)
+        {
+            std::optional<AstArgumentName>* arg = &argNames.data[i];
+            const std::string* argNameFromPack = nullptr;
+
+            if (FFlag::LuauNamedTypePacks)
+                argNameFromPack = argPackIter.getName();
+
+            if (i < ftv.argNames.size() && ftv.argNames[i])
+                new (arg) std::optional<AstArgumentName>(AstArgumentName(AstName(ftv.argNames[i]->name.c_str()), Location()));
+            else if (argNameFromPack)
+                new (arg) std::optional<AstArgumentName>(AstArgumentName(AstName(allocateString(*allocator, *argNameFromPack)), Location()));
             else
                 new (arg) std::optional<AstArgumentName>();
+
+            if (FFlag::LuauNamedTypePacks)
+                ++argPackIter;
         }
 
         AstArray<AstType*> returnTypes;

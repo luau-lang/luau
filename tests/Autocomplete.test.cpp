@@ -26,6 +26,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 using namespace Luau;
 
@@ -6269,6 +6270,29 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_function_statement_with_index_2")
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("abs"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "named_type_pack_anonymous_completion")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    check(R"(
+        type Callback<T...> = (prefix: boolean, T...) -> ()
+        type Example = Callback<(name: string, number, enabled: boolean)>
+
+        local function use(callback: Example) end
+        use(@1)
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+
+    const auto& entry = ac.entryMap[kGeneratedAnonymousFunctionEntryName];
+    REQUIRE(entry.insertText);
+
+    CHECK_EQ(*entry.insertText, "function(prefix: boolean, name: string, a2: number, enabled: boolean)  end");
 }
 
 TEST_SUITE_END();

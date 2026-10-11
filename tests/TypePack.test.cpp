@@ -248,11 +248,7 @@ TEST_CASE_FIXTURE(Fixture, "extend_type_pack_preserves_names_when_split")
     auto builtinTypes = getBuiltins();
 
     TypePack sourcePack;
-    sourcePack.head = {
-        builtinTypes->stringType,
-        builtinTypes->numberType,
-        builtinTypes->booleanType
-    };
+    sourcePack.head = {builtinTypes->stringType, builtinTypes->numberType, builtinTypes->booleanType};
     sourcePack.names = {"name", std::nullopt, "enabled"};
 
     TypePackId original = arena.addTypePack(std::move(sourcePack));

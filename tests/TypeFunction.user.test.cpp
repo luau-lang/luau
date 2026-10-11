@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAG(LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3879,6 +3880,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_when_serializing_environment_but_not_a
     // TODO: This probably *should* error, as we cannot include `Foobar` as
     // part of the environment as an unserializable type (error).
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_identity_preserves_named_type_pack_names")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    ScopedFastFlag serializeArgNames{FFlag::LuauTypeFunctionSerializeArgNames, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        type function identity(t)
+            return t
+        end
+
+        type Callback<T...> = (T...) -> ()
+        type Example = identity<Callback<(name: string, number, enabled: boolean)>>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions options;
+    options.functionTypeArguments = true;
+
+    CHECK_EQ(toString(requireTypeAlias("Example"), options), "(name: string, number, enabled: boolean) -> ()");
 }
 
 TEST_SUITE_END();

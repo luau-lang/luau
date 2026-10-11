@@ -1410,7 +1410,7 @@ void AstTypeError::visit(AstVisitor* visitor)
 AstTypePackExplicit::AstTypePackExplicit(const Location& location, AstTypeList typeList, const AstArray<std::optional<AstArgumentName>>& names)
     : AstTypePack(ClassIndex(), location)
     , typeList(typeList)
-	, names(names)
+    , names(names)
 {
 }
 

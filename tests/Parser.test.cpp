@@ -2886,7 +2886,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_named_type_pack_names")
 
     CHECK_FALSE(pack->names.data[1].has_value());
 
-	REQUIRE(pack->names.data[2].has_value());
+    REQUIRE(pack->names.data[2].has_value());
     CHECK(pack->names.data[2].value().first == "enabled");
 }
 
@@ -2923,8 +2923,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_named_type_pack_single_element")
 
 TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 {
-	ScopedFastFlag flag{FFlag::LuauNamedTypePacks, false};
-	
+    ScopedFastFlag flag{FFlag::LuauNamedTypePacks, false};
+
     matchParseError("type A = (b: number)", "Expected '->' when parsing function type, got <eof>");
     matchParseError("type P<T...> = () -> T... type B = P<(x: number, y: string)>", "Expected '->' when parsing function type, got '>'");
     matchParseError("type F<T... = (a: string)> = (T...) -> ()", "Expected '->' when parsing function type, got '>'");

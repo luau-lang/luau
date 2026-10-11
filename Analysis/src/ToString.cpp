@@ -1269,12 +1269,12 @@ struct TypePackStringifier
     const std::vector<std::optional<FunctionArgument>> elemNames;
     static inline const std::vector<std::optional<FunctionArgument>> dummyElemNames = {};
     unsigned elemIndex = 0;
-	bool includeTypePackNames = false;
+    bool includeTypePackNames = false;
 
     explicit TypePackStringifier(StringifierState& state, const std::vector<std::optional<FunctionArgument>>& elemNames)
         : state(state)
         , elemNames(elemNames)
-		, includeTypePackNames(true)
+        , includeTypePackNames(true)
     {
     }
 

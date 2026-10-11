@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 namespace Luau
 {
@@ -455,6 +456,20 @@ private:
                     f2->argNames.emplace_back(argName->name);
                 else
                     f2->argNames.emplace_back();
+            }
+
+            if (FFlag::LuauNamedTypePacks)
+            {
+                size_t argIdx = 0;
+                for (auto argPackIter = begin(f1->argTypes); argPackIter != end(f1->argTypes); ++argPackIter, ++argIdx)
+                {
+                    if (argIdx >= f2->argNames.size())
+                        f2->argNames.emplace_back();
+
+                    const std::string* argNameFromPack = argPackIter.getName();
+                    if (!f2->argNames[argIdx].has_value() && argNameFromPack)
+                        f2->argNames[argIdx] = *argNameFromPack;
+                }
             }
         }
     }

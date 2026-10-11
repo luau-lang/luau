@@ -1448,16 +1448,12 @@ class AstTypePackExplicit : public AstTypePack
 public:
     LUAU_RTTI(AstTypePackExplicit)
 
-    AstTypePackExplicit(
-		const Location& location, 
-		AstTypeList typeList, 
-		const AstArray<std::optional<AstArgumentName>>& names = {}
-	);
+    AstTypePackExplicit(const Location& location, AstTypeList typeList, const AstArray<std::optional<AstArgumentName>>& names = {});
 
     void visit(AstVisitor* visitor) override;
 
     AstTypeList typeList;
-	AstArray<std::optional<AstArgumentName>> names;
+    AstArray<std::optional<AstArgumentName>> names;
 };
 
 class AstTypePackVariadic : public AstTypePack

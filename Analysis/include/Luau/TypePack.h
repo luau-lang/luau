@@ -75,7 +75,7 @@ struct TypePack
 {
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
-	std::vector<std::optional<std::string>> names;
+    std::vector<std::optional<std::string>> names;
 };
 
 struct VariadicTypePack

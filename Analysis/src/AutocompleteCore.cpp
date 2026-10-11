@@ -33,6 +33,7 @@ LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -1979,18 +1980,26 @@ static std::string makeAnonymousArgList(const ScopePtr& scope, const FunctionTyp
     std::string result;
 
     auto [args, tail] = Luau::flatten(funcTy.argTypes);
+    auto argPackIter = begin(funcTy.argTypes);
 
     bool first = true;
-    for (size_t argIdx = 0; argIdx < args.size(); ++argIdx)
+    for (size_t argIdx = 0; argIdx < args.size(); ++argIdx, ++argPackIter)
     {
         if (!first)
             result += ", ";
         else
             first = false;
 
+        const std::string* argNameFromPack = nullptr;
+
+        if (FFlag::LuauNamedTypePacks)
+            argNameFromPack = argPackIter.getName();
+
         std::string name;
         if (argIdx < funcTy.argNames.size() && funcTy.argNames[argIdx])
             name = funcTy.argNames[argIdx]->name;
+        else if (argNameFromPack)
+            name = *argNameFromPack;
         else
             name = "a" + std::to_string(argIdx);
 

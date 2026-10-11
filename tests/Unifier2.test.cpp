@@ -231,11 +231,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_pack_preserves_remaining_names")
     ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
 
     TypePack sourcePack;
-    sourcePack.head = {
-        builtinTypes.stringType,
-        builtinTypes.numberType,
-        builtinTypes.booleanType
-    };
+    sourcePack.head = {builtinTypes.stringType, builtinTypes.numberType, builtinTypes.booleanType};
     sourcePack.names = {"name", std::nullopt, "enabled"};
 
     TypePackId source = arena.addTypePack(std::move(sourcePack));

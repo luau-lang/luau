@@ -15,6 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 struct JsonEncoderFixture
 {
@@ -683,6 +684,19 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstTypeOptional")
         R"({"type":"AstStatTypeAlias","location":"1,12 - 1,30","name":"Foo","generics":[],"genericPacks":[],"value":{"type":"AstTypeUnion","location":"1,23 - 1,30","types":[{"type":"AstTypeReference","location":"1,23 - 1,29","name":"string","nameLocation":"1,23 - 1,29","parameters":[]},{"type":"AstTypeOptional","location":"1,29 - 1,30"}]},"exported":false})";
 
     CHECK(toJson(root->body.data[0]) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_named_type_pack_names")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+
+    auto statement = expectParseStatement("type Example = Callback<(name: string, number, enabled: boolean)>");
+
+    std::string json = toJson(statement);
+
+    CHECK(json.find(R"("names":[)") != std::string::npos);
+    CHECK(json.find(R"("name":"name")") != std::string::npos);
+    CHECK(json.find(R"(},null,{"type":"AstArgumentName","name":"enabled")") != std::string::npos);
 }
 
 TEST_SUITE_END();
