@@ -242,6 +242,122 @@ TEST_CASE_FIXTURE(TypePackFixture, "type_pack_from_iterator_preserves_names")
     CHECK(pack->names[1].value() == "enabled");
 }
 
+TEST_CASE_FIXTURE(Fixture, "extend_type_pack_preserves_names_when_split")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    auto builtinTypes = getBuiltins();
+
+    TypePack sourcePack;
+    sourcePack.head = {builtinTypes->stringType, builtinTypes->numberType, builtinTypes->booleanType};
+    sourcePack.names = {"name", std::nullopt, "enabled"};
+
+    TypePackId original = arena.addTypePack(std::move(sourcePack));
+
+    TypePack extended = extendTypePack(arena, builtinTypes, original, 1);
+
+    REQUIRE_EQ(extended.head.size(), 1);
+    REQUIRE_EQ(extended.names.size(), 1);
+
+    REQUIRE(extended.names[0].has_value());
+    CHECK(extended.names[0].value() == "name");
+
+    REQUIRE(extended.tail.has_value());
+
+    auto tailPack = get<TypePack>(follow(extended.tail.value()));
+    REQUIRE(tailPack);
+    REQUIRE_EQ(tailPack->head.size(), 2);
+    REQUIRE_EQ(tailPack->names.size(), 2);
+
+    CHECK_FALSE(tailPack->names[0]);
+
+    REQUIRE(tailPack->names[1].has_value());
+    CHECK(tailPack->names[1].value() == "enabled");
+}
+
+TEST_CASE_FIXTURE(Fixture, "extend_type_pack_preserves_names_with_variadic_tail")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    auto builtinTypes = getBuiltins();
+
+    TypePack sourcePack;
+    sourcePack.head = {builtinTypes->stringType};
+    sourcePack.names = {"name"};
+    sourcePack.tail = arena.addTypePack(VariadicTypePack{builtinTypes->numberType});
+
+    TypePackId original = arena.addTypePack(std::move(sourcePack));
+    TypePack extended = extendTypePack(arena, builtinTypes, original, 3);
+
+    REQUIRE_EQ(extended.head.size(), 3);
+    REQUIRE_EQ(extended.names.size(), 3);
+
+    REQUIRE(extended.names[0].has_value());
+    CHECK(extended.names[0].value() == "name");
+
+    CHECK_FALSE(extended.names[1].has_value());
+    CHECK_FALSE(extended.names[2].has_value());
+}
+
+TEST_CASE_FIXTURE(Fixture, "extend_type_pack_preserves_name_slots_with_free_tail")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    auto builtinTypes = getBuiltins();
+
+    Scope scope{builtinTypes->anyTypePack};
+    scope.interiorFreeTypes.emplace();
+    scope.interiorFreeTypePacks.emplace();
+
+    TypePackId freeTail = arena.addTypePack(FreeTypePack{&scope});
+
+    TypePack sourcePack;
+    sourcePack.head = {builtinTypes->stringType};
+    sourcePack.names = {"name"};
+    sourcePack.tail = freeTail;
+
+    TypePackId original = arena.addTypePack(std::move(sourcePack));
+    TypePack extended = extendTypePack(arena, builtinTypes, original, 3);
+
+    REQUIRE_EQ(extended.head.size(), 3);
+    REQUIRE_EQ(extended.names.size(), 3);
+
+    REQUIRE(extended.names[0].has_value());
+    CHECK(extended.names[0].value() == "name");
+    CHECK_FALSE(extended.names[1].has_value());
+    CHECK_FALSE(extended.names[2].has_value());
+
+    auto materialized = get<TypePack>(follow(freeTail));
+    REQUIRE(materialized);
+    REQUIRE_EQ(materialized->head.size(), 2);
+    REQUIRE_EQ(materialized->names.size(), 2);
+
+    CHECK_FALSE(materialized->names[0].has_value());
+    CHECK_FALSE(materialized->names[1].has_value());
+}
+
+TEST_CASE_FIXTURE(Fixture, "extend_type_pack_preserves_name_slots_with_error_tail")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    auto builtinTypes = getBuiltins();
+
+    TypePack sourcePack;
+    sourcePack.head = {builtinTypes->stringType};
+    sourcePack.names = {"name"};
+    sourcePack.tail = arena.addTypePack(ErrorTypePack{});
+
+    TypePackId original = arena.addTypePack(std::move(sourcePack));
+    TypePack extended = extendTypePack(arena, builtinTypes, original, 3);
+
+    REQUIRE_EQ(extended.head.size(), 3);
+    REQUIRE_EQ(extended.names.size(), 3);
+
+    REQUIRE(extended.names[0].has_value());
+    CHECK(extended.names[0].value() == "name");
+    CHECK_FALSE(extended.names[1].has_value());
+    CHECK_FALSE(extended.names[2].has_value());
+
+    CHECK_EQ(extended.head[1], builtinTypes->errorType);
+    CHECK_EQ(extended.head[2], builtinTypes->errorType);
+}
+
 TEST_CASE_FIXTURE(Fixture, "slice_type_pack_preserves_names_across_heads")
 {
     ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};

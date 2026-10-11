@@ -14,6 +14,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 namespace Luau
 {
@@ -216,6 +217,19 @@ TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Ty
             while (i < p->head.size() && result.head.size() < length)
             {
                 result.head.push_back(p->head[i]);
+
+                if (FFlag::LuauNamedTypePacks)
+                {
+                    if (i < p->names.size())
+                    {
+                        result.names.push_back(p->names[i]);
+                    }
+                    else
+                    {
+                        result.names.push_back(std::nullopt);
+                    }
+                }
+
                 ++i;
             }
 
@@ -229,6 +243,22 @@ TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Ty
                     TypePack* newTailPack = getMutable<TypePack>(newTail);
 
                     newTailPack->head.insert(newTailPack->head.begin(), p->head.begin() + i, p->head.end());
+
+                    if (FFlag::LuauNamedTypePacks)
+                    {
+                        for (std::size_t j = i; j < p->head.size(); ++j)
+                        {
+                            if (j < p->names.size())
+                            {
+                                newTailPack->names.push_back(p->names[j]);
+                            }
+                            else
+                            {
+                                newTailPack->names.push_back(std::nullopt);
+                            }
+                        }
+                    }
+
                     newTailPack->tail = p->tail;
 
                     result.tail = newTail;
@@ -250,7 +280,13 @@ TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Ty
         else if (const VariadicTypePack* vtp = get<VariadicTypePack>(pack))
         {
             while (result.head.size() < length)
+            {
                 result.head.push_back(vtp->ty);
+
+                if (FFlag::LuauNamedTypePacks)
+                    result.names.push_back(std::nullopt);
+            }
+
             result.tail = pack;
             return result;
         }
@@ -277,6 +313,12 @@ TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Ty
 
                 newPack.head.push_back(t);
                 result.head.push_back(newPack.head.back());
+
+                if (FFlag::LuauNamedTypePacks)
+                {
+                    newPack.names.push_back(std::nullopt);
+                    result.names.push_back(std::nullopt);
+                }
             }
 
             if (FFlag::LuauTraverseScopeToFunction)
@@ -293,7 +335,12 @@ TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Ty
         else if (getMutable<ErrorTypePack>(pack))
         {
             while (result.head.size() < length)
+            {
                 result.head.push_back(builtinTypes->errorType);
+
+                if (FFlag::LuauNamedTypePacks)
+                    result.names.push_back(std::nullopt);
+            }
 
             result.tail = pack;
             return result;
