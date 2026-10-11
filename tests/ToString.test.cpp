@@ -19,6 +19,7 @@ LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauWarnOnUnannotatedTopLevelFunctions)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -861,6 +862,49 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
     ToStringOptions opts;
     opts.namedFunctionOverrideArgNames = {"first", "second", "third"};
     CHECK_EQ("test<T>(first: T, second: string, ...: number): T", toStringNamedFunction("test", *ftv, opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "named_type_pack_function_string")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        type Callback<T...> = (prefix: boolean, T...) -> ()
+        type Example = Callback<(name: string, number, enabled: boolean)>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions options;
+    options.functionTypeArguments = true;
+
+    auto text = toString(requireTypeAlias("Example"), options);
+
+    CHECK(text == "(prefix: boolean, name: string, number, enabled: boolean) -> ()");
+
+    options.functionTypeArguments = false;
+
+    auto textWithoutNames = toString(requireTypeAlias("Example"), options);
+    CHECK(textWithoutNames == "(boolean, string, number, boolean) -> ()");
+}
+
+TEST_CASE_FIXTURE(Fixture, "named_type_pack_named_function_string")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        type Callback<T...> = (prefix: boolean, T...) -> ()
+        type Example = Callback<(name: string, number, enabled: boolean)>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto function = get<FunctionType>(requireTypeAlias("Example"));
+    REQUIRE(function);
+
+    auto text = toStringNamedFunction("callback", *function);
+
+    CHECK(text == "callback(prefix: boolean, name: string, _: number, enabled: boolean): ()");
 }
 
 TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_generics")
