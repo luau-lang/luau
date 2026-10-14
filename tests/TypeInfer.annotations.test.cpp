@@ -886,7 +886,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler
 
     bool caught = false;
 
-    getFrontend().iceHandler.onInternalError = [&](const char*)
+    getFrontend().onInternalError = [&](const char*)
     {
         caught = true;
     };

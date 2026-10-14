@@ -26,8 +26,10 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauFragmentACLocalAutocompleteFix)
+LUAU_FASTFLAG(LuauAutocompleteIfSlurpsCond)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -4921,6 +4923,49 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_sin
     );
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_tagged_union_discriminant_comparison")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteIfSlurpsCond, true};
+
+    const std::string source = R"(
+type Success = {Code: "Success", Success: true, Data: any}
+type Lock = {Code: "Locked", Success: false, Lock: string}
+type Error = {Code: "Error", Success: false, Message: string}
+
+local value = {} :: Success | Lock | Error
+
+if value.Code == "" then
+
+end
+)";
+
+    const std::string updated = R"(
+type Success = {Code: "Success", Success: true, Data: any}
+type Lock = {Code: "Locked", Success: false, Lock: string}
+type Error = {Code: "Error", Success: false, Message: string}
+
+local value = {} :: Success | Lock | Error
+
+if value.Code == "@1" then
+
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK_EQ(fragment.result->acResults.context, AutocompleteContext::String);
+            CHECK(fragment.result->acResults.entryMap.count("Success"));
+            CHECK(fragment.result->acResults.entryMap.count("Locked"));
+            CHECK(fragment.result->acResults.entryMap.count("Error"));
+        }
+    );
+}
+
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_table_insert")
 {
     std::string src = R"(
@@ -5910,6 +5955,61 @@ end
             REQUIRE(fragment.result);
             CHECK(fragment.result->acResults.entryMap.count("name"));
             CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_function_statement_with_index_1")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
+
+    const std::string source = R"(
+local tbl: { onHeartbeat: (number) -> (), onSimulate: (number) -> (), everyFrame: () -> () } = {}
+)";
+
+    const std::string updated = R"(
+local tbl: { onHeartbeat: (number) -> (), onSimulate: (number) -> (), everyFrame: () -> () } = {}
+
+function tbl.on@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("onHeartbeat"));
+            CHECK(fragment.result->acResults.entryMap.count("onSimulate"));
+            CHECK(fragment.result->acResults.entryMap.count("everyFrame"));
+            CHECK(fragment.result->acResults.entryMap["everyFrame"].typeCorrect == TypeCorrectKind::None);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_function_statement_with_index_2")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
+
+    const std::string source = R"(
+local tbl = { abs = math.abs }
+)";
+
+    const std::string updated = R"(
+local tbl = { abs = math.abs }
+
+function tbl.a@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("abs"));
         }
     );
 }

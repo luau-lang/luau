@@ -1,0 +1,1 @@
+./analysis/singletons/table_properties_alias_or_parens_is_indexer.luau(4,5): SyntaxError: Cannot have more than one table indexer

@@ -1529,8 +1529,8 @@ bool TypeInstantiationCountMismatch::operator==(const TypeInstantiationCountMism
            maximumTypes == rhs.maximumTypes && providedTypePacks == rhs.providedTypePacks && maximumTypePacks == rhs.maximumTypePacks;
 }
 
-GenericBoundsMismatch::GenericBoundsMismatch(const std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet)
-    : genericName(genericName)
+GenericBoundsMismatch::GenericBoundsMismatch(std::string genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet)
+    : genericName(std::move(genericName))
     , lowerBounds(lowerBoundSet.take())
     , upperBounds(upperBoundSet.take())
 {

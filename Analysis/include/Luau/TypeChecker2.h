@@ -10,6 +10,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/TypeFunction.h"
 
 namespace Luau
 {
@@ -88,6 +89,7 @@ struct TypeChecker2
     std::vector<TypeId> functionDeclStack;
 
     DenseHashSet<TypeId> seenTypeFunctionInstances;
+    TypeFunctionAbsenceCache typeFunctionAbsenceCache;
 
     Normalizer normalizer;
     Subtyping _subtyping;
@@ -128,7 +130,8 @@ private:
     TypeId lookupExpectedType(AstExpr* expr) const;
     TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena) const;
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena);
-    Scope* findInnermostScope(Location location) const;
+    // Clip with LuauDontUseInnermostScope
+    Scope* findInnermostScope_DEPRECATED(Location location) const;
     void visit(AstStat* stat);
     void visit(AstStatIf* ifStatement);
     void visit(AstStatWhile* whileStatement);

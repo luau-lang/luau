@@ -47,7 +47,6 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(DebugLuauExactTableTypes)
-LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSetMetatable)
@@ -1083,7 +1082,7 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             if (Location* loc = typeNameLocations.find(declName))
             {
                 reportError(classDecl->location, DuplicateTypeDefinition{declName, *loc});
-                scope->bindings[classDecl->name->name] = Binding{builtinTypes->errorType, classDecl->location};
+                scope->bindings[classDecl->name] = Binding{builtinTypes->errorType, classDecl->location};
                 scope->lvalueTypes[theDef] = builtinTypes->errorType;
                 continue;
             }
@@ -1092,7 +1091,7 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             TypeId* classObjectTy = allClasses.find(classDecl);
             LUAU_ASSERT(classObjectTy && *classObjectTy);
 
-            scope->bindings[classDecl->name->name] = Binding{*classObjectTy, classDecl->name->location};
+            scope->bindings[classDecl->name] = Binding{*classObjectTy, classDecl->name->location};
             scope->lvalueTypes[theDef] = *classObjectTy;
 
             prototypeClass(scope, classDecl, *classObjectTy);
@@ -1706,13 +1705,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
     const DefId keyDef = dfg->getDef(keyVar);
     const TypeId loopVar = loopScope->lvalueTypes[keyDef];
 
-    const TypeId intersectionTy = createTypeFunctionInstance(
-        FFlag::LuauIterableConstraintMutatesIterator ? builtinTypes->typeFunctions->refineFunc : builtinTypes->typeFunctions->intersectFunc,
-        {loopVar, builtinTypes->notNilType},
-        {},
-        loopScope,
-        keyVar->location
-    );
+    const TypeId intersectionTy =
+        createTypeFunctionInstance(builtinTypes->typeFunctions->refineFunc, {loopVar, builtinTypes->notNilType}, {}, loopScope, keyVar->location);
 
     loopScope->bindings[keyVar] = Binding{intersectionTy, keyVar->location};
     loopScope->lvalueTypes[keyDef] = intersectionTy;

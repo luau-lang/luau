@@ -12,7 +12,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
 LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
@@ -107,6 +106,12 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
             break;
         case LBC_TYPE_BUFFER:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBUFFER), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_CLASS:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TCLASS), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_OBJECT:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TOBJECT), build.vmExit(kVmExitEntryGuardPc));
             break;
         default:
             if (tag >= LBC_TYPE_TAGGED_USERDATA_BASE && tag < LBC_TYPE_TAGGED_USERDATA_END)
@@ -331,10 +336,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_CALL:
     case LOP_CALLFB:
         inst(IrCmd::INTERRUPT, constUint(i));
-        if (FFlag::LuauCallFeedback)
-            inst(IrCmd::SET_SAVEDPC, constUint(i + getOpLength(op)));
-        else
-            inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
+        inst(IrCmd::SET_SAVEDPC, constUint(i + getOpLength(op)));
 
         inst(IrCmd::CALL, vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1), constInt(LUAU_INSN_C(*pc) - 1));
 
@@ -643,16 +645,11 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_NAMECALLUDATA:
         if (translateInstNamecall(*this, pc, i))
         {
-            if (FFlag::LuauCallFeedback)
-            {
-                static const int namecall = getOpLength(static_cast<LuauOpcode>(LOP_NAMECALL));
-                int callOp = LUAU_INSN_OP(*(pc + namecall));
-                LUAU_ASSERT(callOp == LOP_CALL || callOp == LOP_CALLFB);
-                int call = getOpLength(static_cast<LuauOpcode>(callOp));
-                cmdSkipTarget = i + namecall + call;
-            }
-            else
-                cmdSkipTarget = i + 3;
+            static const int namecall = getOpLength(static_cast<LuauOpcode>(LOP_NAMECALL));
+            int callOp = LUAU_INSN_OP(*(pc + namecall));
+            LUAU_ASSERT(callOp == LOP_CALL || callOp == LOP_CALLFB);
+            int call = getOpLength(static_cast<LuauOpcode>(callOp));
+            cmdSkipTarget = i + namecall + call;
         }
         break;
     case LOP_PREPVARARGS:
@@ -705,6 +702,13 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
             inst(IrCmd::JUMP, next);
             beginBlock(next);
         }
+        break;
+
+    case LOP_CONSTRUCT:
+        translateInstConstruct(*this, pc, i);
+        break;
+    case LOP_FINCONSTRUCT:
+        handleFastcallFallback(translateFinConstruct(*this, pc, i), pc, i);
         break;
 
     default:

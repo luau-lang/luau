@@ -34,6 +34,8 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACLocalAutocompleteFix)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteIfSlurpsCond)
+LUAU_FASTFLAG(LuauSplitIceHandler)
 
 namespace Luau
 {
@@ -206,7 +208,16 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 // wrong.
                 if (ifS->condition->location.begin > cursorPosition)
                     return empty;
-                return Location{ifS->condition->location.begin, cursorPosition};
+                if (FFlag::LuauAutocompleteIfSlurpsCond && ifS->thenLocation)
+                {
+                    Position fragmentBegin = ifS->location.begin;
+                    if (ifS != nearestStatement)
+                        fragmentBegin.column += 4; // `elseif` -> `if`
+
+                    return Location{fragmentBegin, ifS->thenLocation->end};
+                }
+                else
+                    return Location{ifS->condition->location.begin, cursorPosition};
             }
 
             else if (ifS->thenbody->location.containsClosed(cursorPosition))
@@ -998,7 +1009,8 @@ FragmentTypeCheckResult typecheckFragment_(
     limits.cancellationToken = opts.cancellationToken;
 
     /// Icehandler
-    NotNull<InternalErrorReporter> iceHandler{&frontend.iceHandler};
+    InternalErrorReporter iceHandler_{frontend.onInternalError, stale->name};
+    NotNull<InternalErrorReporter> iceHandler{FFlag::LuauSplitIceHandler ? &iceHandler_ : &frontend.iceHandler_DEPRECATED};
     /// Make the shared state for the unifier (recursion + iteration limits)
     UnifierSharedState unifierState{iceHandler};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;

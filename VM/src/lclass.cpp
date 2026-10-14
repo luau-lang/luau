@@ -15,11 +15,17 @@
 #include "lualib.h"
 #include "lvm.h"
 
+#include <math.h>
+
 LuauClass* luaR_newblankclass(lua_State* L, TString* name, bool isopen)
 {
     LuauClass* classobject = luaM_newgco(L, LuauClass, sizeof(LuauClass), L->activememcat, LUA_TCLASS);
     luaC_init(L, classobject, LUA_TCLASS);
     classobject->name = name;
+
+    // After 2^32 classes are created, all new classes get id of 0 which isn't used for comparison
+    classobject->id = L->global->lastclassid == 0 ? 0 : L->global->lastclassid++;
+
     classobject->super = NULL;
     classobject->staticmembers = NULL;
     classobject->memberstooffset = NULL;
@@ -385,17 +391,24 @@ void luaR_addclassmember(lua_State* L, LuauClass* classobject, TString* name, TV
     }
 }
 
+LuauObject* luaR_newblankobject(lua_State* L, LuauClass* classobject)
+{
+    LuauObject* object = luaM_newgco(L, LuauObject, sizeof(LuauObject), L->activememcat, LUA_TOBJECT);
+    memset(object, 0, sizeof(LuauObject));
+    luaC_init(L, object, LUA_TOBJECT);
+    object->lclass = classobject;
+    object->members = luaM_newarray(L, classobject->numberofinstancemembers, TValue, L->activememcat);
+    object->numberofmembers = classobject->numberofinstancemembers;
+
+    return object;
+}
+
 int luaR_constructobject(lua_State* L)
 {
     // This runs as the class's `__call` metamethod, so luaV_tryfuncTM has inserted the class being called ahead of the call arguments.
     LuauClass* classobject = classvalue(L->base);
 
-    LuauObject* self = luaM_newgco(L, LuauObject, sizeof(LuauObject), L->activememcat, LUA_TOBJECT);
-    memset(self, 0, sizeof(LuauObject));
-    luaC_init(L, self, LUA_TOBJECT);
-    self->lclass = classobject;
-    self->members = luaM_newarray(L, classobject->numberofinstancemembers, TValue, L->activememcat);
-    self->numberofmembers = classobject->numberofinstancemembers;
+    LuauObject* self = luaR_newblankobject(L, classobject);
 
     for (uint32_t idx = 0; idx < classobject->numberofinstancemembers; idx++)
         setnilvalue(&self->members[idx]);
@@ -479,6 +492,105 @@ int luaR_defaultcreateobject(lua_State* L)
     return 0;
 }
 
+static LuauClassConstructMatch luaR_classmatchesshape(LuauClass* klass, LuaTable* shape)
+{
+    // custom constructor means we cannot directly construct from a shape
+    if (klass->hasuserinitinchain)
+        return LCM_MISMATCH;
+
+    uint32_t membercount = 0;
+    bool defaultinit = true;
+
+    for (int i = 0; i < sizenode(shape); i++)
+    {
+        LuaNode* node = gnode(shape, i);
+        const TKey* key = gkey(node);
+        const TValue* val = gval(node);
+
+        // no key in shape, field will initialize to nil
+        if (ttisnil(key))
+            continue;
+
+        if (!ttisstring(key))
+            return LCM_MISMATCH;
+
+        const TValue* offset = luaH_getstr(klass->memberstooffset, tsvalue(key));
+        if (!ttisnumber(offset))
+            return LCM_MISMATCH;
+
+        // cannot override static members
+        if (uint32_t(nvalue(offset)) >= klass->numberofinstancemembers)
+            return LCM_MISMATCH;
+
+        membercount++;
+
+        // check if the default table shape constants are all 0.0 exactly, to use a faster LCM_MATCH_ZEROED path
+        if (!(ttisnumber(val) && nvalue(val) == 0.0 && signbit(nvalue(val)) == false))
+            defaultinit = false;
+    }
+
+    return defaultinit && membercount == klass->numberofinstancemembers ? LCM_MATCH_ZEROED : LCM_MATCH;
+}
+
+static void luaR_constructobjectpartial(lua_State* L, StkId target, LuauClass* klass, LuaTable* shape, LuauClassConstructMatch match)
+{
+    LuauObject* self = luaR_newblankobject(L, klass);
+
+    if (match == LCM_MATCH_ZEROED)
+    {
+        for (uint32_t i = 0; i < klass->numberofinstancemembers; i++)
+            setnvalue(&self->members[i], 0.0);
+    }
+    else
+    {
+        for (uint32_t i = 0; i < klass->numberofinstancemembers; i++)
+            setobj2n(L, &self->members[i], luaH_getstr(shape, klass->offsettomember[i]));
+    }
+
+    setobjectvalue(L, target, self);
+}
+
+void luaR_tryconstructobject(lua_State* L, StkId target, StkId maybeclass, uint32_t slotid)
+{
+    Proto* p = clvalue(L->ci->func)->l.p;
+
+    LUAU_ASSERT(slotid < p->feedbackvecsize);
+    FeedbackVectorSlot& slot = p->feedbackvec[slotid];
+    LUAU_ASSERT(slot.kind == FeedbackVectorSlotKind::CONSTRUCT);
+
+    LUAU_ASSERT(slot.construct.shape < uint32_t(p->sizek));
+    TValue* shape = &p->k[slot.construct.shape];
+    LUAU_ASSERT(ttistable(shape));
+    LuaTable* shapeTable = hvalue(shape);
+
+    if (!ttisclass(maybeclass))
+    {
+        sethvalue(L, target, luaH_clone(L, shapeTable));
+        return;
+    }
+
+    LuauClass* klass = classvalue(maybeclass);
+
+    if (slot.construct.classid != klass->id)
+    {
+        // ran out of class IDs, don't cache
+        if (klass->id == 0)
+        {
+            slot.construct.match = LCM_MISMATCH;
+            slot.construct.classid = 0;
+        }
+        else
+        {
+            slot.construct.match = luaR_classmatchesshape(klass, shapeTable);
+            slot.construct.classid = klass->id;
+        }
+    }
+
+    if (slot.construct.match != LCM_MISMATCH)
+        luaR_constructobjectpartial(L, target, klass, shapeTable, slot.construct.match);
+    else
+        sethvalue(L, target, luaH_clone(L, shapeTable));
+}
 
 void luaR_freeclass(lua_State* L, LuauClass* classobject, lua_Page* page)
 {

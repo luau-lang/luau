@@ -69,6 +69,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
         break;
         // A <- B
     case IrCmd::DO_LEN:
+    case IrCmd::CONSTRUCT:
         visitor.use(OP_B(inst));
 
         visitor.def(OP_A(inst));

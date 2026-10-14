@@ -89,6 +89,7 @@ public:
     uint32_t addFbSlot_DEPRECATED(LuauFeedbackType t);
     uint32_t addFbSlot_DEPRECATED(LuauFeedbackType t, uint32_t pc);
     uint32_t addCallTargetSlot(uint32_t pc);
+    uint32_t addConstructSlot(uint32_t shapecid);
 
     int16_t addChildFunction(uint32_t fid);
     int32_t addClassShape(ClassShape shape);
@@ -348,6 +349,11 @@ protected:
             {
                 uint32_t pc;
             } callTarget;
+
+            struct
+            {
+                uint32_t shape;
+            } construct;
         };
     };
 

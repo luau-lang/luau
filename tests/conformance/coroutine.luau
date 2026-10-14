@@ -682,6 +682,24 @@ do
     assert(called == 2)
 end
 
+-- coroutine.finally (close ignores extra arguments)
+do
+    local co = coroutine.create(function() coroutine.yield() end)
+    assert(coroutine.resume(co))
+
+    local called = false
+    coroutine.finally(co, function(status, ...)
+        assert(status == "cancelled")
+        assert(select("#", ...) == 0)
+        called = true
+    end)
+
+    local s, r = coroutine.close(co, "extra", nil, 123)
+    assert(s)
+    assert(r == nil)
+    assert(called)
+end
+
 -- coroutine.finally (no hard limit on list size)
 do
     local co = coroutine.create(function()
