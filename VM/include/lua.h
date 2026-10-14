@@ -276,10 +276,8 @@ LUA_API int lua_isyieldable(lua_State* L);
 LUA_API void* lua_getthreaddata(lua_State* L);
 LUA_API void lua_setthreaddata(lua_State* L, void* data);
 LUA_API int lua_costatus(lua_State* L, lua_State* co);
-
-// NOTE: experimental API, requires a Debug flag and is subject to breaking changes
 LUA_API int lua_hasfinalizers(lua_State* L);
-LUA_API void lua_pushfinalizerfunction(lua_State* L);
+LUA_API void lua_pushfinalizerfunction(lua_State* L, lua_State* co, int toclose);
 LUA_API void lua_addfinalizer(lua_State* L, lua_State* co, int idx);
 
 /*

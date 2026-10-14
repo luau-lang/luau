@@ -16,8 +16,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
-LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 
@@ -1396,8 +1394,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_table_and_truthy")
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauAlwaysIntersectTablesWithTables, true},
-        {FFlag::LuauIncludeExternTypeExtensionsWithTopExternType, true},
         {FFlag::DebugLuauParseExactTables, true},
         {FFlag::DebugLuauExactTableTypes, true},
     };

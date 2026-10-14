@@ -175,6 +175,9 @@ struct CallInliner
 
     uint32_t mapInstIndex(uint32_t index)
     {
+        if (index == kInvalidInstIdx)
+            return kInvalidInstIdx;
+
         return callerInstSizeBeforeInline + index;
     }
 
@@ -212,6 +215,8 @@ struct CallInliner
         {
             if (slot.kind == LFT_CALLTARGET)
                 slot.callTarget.inst = mapInstIndex(slot.callTarget.inst);
+            else if (slot.kind == LFT_CONSTRUCT)
+                slot.construct.shape = mapVmConstIndex(slot.construct.shape);
             else
                 LUAU_ASSERT(!"unknown feedback slot kind");
 
@@ -634,6 +639,12 @@ struct CallInliner
                 if (fbcall.FbSlot() != -1)
                     fbcall.setFbSlot(fbcall.FbSlot() + callerFeedbackSlotSizeBeforeInline);
 
+                break;
+            }
+            case LOP_CONSTRUCT:
+            {
+                BcConstruct<VmConst> construct = BcConstruct<VmConst>::from(caller, callerInst);
+                construct.setFbSlot(construct.FbSlot() + callerFeedbackSlotSizeBeforeInline);
                 break;
             }
             default:

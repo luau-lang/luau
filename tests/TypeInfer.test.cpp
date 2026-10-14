@@ -29,7 +29,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
 
 using namespace Luau;
@@ -3108,10 +3107,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_1")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCheckReadTyWhenRelatingExtern, true},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
+    ScopedFastFlag _ {FFlag::DebugLuauUserDefinedClasses, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
         class _ end
@@ -3125,10 +3121,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCheckReadTyWhenRelatingExtern, true},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
         class _ end

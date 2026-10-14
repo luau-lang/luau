@@ -251,6 +251,7 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
         g->gcstats = GCStats();
 
         g->lastprotoid = 1;
+        g->lastclassid = 1;
 
 #ifdef LUAI_GCMETRICS
         g->gcmetrics = GCMetrics();
@@ -368,6 +369,7 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
 
         g->gcstats = GCStats();
         g->lastprotoid = 1;
+        g->lastclassid = 1;
 
         g->builtinPcall = NULL;
         g->builtinXpcall = NULL;

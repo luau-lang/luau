@@ -1,0 +1,1 @@
+./analysis/singletons/widening_happens_almost_everywhere_except_for_tables.luau(5,16): FunctionUnused: Function 'f' is never used; prefix with '_' to silence

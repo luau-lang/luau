@@ -457,6 +457,7 @@ public:
         AstExpr* func,
         const AstArray<AstExpr*>& args,
         bool self,
+        bool tableCall,
         const AstArray<AstTypeOrPack>& explicitTypes,
         const Location& argLocation
     );
@@ -470,6 +471,7 @@ public:
     AstArray<AstTypeOrPack> typeArguments;
     AstArray<AstExpr*> args;
     bool self;
+    bool tableCall;
     Location argLocation;
 };
 

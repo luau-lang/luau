@@ -1,0 +1,5 @@
+./analysis/singletons/tagged_unions_immutable_tag.luau(5,1): TypeError: Cannot assign a value of type string to a field of type never
+caused by the property being given the following incompatible types:
+    "Dog"
+    "Cat"
+There are no values that could safely satisfy all of these types at once.

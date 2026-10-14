@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
-LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
 
@@ -22,7 +21,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverrideInstanceMemberError"
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
         {FFlag::LuauBytecodeCostModel, true}
     };
@@ -36,7 +34,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassExtendsNonOpenParent")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
         {FFlag::LuauBytecodeCostModel, true}
     };
@@ -50,7 +47,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverridesComparisonMetametho
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
         {FFlag::LuauBytecodeCostModel, true}
     };

@@ -9,6 +9,12 @@
 
 #include <regex>
 
+LUAU_FASTFLAG(LuauCodegenX64IntSpillRestore)
+
+LUAU_FASTFLAG(LuauCodegenExitSyncUpdate)
+
+LUAU_FASTFLAG(LuauCodegenScopedSpillKeepLazy)
+
 using namespace Luau::CodeGen;
 
 static void stripLinesContaining(std::string& text, const char* needle)
@@ -54,11 +60,14 @@ static void normalizeStateOffsets(std::string& text)
             pendingReg = match[1].str();
             line = std::regex_replace(line, std::regex(R"(\[r15\+[^\]]+\])"), "[r15+<offset>]");
         }
-        else if (!pendingReg.empty())
+        else if (!pendingReg.empty() && pendingReg != "r14")
         {
             std::regex deref("\\[" + pendingReg + "\\+[^\\]]+\\]");
             line = std::regex_replace(line, deref, "[" + pendingReg + "+<offset>]");
         }
+
+        // NativeContext offsets depend on host pointer size
+        line = std::regex_replace(line, std::regex(R"(\[r13\+[^\]]+\])"), "[r13+<offset>]");
 
         result += line;
         if (eol < text.size())
@@ -554,6 +563,258 @@ bb_0:
 .L13:
   STORE_DOUBLE R2, %5
  vmovsd      xmm0,qword ptr [r14+050h]
+ vmovsd      qword ptr [r14+020h],xmm0
+  STORE_TAG R2, tnumber
+ mov         dword ptr [r14+02Ch],3
+  RETURN R1, 2i
+ lea         rdi,[r14-010h]
+ vmovups     xmm0,xmmword ptr [r14+010h]
+ vmovups     xmmword ptr [rdi],xmm0
+ vmovups     xmm0,xmmword ptr [r14+020h]
+ vmovups     xmmword ptr [rdi+010h],xmm0
+ add         rdi,20h
+ mov         ecx,2
+ jmp         .L7
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "IntStackSpillIgnoresConvertedRestoreLocation")
+{
+    ScopedFastFlag luauCodegenX64IntSpillRestore{FFlag::LuauCodegenX64IntSpillRestore, true};
+
+    options.includeRegSpills = true;
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    IrOp trueBlock = build.block(IrBlockKind::Internal);
+    IrOp falseBlock = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    IrOp d = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp i = build.inst(IrCmd::NUM_TO_INT, d);
+    build.inst(IrCmd::JUMP_IF_TRUTHY, build.vmReg(2), trueBlock, falseBlock);
+
+    // Interrupt will spill 'i' to stack because cross-block restore location is not used
+    build.beginBlock(trueBlock);
+    build.inst(IrCmd::INTERRUPT, build.constUint(0));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), i);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    build.beginBlock(falseBlock);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
+
+    updateUseCounts(build.function);
+
+    // 'i' spill restore must be done from stack if it was recorded as such, even when restore location info is available
+    CHECK_EQ(
+        "\n" + lower(),
+        R"(
+; align 32 using ud2
+bb_0:
+.L11:
+  %0 = LOAD_DOUBLE R1
+ vmovsd      xmm0,qword ptr [r14+010h]
+  ; %0 can be restored from R1
+  %1 = NUM_TO_INT %0
+ vcvttsd2si  eax,xmm0
+  ; %1 can be restored from R1 as int
+  JUMP_IF_TRUTHY R2, bb_1, bb_2
+ cmp         dword ptr [r14+02Ch],0
+ je          .L12
+ cmp         dword ptr [r14+02Ch],1
+ jne         .L13
+ cmp         dword ptr [r14+020h],0
+ jne         .L13
+ jmp         .L12
+bb_1:
+.L13:
+  INTERRUPT 0u
+ mov         dword ptr [rsp+048h],eax
+  ; spill %1 (int eax) to slot 0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
+ jne         .L14
+.L15:
+  STORE_INT R0, %1
+ mov         eax,dword ptr [rsp+048h]
+  ; restore %1 (int eax) from slot 0
+ mov         dword ptr [r14],eax
+  STORE_TAG R0, tboolean
+ mov         dword ptr [r14+0Ch],1
+  RETURN R0, 1i
+ vmovups     xmm0,xmmword ptr [r14]
+ vmovups     xmmword ptr [r14-010h],xmm0
+ mov         rdi,r14
+ mov         ecx,1
+ jmp         .L7
+bb_2:
+.L12:
+  RETURN R0, 0i
+ lea         rdi,[r14-010h]
+ xor         ecx,ecx
+ jmp         .L7
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedRegisters")
+{
+    ScopedFastFlag luauCodegenExitSyncUpdate{FFlag::LuauCodegenExitSyncUpdate, true};
+
+    options.includeOutlinedCode = true;
+    options.includeRegSpills = true;
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    build.beginBlock(entry);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(3)), build.constTag(tnumber), build.vmExit(0));
+    IrOp x = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(3));
+
+    // These two stores are dead, but R1 also becomes a restore location for %2 (x) from R3
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), x);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), build.constDouble(5.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+
+    // Interrupt will spill %2 (x) into its restorable location R3
+    build.inst(IrCmd::INTERRUPT, build.constUint(0));
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tnumber), build.vmExit(0));
+
+    IrOp y = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), y);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), y);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(4));
+    updateUseCounts(build.function);
+
+    std::string result = lower();
+
+    // Truncate the output to the interesting part
+    if (size_t pos = result.find("bb_exit_1:"); pos != std::string::npos)
+        result = result.substr(pos);
+
+    // Exit sync restore order is R3 {5.0}, R1 {x}, so before we store to R3, we must restore %2 (x) which is in R3
+    CHECK_EQ(
+        "\n" + result,
+        R"(
+bb_exit_1:
+.L15:
+ vmovsd      xmm0,qword ptr [r14+030h]
+  ; restore %2 (double xmm0) from R3
+  STORE_DOUBLE R3, 5
+ vmovsd      xmm1,qword ptr [.start-8]
+ vmovsd      qword ptr [r14+030h],xmm1
+  STORE_TAG R1, tnumber
+ mov         dword ptr [r14+01Ch],3
+  STORE_DOUBLE R1, %2
+  ; %10 can no longer be restored from R1
+ vmovsd      qword ptr [r14+010h],xmm0
+  JUMP exit(0)
+ jmp         .L12
+; interrupt handlers
+.L13:
+ mov         eax,1
+ lea         rbx,.L14
+ jmp         .L5
+; exit handlers
+.L12:
+ mov         edx,0
+ jmp         .L1
+.L18:
+ ud2
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "LazyHintNotMaterializedInsideScopedSpills")
+{
+    ScopedFastFlag luauCodegenScopedSpillKeepLazy{FFlag::LuauCodegenScopedSpillKeepLazy, true};
+
+    options.includeRegSpills = true;
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    build.beginBlock(entry);
+
+    IrOp d = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp i = build.inst(IrCmd::NUM_TO_INT, d);
+
+    // Kill R1 as a potential non-lazy restore location for 'd'
+    IrOp doubled = build.inst(IrCmd::ADD_NUM, d, d);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), doubled);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+
+    // Dead store to R4 to create a lazy restore location
+    IrOp roundtrip = build.inst(IrCmd::INT_TO_NUM, i);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(4), roundtrip);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(4), build.constTag(tnumber));
+
+    build.inst(IrCmd::CHECK_GC);
+
+    build.inst(IrCmd::INTERRUPT, build.constUint(0));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), roundtrip);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(2));
+    updateUseCounts(build.function);
+
+    // Both CHECK_GC and INTERRUPT should have a lazy evict of xmm0 into R4
+    CHECK_EQ(
+        "\n" + lower(),
+        R"(
+; align 32 using ud2
+bb_0:
+.L11:
+  %0 = LOAD_DOUBLE R1
+ vmovsd      xmm0,qword ptr [r14+010h]
+  ; %0 can be restored from R1
+  %1 = NUM_TO_INT %0
+ vcvttsd2si  eax,xmm0
+  ; %1 can be restored from R1 as int
+  %2 = ADD_NUM %0, %0
+ vaddsd      xmm0,xmm0,xmm0
+  STORE_DOUBLE R1, %2
+  ; %0 can no longer be restored from R1
+  ; %1 can no longer be restored from R1 as int
+ vmovsd      qword ptr [r14+010h],xmm0
+  STORE_TAG R1, tnumber
+ mov         dword ptr [r14+01Ch],3
+  %5 = INT_TO_NUM %1
+ vcvtsi2sd   xmm0,xmm0,eax
+  ; %5 has a lazy restore location R4
+  CHECK_GC
+ mov         rax,qword ptr [r15+<offset>]
+ mov         rdx,qword ptr [rax+<offset>]
+ cmp         rdx,qword ptr [rax+<offset>]
+ jb          .L12
+ mov         rcx,r15
+ mov         edx,1
+ vmovsd      qword ptr [r14+040h],xmm0
+ mov         dword ptr [r14+04Ch],0
+  ; evict %5 (double xmm0) into R4 [lazy]
+ call        qword ptr [r13+<offset>]
+ mov         r14,qword ptr [r15+<offset>]
+ vmovsd      xmm0,qword ptr [r14+040h]
+  ; restore %5 (double xmm0) from R4
+.L12:
+  INTERRUPT 0u
+ vmovsd      qword ptr [r14+040h],xmm0
+ mov         dword ptr [r14+04Ch],0
+  ; evict %5 (double xmm0) into R4 [lazy]
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
+ jne         .L13
+.L14:
+  STORE_DOUBLE R2, %5
+ vmovsd      xmm0,qword ptr [r14+040h]
+  ; restore %5 (double xmm0) from R4
  vmovsd      qword ptr [r14+020h],xmm0
   STORE_TAG R2, tnumber
  mov         dword ptr [r14+02Ch],3

@@ -88,7 +88,7 @@ struct FrontendFixture : BuiltinsFixture
 
     TypeId parseType(std::string_view src)
     {
-        return getFrontend().parseType(allocator, nameTable, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, arena, src);
+        return getFrontend().parseType(allocator, nameTable, NotNull{&ice}, TypeCheckLimits{}, arena, src);
     }
 };
 

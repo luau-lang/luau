@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
+LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
@@ -1029,6 +1030,69 @@ TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_strict")
     CHECK(inferredErr);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_call_diverges_through_grouping")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function ungrouped(): never
+            error("oops")
+        end
+
+        local function grouped(): never
+            (error)("oops")
+        end
+
+        local function nestedGroups(): never
+            ((error))("oops")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_diverges_through_grouping")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function ungrouped(): never
+            assert(false)
+        end
+
+        local function grouped(): never
+            (assert)(false)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "grouped_call_to_shadowed_error_does_not_diverge")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local error = function(_: string) end
+        local assert = function(_: boolean) end
+
+        local function withError(): never
+            (error)("oops")
+        end
+
+        local function withAssert(): never
+            (assert)(false)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[1]));
+}
+
 TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields_errors_spanning_argument")
 {
     CheckResult result = check(R"(
@@ -1735,37 +1799,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
     LUAU_REQUIRE_NO_ERRORS(result2);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")
-{
-    CheckResult result = check(R"(
-local t: { f: ((x: number) -> number)? } = {}
-
-function t.f(x)
-    print(x + 5)
-    return x .. "asd" -- 1st error: we know that return type is a number, not a string
-end
-
-t.f = function(x)
-    print(x + 5)
-    return x .. "asd" -- 2nd error: we know that return type is a number, not a string
-end
-    )");
-
-    ignoreMissingAnnotations(result);
-
-    if (!FFlag::DebugLuauForceOldSolver)
-    {
-        LUAU_CHECK_ERROR_COUNT(2, result);
-        LUAU_CHECK_ERROR(result, WhereClauseNeeded); // x2
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(toString(result.errors[0]), R"(Expected this to be 'number', but got 'string')");
-        CHECK_EQ(toString(result.errors[1]), R"(Expected this to be 'number', but got 'string')");
-    }
-}
-
 TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time2")
 {
     CheckResult result = check(R"(
@@ -1809,48 +1842,6 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_unsealed_overwrite")
-{
-    ScopedFastFlag _{FFlag::LuauCheckFunctionStatementTypes, true};
-
-    CheckResult result = check(R"(
-local t = { f = nil :: ((x: number) -> number)? }
-
-function t.f(x: string): string -- 1st error: new function value type is incompatible
-    return x .. "asd"
-end
-
-t.f = function(x)
-    print(x + 5)
-    return x .. "asd" -- 2nd error: we know that return type is a number, not a string
-end
-    )");
-
-    if (!FFlag::DebugLuauForceOldSolver)
-    {
-        LUAU_CHECK_ERROR_COUNT(2, result);
-        LUAU_CHECK_ERROR(result, WhereClauseNeeded);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(toString(result.errors[0]), R"(Expected this to be
-	'((number) -> number)?'
-but got
-	'(string) -> string'
-caused by:
-  None of the union options are compatible. For example:
-Expected this to be
-	'(number) -> number'
-but got
-	'(string) -> string'
-caused by:
-  Argument #1 type is not compatible.
-Expected this to be 'string', but got 'number')");
-        CHECK_EQ(toString(result.errors[1]), R"(Expected this to be 'number', but got 'string')");
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")

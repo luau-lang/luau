@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauFastpcallInterrupt)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 namespace Luau
 {
@@ -1890,6 +1891,12 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
+    if (FFlag::DebugLuauUserDefinedClassesRuntime && bcTypes.a == LBC_TYPE_OBJECT)
+    {
+        build.inst(IrCmd::FALLBACK_SETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+        return;
+    }
+
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
 
     if (isUserdataBytecodeType(bcTypes.a))
@@ -2222,6 +2229,49 @@ void translateInstCmpProto(IrBuilder& build, const Instruction* pc, int pcpos)
     // Fallthrough in original bytecode is implicit, so we start next internal block here
     if (build.isInternalBlock(next))
         build.beginBlock(next);
+}
+
+
+void translateInstConstruct(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+    uint32_t aux = pc[1];
+
+    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + getOpLength(LOP_CONSTRUCT)));
+    build.inst(IrCmd::CONSTRUCT, build.vmReg(ra), build.vmReg(rb), build.constUint(aux));
+}
+
+IrOp translateFinConstruct(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int source = LUAU_INSN_A(*pc);
+    int skip = LUAU_INSN_C(*pc);
+
+    Instruction call = pc[skip + 1];
+    CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+    int ra = LUAU_INSN_A(call);
+
+    int nresults = LUAU_INSN_C(call) - 1;
+
+    IrOp fallback = build.fallbackBlock(pcpos);
+
+    // Mark as used so the register is live-in inside the fallback
+    build.inst(IrCmd::MARK_USED, build.vmReg(ra), build.constInt(1));
+
+    build.loadAndCheckTag(build.vmReg(source), LUA_TOBJECT, fallback);
+
+    IrOp value = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(source));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), value);
+
+    for (int i = 1; i < nresults; ++i)
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra + i), build.constTag(LUA_TNIL));
+
+    if (nresults == LUA_MULTRET)
+        build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(1));
+    else
+        build.inst(IrCmd::MARK_DEAD, build.vmReg(ra + nresults), build.constInt(-1));
+
+    return fallback;
 }
 
 } // namespace CodeGen

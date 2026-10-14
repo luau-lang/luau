@@ -1,0 +1,4 @@
+./analysis/singletons/bidirectionally_infer_indexers_errored.luau(4,6): TypeError: Expected this to be 'number', but got '"foo"'
+./analysis/singletons/bidirectionally_infer_indexers_errored.luau(5,6): TypeError: Expected this to be 'number', but got '"bar"'
+./analysis/singletons/bidirectionally_infer_indexers_errored.luau(6,6): TypeError: Expected this to be 'number', but got '"toto"'
+./analysis/singletons/bidirectionally_infer_indexers_errored.luau(3,7): LocalUnused: Variable 'getOpposite' is never used; prefix with '_' to silence

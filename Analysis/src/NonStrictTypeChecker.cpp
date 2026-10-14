@@ -24,6 +24,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -170,6 +171,7 @@ struct NonStrictTypeChecker
     Subtyping subtyping;
     NotNull<const DataFlowGraph> dfg;
     DenseHashSet<TypeId> noTypeFunctionErrors;
+    TypeFunctionAbsenceCache typeFunctionAbsenceCache;
     std::vector<NotNull<Scope>> stack;
     DenseHashMap<TypeId, TypeId> cachedNegations;
 
@@ -250,7 +252,10 @@ struct NonStrictTypeChecker
             return instance;
 
         TypeFunctionContext context{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
-        ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
+        ErrorVec errors = reduceTypeFunctions(
+                              instance, location, NotNull{&context}, true, FFlag::LuauTypeFunctionsAbsenceCache ? &typeFunctionAbsenceCache : nullptr
+        )
+                              .errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);

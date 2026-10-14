@@ -24,11 +24,13 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauCompileTableFoldFix)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCompileCleanBlockDeadClose)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileMoveElision)
+LUAU_FASTFLAG(LuauCompileMoveElisionFix)
 LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauCompileLoopUnrollZero)
@@ -1011,11 +1013,9 @@ K10: class Cat (props: 1, methods: 2)
     K4 ['__init']
 K11: 'print'
 K12: print
-LOADNIL R0
-LOADNIL R1
 NEWCLASS R0 no_base K5 1 [class Animal (props: 1, methods: 2)]
-DUPCLOSURE R2 K2 ['live']
-NEWCLASSMEMBER R0 R2 ['live']
+DUPCLOSURE R1 K2 ['live']
+NEWCLASSMEMBER R0 R1 ['live']
 NEWCLASS R1 R0 K10 0 [class Cat (props: 1, methods: 2)]
 DUPCLOSURE R2 K8 ['describe']
 NEWCLASSMEMBER R1 R2 ['describe']
@@ -10134,6 +10134,36 @@ CLOSEUPVALS R1
 RETURN R0 2
 )"
     );
+
+    ScopedFastFlag luauCompileMoveElisionFix{FFlag::LuauCompileMoveElisionFix, true};
+
+    // Target register cannot be used if it's still needed to evaluate the argument
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local f = ...
+local function id(v) return v end
+
+local x = {42}
+x = id(f(x))
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+NEWTABLE R2 0 1
+LOADN R3 42
+SETLIST R2 R3 1 [1]
+MOVE R3 R0
+MOVE R4 R2
+CALL R3 1 1
+MOVE R2 R3
+RETURN R2 1
+)"
+    );
 }
 
 TEST_CASE("InlineNoElideWhenNoTarget")
@@ -12229,7 +12259,6 @@ TEST_CASE("ClassDeclBasic")
     )";
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-LOADNIL R0
 NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
 GETGLOBAL R1 K5 ['print']
 MOVE R2 R0
@@ -12265,7 +12294,6 @@ RETURN R1 1
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(R"(
-LOADNIL R0
 NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['magnitude']
@@ -12306,7 +12334,6 @@ RETURN R0 0
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(res1 == R"(
-LOADNIL R0
 NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['print']
@@ -12343,7 +12370,6 @@ RETURN R0 0
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(res1 == R"(
-LOADNIL R0
 NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['__init']
@@ -12352,78 +12378,6 @@ LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
 RETURN R1 1
 )");
-}
-
-TEST_CASE("ClassDeclHoistingForwardReference")
-{
-    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-
-    std::string source = R"(
-        local ref = Point
-        class Point
-            public x
-        end
-    )";
-
-    auto res = "\n" + compileFunction(source.c_str(), 0, 0, 0);
-    CHECK(R"(
-LOADNIL R0
-MOVE R1 R0
-NEWCLASS R0 no_base K3 0 [class Point (props: 1, methods: 1)]
-RETURN R0 0
-)" == res);
-}
-
-TEST_CASE("ClassDeclHoistingNestedFunctionUpvalCapture")
-{
-    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-
-    std::string source = R"(
-        class Point
-            public x
-        end
-        local function usePoint()
-            return Point
-        end
-    )";
-
-    auto inner = "\n" + compileFunction(source.c_str(), 0, 0, 0);
-    CHECK(R"(
-GETUPVAL R0 U0
-RETURN R0 1
-)" == inner);
-    auto outer = "\n" + compileFunction(source.c_str(), 1, 0, 0);
-    CHECK(outer == R"(
-LOADNIL R0
-NEWCLASS R0 no_base K3 0 [class Point (props: 1, methods: 1)]
-NEWCLOSURE R1 P0
-CAPTURE REF R0
-CLOSEUPVALS R0
-RETURN R0 0
-)");
-}
-
-TEST_CASE("ClassDeclHoistingForwardWriteProducesError")
-{
-    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-
-    std::string source = R"(
-        Point = nil
-        class Point
-        public x
-        end
-    )";
-
-    try
-    {
-        compileFunction(source.c_str(), 0, 0, 0);
-        FAIL("Expected compile error");
-    }
-    catch (const std::exception& e)
-    {
-        std::string msg = e.what();
-        CHECK(msg == "'Point' refers to a class and cannot be used as a variable name (defined on line 3)");
-    }
 }
 
 TEST_CASE("IntegerType")
@@ -12948,6 +12902,77 @@ LOADN R1 3
 RETURN R1 1
 )"
     );
+
+    ScopedFastFlag luauCompileTableFoldFix{FFlag::LuauCompileTableFoldFix, true};
+
+    // table used in a binary expression can escape through a metamethod
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local unknown = ...
+local t = { a = 4 }
+local x = unknown + t
+return t.a
+)"),
+        R"(
+GETVARARGS R0 1
+DUPTABLE R1 2
+ADD R2 R0 R1
+GETTABLEKS R3 R1 K0 ['a']
+RETURN R3 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local unknown = ...
+local t = { a = 4 }
+unknown += t
+return t.a
+)"),
+        R"(
+GETVARARGS R0 1
+DUPTABLE R1 2
+ADD R0 R0 R1
+GETTABLEKS R2 R1 K0 ['a']
+RETURN R2 1
+)"
+    );
+
+    // Some of the metamethods will not be called on a constant table
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local unknown = ...
+local t = { a = 4 }
+local x = unknown > t
+return t.a
+)"),
+        R"(
+GETVARARGS R0 1
+DUPTABLE R1 2
+JUMPIFLT R1 R0 L0
+LOADB R2 0 +1
+L0: LOADB R2 1
+L1: LOADN R3 4
+RETURN R3 1
+)"
+    );
+
+    // table used as a key can escape through a metamethod
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local unknown = ...
+local t = { a = 4 }
+local x = unknown[t]
+return t.a
+)"),
+        R"(
+GETVARARGS R0 1
+DUPTABLE R1 2
+GETTABLE R2 R0 R1
+GETTABLEKS R3 R1 K0 ['a']
+RETURN R3 1
+)"
+    );
 }
 
 TEST_CASE("FoldConstTablePropsOrAnd")
@@ -13318,7 +13343,6 @@ export class Point
 end
 )"),
         R"(
-LOADNIL R0
 NEWTABLE R1 0 0
 NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
 SETTABLEKS R0 R1 K0 ['Point']
@@ -13348,7 +13372,6 @@ end
                    2
                ),
         R"(
-LOADNIL R0
 NEWTABLE R1 0 0
 NEWCLASS R0 no_base K8 0 [class Point (props: 2, methods: 3)]
 DUPCLOSURE R2 K3 ['getX']
@@ -13377,7 +13400,6 @@ local p = Point.new({x = 1, y = 2})
                    2
                ),
         R"(
-LOADNIL R0
 NEWTABLE R1 0 0
 NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
 GETTABLEKS R2 R0 K5 ['new']
@@ -13502,8 +13524,6 @@ print(Cat)
 
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-LOADNIL R0
-LOADNIL R1
 NEWCLASS R0 no_base K3 1 [class Animal (props: 1, methods: 1)]
 NEWCLASS R1 R0 K6 0 [class Cat (props: 1, methods: 1)]
 GETGLOBAL R2 K7 ['print']
@@ -13554,11 +13574,9 @@ RETURN R1 1
     // Function 2: main chunk
     auto res2 = "\n" + compileFunction(source.c_str(), 2, 0, 0);
     CHECK(R"(
-LOADNIL R0
-LOADNIL R1
 NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
-NEWCLOSURE R2 P0
-NEWCLASSMEMBER R0 R2 ['live']
+NEWCLOSURE R1 P0
+NEWCLASSMEMBER R0 R1 ['live']
 NEWCLASS R1 R0 K8 0 [class Cat (props: 1, methods: 2)]
 NEWCLOSURE R2 P1
 NEWCLASSMEMBER R1 R2 ['describe']
@@ -13591,9 +13609,6 @@ print(C)
 
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-LOADNIL R0
-LOADNIL R1
-LOADNIL R2
 NEWCLASS R0 no_base K3 1 [class A (props: 1, methods: 1)]
 NEWCLASS R1 R0 K6 1 [class B (props: 1, methods: 1)]
 NEWCLASS R2 R1 K9 0 [class C (props: 1, methods: 1)]
@@ -13622,8 +13637,6 @@ export class Cat extends Animal
 end
 )"),
         R"(
-LOADNIL R0
-LOADNIL R1
 NEWCLASS R0 no_base K3 1 [class Animal (props: 1, methods: 1)]
 NEWTABLE R2 0 0
 NEWCLASS R1 R0 K6 0 [class Cat (props: 1, methods: 1)]
@@ -13648,12 +13661,98 @@ class l0 extends _
 end
 )"),
         R"(
-LOADNIL R0
-LOADNIL R1
 NEWCLASS R0 no_base K2 0 [class _ (props: 0, methods: 1)]
 LOADNIL R2
 NEWCLASS R1 R2 K4 0 [class l0 (props: 0, methods: 1)]
 RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassConstruction")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0Constants(R"(
+local x, y = ...
+class Point
+    public x
+    public y
+end
+
+local a = Point{x = 1}
+local b = Point{x = 2, y = 3}
+local c = Point{x = 3, y = x}
+local d = Point{x = x * y, y = x - y}
+return a, b, c, d
+)"),
+        R"(
+K0: 'Point'
+K1: 'x'
+K2: 'y'
+K3: '__init'
+K4: class Point (props: 2, methods: 1)
+  props:
+    K1 ['x']
+    K2 ['y']
+  methods:
+    K3 ['__init']
+K5: 1
+K6: {['x'] = 1 #0} sizenode=1
+K7: 2
+K8: 3
+K9: {['x'] = 2 #1, ['y'] = 3 #0} sizenode=2
+K10: {['x'] = 3 #1, ['y'] #0} sizenode=2
+K11: {['x'] #1, ['y'] #0} sizenode=2
+slot 0: shape K6
+slot 1: shape K9
+slot 2: shape K10
+slot 3: shape K11
+GETVARARGS R0 2
+NEWCLASS R2 no_base K4 0 [class Point (props: 2, methods: 1)]
+MOVE R3 R2
+CONSTRUCT R4 R3 slot 0
+FINCONSTRUCT R4 L0
+CALL R3 1 1
+L0: MOVE R4 R2
+CONSTRUCT R5 R4 slot 1
+FINCONSTRUCT R5 L1
+CALL R4 1 1
+L1: MOVE R5 R2
+CONSTRUCT R6 R5 slot 2
+SETTABLEKS R0 R6 K2 ['y']
+FINCONSTRUCT R6 L2
+CALL R5 1 1
+L2: MOVE R6 R2
+CONSTRUCT R7 R6 slot 3
+MUL R8 R0 R1
+SETTABLEKS R8 R7 K1 ['x']
+SUB R8 R0 R1
+SETTABLEKS R8 R7 K2 ['y']
+FINCONSTRUCT R7 L3
+CALL R6 1 1
+L3: RETURN R3 4
+)"
+    );
+}
+
+TEST_CASE("NoFastcallConstruction")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag luauCompileFastpcall{FFlag::LuauCompileFastpcall, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+pcall{}
+)"),
+        R"(
+NEWTABLE R1 0 0
+FASTPCALL pcall L0
+GETIMPORT R0 1 [pcall]
+CALL R0 1 0
+L0: RETURN R0 0
 )"
     );
 }
