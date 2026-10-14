@@ -316,4 +316,12 @@ end
 
 assert(pcallThenPcall(ok_simple, err_simple) == 100 * -1)
 
+do
+    local co = coroutine.create(function() return pcallThenPcall(yield_then_err, yield_then_ok) end)
+
+    assert(resume(co) == 25)
+    assert(resume(co) == 15)
+    assert(resume(co) == -1 * 5)
+end
+
 return "OK"

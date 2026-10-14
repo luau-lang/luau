@@ -395,7 +395,6 @@ bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
  */
 bool isBlocked(TypeId ty);
 
-
 /**
  * **YOU SHOULD PROBABLY NOT USE THIS FUNCTION.**
  *

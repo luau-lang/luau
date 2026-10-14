@@ -1,0 +1,3 @@
+./analysis/singletons/indexing_on_union_of_string_singletons.luau(4,11): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+_luau_print (2, 18): "bye" | "hi"
+

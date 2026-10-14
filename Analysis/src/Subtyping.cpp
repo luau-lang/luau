@@ -3091,7 +3091,7 @@ SubtypingResult Subtyping::checkGenericBounds(
     boundsResult.reasoning.clear();
 
     if (res == NormalizationResult::False)
-        result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+        result.genericBoundsMismatches.emplace_back(std::string(genericName), bounds.lowerBound, bounds.upperBound);
     else if (!boundsResult.isSubtype)
     {
         // Check if the bounds are error suppressing before reporting a mismatch
@@ -3103,7 +3103,7 @@ SubtypingResult Subtyping::checkGenericBounds(
             // intentionally fallthrough here since we couldn't prove this was error-suppressing
             [[fallthrough]];
         case ErrorSuppression::DoNotSuppress:
-            result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+            result.genericBoundsMismatches.emplace_back(std::string(genericName), bounds.lowerBound, bounds.upperBound);
             break;
         default:
             LUAU_ASSERT(0);

@@ -79,4 +79,86 @@ do
     assert(not ran_first)
 end
 
+do
+    local co = coroutine.create(function()
+        coroutine.yield("ignored")
+        error("unreachable")
+    end)
+
+    local called = false
+    coroutine.finally(co, function(status, ...)
+        assert(status == "cancelled")
+        assert(select("#", ...) == 0)
+        assert(coroutine.status(co) == "dead")
+        called = true
+    end)
+
+    hostresume(co)
+
+    local s, r = hostcancel(co)
+    assert(s)
+    assert(r == nil)
+    assert(called)
+end
+
+do
+    local co = coroutine.create(function() error("unreachable") end)
+
+    local called = false
+    coroutine.finally(co, function(status, ...)
+        assert(status == "cancelled")
+        assert(select("#", ...) == 0)
+        assert(coroutine.status(co) == "dead")
+        called = true
+    end)
+
+    local s, r = hostcancel(co)
+    assert(s)
+    assert(r == nil)
+    assert(called)
+end
+
+do
+    local co = coroutine.create(function() end)
+
+    local ran_first, ran_second = false, false
+    coroutine.finally(co, function()
+        ran_first = true
+    end)
+    coroutine.finally(co, function(status, ...)
+        assert(status == "cancelled")
+        assert(select("#", ...) == 0)
+        ran_second = true
+        error("cancel callback error")
+    end)
+
+    local s, r = hostcancel(co)
+    assert(not s)
+    assert(string.find(r, "cancel callback error"))
+    assert(ran_second)
+    assert(not ran_first)
+end
+
+-- finalizer function can only be called once
+do
+    local co = coroutine.create(function()
+        return 2
+    end)
+
+    local checked
+    coroutine.finally(co, function(status, value)
+        local finalizer = debug.info(2, "f")
+        local s, r = pcall(finalizer)
+        assert(not s)
+        assert(r == "finalizer function has already been called")
+        checked = true
+    end)
+
+    local s, r = hostresume(co)
+    assert(s)
+    assert(r == 2)
+
+    assert(checked)
+end
+
 return 'OK'

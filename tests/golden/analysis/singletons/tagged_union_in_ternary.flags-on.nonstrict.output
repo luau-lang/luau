@@ -1,0 +1,1 @@
+./analysis/singletons/tagged_union_in_ternary.luau(5,16): FunctionUnused: Function 'readFromDB' is never used; prefix with '_' to silence

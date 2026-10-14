@@ -6,6 +6,8 @@
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 
+#include <exception>
+
 namespace Luau
 {
 

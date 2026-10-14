@@ -99,6 +99,8 @@ struct IrRegAllocX64
 
     uint32_t currInstIdx = ~0u;
 
+    bool keepLazyLocations = false;
+
     std::array<bool, 16> freeGprMap;
     std::array<uint32_t, 16> gprInstUsers;
     std::array<bool, 16> freeXmmMap;
@@ -114,6 +116,8 @@ struct IrRegAllocX64
     DenseHashMap<uint32_t, ExitSyncArgsX64> exitSyncArgs;
 
     uint32_t allocActionCount = 0;
+
+    bool error = false;
 };
 
 struct ScopedRegX64

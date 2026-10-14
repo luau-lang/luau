@@ -339,6 +339,14 @@ struct BcGetImport : public BcInstHelper<VmConst, BcGetImport<VmConst>>
     }
 };
 
+template<typename VmConst = BcVmConst>
+struct BcConstruct : public BcInstHelper<VmConst, BcConstruct<VmConst>>
+{
+    static const LuauOpcode opcode = LOP_CONSTRUCT;
+    BC_OP(Class, 0)
+    INT_IMM(FbSlot, 1)
+};
+
 #undef INT_IMM
 #undef BC_OP
 

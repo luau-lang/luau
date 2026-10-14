@@ -259,12 +259,7 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 
     ModulePtr currentModule = std::make_shared<Module>(std::make_shared<TypeArena>());
     Anyification anyification(
-        currentModule->internalTypes.get(),
-        getFrontend().globals.globalScope,
-        getBuiltins(),
-        &getFrontend().iceHandler,
-        getBuiltins()->anyType,
-        getBuiltins()->anyTypePack
+        currentModule->internalTypes.get(), getFrontend().globals.globalScope, getBuiltins(), &ice, getBuiltins()->anyType, getBuiltins()->anyTypePack
     );
     std::optional<TypeId> any = anyification.substitute(root);
 

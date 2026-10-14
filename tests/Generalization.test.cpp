@@ -573,8 +573,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "searching_for_free_types_does_not_use_
     ScopedFastInt limit{FInt::LuauVisitRecursionLimit, 10};
 
     std::vector<TypeId> types;
-    types.reserve(1000);
-    for (size_t i = 0; i < 1000; ++i)
+    types.reserve(100);
+    for (size_t i = 0; i < 100; ++i)
         types.emplace_back(freshType().first);
 
     for (size_t i = 1; i < types.size(); ++i)

@@ -10,13 +10,15 @@
 #include "lobject.h"
 #include "lstate.h"
 
-#include <limits.h>
-#include <math.h>
-
 #include <algorithm>
 #include <array>
+#include <tuple>
+#include <string_view>
 #include <utility>
 #include <vector>
+
+#include <limits.h>
+#include <math.h>
 
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
@@ -24,10 +26,12 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNoZeroScale)
 LUAU_FLAGVERSION(LuauCodegenPropagateFallbackTags, 2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNoLinearFastpcall)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConstPropMinOffset)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLimitVersions)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLimitVersionsExtra)
 
 namespace Luau
 {
@@ -758,12 +762,14 @@ struct ConstPropState
                 base.offset -= int(*rhsNum) * base.scale;
                 base.op = OP_A(inst);
             }
-            else if (inst.cmd == IrCmd::MUL_NUM && lhsNum && isValidDoubleForImmediate(*lhsNum))
+            else if (inst.cmd == IrCmd::MUL_NUM && lhsNum && isValidDoubleForImmediate(*lhsNum) &&
+                     (!FFlag::LuauCodegenNoZeroScale || int(*lhsNum) != 0))
             {
                 base.scale *= int(*lhsNum);
                 base.op = OP_B(inst);
             }
-            else if (inst.cmd == IrCmd::MUL_NUM && rhsNum && isValidDoubleForImmediate(*rhsNum))
+            else if (inst.cmd == IrCmd::MUL_NUM && rhsNum && isValidDoubleForImmediate(*rhsNum) &&
+                     (!FFlag::LuauCodegenNoZeroScale || int(*rhsNum) != 0))
             {
                 base.scale *= int(*rhsNum);
                 base.op = OP_A(inst);
@@ -3272,6 +3278,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
         state.saveTag(OP_A(inst), LUA_TNUMBER);
         break;
+    case IrCmd::CONSTRUCT:
+        state.invalidate(OP_A(inst));
+        break;
     case IrCmd::GET_TABLE:
         state.invalidate(OP_A(inst));
         state.invalidateUserCall();
@@ -3466,6 +3475,31 @@ static void snapshotFallbackEntryTags(IrFunction& function, IrInst& inst, ConstP
     );
 }
 
+static void invalidateFallbackEntryTags(IrFunction& function, IrInst& inst)
+{
+    visitArguments(
+        inst,
+        [&](IrOp op)
+        {
+            if (op.kind != IrOpKind::Block)
+                return;
+
+            const IrBlock& block = function.blockOp(op);
+
+            if (block.kind != IrBlockKind::Fallback)
+                return;
+
+            uint32_t blockIdx = function.getBlockIndex(block);
+            std::vector<uint8_t>& tags = function.fallbackEntryTags[blockIdx];
+
+            if (tags.empty())
+                tags.push_back(kUnknownTag);
+            else
+                tags.assign(tags.size(), kUnknownTag);
+        }
+    );
+}
+
 static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& state)
 {
     IrFunction& function = build.function;
@@ -3483,13 +3517,26 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
 
         foldConstants(build, function, block, index);
 
+        if (FFlag::LuauCodegenLimitVersionsExtra)
+        {
+            // If limits have been reached, substitutions and folds still apply
+            if (state.reachedLimits)
+            {
+                // Fallback entry data is no longer available
+                if (FFlag::LuauCodegenPropagateFallbackTags && !isPseudo(inst.cmd))
+                    invalidateFallbackEntryTags(function, inst);
+
+                continue;
+            }
+        }
+
         if (FFlag::LuauCodegenPropagateFallbackTags && !isPseudo(inst.cmd))
             snapshotFallbackEntryTags(function, inst, state);
 
         constPropInInst(state, build, function, block, inst, index);
 
         // Optimizations might have killed the current block
-        if (block.kind == IrBlockKind::Dead || state.reachedLimits)
+        if (block.kind == IrBlockKind::Dead || (!FFlag::LuauCodegenLimitVersionsExtra && state.reachedLimits))
             break;
     }
 }
@@ -3518,13 +3565,19 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
         constPropInBlock(build, *block, state);
 
         // Optimizations might have killed the current block
-        if (block->kind == IrBlockKind::Dead || state.reachedLimits)
+        if (block->kind == IrBlockKind::Dead || (!FFlag::LuauCodegenLimitVersionsExtra && state.reachedLimits))
             break;
 
         // Blocks in a chain are guaranteed to follow each other
         // We force that by giving all blocks the same sorting key, but consecutive chain keys
         block->sortkey = startSortkey;
         block->chainkey = chainPos++;
+
+        if (FFlag::LuauCodegenLimitVersionsExtra)
+        {
+            if (state.reachedLimits)
+                break;
+        }
 
         IrInst& termInst = function.instructions[block->finish];
 
