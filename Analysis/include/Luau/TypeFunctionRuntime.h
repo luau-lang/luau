@@ -70,7 +70,6 @@ struct TypeFunctionPinnedType
     };
 };
 
-
 struct TypeFunctionBooleanSingleton
 {
     bool value = false;
@@ -152,6 +151,8 @@ struct TypeFunctionGenericTypePack
     bool isNamed = false;
 
     std::string name;
+
+    TypeFunctionTypeId genericType = nullptr;
 };
 
 using TypeFunctionTypePackVariant = Variant<TypeFunctionTypePack, TypeFunctionVariadicTypePack, TypeFunctionGenericTypePack>;
@@ -389,6 +390,7 @@ TypeFunctionType* allocateTypeFunctionType(lua_State* L, TypeFunctionTypeVariant
 TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunctionTypePackVariant type);
 
 void pushType(lua_State* L, TypeFunctionTypeId type);
+
 void pushTypePack(lua_State* L, TypeFunctionTypePackId tp);
 
 void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen = false);

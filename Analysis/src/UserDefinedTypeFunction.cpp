@@ -366,27 +366,14 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
             return {std::nullopt, Reduction::Erroneous, {}, {}, toString(runtimeBuilder->errors.front())};
     }
 
-    // Serialized together, so types shared between arguments are only serialized once
-    std::vector<TypeFunctionTypeId> serializedArgs;
-    if (FFlag::LuauUdtfReuseTypeUserdatas)
-    {
-        std::vector<TypeId> args;
-        args.reserve(typeParams.size());
-
-        for (TypeId typeParam : typeParams)
-            args.push_back(follow(typeParam));
-
-        serializedArgs = serialize(args, runtimeBuilder.get());
-    }
-
     // Push serialized arguments onto the stack
-    for (size_t i = 0; i < typeParams.size(); ++i)
+    for (auto typeParam : typeParams)
     {
-        TypeId ty = follow(typeParams[i]);
+        TypeId ty = follow(typeParam);
         // This is checked at the top of the function, and should still be true.
         LUAU_ASSERT(!isPending(ty, ctx->solver));
 
-        TypeFunctionTypeId serializedTy = FFlag::LuauUdtfReuseTypeUserdatas ? serializedArgs[i] : serialize(ty, runtimeBuilder.get());
+        TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
 
         // Check if there were any more errors while serializing.
         if (!runtimeBuilder->errors.empty())

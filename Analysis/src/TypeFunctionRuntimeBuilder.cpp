@@ -61,10 +61,6 @@ public:
 
     TypeFunctionTypeId serialize(TypeId ty)
     {
-        // Each type gets its own iteration limit when serializing several
-        if (FFlag::LuauUdtfReuseTypeUserdatas)
-            steps = 0;
-
         shallowSerialize(ty);
         run();
 
@@ -1131,22 +1127,6 @@ private:
 TypeFunctionTypeId serialize(TypeId ty, TypeFunctionRuntimeBuilderState* state)
 {
     return TypeFunctionSerializer(state).serialize(ty);
-}
-
-std::vector<TypeFunctionTypeId> serialize(const std::vector<TypeId>& tys, TypeFunctionRuntimeBuilderState* state)
-{
-    TypeFunctionSerializer serializer(state);
-    std::vector<TypeFunctionTypeId> result(tys.size(), nullptr);
-
-    for (size_t i = 0; i < tys.size(); ++i)
-    {
-        result[i] = serializer.serialize(tys[i]);
-
-        if (!result[i])
-            break;
-    }
-
-    return result;
 }
 
 TypeFunctionTypePackId serialize(TypePackId tp, TypeFunctionRuntimeBuilderState* state)

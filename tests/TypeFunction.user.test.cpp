@@ -3975,6 +3975,178 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_extern_types_reuse_type_instances")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_tables_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_reused(arg: type)
+            local key = types.singleton("inner")
+            local inner = types.newtable()
+            local meta = types.newtable()
+            local index = types.newtable()
+            local outer = types.newtable({ [key] = inner }, { index = index, readresult = inner, writeresult = inner }, meta)
+
+            assert(rawequal(outer:readproperty(key), inner))
+            assert(rawequal(outer:writeproperty(key), inner))
+            assert(rawequal(outer:properties()[key].read, inner))
+            assert(rawequal(outer:properties()[key].write, inner))
+            assert(rawequal((outer:indexer() :: any).writeresult, inner))
+            assert(rawequal((outer:indexer() :: any).readresult, inner))
+            assert(rawequal((outer:indexer() :: any).index, index))
+            assert(rawequal(outer:metatable(), meta))
+
+            return types.number
+        end
+
+        type T = check_reused<{ inner: { a: number }, [string]: { b: number } }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_functions_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_reused(arg: type)
+            local param = types.newtable()
+            local ret = types.newtable()
+            local fn = types.newfunction({ head = { param }, tail = param }, { head = { ret } })
+
+            assert(rawequal((fn:parameters().head :: any)[1], param))
+            assert(rawequal(fn:parameters().tail, param))
+            assert(rawequal((fn:returns().head :: any)[1], ret))
+
+            return types.number
+        end
+
+        type T = check_reused<({ a: number }) -> { b: number }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_generics_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_reused(arg: type)
+            local generic = types.generic("T")
+            local fn = types.newfunction({ head = { generic } }, { head = { generic } }, { generic })
+
+            assert(rawequal(fn:generics()[1], generic))
+            assert(rawequal((fn:parameters().head :: any)[1], generic))
+            assert(rawequal((fn:returns().head :: any)[1], generic))
+
+            return types.number
+        end
+
+        type T = check_reused<<T>(T) -> T>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unions_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_reused(arg: type)
+            local a = types.newtable()
+            local b = types.newtable()
+            local union = types.unionof(a, b)
+
+            assert(rawequal(union:components()[1], a))
+            assert(rawequal(union:components()[2], b))
+
+            assert(rawequal(arg:components()[1], arg:components()[1]))
+
+            return types.number
+        end
+
+        type T = check_reused<{ a: number } | { b: string }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersections_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_reused(arg: type)
+            local a = types.newtable()
+            local b = types.newtable()
+            local intersection = types.intersectionof(a, b)
+
+            assert(rawequal(intersection:components()[1], a))
+            assert(rawequal(intersection:components()[2], b))
+
+            assert(rawequal(arg:components()[1], arg:components()[1]))
+
+            return types.number
+        end
+
+        type T = check_reused<{ a: number } & { b: string }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negations_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_reused()
+            local inner = types.unionof(types.string, types.number)
+            local negation = types.negationof(inner)
+
+            assert(rawequal(negation:inner(), inner))
+
+            return types.number
+        end
+
+        type T = check_reused<>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_generic_packs_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_reused(arg: type)
+            local pack = types.generic("T", true)
+            local fn = types.newfunction({ tail = pack }, { tail = pack }, { pack })
+
+            assert(rawequal(fn:generics()[1], pack))
+            assert(rawequal(fn:parameters().tail, pack))
+            assert(rawequal(fn:returns().tail, pack))
+
+            return types.number
+        end
+
+        type T = check_reused<<T...>(T...) -> T...>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_argument_mutations_are_private")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
@@ -4006,7 +4178,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_argument_mutations_are_private")
     );
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_property_mutations_are_private")
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_properties_with_the_same_type_share_mutations")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
@@ -4016,18 +4188,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_property_mutations_are_private")
 
         type function two_keys(t)
             local a = t:readproperty(types.singleton("a")) :: type
-            local b = t:readproperty(types.singleton("b")) :: type
-            assert(not rawequal(a, b))
-
             a:setproperty(types.singleton("added"), types.boolean)
-            a:setproperty(types.singleton("again"), types.boolean)
-
-            return types.newtable({
-                [types.singleton("a")] = a,
-                [types.singleton("b")] = b,
-                [types.singleton("aReadAgain")] = t:readproperty(types.singleton("a")) :: type,
-                [types.singleton("t")] = t,
-            })
+            return t
         end
 
         local _: two_keys<{ a: T, b: T }> = 1
@@ -4036,10 +4198,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_property_mutations_are_private")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(
-        toString(tm->wantedType, {true}),
-        "{ a: { added: boolean, again: boolean, x: number }, aReadAgain: { x: number }, b: { x: number }, t: { a: { x: number }, b: { x: number } } }"
-    );
+    CHECK_EQ(toString(tm->wantedType, {true}), "{ a: { added: boolean, x: number }, b: { added: boolean, x: number } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_readproperty_and_writeproperty_return_the_property_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function xd(x)
+            x:readproperty(types.singleton("next")):setproperty(types.singleton("lol"), types.number)
+            x:writeproperty(types.singleton("next")):setproperty(types.singleton("written"), types.boolean)
+            return x
+        end
+
+        local _: xd<{ next: { lol: string } }> = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType, {true}), "{ next: { lol: number, written: boolean } }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_created_table_types_are_mutated_in_place")
@@ -4066,7 +4246,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_created_table_types_are_mutated_in_plac
     CHECK_EQ(toString(tm->wantedType, {true}), "{ inner: { a: number } }");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_children_of_created_table_types_are_copied_on_write")
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_children_of_created_table_types_are_mutated_in_place")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
@@ -4083,7 +4263,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_children_of_created_table_types_are_cop
             return types.newtable({
                 [types.singleton("inner")] = inner,
                 [types.singleton("outer")] = outer,
-                [types.singleton("read")] = read,
             })
         end
 
@@ -4093,10 +4272,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_children_of_created_table_types_are_cop
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(
-        toString(tm->wantedType, {true}),
-        "{ inner: { a: number }, outer: { inner: { a: number } }, read: { a: number, b: string } }"
-    );
+    CHECK_EQ(toString(tm->wantedType, {true}), "{ inner: { a: number, b: string }, outer: { inner: { a: number, b: string } } }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unionof_and_intersectionof_with_one_component_return_the_component")
