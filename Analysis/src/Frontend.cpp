@@ -42,15 +42,13 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 
-LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel4)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 LUAU_FLAGVERSION(LuauExportValueTypecheck, 2)
@@ -469,19 +467,6 @@ Frontend::Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* 
     , globalsForAutocomplete(builtinTypes, getLuauSolverMode())
     , configResolver(configResolver)
     , options(std::move(options))
-{
-}
-
-Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
-    : useNewLuauSolver(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old)
-    , builtinTypes(NotNull{&builtinTypes_})
-    , fileResolver(fileResolver)
-    , moduleResolver(this)
-    , moduleResolverForAutocomplete(this)
-    , globals(builtinTypes, getLuauSolverMode())
-    , globalsForAutocomplete(builtinTypes, getLuauSolverMode())
-    , configResolver(configResolver)
-    , options(options)
 {
 }
 
@@ -1935,11 +1920,8 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         module->astForInNextTypes.clear();
         module->astResolvedTypes.clear();
         module->astResolvedTypePacks.clear();
-        if (FFlag::LuauStrictVisitInstantiatedType)
-        {
-            module->astTypeReferenceLookupFailures.clear();
-            module->astTypePackReferenceLookupFailures.clear();
-        }
+        module->astTypeReferenceLookupFailures.clear();
+        module->astTypePackReferenceLookupFailures.clear();
         module->astCompoundAssignResultTypes.clear();
         module->astScopes.clear();
         module->upperBoundContributors.clear();

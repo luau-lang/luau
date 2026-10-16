@@ -1068,22 +1068,35 @@ struct ErrorConverter
     {
         switch (e.context)
         {
-            case InvalidClassExtension::ClassIsNotOpen:
-                return "Non-open class " + toString(e.baseClass) + " cannot be extended";
-            case InvalidClassExtension::BaseIsClassInstance:
-                return "Object of type " + toString(e.baseClass) + " cannot be extended because it is an object, not a class";
-            case InvalidClassExtension::NotAClass:
-                return "Cannot extend non-class of type " + toString(e.baseClass);
-            default:
-                LUAU_ASSERT(0);
-                return "Cannot extend non-class of type " + toString(e.baseClass);
+        case InvalidClassExtension::ClassIsNotOpen:
+            return "Non-open class " + toString(e.baseClass) + " cannot be extended";
+        case InvalidClassExtension::BaseIsClassInstance:
+            return "Object of type " + toString(e.baseClass) + " cannot be extended because it is an object, not a class";
+        case InvalidClassExtension::NotAClass:
+            return "Cannot extend non-class of type " + toString(e.baseClass);
+        default:
+            LUAU_ASSERT(0);
+            return "Cannot extend non-class of type " + toString(e.baseClass);
         }
     }
 
     std::string operator()(const IncompatibleClassMethodOverride& e) const
     {
-        return "Method '" + e.method + "' on class '" + e.className + "' is not a compatible override of the method inherited from superclass '" +
-               e.superName + "'";
+        if (e.method == "__eq" || e.method == "__lt" || e.method == "__le")
+        {
+            return "Illegal override of comparison metamethod '" + e.method + "' on class '" + e.className + "' inherited from superclass '" +
+                   e.superName + "'";
+        }
+        else
+        {
+            return "Method '" + e.method + "' on class '" + e.className + "' is not a compatible override of the method inherited from superclass '" +
+                   e.superName + "'";
+        }
+    }
+
+    std::string operator()(const IllegalClassPropertyOverride& e) const
+    {
+        return "Illegal override of property '" + e.property + "' on class '" + e.className + "' inherited from superclass '" + e.superName + "'";
     }
 };
 
@@ -1330,6 +1343,11 @@ bool InvalidClassExtension::operator==(const InvalidClassExtension& rhs) const
 bool IncompatibleClassMethodOverride::operator==(const IncompatibleClassMethodOverride& rhs) const
 {
     return method == rhs.method && className == rhs.className && superName == rhs.superName;
+}
+
+bool IllegalClassPropertyOverride::operator==(const IllegalClassPropertyOverride& rhs) const
+{
+    return property == rhs.property && className == rhs.className && superName == rhs.superName;
 }
 
 int TypeError::code() const
@@ -1839,6 +1857,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.baseClass = clone(e.baseClass);
     }
     else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
     {
     }
     else

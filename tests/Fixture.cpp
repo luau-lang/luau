@@ -776,10 +776,14 @@ void Fixture::limitStackSize(size_t size)
 
 void Fixture::ignoreMissingAnnotations(CheckResult& result)
 {
-    auto it = std::remove_if(result.errors.begin(), result.errors.end(), [](const TypeError& err)
-    {
-        return get<TypeAnnotationRequired>(err);
-    });
+    auto it = std::remove_if(
+        result.errors.begin(),
+        result.errors.end(),
+        [](const TypeError& err)
+        {
+            return get<TypeAnnotationRequired>(err);
+        }
+    );
     result.errors.erase(it, result.errors.end());
 }
 

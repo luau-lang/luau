@@ -30,6 +30,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
+LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 
 TEST_SUITE_BEGIN("RequireByStringTests");
 
@@ -789,6 +790,38 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnNonStringK
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_nonstringkey_a";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "Cannot access the exported field 'unknown'"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicTypeOnlyExportNonTableReturn")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCyclicRequireShortCircuit, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportedTypesParticipateInScc, true},
+    };
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_typeonly_a";
+    runProtectedRequire(path);
+    assertOutputContainsAll({
+        "false",
+        "cyclic_typeonly_a.luau:2: error while running module",
+        "cyclic_typeonly_b.luau:1: error while running module",
+    });
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicTypeOnlyExportNonTableReturn2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCyclicRequireShortCircuit, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportedTypesParticipateInScc, true},
+    };
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_typeonly_c";
+    runProtectedRequire(path);
+    assertOutputContainsAll({
+        "false",
+        "cyclic_typeonly_c.luau:2: error while running module",
+        "cyclic_typeonly_d.luau:1: error while running module",
+        });
 }
 
 TEST_SUITE_END();

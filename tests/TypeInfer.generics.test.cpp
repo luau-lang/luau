@@ -10,8 +10,6 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauSoundGenericMismatches)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 using namespace Luau;
 
@@ -61,8 +59,6 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function2")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_incompatible_argument")
 {
-    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
-
     CheckResult result = check(R"(
         local function call<T>(fn: (T) -> T)
             fn(nil)
@@ -82,8 +78,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_incompatible_argu
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_accepts_same_generic")
 {
-    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
-
     CheckResult result = check(R"(
         local function call<T>(fn: (T) -> T, value: T)
             return fn(value)
@@ -100,8 +94,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_accepts_same_generic")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_union_containing_generic")
 {
-    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
-
     CheckResult result = check(R"(
         local function call<T>(fn: (T) -> T, value: T | number)
             return fn(value)
@@ -117,8 +109,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_union_containing_
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_nested_in_table_accepts_incompatible_property")
 {
-    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
-
     CheckResult result = check(R"(
         local function call<T>(fn: ({ prop: T }) -> ())
             fn({ prop = nil })
@@ -133,7 +123,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_nested_in_table_accepts_i
     else
     {
         // FIXME(CLI-225132): This is unsound. The checker should reject `nil` because prop has type `T`.
-        LUAU_REQUIRE_NO_ERRORS(result); 
+        LUAU_REQUIRE_NO_ERRORS(result);
     }
 }
 
@@ -742,8 +732,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
 
 TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         function f<T>(...: T...)
             return ...
