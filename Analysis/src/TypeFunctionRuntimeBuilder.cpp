@@ -21,6 +21,7 @@
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAG(LuauUdtfReuseTypeUserdatas)
 
 namespace Luau
 {
@@ -153,25 +154,46 @@ private:
             switch (p->type)
             {
             case PrimitiveType::NilType:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType));
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[TypeFunctionPrimitiveType::NilType];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType));
                 break;
             case PrimitiveType::Boolean:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Boolean));
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[TypeFunctionPrimitiveType::Boolean];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Boolean));
                 break;
             case PrimitiveType::Number:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Number));
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[TypeFunctionPrimitiveType::Number];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Number));
                 break;
             case PrimitiveType::Integer:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Integer));
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[TypeFunctionPrimitiveType::Integer];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Integer));
                 break;
             case PrimitiveType::String:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[TypeFunctionPrimitiveType::String];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
                 break;
             case PrimitiveType::Thread:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[TypeFunctionPrimitiveType::Thread];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
                 break;
             case PrimitiveType::Buffer:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[TypeFunctionPrimitiveType::Buffer];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
                 break;
             case PrimitiveType::Function:
             case PrimitiveType::Table:
@@ -180,17 +202,43 @@ private:
             }
         }
         else if (get<UnknownType>(ty))
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionUnknownType{});
+        {
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                target = typeFunctionRuntime->pinnedTypes[TypeFunctionPinnedType::Unknown];
+            else
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionUnknownType{});
+        }
         else if (get<NeverType>(ty))
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionNeverType{});
+        {
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                target = typeFunctionRuntime->pinnedTypes[TypeFunctionPinnedType::Never];
+            else
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionNeverType{});
+        }
         else if (get<AnyType>(ty))
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionAnyType{});
+        {
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                target = typeFunctionRuntime->pinnedTypes[TypeFunctionPinnedType::Any];
+            else
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionAnyType{});
+        }
         else if (auto s = get<SingletonType>(ty))
         {
             if (auto bs = get<BooleanSingleton>(s))
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionSingletonType{TypeFunctionBooleanSingleton{bs->value}});
+            {
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->pinnedTypes[bs->value ? TypeFunctionPinnedType::TrueSingleton
+                                                                        : TypeFunctionPinnedType::FalseSingleton];
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionSingletonType{TypeFunctionBooleanSingleton{bs->value}});
+            }
             else if (auto ss = get<StringSingleton>(s))
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionSingletonType{TypeFunctionStringSingleton{ss->value}});
+            {
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = typeFunctionRuntime->cacheType(TypeFunctionSingletonType{TypeFunctionStringSingleton{ss->value}});
+                else
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionSingletonType{TypeFunctionStringSingleton{ss->value}});
+            }
             else
             {
                 state->errors.emplace_back(Location{}, UnsupportedType{ty});
@@ -724,7 +772,12 @@ private:
         else if (auto s = get<TypeFunctionSingletonType>(ty))
         {
             if (auto bs = get<TypeFunctionBooleanSingleton>(s))
-                target = state->ctx->arena->addType(SingletonType{BooleanSingleton{bs->value}});
+            {
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    target = bs->value ? state->ctx->builtins->trueType : state->ctx->builtins->falseType;
+                else
+                    target = state->ctx->arena->addType(SingletonType{BooleanSingleton{bs->value}});
+            }
             else if (auto ss = get<TypeFunctionStringSingleton>(s))
                 target = state->ctx->arena->addType(SingletonType{StringSingleton{ss->value}});
             else
