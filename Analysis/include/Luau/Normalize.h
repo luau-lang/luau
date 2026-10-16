@@ -401,7 +401,12 @@ private:
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     bool hasStringIndexer(const TableType* tt);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet);
-    std::optional<TypeId> DEPRECATED_intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet);
+    std::optional<TypeId> DEPRECATED_intersectionOfTables(
+        TypeId here,
+        TypeId there,
+        SeenTablePropPairs& seenTablePropPairs,
+        DenseHashSet<TypeId>& seenSet
+    );
     void intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSetTypes);
     void intersectTables(TypeIds& heres, const TypeIds& theres);
     std::optional<TypeId> intersectionOfFunctions(TypeId here, TypeId there);

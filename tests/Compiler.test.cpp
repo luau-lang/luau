@@ -26,25 +26,23 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCompileTableFoldFix)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
-LUAU_FASTFLAG(LuauCompileCleanBlockDeadClose)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileMoveElision)
+LUAU_FASTFLAG(LuauCompileNoDebugConst)
 LUAU_FASTFLAG(LuauCompileResolveAliasChains)
 LUAU_FASTFLAG(LuauCompileMoveElisionFix)
 LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauCompileLoopUnrollZero)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauOptimizeExportTable)
 LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
-LUAU_FASTFLAG(LuauCompileRecursiveAliases)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
+LUAU_FASTFLAG(LuauCompileReuseLowersLimit)
 
 using namespace Luau;
 
@@ -2757,8 +2755,6 @@ end
 // regression tests for validateCaptures which couldn't handle trailing dead instructions (cleaned up since)
 TEST_CASE("ValidateCapturesTrailingDeadCode")
 {
-    ScopedFastFlag luauCompileCleanBlockDeadClose{FFlag::LuauCompileCleanBlockDeadClose, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -3939,10 +3935,11 @@ TEST_CASE("DebugLocals")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
 
     const char* source = R"(
-function foo(e, f)
-    local a = 1
+function foo(e, f, x, y, z)
+    local a = 1 + x
     for i=1,3 do
         print(i)
     end
@@ -3950,12 +3947,12 @@ function foo(e, f)
         print(k, v)
     end
     do
-        local b = 2
+        local b = 2 + y
         print(b)
     end
     do
-        local c = 2
-        print(b)
+        local c = 2 + z
+        print(b) -- doesn't use 'c'
     end
     local function inner()
         return inner, a
@@ -3974,53 +3971,61 @@ end
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-local 0 (i): reg 5, start pc 5 line 5, end pc 9 line 5
-local 1 (k): reg 6, start pc 16 line 8, end pc 21 line 8
-local 2 (v): reg 7, start pc 16 line 8, end pc 21 line 8
-local 3 (b): reg 3, start pc 25 line 12, end pc 29 line 12
-local 4 (c): reg 3, start pc 31 line 16, end pc 36 line 16
-local 5 (e): reg 0, start pc 0 line 3, end pc 40 line 21
-local 6 (f): reg 1, start pc 0 line 3, end pc 40 line 21
-local 7 (a): reg 2, start pc 1 line 4, end pc 40 line 21
-local 8 (inner): reg 3, start pc 40 line 21, end pc 40 line 21
-3: LOADN R2 1
-4: LOADN R5 1
-4: LOADN R3 3
-4: LOADN R4 1
-4: FORNPREP R3 L1
-5: L0: GETIMPORT R6 1 [print]
-5: MOVE R7 R5
-5: CALLFB R6 1 0 [0]
-4: FORNLOOP R3 L0
-7: L1: GETIMPORT R3 3 [pairs]
-7: CALLFB R3 0 3 [1]
-7: FORGPREP_NEXT R3 L3
-8: L2: GETIMPORT R8 1 [print]
-8: MOVE R9 R6
-8: MOVE R10 R7
-8: CALLFB R8 2 0 [2]
-7: L3: FORGLOOP R3 L2 2
-11: LOADN R3 2
-12: GETIMPORT R4 1 [print]
-12: LOADN R5 2
-12: CALLFB R4 1 0 [3]
-15: LOADN R3 2
-16: GETIMPORT R4 1 [print]
-16: GETIMPORT R5 5 [b]
-16: CALLFB R4 1 0 [4]
-18: NEWCLOSURE R3 P0
-18: CAPTURE VAL R3
-18: CAPTURE VAL R2
-21: RETURN R2 1
+local 0 (i): reg 8, start pc 6 line 5, end pc 10 line 5
+local 1 (k): reg 9, start pc 17 line 8, end pc 22 line 8
+local 2 (v): reg 10, start pc 17 line 8, end pc 22 line 8
+local 3 (b): reg 6, start pc 27 line 12, end pc 31 line 12
+local 4 (c): reg 6, start pc 34 line 16, end pc 39 line 16
+local 5 (e): reg 0, start pc 0 line 3, end pc 43 line 21
+local 6 (f): reg 1, start pc 0 line 3, end pc 43 line 21
+local 7 (x): reg 2, start pc 0 line 3, end pc 43 line 21
+local 8 (y): reg 3, start pc 0 line 3, end pc 43 line 21
+local 9 (z): reg 4, start pc 0 line 3, end pc 43 line 21
+local 10 (a): reg 5, start pc 2 line 4, end pc 43 line 21
+local 11 (inner): reg 6, start pc 43 line 21, end pc 43 line 21
+3: LOADN R6 1
+3: ADD R5 R6 R2
+4: LOADN R8 1
+4: LOADN R6 3
+4: LOADN R7 1
+4: FORNPREP R6 L1
+5: L0: GETIMPORT R9 1 [print]
+5: MOVE R10 R8
+5: CALLFB R9 1 0 [0]
+4: FORNLOOP R6 L0
+7: L1: GETIMPORT R6 3 [pairs]
+7: CALLFB R6 0 3 [1]
+7: FORGPREP_NEXT R6 L3
+8: L2: GETIMPORT R11 1 [print]
+8: MOVE R12 R9
+8: MOVE R13 R10
+8: CALLFB R11 2 0 [2]
+7: L3: FORGLOOP R6 L2 2
+11: LOADN R7 2
+11: ADD R6 R7 R3
+12: GETIMPORT R7 1 [print]
+12: MOVE R8 R6
+12: CALLFB R7 1 0 [3]
+15: LOADN R7 2
+15: ADD R6 R7 R4
+16: GETIMPORT R7 1 [print]
+16: GETIMPORT R8 5 [b]
+16: CALLFB R7 1 0 [4]
+18: NEWCLOSURE R6 P0
+18: CAPTURE VAL R6
+18: CAPTURE VAL R5
+21: RETURN R5 1
 )");
 }
 
 TEST_CASE("DebugLocals2")
 {
+    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
+
     const char* source = R"(
-function foo(x)
+function foo(x, y)
     repeat
-        local a, b
+        local a, b = x, y
     until true
 end
 )";
@@ -4035,11 +4040,12 @@ end
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-local 0 (a): reg 1, start pc 2 line 6, no live range
-local 1 (b): reg 2, start pc 2 line 6, no live range
+local 0 (a): reg 2, start pc 2 line 6, no live range
+local 1 (b): reg 3, start pc 2 line 6, no live range
 local 2 (x): reg 0, start pc 0 line 4, end pc 2 line 6
-4: LOADNIL R1
-4: LOADNIL R2
+local 3 (y): reg 1, start pc 0 line 4, end pc 2 line 6
+4: MOVE R2 R0
+4: MOVE R3 R1
 6: RETURN R0 0
 )");
 }
@@ -4047,13 +4053,14 @@ local 2 (x): reg 0, start pc 0 line 4, end pc 2 line 6
 TEST_CASE("DebugLocals3")
 {
     ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
 
     const char* source = R"(
-function foo(x)
+function foo(x, y, z, w)
     repeat
-        local a, b
+        local a, b = x, y
         do continue end
-        local c, d = 2
+        local c, d = z, w
     until true
 end
 )";
@@ -4068,16 +4075,19 @@ end
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-local 0 (c): reg 3, start pc 5 line 8, no live range
-local 1 (d): reg 4, start pc 5 line 8, no live range
-local 2 (a): reg 1, start pc 2 line 5, end pc 4 line 6
-local 3 (b): reg 2, start pc 2 line 5, end pc 4 line 6
+local 0 (c): reg 6, start pc 5 line 8, no live range
+local 1 (d): reg 7, start pc 5 line 8, no live range
+local 2 (a): reg 4, start pc 2 line 5, end pc 4 line 6
+local 3 (b): reg 5, start pc 2 line 5, end pc 4 line 6
 local 4 (x): reg 0, start pc 0 line 4, end pc 5 line 8
-4: LOADNIL R1
-4: LOADNIL R2
+local 5 (y): reg 1, start pc 0 line 4, end pc 5 line 8
+local 6 (z): reg 2, start pc 0 line 4, end pc 5 line 8
+local 7 (w): reg 3, start pc 0 line 4, end pc 5 line 8
+4: MOVE R4 R0
+4: MOVE R5 R1
 5: RETURN R0 0
-6: LOADN R3 2
-6: LOADNIL R4
+6: MOVE R6 R2
+6: MOVE R7 R3
 8: RETURN R0 0
 )");
 }
@@ -4085,7 +4095,6 @@ local 4 (x): reg 0, start pc 0 line 4, end pc 5 line 8
 TEST_CASE("DebugLocalInlineUndoEmit")
 {
     ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-    ScopedFastFlag luauCompileUndoEmitAdjust{FFlag::LuauCompileUndoEmitAdjust, true};
     ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     const char* source = R"(
@@ -4133,7 +4142,6 @@ L1: RETURN R3 1
 TEST_CASE("DebugLocalInlineUndoEmit2")
 {
     ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-    ScopedFastFlag luauCompileUndoEmitAdjust{FFlag::LuauCompileUndoEmitAdjust, true};
 
     const char* source = R"(
 local function id(x) return x end
@@ -4555,8 +4563,6 @@ writeMany(b, 0, x, y, z, w, u, v)
 return b
 )"
     );
-
-    ScopedFastFlag luauCompileLoopUnrollZero{FFlag::LuauCompileLoopUnrollZero, true};
 
     CHECK_EQ(
         compileWithRemarks(R"(
@@ -5070,19 +5076,17 @@ TEST_CASE("OutOfLocals")
     std::string source;
 
     for (int i = 0; i < 200; ++i)
-    {
-        formatAppend(source, "local foo%d\n", i);
-    }
+        formatAppend(source, "local foo%d = ... * %d\n", i, i);
 
-    source += "local bar\n";
+    source += "local bar = ...\n";
 
-    Luau::CompileOptions options;
-    options.debugLevel = 2; // make sure locals aren't elided by requesting their debug info
+    for (int i = 0; i < 200; ++i)
+        formatAppend(source, "foo%d += 1\n", i);
 
     try
     {
         Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, source, options);
+        Luau::compileOrThrow(bcb, source);
 
         CHECK(!"Expected CompileError");
     }
@@ -5091,6 +5095,23 @@ TEST_CASE("OutOfLocals")
         CHECK_EQ(e.getLocation().begin.line + 1, 201);
         CHECK_EQ(std::string(e.what()), "Out of local registers when trying to allocate bar: exceeded limit 200");
     }
+}
+
+TEST_CASE("NoLimitOnReusedLocals")
+{
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+    ScopedFastFlag luauCompileReuseLowersLimit{FFlag::LuauCompileReuseLowersLimit, true};
+
+    std::string source;
+
+    for (int i = 0; i < 1000; ++i)
+        formatAppend(source, "local foo%d = ... * %d\n", i, i);
+
+    source += "local bar = ...\n";
+
+    Luau::BytecodeBuilder bcb;
+    Luau::compileOrThrow(bcb, source);
+    CHECK(!bcb.getBytecode().empty());
 }
 
 TEST_CASE("OutOfUpvalues")
@@ -7119,8 +7140,6 @@ L3: RETURN R0 0
 
 TEST_CASE("LoopUnrollEmpty")
 {
-    ScopedFastFlag luauCompileLoopUnrollZero{FFlag::LuauCompileLoopUnrollZero, true};
-
     // zero roundtrip loops are counted as zero-cost by the cost model and have to be zero-cost when compiled
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7778,7 +7797,6 @@ RETURN R2 1
 )"
     );
 
-    ScopedFastFlag luauCompileCleanBlockDeadClose{FFlag::LuauCompileCleanBlockDeadClose, true};
     ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     // note that mutation and capture might be inside internal control flow
@@ -11587,8 +11605,6 @@ end
 )"
     );
 
-    ScopedFastFlag luauCompileRecursiveAliases{FFlag::LuauCompileRecursiveAliases, true};
-
     CHECK_EQ(
         "\n" + compileTypeTable(R"(
 function foo(l0: t0, l1: number)
@@ -12526,10 +12542,12 @@ RETURN R0 1
 TEST_CASE("IntegerBcb")
 {
     ScopedFastFlag luauInteger{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
 
     const char* source = R"(
-function foo()
+function foo(x)
 local a = 123i
+if x then a = 456i end
 return a
 end)";
 
@@ -12541,14 +12559,15 @@ end)";
 
     options.typeInfoLevel = 1;
     options.optimizationLevel = 1;
-    options.debugLevel = 2;
 
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-R0: integer from 0 to 2
-LOADK R0 K0 [123]
-RETURN R0 1
+R1: integer from 0 to 4
+LOADK R1 K0 [123]
+JUMPIFNOT R0 L0
+LOADK R1 K1 [456]
+L0: RETURN R1 1
 )");
 }
 

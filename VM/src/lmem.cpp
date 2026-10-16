@@ -654,8 +654,9 @@ GCObject* luaM_newgcocaged_(lua_State* L, size_t nsize, uint8_t memcat, int tt, 
     }
     else
     {
-        lua_Page* page =
-            newpage<AllocationPath::BufferFrealloc, LUA_TBUFFER, false>(L, &g->allgcopages_cage, offsetof(lua_Page, data) + int(nsize), int(nsize), 1);
+        lua_Page* page = newpage<AllocationPath::BufferFrealloc, LUA_TBUFFER, false>(
+            L, &g->allgcopages_cage, offsetof(lua_Page, data) + int(nsize), int(nsize), 1
+        );
 
         block = &page->data;
         ASAN_UNPOISON_MEMORY_REGION(block, page->blockSize);

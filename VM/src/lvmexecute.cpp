@@ -20,8 +20,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
-LUAU_FASTFLAGVARIABLE(LuauBackedgeHeapCheck)
-LUAU_FLAGVERSION(LuauBackedgeHeapCheck, 2)
 LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
 
@@ -78,8 +76,7 @@ LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
 // Some external functions can cause an error, but never reallocate the stack; for these, VM_PROTECT_PC() is
 // a cheaper version of VM_PROTECT that can be called before the external call.
 #define VM_PROTECT_PC() L->ci->savedpc = pc
-#define VM_ASSERT_PC(pc) \
-    LUAU_ASSERT(unsigned(pc - L->ci->p->code) < unsigned(L->ci->p->sizecode));
+#define VM_ASSERT_PC(pc) LUAU_ASSERT(unsigned(pc - L->ci->p->code) < unsigned(L->ci->p->sizecode));
 
 #define VM_REG(i) (LUAU_ASSERT(unsigned(i) < unsigned(L->top - base)), &base[i])
 #define VM_KV(i) (LUAU_ASSERT(unsigned(i) < unsigned(L->ci->p->sizek)), &k[i])
@@ -189,8 +186,7 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
     LUAU_ASSERT(L->ci->top <= L->stack_last);
 
     lua_Debug ar;
-    ar.currentline =
-        cl->isC ? -1 : luaG_getline(L->ci->p, pcRel(L->ci->savedpc, L->ci->p));
+    ar.currentline = cl->isC ? -1 : luaG_getline(L->ci->p, pcRel(L->ci->savedpc, L->ci->p));
     ar.userdata = userdata;
 
     hook(L, &ar);
@@ -2540,8 +2536,7 @@ reentry:
             VM_CASE(LOP_FORNLOOP)
             {
                 VM_INTERRUPT();
-                if (FFlag::LuauBackedgeHeapCheck)
-                    VM_CHECK_GC(L);
+                VM_CHECK_GC(L);
                 VM_CASE_INSTRUCTION insn = *pc++;
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
                 LUAU_ASSERT(ttisnumber(ra + 0) && ttisnumber(ra + 1) && ttisnumber(ra + 2));
@@ -2691,8 +2686,7 @@ reentry:
             VM_CASE(LOP_FORGLOOP)
             {
                 VM_INTERRUPT();
-                if (FFlag::LuauBackedgeHeapCheck)
-                    VM_CHECK_GC(L);
+                VM_CHECK_GC(L);
                 VM_CASE_INSTRUCTION insn = *pc++;
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
                 uint32_t aux = *pc;
@@ -2907,8 +2901,7 @@ reentry:
 
                 // clone closure if the environment is not shared
                 // note: we save closure to stack early in case the code below wants to capture it by value
-                Closure* ncl =
-                    (kcl->env == cl->env) ? kcl : luaF_newLclosure(L, kcl->nupvalues, cl->env, getproto(kcl));
+                Closure* ncl = (kcl->env == cl->env) ? kcl : luaF_newLclosure(L, kcl->nupvalues, cl->env, getproto(kcl));
                 setclvalue(L, ra, ncl);
 
                 // this loop does three things:
@@ -2985,8 +2978,7 @@ reentry:
             VM_CASE(LOP_JUMPBACK)
             {
                 VM_INTERRUPT();
-                if (FFlag::LuauBackedgeHeapCheck)
-                    VM_CHECK_GC(L);
+                VM_CHECK_GC(L);
                 VM_CASE_INSTRUCTION insn = *pc++;
 
                 pc += LUAU_INSN_D(insn);
@@ -3008,8 +3000,7 @@ reentry:
             VM_CASE(LOP_JUMPX)
             {
                 VM_INTERRUPT();
-                if (FFlag::LuauBackedgeHeapCheck)
-                    VM_CHECK_GC(L);
+                VM_CHECK_GC(L);
                 VM_CASE_INSTRUCTION insn = *pc++;
 
                 pc += LUAU_INSN_E(insn);
@@ -3765,13 +3756,14 @@ reentry:
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
                 uint8_t super = LUAU_INSN_B(insn);
 
-                // Load and clone class object from constant table using offset in aux
+                // Load unreified class object from constant table using offset in aux
                 uint32_t aux = *pc++;
                 TValue* kv = VM_KV(aux);
 
                 VM_PROTECT_PC();
-                LuauClass* newcls = luaR_cloneclass(L, classvalue(kv));
-                setclassvalue(L, ra, newcls);
+                setobj2s(L, ra, kv);
+
+                LuauClass* newcls = classvalue(ra);
                 newcls->isopen = (LUAU_INSN_C(insn) & 0x1u) != 0; // bottom bit of C is the isopen flag
 
                 if (super != 0xff)
@@ -3781,7 +3773,8 @@ reentry:
                     if (LUAU_UNLIKELY(!ttisclass(rb)))
                         luaG_typeerror(L, rb, "extend");
 
-                    luaR_inheritclass(L, newcls, classvalue(rb));
+                    LuauClass* inherited = luaR_inheritclass(L, newcls, classvalue(rb));
+                    setclassvalue(L, ra, inherited);
                 }
 
                 VM_NEXT();

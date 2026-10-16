@@ -27,7 +27,6 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
 
@@ -3055,8 +3054,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table"
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
-
     // When a component's props are an intersection of table types with optional
     // fields, passing a table with only a subset of those fields should work.
     // { tag: string } should satisfy { tag: string? } & { b1: number? }
@@ -3085,8 +3082,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
-
     // When a component has a recursive optional field (like React's children),
     // widening the table literal should not cause the bounds check to fail.
     CheckResult result = check(R"(
@@ -3107,7 +3102,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_1")
 {
-    ScopedFastFlag _ {FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
         class _ end

@@ -1083,6 +1083,23 @@ bool isSubclass(const ExternType* cls, const ExternType* parent)
     return false;
 }
 
+const ExternType* getClassInstanceType(TypeId classTy)
+{
+    classTy = follow(classTy);
+
+    const ExternType* classEtv = get<ExternType>(classTy);
+    if (!classEtv)
+        return nullptr;
+
+    if (classEtv->relation)
+    {
+        if (const Obj* obj = classEtv->relation->get_if<Obj>())
+            return get<ExternType>(follow(obj->ty));
+    }
+
+    return nullptr;
+}
+
 const std::vector<TypeId>& getTypes(const UnionType* utv)
 {
     return utv->options;

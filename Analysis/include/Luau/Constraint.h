@@ -143,7 +143,6 @@ struct HasPropConstraint
     TypeId resultType;
     TypeId subjectType;
     std::string prop;
-    ValueContext context;
 
     // We want to track if this `HasPropConstraint` comes from a conditional.
     // If it does, we're going to change the behavior of property look-up a bit.

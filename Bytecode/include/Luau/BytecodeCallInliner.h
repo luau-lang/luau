@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+LUAU_FASTFLAG(LuauInlinerNamecallSelfFromMove)
+
 namespace Luau
 {
 namespace Bytecode
@@ -134,6 +136,13 @@ struct CallInliner
         // GETTABLEKS can clobber original source register of NAMECALL and put a function closure there
         // But MOVE target already has a table at this point.
         namecall.setTable(move.op());
+
+        // NAMECALL is moved to the fallback call block, so its self projection doesn't dominate the inlined body, which reads self from the MOVE
+        if (FFlag::LuauInlinerNamecallSelfFromMove)
+        {
+            LUAU_ASSERT(!callParams.empty());
+            callParams[0] = move.op();
+        }
 
         BcGetTableKS getTableKS = BcGetTableKS<VmConst>::create(caller);
         getTableKS.setSource(move.op());

@@ -1440,7 +1440,7 @@ static std::optional<TableType> combineDisjointTables(const TableType* left, con
     res.state = TableState::Sealed;
     res.props = left->props;
 
-    for (const auto& [name, prop]: right->props)
+    for (const auto& [name, prop] : right->props)
     {
         if (res.props.count(name) != 0)
             return std::nullopt;

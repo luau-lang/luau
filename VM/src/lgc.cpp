@@ -20,7 +20,6 @@
 
 LUAU_FASTFLAGVARIABLE(LuauGcTraceUdata)
 LUAU_FLAGVERSION(LuauGcTraceUdata, 4)
-LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_FASTFLAG(LuauFrozenMetaButterfly)
@@ -1333,7 +1332,7 @@ size_t luaC_step(lua_State* L, bool assist)
 #endif
 
     // if allocations outpace the GC to require an assist, adjust step size to cover the difference
-    if ((FFlag::LuauBackedgeHeapCheck || LUA_VECTOR_DOUBLE == 1) && assist)
+    if (assist)
     {
         size_t need = debt * g->gcstepmul / 100;
 
