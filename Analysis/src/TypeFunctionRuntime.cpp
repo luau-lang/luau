@@ -2373,18 +2373,6 @@ static int typeToString(lua_State* L)
 
 void registerTypesLibrary(lua_State* L)
 {
-    luaL_Reg fields[] = {
-        {"unknown", createUnknown},
-        {"never", createNever},
-        {"any", createAny},
-        {"boolean", createBoolean},
-        {"number", createNumber},
-        {"string", createString},
-        {"thread", createThread},
-        {"buffer", createBuffer},
-        {nullptr, nullptr}
-    };
-
     luaL_Reg methods[] = {
         {"singleton", createSingleton},
         {"negationof", createNegation},
@@ -2405,7 +2393,7 @@ void registerTypesLibrary(lua_State* L)
     {
         TypeFunctionRuntime* runtime = getTypeFunctionRuntime(L);
 
-        std::pair<const char*, int> pinnedFields[] = {
+        std::pair<const char*, int> fields[] = {
             {"unknown", TypeFunctionPinnedType::Unknown},
             {"never", TypeFunctionPinnedType::Never},
             {"any", TypeFunctionPinnedType::Any},
@@ -2416,7 +2404,7 @@ void registerTypesLibrary(lua_State* L)
             {"buffer", TypeFunctionPrimitiveType::Buffer},
         };
 
-        for (auto [name, index] : pinnedFields)
+        for (auto [name, index] : fields)
         {
             pushType(L, runtime->pinnedTypes[index]);
             lua_setfield(L, -2, name);
@@ -2424,6 +2412,18 @@ void registerTypesLibrary(lua_State* L)
     }
     else
     {
+        luaL_Reg fields[] = {
+            {"unknown", createUnknown},
+            {"never", createNever},
+            {"any", createAny},
+            {"boolean", createBoolean},
+            {"number", createNumber},
+            {"string", createString},
+            {"thread", createThread},
+            {"buffer", createBuffer},
+            {nullptr, nullptr}
+        };
+
         // Set fields for type userdata
         for (luaL_Reg* l = fields; l->name; l++)
         {
