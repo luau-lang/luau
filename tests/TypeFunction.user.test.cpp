@@ -4329,7 +4329,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_children_of_type_aliases_stay_frozen")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
-    ScopedFastFlag frozen{FFlag::LuauTypeFunctionSupportsFrozen, true};
     ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
