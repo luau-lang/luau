@@ -34,6 +34,9 @@ struct TypeFunctionRuntimeBuilderState
 };
 
 TypeFunctionTypeId serialize(TypeId ty, TypeFunctionRuntimeBuilderState* state);
+
+// Serializes types together so types shared between them are only serialized once
+std::vector<TypeFunctionTypeId> serialize(const std::vector<TypeId>& tys, TypeFunctionRuntimeBuilderState* state);
 TypeFunctionTypePackId serialize(TypePackId tp, TypeFunctionRuntimeBuilderState* state);
 
 TypeId deserialize(TypeFunctionTypeId ty, TypeFunctionRuntimeBuilderState* state);

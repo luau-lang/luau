@@ -9,6 +9,7 @@
 #include "Luau/ParseResult.h"
 #include "Luau/Compiler.h"
 #include "Luau/DenseHash.h"
+#include "Luau/HashUtil.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
@@ -31,6 +32,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
+LUAU_FASTFLAGVARIABLE(LuauUdtfReuseTypeUserdatas)
 
 namespace Luau
 {
@@ -280,6 +282,27 @@ void TypeFunctionRuntime::prepareState()
 
     lua_setthreaddata(L, this);
 
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        auto pinType = [&](int index, TypeFunctionTypeVariant type)
+        {
+            TypeFunctionType* ty = typeArena.allocate(std::move(type));
+            ty->frozen = true;
+            ty->canonical = true;
+
+            pinnedTypes[index] = ty;
+        };
+
+        for (int i = 0; i <= TypeFunctionPrimitiveType::Buffer; i++)
+            pinType(i, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Type(i)});
+
+        pinType(TypeFunctionPinnedType::Any, TypeFunctionAnyType{});
+        pinType(TypeFunctionPinnedType::Unknown, TypeFunctionUnknownType{});
+        pinType(TypeFunctionPinnedType::Never, TypeFunctionNeverType{});
+        pinType(TypeFunctionPinnedType::TrueSingleton, TypeFunctionSingletonType{TypeFunctionBooleanSingleton{true}});
+        pinType(TypeFunctionPinnedType::FalseSingleton, TypeFunctionSingletonType{TypeFunctionBooleanSingleton{false}});
+    }
+
     setTypeFunctionEnvironment(L);
 
     registerTypeUserData(L);
@@ -290,7 +313,134 @@ void TypeFunctionRuntime::prepareState()
     luaL_sandboxthread(L);
 }
 
+static bool isMutableType(const TypeFunctionTypeVariant& type)
+{
+    return get_if<TypeFunctionTableType>(&type) || get_if<TypeFunctionFunctionType>(&type);
+}
+
+// Tables and functions are a new type every time they're created, so types containing them are rarely created twice
+static bool containsMutableType(const std::vector<TypeFunctionTypeId>& components)
+{
+    for (TypeFunctionTypeId component : components)
+    {
+        if (isMutableType(component->type))
+            return true;
+    }
+
+    return false;
+}
+
+// Every serialization of an extern type is equivalent, so they're keyed by the type they represent
+static const void* getCachedTypeKey(TypeFunctionTypeId ty)
+{
+    if (auto tfet = get<TypeFunctionExternType>(ty))
+        return tfet->externTy;
+
+    return ty;
+}
+
+static bool isCanonicalComponent(TypeFunctionTypeId ty)
+{
+    // Extern types aren't cached, but they're compared by the type they represent
+    return ty->canonical || get<TypeFunctionExternType>(ty);
+}
+
+static bool areCanonicalComponents(const std::vector<TypeFunctionTypeId>& components)
+{
+    for (TypeFunctionTypeId component : components)
+    {
+        if (!isCanonicalComponent(component))
+            return false;
+    }
+
+    return true;
+}
+
+static bool isCanonicalType(TypeFunctionTypeId ty)
+{
+    if (auto tfut = get<TypeFunctionUnionType>(ty))
+        return areCanonicalComponents(tfut->components);
+
+    return true;
+}
+
+static size_t hashCachedType(TypeFunctionTypeId ty)
+{
+    size_t seed = ty->type.index();
+
+    if (auto tfst = get<TypeFunctionSingletonType>(ty))
+    {
+        if (auto tfsst = get<TypeFunctionStringSingleton>(tfst))
+            hashCombine(seed, std::hash<std::string>()(tfsst->value));
+    }
+    else if (auto tfut = get<TypeFunctionUnionType>(ty))
+    {
+        for (TypeFunctionTypeId component : tfut->components)
+            hashCombine(seed, DenseHashPointer()(getCachedTypeKey(component)));
+    }
+
+    return seed;
+}
+
+bool CachedTypeFunctionType::operator==(const CachedTypeFunctionType& rhs) const
+{
+    if (type == rhs.type)
+        return true;
+
+    if (hash != rhs.hash)
+        return false;
+
+    TypeFunctionTypeId lhsType = type;
+    TypeFunctionTypeId rhsType = rhs.type;
+
+    if (lhsType->type.index() != rhsType->type.index())
+        return false;
+
+    if (auto lhsSingleton = get<TypeFunctionSingletonType>(lhsType))
+    {
+        auto lhsString = get<TypeFunctionStringSingleton>(lhsSingleton);
+        auto rhsString = get<TypeFunctionStringSingleton>(get<TypeFunctionSingletonType>(rhsType));
+        return lhsString && rhsString && lhsString->value == rhsString->value;
+    }
+    else if (auto lhsUnion = get<TypeFunctionUnionType>(lhsType))
+    {
+        const std::vector<TypeFunctionTypeId>& lhsComponents = lhsUnion->components;
+        const std::vector<TypeFunctionTypeId>& rhsComponents = get<TypeFunctionUnionType>(rhsType)->components;
+
+        if (lhsComponents.size() != rhsComponents.size())
+            return false;
+
+        for (size_t i = 0; i < lhsComponents.size(); ++i)
+        {
+            if (getCachedTypeKey(lhsComponents[i]) != getCachedTypeKey(rhsComponents[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+TypeFunctionTypeId TypeFunctionRuntime::cacheType(TypeFunctionTypeVariant type)
+{
+    TypeFunctionType probe{std::move(type)};
+    CachedTypeFunctionType entry{hashCachedType(&probe), &probe};
+
+    if (const CachedTypeFunctionType* cached = cachedTypes.find(entry))
+        return cached->type;
+
+    TypeFunctionType* ty = typeArena.allocate(std::move(probe.type));
+    ty->canonical = isCanonicalType(ty);
+
+    entry.type = ty;
+    return cachedTypes.insert(entry).type;
+}
+
 constexpr int kTypeUserdataTag = 42;
+
+// Tables and functions passed to a type function or read out of another type, which are copied before they're first mutated
+constexpr int kBorrowedTypeUserdataTag = 43;
 
 void* typeFunctionAllocWithLimit(void* ud, void* ptr, size_t osize, size_t nsize)
 {
@@ -389,12 +539,58 @@ TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunction
     return ctx->typePackArena.allocate(std::move(type));
 }
 
+static void allocAndPushTypeUserData(lua_State* L, TypeFunctionTypeId type, int tag)
+{
+    TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), tag));
+    *ptr = type;
+}
+
 void pushType(lua_State* L, TypeFunctionTypeId type)
 {
+
     luaL_checkstack(L, 2, "allocating type");
+
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        if (isMutableType(type->type))
+        {
+            allocAndPushTypeUserData(L, type, kBorrowedTypeUserdataTag);
+            return;
+        }
+
+        int* ref = &const_cast<TypeFunctionType*>(type)->userDataRef;
+
+        if (*ref == 0)
+        {
+            if (auto tfet = get<TypeFunctionExternType>(type))
+                ref = &getTypeFunctionRuntime(L)->externTypeUserDataRefs[tfet->externTy];
+        }
+
+        if (*ref == 0)
+        {
+            allocAndPushTypeUserData(L, type, kTypeUserdataTag);
+            *ref = lua_ref(L, -1);
+            return;
+        }
+
+        lua_getref(L, *ref);
+        return;
+    }
 
     TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
     *ptr = type;
+}
+
+// Copies borrowed types before they're mutated
+static TypeFunctionTypeId getWritableTypeUserData(lua_State* L, int idx)
+{
+    TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_touserdatatagged(L, idx, kBorrowedTypeUserdataTag));
+    if (!ptr)
+        return getTypeUserData(L, idx);
+
+    *ptr = allocateTypeFunctionType(L, (*ptr)->type);
+    lua_setuserdatatag(L, idx, kTypeUserdataTag);
+    return *ptr;
 }
 
 // Pushes a new type userdata onto the stack
@@ -415,11 +611,23 @@ void deallocTypeUserData(lua_State* L, void* data)
 
 bool isTypeUserData(lua_State* L, int idx)
 {
+    if (FFlag::LuauUdtfReuseTypeUserdatas && lua_touserdatatagged(L, idx, kBorrowedTypeUserdataTag))
+        return true;
+
     return lua_touserdatatagged(L, idx, kTypeUserdataTag) != nullptr;
 }
 
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx)
 {
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        if (void* ptr = lua_touserdatatagged(L, idx, kTypeUserdataTag))
+            return *static_cast<TypeFunctionTypeId*>(ptr);
+
+        if (void* ptr = lua_touserdatatagged(L, idx, kBorrowedTypeUserdataTag))
+            return *static_cast<TypeFunctionTypeId*>(ptr);
+    }
+
     return *static_cast<TypeFunctionTypeId*>(luaL_checkudatatagged(L, idx, kTypeUserdataTag));
 }
 
@@ -561,7 +769,13 @@ static int createSingleton(lua_State* L)
     if (lua_isboolean(L, 1)) // Create boolean singleton
     {
         bool value = luaL_checkboolean(L, 1);
-        allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionBooleanSingleton{value}});
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+        {
+            TypeFunctionPinnedType::Type pinned = value ? TypeFunctionPinnedType::TrueSingleton : TypeFunctionPinnedType::FalseSingleton;
+            pushType(L, getTypeFunctionRuntime(L)->pinnedTypes[pinned]);
+        }
+        else
+            allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionBooleanSingleton{value}});
 
         return 1;
     }
@@ -570,14 +784,20 @@ static int createSingleton(lua_State* L)
     if (lua_type(L, 1) == LUA_TSTRING) // Create string singleton
     {
         const char* value = luaL_checkstring(L, 1);
-        allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionStringSingleton{value}});
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, getTypeFunctionRuntime(L)->cacheType(TypeFunctionSingletonType{TypeFunctionStringSingleton{value}}));
+        else
+            allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionStringSingleton{value}});
 
         return 1;
     }
 
     if (lua_isnil(L, 1))
     {
-        allocTypeUserData(L, TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType));
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, getTypeFunctionRuntime(L)->pinnedTypes[TypeFunctionPrimitiveType::NilType]);
+        else
+            allocTypeUserData(L, TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType));
 
         return 1;
     }
@@ -595,7 +815,10 @@ static int createGeneric(lua_State* L)
     if (strlen(name) == 0)
         luaL_error(L, "types.generic: generic name cannot be empty");
 
-    allocTypeUserData(L, TypeFunctionGenericType{/* isNamed */ true, isPack, name});
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+        pushType(L, allocateTypeFunctionType(L, TypeFunctionGenericType{/* isNamed */ true, isPack, name}));
+    else
+        allocTypeUserData(L, TypeFunctionGenericType{/* isNamed */ true, isPack, name});
     return 1;
 }
 
@@ -659,9 +882,23 @@ static int createOptional(lua_State* L)
     else
         components.emplace_back(argument);
 
-    components.emplace_back(allocateTypeFunctionType(L, TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType)));
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        TypeFunctionRuntime* runtime = getTypeFunctionRuntime(L);
+        components.emplace_back(runtime->pinnedTypes[TypeFunctionPrimitiveType::NilType]);
 
-    allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
+        // Optional types are often made for the same type, so they're cached unless they contain a table type or a function type as those aren't immutable
+        // This is mainly here for the common case for making a simple type optional, like `types.optional(types.number)` for making an optional number type
+        if (containsMutableType(components))
+            pushType(L, allocateTypeFunctionType(L, TypeFunctionUnionType{std::move(components)}));
+        else
+            pushType(L, runtime->cacheType(TypeFunctionUnionType{std::move(components)}));
+    }
+    else
+    {
+        components.emplace_back(allocateTypeFunctionType(L, TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType)));
+        allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
+    }
 
     return 1;
 }
@@ -676,6 +913,7 @@ static int createUnion(lua_State* L)
     std::vector<TypeFunctionTypeId> components;
     components.reserve(argSize);
 
+    int componentArg = 0;
     for (int i = 1; i <= argSize; i++)
     {
         TypeFunctionTypeId component = getTypeUserData(L, i);
@@ -685,15 +923,29 @@ static int createUnion(lua_State* L)
         else if (get<TypeFunctionNeverType>(component))
             continue;
         else
+        {
             components.push_back(component);
+            componentArg = i;
+        }
     }
 
     if (components.size() == 0)
-        allocTypeUserData(L, TypeFunctionNeverType{});
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, getTypeFunctionRuntime(L)->pinnedTypes[TypeFunctionPinnedType::Never]);
+        else
+            allocTypeUserData(L, TypeFunctionNeverType{});
     else if (components.size() == 1)
-        pushType(L, components[0]);
+    {
+        if (FFlag::LuauUdtfReuseTypeUserdatas && componentArg != 0)
+            lua_pushvalue(L, componentArg);
+        else
+            pushType(L, components[0]);
+    }
     else
-        allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, allocateTypeFunctionType(L, TypeFunctionUnionType{std::move(components)}));
+        else
+            allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
 
     return 1;
 }
@@ -708,6 +960,7 @@ static int createIntersection(lua_State* L)
     std::vector<TypeFunctionTypeId> components;
     components.reserve(argSize);
 
+    int componentArg = 0;
     for (int i = 1; i <= argSize; i++)
     {
         TypeFunctionTypeId component = getTypeUserData(L, i);
@@ -717,15 +970,29 @@ static int createIntersection(lua_State* L)
         else if (get<TypeFunctionUnknownType>(component))
             continue;
         else
+        {
             components.push_back(component);
+            componentArg = i;
+        }
     }
 
     if (components.size() == 0)
-        allocTypeUserData(L, TypeFunctionUnknownType{});
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, getTypeFunctionRuntime(L)->pinnedTypes[TypeFunctionPinnedType::Unknown]);
+        else
+            allocTypeUserData(L, TypeFunctionUnknownType{});
     else if (components.size() == 1)
-        pushType(L, components[0]);
+    {
+        if (FFlag::LuauUdtfReuseTypeUserdatas && componentArg != 0)
+            lua_pushvalue(L, componentArg);
+        else
+            pushType(L, components[0]);
+    }
     else
-        allocTypeUserData(L, TypeFunctionIntersectionType{std::move(components)});
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, allocateTypeFunctionType(L, TypeFunctionIntersectionType{std::move(components)}));
+        else
+            allocTypeUserData(L, TypeFunctionIntersectionType{std::move(components)});
 
     return 1;
 }
@@ -748,7 +1015,10 @@ static int getComponents(lua_State* L)
         for (int i = 0; i < argSize; i++)
         {
             TypeFunctionTypeId component = tfut->components[i];
-            allocTypeUserData(L, component->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, component);
+            else
+                allocTypeUserData(L, component->type);
             lua_rawseti(L, -2, i + 1); // Luau is 1-indexed while C++ is 0-indexed
         }
 
@@ -764,7 +1034,10 @@ static int getComponents(lua_State* L)
         for (int i = 0; i < argSize; i++)
         {
             TypeFunctionTypeId component = tfit->components[i];
-            allocTypeUserData(L, component->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, component);
+            else
+                allocTypeUserData(L, component->type);
             lua_rawseti(L, -2, i + 1); // Luau is 1-indexed while C++ is 0-indexed
         }
 
@@ -786,7 +1059,10 @@ static int createNegation(lua_State* L)
     if (get<TypeFunctionTableType>(arg) || get<TypeFunctionFunctionType>(arg))
         luaL_error(L, "types.negationof: cannot perform negation on `%s` type", getTag(L, arg).c_str());
 
-    allocTypeUserData(L, TypeFunctionNegationType{arg});
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+        pushType(L, allocateTypeFunctionType(L, TypeFunctionNegationType{arg}));
+    else
+        allocTypeUserData(L, TypeFunctionNegationType{arg});
 
     return 1;
 }
@@ -802,7 +1078,12 @@ static int getNegatedValue(lua_State* L)
     TypeFunctionTypeId self = getTypeUserData(L, 1);
 
     if (auto tfnt = get<TypeFunctionNegationType>(self); tfnt)
-        allocTypeUserData(L, tfnt->type->type);
+    {
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, tfnt->type);
+        else
+            allocTypeUserData(L, tfnt->type->type);
+    }
     else
         luaL_error(L, "type.inner: cannot call inner method on non-negation type: `%s` type", getTag(L, self).c_str());
 
@@ -905,6 +1186,12 @@ static int setTableProp(lua_State* L)
     if (self->frozen)
         luaL_error(L, "type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tftt = getMutable<TypeFunctionTableType>(self);
+    }
+
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
     if (!tfst)
@@ -941,6 +1228,12 @@ static int setReadTableProp(lua_State* L)
 
     if (self->frozen)
         luaL_error(L, "type.setreadproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tftt = getMutable<TypeFunctionTableType>(self);
+    }
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
@@ -989,6 +1282,12 @@ static int setWriteTableProp(lua_State* L)
 
     if (self->frozen)
         luaL_error(L, "type.setwriteproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tftt = getMutable<TypeFunctionTableType>(self);
+    }
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
@@ -1053,7 +1352,12 @@ static int readTableProp(lua_State* L)
 
     auto prop = tftt->props.at(tfsst->value);
     if (prop.readTy)
-        allocTypeUserData(L, (*prop.readTy)->type);
+    {
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, *prop.readTy);
+        else
+            allocTypeUserData(L, (*prop.readTy)->type);
+    }
     else
         lua_pushnil(L);
 
@@ -1091,7 +1395,12 @@ static int writeTableProp(lua_State* L)
 
     auto prop = tftt->props.at(tfsst->value);
     if (prop.writeTy)
-        allocTypeUserData(L, (*prop.writeTy)->type);
+    {
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, *prop.writeTy);
+        else
+            allocTypeUserData(L, (*prop.writeTy)->type);
+    }
     else
         lua_pushnil(L);
 
@@ -1113,6 +1422,12 @@ static int setTableIndexer(lua_State* L)
 
     if (self->frozen)
         luaL_error(L, "type.setindexer: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tftt = getMutable<TypeFunctionTableType>(self);
+    }
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     TypeFunctionTypeId value = getTypeUserData(L, 3);
@@ -1157,6 +1472,12 @@ static int setTableMetatable(lua_State* L)
 
     if (self->frozen)
         luaL_error(L, "type.setmetatable: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tftt = getMutable<TypeFunctionTableType>(self);
+    }
 
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
     if (!get<TypeFunctionTableType>(arg))
@@ -1282,7 +1603,10 @@ void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
 
             for (auto el : tftp->head)
             {
-                allocTypeUserData(L, el->type);
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    pushType(L, el);
+                else
+                    allocTypeUserData(L, el->type);
                 lua_rawseti(L, -2, pos++);
             }
 
@@ -1292,7 +1616,12 @@ void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
         if (tftp->tail.has_value())
         {
             if (auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail))
-                allocTypeUserData(L, tfvp->type->type);
+            {
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    pushType(L, tfvp->type);
+                else
+                    allocTypeUserData(L, tfvp->type->type);
+            }
             else if (auto tfgp = get<TypeFunctionGenericTypePack>(*tftp->tail))
                 allocTypeUserData(L, TypeFunctionGenericType{tfgp->isNamed, true, tfgp->name});
             else
@@ -1305,7 +1634,10 @@ void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
     {
         lua_createtable(L, 0, 1);
 
-        allocTypeUserData(L, tfvp->type->type);
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, tfvp->type);
+        else
+            allocTypeUserData(L, tfvp->type->type);
         lua_setfield(L, -2, "tail");
     }
     else if (auto tfgp = get<TypeFunctionGenericTypePack>(tp))
@@ -1392,6 +1724,12 @@ static int setFunctionParameters(lua_State* L)
     if (self->frozen)
         luaL_error(L, "type.setparameters: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tfft = getMutable<TypeFunctionFunctionType>(self);
+    }
+
     tfft->argTypes = getTypePack(L, 2, 3);
 
     return 0;
@@ -1431,6 +1769,12 @@ static int setFunctionReturns(lua_State* L)
     if (self->frozen)
         luaL_error(L, "type.setreturns: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tfft = getMutable<TypeFunctionFunctionType>(self);
+    }
+
     tfft->retTypes = getTypePack(L, 2, 3);
 
     return 0;
@@ -1465,6 +1809,12 @@ static int setFunctionGenerics(lua_State* L)
     if (self->frozen)
         luaL_error(L, "type.setgenerics: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        self = getWritableTypeUserData(L, 1);
+        tfft = getMutable<TypeFunctionFunctionType>(self);
+    }
+
     int argumentCount = lua_gettop(L);
 
     if (argumentCount > 2)
@@ -1492,7 +1842,10 @@ static int getFunctionGenerics(lua_State* L)
 
     for (const auto& el : tfft->generics)
     {
-        allocTypeUserData(L, el->type);
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, el);
+        else
+            allocTypeUserData(L, el->type);
         lua_rawseti(L, -2, pos++);
     }
 
@@ -1524,7 +1877,12 @@ static int getReadParent(lua_State* L)
     if (!tfct->readParent)
         lua_pushnil(L);
     else
-        allocTypeUserData(L, (*tfct->readParent)->type);
+    {
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, *tfct->readParent);
+        else
+            allocTypeUserData(L, (*tfct->readParent)->type);
+    }
 
     return 1;
 }
@@ -1546,7 +1904,12 @@ static int getWriteParent(lua_State* L)
     if (!tfct->writeParent)
         lua_pushnil(L);
     else
-        allocTypeUserData(L, (*tfct->writeParent)->type);
+    {
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, *tfct->writeParent);
+        else
+            allocTypeUserData(L, (*tfct->writeParent)->type);
+    }
 
     return 1;
 }
@@ -1595,7 +1958,10 @@ static int getProps(lua_State* L)
         lua_createtable(L, int(tftt->props.size()), 0);
         for (auto& [name, prop] : tftt->props)
         {
-            allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionStringSingleton{name}});
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, getTypeFunctionRuntime(L)->cacheType(TypeFunctionSingletonType{TypeFunctionStringSingleton{name}}));
+            else
+                allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionStringSingleton{name}});
 
             int size = 0;
             if (prop.readTy)
@@ -1606,13 +1972,19 @@ static int getProps(lua_State* L)
             lua_createtable(L, 0, size);
             if (prop.readTy)
             {
-                allocTypeUserData(L, (*prop.readTy)->type);
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    pushType(L, *prop.readTy);
+                else
+                    allocTypeUserData(L, (*prop.readTy)->type);
                 lua_setfield(L, -2, "read");
             }
 
             if (prop.writeTy)
             {
-                allocTypeUserData(L, (*prop.writeTy)->type);
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    pushType(L, *prop.writeTy);
+                else
+                    allocTypeUserData(L, (*prop.writeTy)->type);
                 lua_setfield(L, -2, "write");
             }
 
@@ -1627,7 +1999,10 @@ static int getProps(lua_State* L)
         lua_createtable(L, int(tfct->props.size()), 0);
         for (auto& [name, prop] : tfct->props)
         {
-            allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionStringSingleton{name}});
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, getTypeFunctionRuntime(L)->cacheType(TypeFunctionSingletonType{TypeFunctionStringSingleton{name}}));
+            else
+                allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionStringSingleton{name}});
 
             int size = 0;
             if (prop.readTy)
@@ -1638,13 +2013,19 @@ static int getProps(lua_State* L)
             lua_createtable(L, 0, size);
             if (prop.readTy)
             {
-                allocTypeUserData(L, (*prop.readTy)->type);
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    pushType(L, *prop.readTy);
+                else
+                    allocTypeUserData(L, (*prop.readTy)->type);
                 lua_setfield(L, -2, "read");
             }
 
             if (prop.writeTy)
             {
-                allocTypeUserData(L, (*prop.writeTy)->type);
+                if (FFlag::LuauUdtfReuseTypeUserdatas)
+                    pushType(L, *prop.writeTy);
+                else
+                    allocTypeUserData(L, (*prop.writeTy)->type);
                 lua_setfield(L, -2, "write");
             }
 
@@ -1674,11 +2055,20 @@ static int getIndexer(lua_State* L)
         else
         {
             lua_createtable(L, 0, 3);
-            allocTypeUserData(L, tftt->indexer->keyType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tftt->indexer->keyType);
+            else
+                allocTypeUserData(L, tftt->indexer->keyType->type);
             lua_setfield(L, -2, "index");
-            allocTypeUserData(L, tftt->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tftt->indexer->valueType);
+            else
+                allocTypeUserData(L, tftt->indexer->valueType->type);
             lua_setfield(L, -2, "readresult");
-            allocTypeUserData(L, tftt->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tftt->indexer->valueType);
+            else
+                allocTypeUserData(L, tftt->indexer->valueType->type);
             lua_setfield(L, -2, "writeresult");
         }
 
@@ -1693,11 +2083,20 @@ static int getIndexer(lua_State* L)
         else
         {
             lua_createtable(L, 0, 3);
-            allocTypeUserData(L, tfct->indexer->keyType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tfct->indexer->keyType);
+            else
+                allocTypeUserData(L, tfct->indexer->keyType->type);
             lua_setfield(L, -2, "index");
-            allocTypeUserData(L, tfct->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tfct->indexer->valueType);
+            else
+                allocTypeUserData(L, tfct->indexer->valueType->type);
             lua_setfield(L, -2, "readresult");
-            allocTypeUserData(L, tfct->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tfct->indexer->valueType);
+            else
+                allocTypeUserData(L, tfct->indexer->valueType->type);
             lua_setfield(L, -2, "writeresult");
         }
 
@@ -1724,9 +2123,15 @@ static int getReadIndexer(lua_State* L)
         else
         {
             lua_createtable(L, 0, 2);
-            allocTypeUserData(L, tftt->indexer->keyType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tftt->indexer->keyType);
+            else
+                allocTypeUserData(L, tftt->indexer->keyType->type);
             lua_setfield(L, -2, "index");
-            allocTypeUserData(L, tftt->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tftt->indexer->valueType);
+            else
+                allocTypeUserData(L, tftt->indexer->valueType->type);
             lua_setfield(L, -2, "result");
         }
 
@@ -1741,9 +2146,15 @@ static int getReadIndexer(lua_State* L)
         else
         {
             lua_createtable(L, 0, 2);
-            allocTypeUserData(L, tfct->indexer->keyType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tfct->indexer->keyType);
+            else
+                allocTypeUserData(L, tfct->indexer->keyType->type);
             lua_setfield(L, -2, "index");
-            allocTypeUserData(L, tfct->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tfct->indexer->valueType);
+            else
+                allocTypeUserData(L, tfct->indexer->valueType->type);
             lua_setfield(L, -2, "result");
         }
 
@@ -1770,9 +2181,15 @@ static int getWriteIndexer(lua_State* L)
         else
         {
             lua_createtable(L, 0, 2);
-            allocTypeUserData(L, tftt->indexer->keyType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tftt->indexer->keyType);
+            else
+                allocTypeUserData(L, tftt->indexer->keyType->type);
             lua_setfield(L, -2, "index");
-            allocTypeUserData(L, tftt->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tftt->indexer->valueType);
+            else
+                allocTypeUserData(L, tftt->indexer->valueType->type);
             lua_setfield(L, -2, "result");
         }
 
@@ -1787,9 +2204,15 @@ static int getWriteIndexer(lua_State* L)
         else
         {
             lua_createtable(L, 0, 2);
-            allocTypeUserData(L, tfct->indexer->keyType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tfct->indexer->keyType);
+            else
+                allocTypeUserData(L, tfct->indexer->keyType->type);
             lua_setfield(L, -2, "index");
-            allocTypeUserData(L, tfct->indexer->valueType->type);
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, tfct->indexer->valueType);
+            else
+                allocTypeUserData(L, tfct->indexer->valueType->type);
             lua_setfield(L, -2, "result");
         }
 
@@ -1814,7 +2237,12 @@ static int getMetatable(lua_State* L)
         if (!tfmt->metatable.has_value())
             lua_pushnil(L);
         else
-            allocTypeUserData(L, (*tfmt->metatable)->type);
+        {
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, *tfmt->metatable);
+            else
+                allocTypeUserData(L, (*tfmt->metatable)->type);
+        }
 
         return 1;
     }
@@ -1825,7 +2253,12 @@ static int getMetatable(lua_State* L)
         if (!tfct->metatable.has_value())
             lua_pushnil(L);
         else
-            allocTypeUserData(L, (*tfct->metatable)->type);
+        {
+            if (FFlag::LuauUdtfReuseTypeUserdatas)
+                pushType(L, *tfct->metatable);
+            else
+                allocTypeUserData(L, (*tfct->metatable)->type);
+        }
 
         return 1;
     }
@@ -1893,7 +2326,16 @@ static int deepCopy(lua_State* L)
     if (!copy)
         luaL_error(L, "types.copy: complexity limit reached during type copy");
 
-    allocTypeUserData(L, copy->type);
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        if (isMutableType(copy->type))
+            allocAndPushTypeUserData(L, copy, kTypeUserdataTag);
+        else
+            pushType(L, copy);
+    }
+    else
+        allocTypeUserData(L, copy->type);
+
     return 1;
 }
 
@@ -1959,18 +2401,46 @@ void registerTypesLibrary(lua_State* L)
 
     luaL_register(L, "types", methods);
 
-    // Set fields for type userdata
-    for (luaL_Reg* l = fields; l->name; l++)
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
     {
-        l->func(L);
-        lua_setfield(L, -2, l->name);
+        TypeFunctionRuntime* runtime = getTypeFunctionRuntime(L);
+
+        std::pair<const char*, int> pinnedFields[] = {
+            {"unknown", TypeFunctionPinnedType::Unknown},
+            {"never", TypeFunctionPinnedType::Never},
+            {"any", TypeFunctionPinnedType::Any},
+            {"boolean", TypeFunctionPrimitiveType::Boolean},
+            {"number", TypeFunctionPrimitiveType::Number},
+            {"string", TypeFunctionPrimitiveType::String},
+            {"thread", TypeFunctionPrimitiveType::Thread},
+            {"buffer", TypeFunctionPrimitiveType::Buffer},
+        };
+
+        for (auto [name, index] : pinnedFields)
+        {
+            pushType(L, runtime->pinnedTypes[index]);
+            lua_setfield(L, -2, name);
+        }
+    }
+    else
+    {
+        // Set fields for type userdata
+        for (luaL_Reg* l = fields; l->name; l++)
+        {
+            l->func(L);
+            lua_setfield(L, -2, l->name);
+        }
     }
 
     // `integer` is only nameable in type annotations when the flag is on, so only expose a
     // constructor for it under the same condition
     if (FFlag::LuauIntegerType2)
     {
-        createInteger(L);
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            pushType(L, getTypeFunctionRuntime(L)->pinnedTypes[TypeFunctionPrimitiveType::Integer]);
+        else
+            createInteger(L);
+
         lua_setfield(L, -2, "integer");
     }
 
@@ -2071,11 +2541,20 @@ void registerTypeUserData(lua_State* L)
 
     lua_setreadonly(L, -1, true);
 
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+    {
+        lua_pushvalue(L, -1);
+        lua_setuserdatametatable(L, kBorrowedTypeUserdataTag);
+    }
+
     // Sets up the metatable for the type userdata.
     lua_setuserdatametatable(L, kTypeUserdataTag);
 
     // Sets up a destructor for the type userdata.
     lua_setuserdatadtor(L, kTypeUserdataTag, deallocTypeUserData);
+
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+        lua_setuserdatadtor(L, kBorrowedTypeUserdataTag, deallocTypeUserData);
 }
 
 // Used to redirect all the removed global functions to say "this function is unsupported"
@@ -2187,7 +2666,7 @@ bool seenSetContains(AreEqualState& seen, const void* lhs, const void* rhs)
 
 bool areEqual(AreEqualState& seen, const TypeFunctionSingletonType& lhs, const TypeFunctionSingletonType& rhs)
 {
-    if (seenSetContains(seen, &lhs, &rhs))
+    if (!FFlag::LuauUdtfReuseTypeUserdatas && seenSetContains(seen, &lhs, &rhs))
         return true;
 
     {
@@ -2349,7 +2828,8 @@ bool areEqual(AreEqualState& seen, const TypeFunctionFunctionType& lhs, const Ty
 
 bool areEqual(AreEqualState& seen, const TypeFunctionExternType& lhs, const TypeFunctionExternType& rhs)
 {
-    if (seenSetContains(seen, &lhs, &rhs))
+    // Extern types can't be part of a cycle
+    if (!FFlag::LuauUdtfReuseTypeUserdatas && seenSetContains(seen, &lhs, &rhs))
         return true;
 
     return lhs.externTy == rhs.externTy;
@@ -2357,6 +2837,10 @@ bool areEqual(AreEqualState& seen, const TypeFunctionExternType& lhs, const Type
 
 bool areEqual(AreEqualState& seen, const TypeFunctionType& lhs, const TypeFunctionType& rhs)
 {
+    // Canonical types are only equal to themselves
+    if (FFlag::LuauUdtfReuseTypeUserdatas && lhs.canonical && rhs.canonical)
+        return &lhs == &rhs;
+
     RecursionLimiter _ra("areEqual", &seen.recursionCount, 100);
 
     if (lhs.type.index() != rhs.type.index())
@@ -2578,11 +3062,15 @@ public:
 
     TypeFunctionTypeId clone(TypeFunctionTypeId ty)
     {
-        shallowClone(ty);
+        TypeFunctionTypeId result = shallowClone(ty);
         run();
 
         if (hasExceededIterationLimit())
             return nullptr;
+
+        // Shared types aren't recorded as cloned, so they can't be looked up
+        if (FFlag::LuauUdtfReuseTypeUserdatas)
+            return result;
 
         return find(ty).value_or(nullptr);
     }
@@ -2651,6 +3139,13 @@ private:
 
     TypeFunctionTypeId shallowClone(TypeFunctionTypeId ty)
     {
+        // Types that can't be mutated and don't contain other types are shared, so there's nothing to clone
+        if (FFlag::LuauUdtfReuseTypeUserdatas &&
+            (get<TypeFunctionPrimitiveType>(ty) || get<TypeFunctionAnyType>(ty) || get<TypeFunctionUnknownType>(ty) ||
+             get<TypeFunctionNeverType>(ty) || get<TypeFunctionSingletonType>(ty) || get<TypeFunctionGenericType>(ty) ||
+             get<TypeFunctionExternType>(ty)))
+            return ty;
+
         if (auto it = find(ty))
             return *it;
 

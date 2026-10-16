@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
+LUAU_FASTFLAG(LuauUdtfReuseTypeUserdatas)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3305,14 +3306,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
 
     CheckResult result = check(R"(
         type function copy_complex(arg)
+            -- more tables than the iteration limit allows to be copied
             local t = types.newtable()
-            t:setproperty(types.singleton("a"), types.number)
-            t:setproperty(types.singleton("b"), types.string)
-            t:setproperty(types.singleton("c"), types.boolean)
-            t:setproperty(types.singleton("d"), types.buffer)
-            t:setproperty(types.singleton("e"), types.thread)
-            t:setproperty(types.singleton("f"), types.newtable())
-            t:setproperty(types.singleton("g"), types.newfunction())
+            for i = 1, 20 do
+                t:setproperty(types.singleton(`p{i}`), types.newtable())
+            end
             local c = types.copy(t)
             return c
         end
@@ -3322,9 +3320,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(
-        "'copy_complex' type function errored at runtime: copy_complex:11: types.copy: complexity limit reached during type copy" ==
+        "'copy_complex' type function errored at runtime: copy_complex:8: types.copy: complexity limit reached during type copy" ==
         toString(result.errors[0])
     );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_doesnt_count_shared_types_towards_iteration_limit")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+    ScopedFastInt serdeLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type function copy_shared()
+            local shared = {
+                types.number,
+                types.string,
+                types.boolean,
+                types.any,
+                types.unknown,
+                types.never,
+                types.singleton(true),
+                types.singleton("a"),
+                types.generic("T"),
+            }
+
+            -- more shared types than the iteration limit, which aren't copied so they don't count towards it
+            local t = types.newtable()
+            for i = 1, 40 do
+                t:setproperty(types.singleton(`p{i}`), shared[i % #shared + 1])
+            end
+
+            local c = types.copy(t)
+            for i = 1, 40 do
+                local key = types.singleton(`p{i}`)
+                assert(rawequal(c:readproperty(key), t:readproperty(key)))
+            end
+
+            return types.number
+        end
+
+        type T = copy_shared<>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
@@ -3762,11 +3801,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, results);
 
-    CHECK_EQ(
-        toString(results.errors[0]),
-        "'foo' type function errored at runtime: foo:3: { [number]: string, read absoluteHina: true, t: t1 }"
-        " where t1 = { [number]: string, read absoluteHina: true, t: t1 }"
-    );
+    if (FFlag::LuauUdtfReuseTypeUserdatas)
+        CHECK_EQ(
+            toString(results.errors[0]),
+            "'foo' type function errored at runtime: foo:3: t1 where t1 = { [number]: string, read absoluteHina: true, t: t1 }"
+        );
+    else
+        CHECK_EQ(
+            toString(results.errors[0]),
+            "'foo' type function errored at runtime: foo:3: { [number]: string, read absoluteHina: true, t: t1 }"
+            " where t1 = { [number]: string, read absoluteHina: true, t: t1 }"
+        );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_handling_pcall")
@@ -3849,6 +3894,323 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_when_serializing_environment_but_not_a
 
     // TODO: This probably *should* error, as we cannot include `Foobar` as
     // part of the environment as an unserializable type (error).
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singletons_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function get_connect(signal)
+            local props = signal:properties()
+            local connect = props[types.singleton("Connect")]
+            assert(connect, "Connect key not found")
+
+            assert(rawequal(types.singleton("a"), types.singleton("a")))
+            assert(rawequal(types.singleton(true), types.singleton(true)))
+            assert(not rawequal(types.singleton(true), types.singleton(false)))
+            assert(rawequal(types.singleton(nil), types.singleton(nil)))
+            assert(rawequal(types.copy(types.singleton("a")), types.singleton("a")))
+
+            return connect.read
+        end
+
+        type Signal = { Connect: (number) -> (), Fire: (number) -> () }
+        local x: get_connect<Signal> = function(n: number) end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_primitives_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_prims(t)
+            local seen = {
+                [types.number] = true,
+                [types.string] = true,
+                [types.any] = true,
+                [types.unknown] = true,
+                [types.never] = true
+            }
+
+            for key, prop in t:properties() do
+                if key:value() ~= "opt" then
+                    assert(seen[prop.read], "primitive userdata was not reused")
+                end
+            end
+
+            local components = t:readproperty(types.singleton("opt")):components()
+            assert(rawequal(components[1], types.string) or rawequal(components[2], types.string))
+
+            return types.number
+        end
+
+        type T = check_prims<{ a: number, b: string, c: any, d: unknown, e: never, opt: string? }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_extern_types_reuse_type_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_parent(child, base)
+            assert(rawequal(child:readparent(), base), "extern type instance was not reused")
+            assert(rawequal(types.copy(base), base))
+            return base
+        end
+
+        local function ok(idx: check_parent<ChildClass, BaseClass>): BaseClass return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_argument_mutations_are_private")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type T = { x: number }
+
+        type function add_z(a, b, c)
+            a:setproperty(types.singleton("z"), types.string)
+
+            return types.newtable({
+                [types.singleton("a")] = a,
+                [types.singleton("b")] = b,
+                [types.singleton("cInner")] = c:readproperty(types.singleton("inner")) :: type,
+                [types.singleton("c")] = c,
+            })
+        end
+
+        local _: add_z<T, T, { inner: T }> = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(
+        toString(tm->wantedType, {true}),
+        "{ a: { x: number, z: string }, b: { x: number }, c: { inner: { x: number } }, cInner: { x: number } }"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_property_mutations_are_private")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type T = { x: number }
+
+        type function two_keys(t)
+            local a = t:readproperty(types.singleton("a")) :: type
+            local b = t:readproperty(types.singleton("b")) :: type
+            assert(not rawequal(a, b))
+
+            a:setproperty(types.singleton("added"), types.boolean)
+            a:setproperty(types.singleton("again"), types.boolean)
+
+            return types.newtable({
+                [types.singleton("a")] = a,
+                [types.singleton("b")] = b,
+                [types.singleton("aReadAgain")] = t:readproperty(types.singleton("a")) :: type,
+                [types.singleton("t")] = t,
+            })
+        end
+
+        local _: two_keys<{ a: T, b: T }> = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(
+        toString(tm->wantedType, {true}),
+        "{ a: { added: boolean, again: boolean, x: number }, aReadAgain: { x: number }, b: { x: number }, t: { a: { x: number }, b: { x: number } } }"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_created_table_types_are_mutated_in_place")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function build()
+            local key = types.singleton("inner")
+            local inner = types.newtable()
+            local outer = types.newtable({ [key] = inner })
+
+            inner:setproperty(types.singleton("a"), types.number)
+            return outer
+        end
+
+        local _: build<> = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType, {true}), "{ inner: { a: number } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_children_of_created_table_types_are_copied_on_write")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function build()
+            local key = types.singleton("inner")
+            local inner = types.newtable({ [types.singleton("a")] = types.number })
+            local outer = types.newtable({ [key] = inner })
+
+            local read = outer:readproperty(key) :: type
+            read:setproperty(types.singleton("b"), types.string)
+
+            return types.newtable({
+                [types.singleton("inner")] = inner,
+                [types.singleton("outer")] = outer,
+                [types.singleton("read")] = read,
+            })
+        end
+
+        local _: build<> = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(
+        toString(tm->wantedType, {true}),
+        "{ inner: { a: number }, outer: { inner: { a: number } }, read: { a: number, b: string } }"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unionof_and_intersectionof_with_one_component_return_the_component")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function build(arg)
+            assert(rawequal(types.unionof(arg), arg))
+            assert(rawequal(types.unionof(types.never, arg), arg))
+            assert(rawequal(types.intersectionof(arg), arg))
+            assert(rawequal(types.intersectionof(types.unknown, arg), arg))
+            types.unionof(arg):setproperty(types.singleton("b"), types.string)
+            return arg
+        end
+
+        local _: build<{ a: number }> = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType, {true}), "{ a: number, b: string }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copies_are_mutated_in_place")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function build(arg)
+            local copy = types.copy(arg)
+            copy:setproperty(types.singleton("b"), types.string)
+            copy:setproperty(types.singleton("c"), types.boolean)
+
+            return types.newtable({
+                [types.singleton("arg")] = arg,
+                [types.singleton("copy")] = copy,
+            })
+        end
+
+        local _: build<{ a: number }> = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType, {true}), "{ arg: { a: number }, copy: { a: number, b: string, c: boolean } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_children_of_type_aliases_stay_frozen")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+    ScopedFastFlag frozen{FFlag::LuauTypeFunctionSupportsFrozen, true};
+    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
+
+    CheckResult result = check(R"(
+        type Config = { inner: { a: number } }
+
+        type function add_b()
+            local inner = Config:readproperty(types.singleton("inner"))
+            inner:setproperty(types.singleton("b"), types.string)
+            return inner
+        end
+
+        type T = add_b<>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(
+        toString(result.errors[0]) ==
+        R"('add_b' type function errored at runtime: add_b:6: type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy)"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singletons_are_cached")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_cached(arg)
+            assert(rawequal(types.singleton("a"), arg))
+
+            return types.number
+        end
+
+        type T = check_cached<"a">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optional_types_are_cached")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag reuse{FFlag::LuauUdtfReuseTypeUserdatas, true};
+
+    CheckResult result = check(R"(
+        type function check_cached()
+            local a = types.singleton("a")
+
+            assert(rawequal(types.optional(types.number), types.optional(types.number)))
+            assert(rawequal(types.optional(types.unionof(a, types.number)), types.optional(types.unionof(a, types.number))))
+
+            return types.number
+        end
+
+        type T = check_cached<>
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
