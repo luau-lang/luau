@@ -126,7 +126,13 @@ private:
     AstStat* parseIfLocalCondition(const Location& start);
 
     // Parse the trailing `{elseif exp then block} [else block] end` shared by `parseIf` and `parseIfLocalCondition`
-    AstStat* parseElseBody(const Location& start, const Lexeme& matchThen, AstStatBlock* thenbody, Location& end, std::optional<Location>& elseLocation);
+    AstStat* parseElseBody(
+        const Location& start,
+        const Lexeme& matchThen,
+        AstStatBlock* thenbody,
+        Location& end,
+        std::optional<Location>& elseLocation
+    );
 
     // while exp do block end
     AstStat* parseWhile();

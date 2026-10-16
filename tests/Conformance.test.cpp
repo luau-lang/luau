@@ -13,6 +13,7 @@
 #include "Luau/TypeInfer.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Frontend.h"
+#include "Luau/JitInliner.h"
 #include "Luau/Compiler.h"
 #include "Luau/CodeGen.h"
 #include "Luau/BytecodeSummary.h"
@@ -56,9 +57,9 @@ void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauBytecodeFold)
+LUAU_FASTFLAG(LuauBytecodeSlotAlloc)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauTableArrayAdjustCheck)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
@@ -68,8 +69,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauGcTraceUdata)
-LUAU_FASTFLAG(LuauEnumMoreEdges)
-LUAU_DYNAMIC_FASTFLAG(LuauTableMoveTimeoutFix)
+LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
 LUAU_FASTFLAG(LuauFastpcallInterrupt)
 LUAU_FASTFLAG(LuauPcallErrorContinuationReentry)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
@@ -78,7 +78,6 @@ LUAU_FASTFLAG(LuauNewPointerEncode)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 LUAU_FASTFLAG(LuauBufferCage)
-LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_FASTFLAG(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAG(LuauExportValueSyntax)
@@ -189,12 +188,7 @@ static int lua_vector_cross(lua_State* L)
     const LUA_VECTOR_TYPE* a = luaL_checkvector(L, 1);
     const LUA_VECTOR_TYPE* b = luaL_checkvector(L, 2);
 
-#if LUA_VECTOR_SIZE == 4
-    lua_pushvector(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0], 0.0f);
-#else
-    lua_pushvector(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
-#endif
-
+    lua_pushvector3(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
     return 1;
 }
 
@@ -206,9 +200,9 @@ static int lua_vector_index(lua_State* L)
     if (strcmp(name, "Magnitude") == 0)
     {
 #if LUA_VECTOR_SIZE == 4
-        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]));
+        lua_pushnumber(L, sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3])));
 #else
-        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+        lua_pushnumber(L, sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])));
 #endif
         return 1;
     }
@@ -216,11 +210,11 @@ static int lua_vector_index(lua_State* L)
     if (strcmp(name, "Unit") == 0)
     {
 #if LUA_VECTOR_SIZE == 4
-        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+        float invSqrt = 1.0f / sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]));
 
         lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt, v[3] * invSqrt);
 #else
-        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        float invSqrt = 1.0f / sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
 
         lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt);
 #endif
@@ -462,10 +456,11 @@ static StateRef runConformance(
         Luau::CodeGen::AssemblyOptions assemblyOptions;
         assemblyOptions.compilationOptions = nativeOpts;
 
-        assemblyOptions.includeAssembly = true;
-        assemblyOptions.includeIr = true;
-        assemblyOptions.includeOutlinedCode = true;
-        assemblyOptions.includeIrTypes = true;
+        assemblyOptions.outputBinary = true;
+        assemblyOptions.includeAssembly = false;
+        assemblyOptions.includeIr = false;
+        assemblyOptions.includeOutlinedCode = false;
+        assemblyOptions.includeIrTypes = false;
 
         Luau::CodeGen::LoweringStats stats;
         stats.functionStatsFlags = Luau::CodeGen::FunctionStatsFlags::FunctionStats_Enable;
@@ -539,11 +534,7 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 void setupVectorHelpers(lua_State* L)
 {
-#if LUA_VECTOR_SIZE == 4
-    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
-#else
-    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
-#endif
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
     luaL_newmetatable(L, "vector");
 
     lua_pushstring(L, "__index");
@@ -1404,8 +1395,6 @@ TEST_CASE("Sort")
 
 TEST_CASE("Move")
 {
-    ScopedFastFlag luauTableMoveTimeoutFix{DFFlag::LuauTableMoveTimeoutFix, true};
-    ScopedFastFlag luauTableArrayAdjustCheck{FFlag::LuauTableArrayAdjustCheck, true};
 
     runConformance("move.luau");
 }
@@ -1475,6 +1464,7 @@ TEST_CASE("JitInliner")
 {
     ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauBytecodeFold{FFlag::LuauBytecodeFold, true};
+    ScopedFastFlag luauBytecodeSlotAlloc{FFlag::LuauBytecodeSlotAlloc, true};
     ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
     ScopedFastFlag debugLuauUserDefinedClassesRuntime{FFlag::DebugLuauUserDefinedClassesRuntime, true};
     bool recordCounters = false;
@@ -1488,12 +1478,19 @@ TEST_CASE("JitInliner")
     Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
     nativeOpts.recordCounters = recordCounters;
 
+    void (*setup)(lua_State* L) = nullptr;
+
+    // if the tests weren't run with --jit-inliner, we still need to run the enable jit inliner function for this test
+    if (!jitInliner)
+        setup = luau_enable_jit_inliner;
+
     // Test it even when it is not enabled for all tests
     bool wasEnabled = jitInliner;
     jitInliner = true;
 
-    StateRef globalState = runConformance("jit_inliner.luau", nullptr, nullptr, nullptr, nullptr, /*skipCodegen=*/false, &nativeOpts);
+    StateRef globalState = runConformance("jit_inliner.luau", setup, nullptr, nullptr, nullptr, /*skipCodegen=*/false, &nativeOpts);
     jitInliner = wasEnabled;
+
 
     lua_State* L = globalState.get();
 
@@ -3297,6 +3294,52 @@ TEST_CASE("ApiAlloc")
     CHECK(udCheck == &ud);
 }
 
+TEST_CASE("ApiAllocationRateAfterFullGC")
+{
+    ScopedFastFlag luauGcHeapShrinkFix{DFFlag::LuauGcHeapShrinkFix, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    // data that stays alive, so that allocating after the full collection doesn't immediately start a new cycle
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 10000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
+    // grow the heap so that incremental collection cycles complete
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 100000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+    lua_pop(L, 1);
+
+    // full collection shrinks the heap below its size at the end of the last incremental cycle
+    lua_gc(L, LUA_GCCOLLECT, 0);
+
+    // allocation rate is only measured over intervals longer than 1ms
+    double start = lua_clock();
+    while (lua_clock() - start < 0.002)
+    {
+    }
+
+    CHECK(lua_allocationrate(L) >= 0);
+
+    // allocations after the full collection are measured from its end
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 1000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
+    CHECK(lua_allocationrate(L) > 0);
+}
+
 TEST_CASE("ApiEncode")
 {
     StateRef globalState(luaL_newstate(), lua_close);
@@ -3451,7 +3494,7 @@ TEST_CASE("IfElseExpression")
 
 TEST_CASE("IfLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauCompileUndoEmitAdjust, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
     runConformance("iflocal.luau");
 }
 
@@ -3677,7 +3720,6 @@ struct Heap
 
 TEST_CASE("GCDump")
 {
-    ScopedFastFlag luauEnumMoreEdges{FFlag::LuauEnumMoreEdges, true};
     ScopedFastFlag luauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
     ScopedFastFlag luauUserDefinedClassesRuntime{FFlag::DebugLuauUserDefinedClassesRuntime, true};
 

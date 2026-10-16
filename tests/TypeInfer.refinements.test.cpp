@@ -16,6 +16,8 @@ LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
+LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
+LUAU_FASTFLAG(LuauRefineNotNilWaitsForBlockedTarget)
 
 using namespace Luau;
 
@@ -375,6 +377,109 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
         CHECK("<T>(T) -> T & number" == toString(requireType("f")));
     else
         CHECK("<T>(T) -> number" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_refines_return_type_through_grouping")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        local function ungrouped(x: number?)
+            assert(x)
+            return x
+        end
+
+        local function assertnotnil(x: number?)
+            (assert)(x)
+            return x
+        end
+
+        local function nested(x: number?)
+            ((assert))(x)
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("(number?) -> number", toString(requireType("ungrouped")));
+    CHECK_EQ("(number?) -> number", toString(requireType("assertnotnil")));
+    CHECK_EQ("(number?) -> number", toString(requireType("nested")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_call_refines_return_type_through_grouping")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        local function ungrouped(x: number?)
+            if not x then
+                error(x)
+            end
+            return x
+        end
+
+        local function erroronnil(x: number?)
+            if not x then
+                (error)(x)
+            end
+            return x
+        end
+
+        local function nested(x: number?)
+            if not x then
+                ((error))(x)
+            end
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("(number?) -> number", toString(requireType("ungrouped")));
+    CHECK_EQ("(number?) -> number", toString(requireType("erroronnil")));
+    CHECK_EQ("(number?) -> number", toString(requireType("nested")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "grouped_calls_to_shadowed_builtins_do_not_refine_return_types")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        local assert = function(_: number?) end
+        local error = function(_: number?) end
+
+        local function assertnotnil(x: number?)
+            (assert)(x)
+            return x
+        end
+
+        local function nestedassert(x: number?)
+            ((assert))(x)
+            return x
+        end
+
+        local function erroronnil(x: number?)
+            if not x then
+                (error)(x)
+            end
+            return x
+        end
+
+        local function nestederror(x: number?)
+            if not x then
+                ((error))(x)
+            end
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("(number?) -> number?", toString(requireType("assertnotnil")));
+    CHECK_EQ("(number?) -> number?", toString(requireType("nestedassert")));
+    CHECK_EQ("(number?) -> number?", toString(requireType("erroronnil")));
+    CHECK_EQ("(number?) -> number?", toString(requireType("nestederror")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_prop")
@@ -3143,6 +3248,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_typeof_refinement_context")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "grouped_assert_and_typeof_refinement_context")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauDoesCallErrorUnwrapsGroups, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        local x = {} :: unknown
+        local y = {} :: unknown
+
+        if typeof(x) == "table" then
+            (assert)(typeof(x.transform) == "function")
+        end
+
+        if typeof(y) == "table" then
+            ((assert))(typeof(y.transform) == "function")
+        end
+    )"));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "foo_call_should_not_refine")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
@@ -3516,6 +3644,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_statement_annotation_with_typeof_is_visited")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true},
+        {FFlag::LuauExperimentalIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local x = 1
+        if local y: typeof(x) = 2 then
+            local s = y
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_expression_annotation_with_typeof_is_visited")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true},
+        {FFlag::LuauExperimentalIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local x = 1
+        local r = if local b: typeof(x) = 1 then b else 0
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_const_narrows_to_truthy")
 {
     ScopedFastFlag sffs[] = {
@@ -3870,6 +4030,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_expression_bidirectional_table_anno
     )");
 
     LUAU_REQUIRE_ERROR(result, TypeMismatch);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_not_nil_waits_for_blocked_target")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNotNilWaitsForBlockedTarget, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    CheckResult result = check(R"(
+        local M = {}
+        function M.id<T>(v: T): T
+            return v
+        end
+
+        local s = M.id({} :: { a: string?, b: string? })
+        local w = if true then s.a else nil
+        local u = if true then s.a or s.b else nil
+        if w ~= nil then
+            local x = w
+        end
+        if u ~= nil then
+            local y = u
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({10, 22})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({13, 22})));
 }
 
 TEST_SUITE_END();

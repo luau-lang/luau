@@ -11,7 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -216,6 +216,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
 {
+    ScopedFastFlag luauRemoveLoadstringFromBuiltinDefinitions{FFlag::LuauRemoveLoadstringFromBuiltinDefinitions, true};
+
     // Extracted from lua5.1
     CheckResult result = check(R"(
         local v__G = _G
@@ -357,7 +359,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
         local v_gcinfo = gcinfo
         local v_pairs = pairs
         local v_rawget = rawget
-        local v_loadstring = loadstring
+        --local v_loadstring = loadstring
         local v_ipairs = ipairs
         local v__VERSION = _VERSION
         --local v_dofile = dofile
@@ -1051,18 +1053,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        if (FFlag::LuauNewTypePathErrorMessages)
-            CHECK_EQ(
-                "Expected this to be 'number', but got 'number?'; \n"
-                "`nil` is not a subtype of `number`",
-                toString(result.errors[0])
-            );
-        else
-            CHECK_EQ(
-                "Expected this to be 'number', but got 'number?'; \n"
-                "the 2nd component of the union is `nil`, which is not a subtype of `number`",
-                toString(result.errors[0])
-            );
+        CHECK_EQ(
+            "Expected this to be 'number', but got 'number?'; \n"
+            "`nil` is not a subtype of `number`",
+            toString(result.errors[0])
+        );
     }
     else
     {

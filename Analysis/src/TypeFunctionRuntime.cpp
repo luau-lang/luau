@@ -28,10 +28,9 @@ LUAU_FASTINTVARIABLE(DebugLuauTypeFunctionRuntimeHeapLimit, 0)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 
 namespace Luau
 {
@@ -130,9 +129,21 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstS
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    // Load bytecode into Luau state
-    if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
-        return error;
+    if (FFlag::LuauUdtfTerseChunkNames)
+    {
+        std::string chunkName = name.value;
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
+
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
+    else
+    {
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError_DEPRECATED(L, name.value, lua_resume(L, nullptr, 0)))
@@ -216,9 +227,21 @@ std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTy
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    // Load bytecode into Luau state
-    if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
-        return error;
+    if (FFlag::LuauUdtfTerseChunkNames)
+    {
+        std::string chunkName = name.value;
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
+
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
+    else
+    {
+        // Load bytecode into Luau state
+        if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+            return error;
+    }
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError(L, name.value, lua_resume(L, nullptr, 0)))
@@ -344,8 +367,7 @@ std::optional<TypeFunctionError> checkResultForError(lua_State* L, const char* t
 
         const char* tname = FFlag::LuauUdtfFixTypeNameTypo ? luaL_typename(L, -1) : lua_typename(L, -1);
         return TypeFunctionError{
-            Location{},
-            RuntimeError{format("'%s' type function errored at runtime: raised an error of type %s", typeFunctionName, tname)}
+            Location{}, RuntimeError{format("'%s' type function errored at runtime: raised an error of type %s", typeFunctionName, tname)}
         };
     }
 }
@@ -880,7 +902,7 @@ static int setTableProp(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.setproperty: expected self to be a table, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
@@ -917,7 +939,7 @@ static int setReadTableProp(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.setreadproperty: expected self to be a table, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setreadproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
@@ -965,7 +987,7 @@ static int setWriteTableProp(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.setwriteproperty: expected self to be a table, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setwriteproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
@@ -1089,7 +1111,7 @@ static int setTableIndexer(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.setindexer: expected self to be either a table, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setindexer: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
@@ -1133,7 +1155,7 @@ static int setTableMetatable(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.setmetatable: expected self to be a table, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setmetatable: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
@@ -1367,7 +1389,7 @@ static int setFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setparameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setparameters: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     tfft->argTypes = getTypePack(L, 2, 3);
@@ -1406,7 +1428,7 @@ static int setFunctionReturns(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setreturns: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setreturns: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     tfft->retTypes = getTypePack(L, 2, 3);
@@ -1440,7 +1462,7 @@ static int setFunctionGenerics(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setgenerics: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+    if (self->frozen)
         luaL_error(L, "type.setgenerics: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     int argumentCount = lua_gettop(L);
@@ -1841,11 +1863,11 @@ static int isSubtypeOf(lua_State* L)
     NotNull<TypeFunctionContext> ctx = runtimeBuilder->ctx;
 
     TypeId subTy = Luau::deserialize(self, runtimeBuilder);
-    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+    if (!runtimeBuilder->errors.empty())
         luaL_error(L, "failed to deserialize the self type");
 
     TypeId superTy = Luau::deserialize(arg, runtimeBuilder);
-    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+    if (!runtimeBuilder->errors.empty())
         luaL_error(L, "failed to deserialize the argument type");
 
     SubtypingResult result = ctx->subtyping->isSubtype(subTy, superTy, ctx->scope);
@@ -1898,7 +1920,7 @@ static int typeToString(lua_State* L)
 
     TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
     TypeId selfTy = Luau::deserialize(self, runtimeBuilder);
-    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+    if (!runtimeBuilder->errors.empty())
         luaL_error(L, "failed to deserialize the self type");
 
     std::string asString = Luau::toString(selfTy);

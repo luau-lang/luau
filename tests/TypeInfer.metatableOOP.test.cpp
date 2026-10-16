@@ -17,7 +17,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -908,8 +907,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_for_fresh_ta
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type DateTime = { date: number }
         type A = setmetatable<{ value: DateTime? }, { test: DateTime? }>
@@ -921,8 +918,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_for_fresh_ta
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_in_call_and_return_contexts")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type DateTime = { date: number }
@@ -944,8 +939,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_does_not_widen_al
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
-
     CheckResult result = check(R"(
         type DateTime = { date: number }
         type A = setmetatable<{}, { test: DateTime? }>
@@ -961,8 +954,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_does_not_widen_al
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_rejects_invalid_fresh_table_values")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
 
     CheckResult result = check(R"(
         type DateTime = { date: number }
@@ -980,8 +971,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_pushed_into_ne
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type DateTime = { date: number }
         type A = setmetatable<{}, { callback: (DateTime) -> () }>
@@ -996,23 +985,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_pushed_into_ne
     std::optional<TypeId> expectedCallback = findExpectedTypeAtPosition({5, 23});
     REQUIRE(expectedCallback);
     CHECK_EQ("(DateTime) -> ()", toString(*expectedCallback));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_unchanged_when_flag_is_disabled")
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, false};
-
-    CheckResult result = check(R"(
-        type DateTime = { date: number }
-        type A = setmetatable<{}, { test: DateTime? }>
-
-        local x: A = setmetatable({}, { test = nil })
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    REQUIRE(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")

@@ -51,7 +51,7 @@ size_t HashBlockedConstraintId::operator()(const BlockedConstraintId& bci) const
     else if (const TypePackId* tp = get_if<TypePackId>(&bci))
         result = std::hash<TypePackId>()(*tp);
     else if (Constraint const* const* c = get_if<const Constraint*>(&bci))
-        result = std::hash<const Constraint*>()(*c);
+        result = uintptr_t(*c); // By address, like std::hash<TypeId>
     else
         LUAU_ASSERT(!"Should be unreachable");
 

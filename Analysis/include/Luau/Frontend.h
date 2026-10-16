@@ -184,8 +184,8 @@ struct Frontend
 
         size_t dynamicConstraintsCreated = 0;
     };
+
     Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options = {});
-    Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
     void setLuauSolverMode(SolverMode mode);
     SolverMode getLuauSolverMode() const;

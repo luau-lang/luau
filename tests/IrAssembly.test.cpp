@@ -10,10 +10,9 @@
 #include <regex>
 
 LUAU_FASTFLAG(LuauCodegenX64IntSpillRestore)
-
 LUAU_FASTFLAG(LuauCodegenExitSyncUpdate)
-
 LUAU_FASTFLAG(LuauCodegenScopedSpillKeepLazy)
+LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 using namespace Luau::CodeGen;
 
@@ -660,6 +659,7 @@ bb_2:
 TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedRegisters")
 {
     ScopedFastFlag luauCodegenExitSyncUpdate{FFlag::LuauCodegenExitSyncUpdate, true};
+    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
 
     options.includeOutlinedCode = true;
     options.includeRegSpills = true;
@@ -702,16 +702,107 @@ TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedRegisters")
         R"(
 bb_exit_1:
 .L15:
+  ; %2 can be restored from R3
+  STORE_DOUBLE R3, 5
  vmovsd      xmm0,qword ptr [r14+030h]
   ; restore %2 (double xmm0) from R3
-  STORE_DOUBLE R3, 5
+  ; %2 can no longer be restored from R3
  vmovsd      xmm1,qword ptr [.start-8]
  vmovsd      qword ptr [r14+030h],xmm1
   STORE_TAG R1, tnumber
  mov         dword ptr [r14+01Ch],3
   STORE_DOUBLE R1, %2
-  ; %10 can no longer be restored from R1
  vmovsd      qword ptr [r14+010h],xmm0
+  JUMP exit(0)
+ jmp         .L12
+; interrupt handlers
+.L13:
+ mov         eax,1
+ lea         rbx,.L14
+ jmp         .L5
+; exit handlers
+.L12:
+ mov         edx,0
+ jmp         .L1
+.L18:
+ ud2
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedDependent")
+{
+    ScopedFastFlag luauCodegenExitSyncUpdate{FFlag::LuauCodegenExitSyncUpdate, true};
+    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
+
+    options.includeOutlinedCode = true;
+    options.includeRegSpills = true;
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    build.beginBlock(entry);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(3)), build.constTag(tnumber), build.vmExit(0));
+    IrOp x = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(3));
+    IrOp i = build.inst(IrCmd::NUM_TO_INT, x);
+
+    // Test is a bit artificial, number converted to integers are not stored in booleans
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), i);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tboolean));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), build.constDouble(5.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), x);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+
+    build.inst(IrCmd::INTERRUPT, build.constUint(0)); // Spill values into restorable locations
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tnumber), build.vmExit(0));
+
+    IrOp y = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), y);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), y);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), y);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(5), i);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(5), build.constTag(tboolean));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(6));
+    updateUseCounts(build.function);
+
+    std::string result = lower();
+
+    if (size_t pos = result.find("bb_exit_1:"); pos != std::string::npos)
+        result = result.substr(pos);
+
+    // Before we restore R3, we need to evict %3 which has a conversion from a double number
+    CHECK_EQ(
+        "\n" + result,
+        R"(
+bb_exit_1:
+.L15:
+  ; %2 can be restored from R3
+  ; %3 can be restored from R3 as int
+  STORE_DOUBLE R3, 5
+ vmovsd      xmm0,qword ptr [r14+030h]
+  ; restore %2 (double xmm0) from R3
+  ; %2 can no longer be restored from R3
+ vcvttsd2si  eax,qword ptr [r14+030h]
+  ; restore %3 (int eax) from R3 as int
+  ; %3 can no longer be restored from R3 as int
+ vmovsd      xmm1,qword ptr [.start-8]
+ vmovsd      qword ptr [r14+030h],xmm1
+  STORE_TAG R2, tnumber
+ mov         dword ptr [r14+02Ch],3
+  STORE_DOUBLE R2, %2
+ vmovsd      qword ptr [r14+020h],xmm0
+  STORE_TAG R1, tboolean
+ mov         dword ptr [r14+01Ch],1
+  STORE_INT R1, %3
+ mov         dword ptr [r14+010h],eax
   JUMP exit(0)
  jmp         .L12
 ; interrupt handlers

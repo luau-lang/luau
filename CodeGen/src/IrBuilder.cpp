@@ -12,7 +12,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
 LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
 
@@ -595,9 +594,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
             IrOp fallback = fallbackBlock(i);
 
             inst(IrCmd::INTERRUPT, constUint(i));
-
-            if (FFlag::LuauBackedgeHeapCheck)
-                inst(IrCmd::CHECK_GC);
+            inst(IrCmd::CHECK_GC);
 
             loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
 

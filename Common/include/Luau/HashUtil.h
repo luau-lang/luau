@@ -28,11 +28,20 @@ struct DenseHashPointer
     }
 };
 
+// std::hash can't be specialized for void*, so void* keys are hashed by address; DenseHash's Fibonacci hashing mixes the bits.
+struct DenseHashAddress
+{
+    size_t operator()(const void* key) const noexcept
+    {
+        return uintptr_t(key);
+    }
+};
+
 namespace detail
 {
 
 template<typename T>
-using DenseHashDefault = std::conditional_t<std::is_pointer_v<T>, DenseHashPointer, std::hash<T>>;
+using DenseHashDefault = std::conditional_t<std::is_same_v<T, void*> || std::is_same_v<T, const void*>, DenseHashAddress, std::hash<T>>;
 
 } // namespace detail
 
