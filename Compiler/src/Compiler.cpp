@@ -34,18 +34,19 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileMoveElision)
+LUAU_FASTFLAGVARIABLE(LuauCompileRemoveStatLocalLoop)
 LUAU_FASTFLAGVARIABLE(LuauCompileMoveElisionFix)
-LUAU_FASTFLAGVARIABLE(LuauCompileCleanBlockDeadClose)
-LUAU_FASTFLAGVARIABLE(LuauCompileLoopUnrollZero)
+LUAU_FASTFLAGVARIABLE(LuauCompileNoDebugConst)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauCompileRefactorFeedback)
+LUAU_FASTFLAGVARIABLE(LuauCompileReuseLowersLimit)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauOptimizeExportTable)
 LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAGVARIABLE(LuauExportedTypesParticipateInScc)
-LUAU_FLAGVERSION(LuauExportedTypesParticipateInScc, 2)
+LUAU_FLAGVERSION(LuauExportedTypesParticipateInScc, 3)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileReuseLocalRegs)
 
@@ -483,6 +484,8 @@ struct Compiler
 
         LUAU_ASSERT(!functions.contains(func));
         LUAU_ASSERT(regTop == 0 && stackSize == 0 && localStack.empty() && upvals.empty());
+        LUAU_ASSERT(activeLocals == 0);
+
         if (FFlag::LuauExportValueSyntax)
             currentFunction = func;
 
@@ -541,7 +544,7 @@ struct Compiler
             {
                 compileExportTable();
             }
-            else if (FFlag::LuauExportedTypesParticipateInScc && exports.hasTypeExports && !terminatesEarly && atTopLevel())
+            else if (FFlag::LuauExportedTypesParticipateInScc && exports.hasTypeExports && !exports.hasModuleReturn && atTopLevel())
             {
                 compileExportTable();
             }
@@ -566,9 +569,12 @@ struct Compiler
             }
         }
 
-        // constant folding may remove some upvalue refs from bytecode, so this puts them back
-        if (options.optimizationLevel >= 1 && options.debugLevel >= 2)
-            gatherConstUpvals(func);
+        if (!FFlag::LuauCompileNoDebugConst)
+        {
+            // constant folding may remove some upvalue refs from bytecode, so this puts them back
+            if (options.optimizationLevel >= 1 && options.debugLevel >= 2)
+                gatherConstUpvals(func);
+        }
 
         bytecode.setDebugFunctionLineDefined(func->location.begin.line + 1);
 
@@ -622,7 +628,7 @@ struct Compiler
         if (FFlag::LuauExportValueSyntax && !exports.isEmpty() && func->functionDepth == 0)
             protoflags |= LPF_USES_EXPORT;
 
-        if (FFlag::LuauExportedTypesParticipateInScc && exports.hasTypeExports && !terminatesEarly && func->functionDepth == 0)
+        if (FFlag::LuauExportedTypesParticipateInScc && exports.hasTypeExports && !exports.hasModuleReturn && func->functionDepth == 0)
             protoflags |= LPF_USES_EXPORT;
 
         bool isInlinable = !hasMultiRet && !getfenvUsed && !setfenvUsed;
@@ -4062,6 +4068,9 @@ struct Compiler
         if (stat->list.size >= 255)
             CompileError::raise(stat->location, "Exceeded return count limit; simplify the code to compile");
 
+        if (FFlag::LuauExportedTypesParticipateInScc && currentFunction->functionDepth == 0 && inlineFrames.empty())
+            exports.hasModuleReturn = true;
+
         RegScope rs(this);
 
         uint8_t temp = 0;
@@ -4168,7 +4177,7 @@ struct Compiler
     void compileStatLocal(AstStatLocal* stat)
     {
         // Optimization: we don't need to allocate and assign const locals, since their uses will be constant-folded
-        if (options.optimizationLevel >= 1 && options.debugLevel <= 1 && areLocalsRedundant(stat))
+        if (options.optimizationLevel >= 1 && (options.debugLevel <= 1 || FFlag::LuauCompileNoDebugConst) && areLocalsRedundant(stat))
             return;
 
         // Optimization: for 1-1 local assignments, we can reuse the register *if* neither local is mutated
@@ -4192,10 +4201,12 @@ struct Compiler
             {
                 compileExprTemp(stat->values.data[0], inlineFrames.back().target);
 
-                // TODO: unreachable
-                // evaluate extra expressions for side effects
-                for (size_t i = stat->vars.size; i < stat->values.size; ++i)
-                    compileExprSide(stat->values.data[i]);
+                if (!FFlag::LuauCompileRemoveStatLocalLoop)
+                {
+                    // evaluate extra expressions for side effects
+                    for (size_t i = stat->vars.size; i < stat->values.size; ++i)
+                        compileExprSide(stat->values.data[i]);
+                }
 
                 pushLocal(stat->vars.data[0], inlineFrames.back().target, kDefaultAllocPc);
                 return;
@@ -4263,7 +4274,7 @@ struct Compiler
             return false;
         }
 
-        if (FFlag::LuauCompileLoopUnrollZero && tripCount == 0)
+        if (tripCount == 0)
         {
             bytecode.addDebugRemark("loop unroll succeeded: empty loop");
             return true;
@@ -4862,33 +4873,18 @@ struct Compiler
 
                 compileStat(bodyStat);
 
-                if (FFlag::LuauCompileCleanBlockDeadClose)
+                if (alwaysTerminates(bodyStat))
                 {
-                    if (alwaysTerminates(bodyStat))
-                    {
-                        terminatesEarly = true;
-                        break;
-                    }
-                }
-                else
-                {
-                    if (alwaysTerminates(bodyStat))
-                        break;
+                    terminatesEarly = true;
+                    break;
                 }
             }
 
             if (FFlag::LuauExportValueSyntax)
                 blockDepth--;
 
-            if (FFlag::LuauCompileCleanBlockDeadClose)
-            {
-                if (!terminatesEarly)
-                    closeLocals(oldLocals);
-            }
-            else
-            {
+            if (!terminatesEarly)
                 closeLocals(oldLocals);
-            }
 
             popLocals(oldLocals);
         }
@@ -5083,6 +5079,8 @@ struct Compiler
 
     void gatherConstUpvals(AstExprFunction* func)
     {
+        LUAU_ASSERT(!FFlag::LuauCompileNoDebugConst);
+
         ConstUpvalueVisitor visitor(this);
         func->body->visit(&visitor);
 
@@ -5092,12 +5090,15 @@ struct Compiler
 
     void pushLocal(AstLocal* local, uint8_t reg, uint32_t allocpc)
     {
-        if (localStack.size() >= kMaxLocalCount)
+        if ((FFlag::LuauCompileReuseLowersLimit ? activeLocals : localStack.size()) >= kMaxLocalCount)
             CompileError::raise(
                 local->location, "Out of local registers when trying to allocate %s: exceeded limit %d", local->name.value, kMaxLocalCount
             );
 
         localStack.push_back(local);
+
+        if (FFlag::LuauCompileReuseLowersLimit)
+            activeLocals++;
 
         Local& l = locals[local];
 
@@ -5191,6 +5192,12 @@ struct Compiler
 
         l->allocated = false;
 
+        if (FFlag::LuauCompileReuseLowersLimit)
+        {
+            LUAU_ASSERT(activeLocals != 0);
+            activeLocals--;
+        }
+
         if (FFlag::LuauCompileMoveElision)
             regCaptured[l->reg] = false;
 
@@ -5241,6 +5248,12 @@ struct Compiler
             {
                 LUAU_ASSERT(l->allocated);
                 l->allocated = false;
+
+                if (FFlag::LuauCompileReuseLowersLimit)
+                {
+                    LUAU_ASSERT(activeLocals != 0);
+                    activeLocals--;
+                }
 
                 if (FFlag::LuauCompileMoveElision)
                     regCaptured[l->reg] = false;
@@ -5811,6 +5824,8 @@ struct Compiler
 
     std::vector<AstLocal*> localStack;
     std::array<bool, kMaxRegisterCount> regCaptured{};
+    size_t activeLocals = 0;
+
     std::vector<AstLocal*> upvals;
     std::vector<LoopJump> loopJumps;
     std::vector<Loop> loops;
@@ -5837,6 +5852,7 @@ struct Compiler
         int32_t exportedTableCid = -1;
         bool hasExports = false;
         bool hasTypeExports = false;
+        bool hasModuleReturn = false;
 
         explicit Exports(AstLocal tableLocal)
             : exportTableLocal(tableLocal)

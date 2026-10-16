@@ -41,9 +41,6 @@ LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
-LUAU_FASTFLAGVARIABLE(LuauCloneTypeFunctionFromForeignArena)
-LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArguments)
-LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
@@ -304,22 +301,12 @@ struct InstantiationQueuer : IterativeTypeVisitor
 
     bool visit(TypeId ty, const PendingExpansionType& petv) override
     {
-        if (FFlag::LuauInstantiationCheckArgumentsDedup)
-        {
-            if (!solver->typeAliasesToExpand.contains(ty))
-            {
-                if (FFlag::LuauCyclicRequireTypeInference)
-                    solver->typeAliasesToExpand[ty] = solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
-                else
-                    solver->typeAliasesToExpand[ty] = solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
-            }
-        }
-        else
+        if (!solver->typeAliasesToExpand.contains(ty))
         {
             if (FFlag::LuauCyclicRequireTypeInference)
-                solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
+                solver->typeAliasesToExpand[ty] = solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
             else
-                solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
+                solver->typeAliasesToExpand[ty] = solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
         }
 
         return false;
@@ -1108,7 +1095,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     if (FFlag::LuauForceLess)
-         force = false;
+        force = false;
 
     /*
      * for .. in loops can play out in a bunch of different ways depending on
@@ -1324,55 +1311,42 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         return block(tf->type, constraint);
 
     // Adding ReduceConstraint on type function for the constraint solver
-    if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+    if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(tf->type)))
     {
-        if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(tf->type)))
+        TypeId toReduce = follow(tf->type);
+
+        // If the type function instance belongs to a different arena (e.g. imported
+        // from another module), we must create a fresh copy in our arena so that
+        // the reducer can mutate it during reduction.
+        if (toReduce->owningArena != arena)
         {
-            TypeId toReduce = follow(tf->type);
-
-            // If the type function instance belongs to a different arena (e.g. imported
-            // from another module), we must create a fresh copy in our arena so that
-            // the reducer can mutate it during reduction.
-            if (toReduce->owningArena != arena)
-            {
-                toReduce = arena->addType(
-                    TypeFunctionInstanceType{
-                        tfit->function,
-                        tfit->typeArguments,
-                        tfit->packArguments,
-                        tfit->userFuncName,
-                        tfit->userFuncData,
-                    }
-                );
-
-                if (FFlag::LuauCyclicRequireTypeInference)
-                    pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
-                else
-                    DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
-
-                if (tf->typeParams.empty() && tf->typePackParams.empty())
-                {
-                    bindResult(toReduce);
-                    return true;
+            toReduce = arena->addType(
+                TypeFunctionInstanceType{
+                    tfit->function,
+                    tfit->typeArguments,
+                    tfit->packArguments,
+                    tfit->userFuncName,
+                    tfit->userFuncData,
                 }
-            }
+            );
+
+            if (FFlag::LuauCyclicRequireTypeInference)
+                pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
             else
+                DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
+
+            if (tf->typeParams.empty() && tf->typePackParams.empty())
             {
-                if (FFlag::LuauCyclicRequireTypeInference)
-                    pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
-                else
-                    DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
+                bindResult(toReduce);
+                return true;
             }
         }
-    }
-    else
-    {
-        if (get<TypeFunctionInstanceType>(follow(tf->type)))
+        else
         {
             if (FFlag::LuauCyclicRequireTypeInference)
-                pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type}, constraint->moduleName);
+                pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
             else
-                DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type});
+                DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
         }
     }
 
@@ -1500,13 +1474,10 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     queuer.run(target);
 
     // Instantiation arguments might contain pending expansion types as well
-    if (FFlag::LuauInstantiationCheckArguments)
-    {
-        for (TypeId arg : typeArguments)
-            queuer.run(arg);
-        for (TypePackId arg : packArguments)
-            queuer.run(arg);
-    }
+    for (TypeId arg : typeArguments)
+        queuer.run(arg);
+    for (TypePackId arg : packArguments)
+        queuer.run(arg);
 
     if (target->persistent || target->owningArena != arena)
     {
@@ -2018,7 +1989,8 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     }
 
     // It doesn't matter whether this type came from an indexer or not.
-    auto [blocked, result, _isIndex] = lookupTableProp(constraint, subjectType, c.prop, c.context, c.inConditional, c.suppressSimplification);
+    auto [blocked, result, _isIndex] =
+        lookupTableProp(constraint, subjectType, c.prop, ValueContext::RValue, c.inConditional, c.suppressSimplification);
     if (!blocked.empty())
     {
         for (TypeId blocked : blocked)
@@ -2084,8 +2056,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         }
 
         const TableState ubState = FFlag::DebugLuauExactTableTypes ? TableState::Sealed : TableState::Unsealed;
-        TypeId upperBound =
-            arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, ubState});
+        TypeId upperBound = arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, ubState});
 
         TypeId sr = follow(simplifyIntersection(constraint->scope, constraint->location, ft->upperBound, upperBound));
 

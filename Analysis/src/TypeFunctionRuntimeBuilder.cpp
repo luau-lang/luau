@@ -20,7 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 
 namespace Luau
@@ -84,9 +83,7 @@ public:
 private:
     bool hasErrors() const
     {
-        if (FFlag::LuauTypeFunctionStructuredErrors)
-            return !state->errors.empty();
-        return state->errors_DEPRECATED.size() != 0;
+        return !state->errors.empty();
     }
 
     bool hasExceededIterationLimit() const
@@ -179,12 +176,7 @@ private:
             case PrimitiveType::Function:
             case PrimitiveType::Table:
             default:
-                if (FFlag::LuauTypeFunctionStructuredErrors)
-                    state->errors.emplace_back(Location{}, UnsupportedType{ty});
-                else
-                    state->errors_DEPRECATED.push_back(
-                        format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str())
-                    );
+                state->errors.emplace_back(Location{}, UnsupportedType{ty});
             }
         }
         else if (get<UnknownType>(ty))
@@ -201,12 +193,7 @@ private:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionSingletonType{TypeFunctionStringSingleton{ss->value}});
             else
             {
-                if (FFlag::LuauTypeFunctionStructuredErrors)
-                    state->errors.emplace_back(Location{}, UnsupportedType{ty});
-                else
-                    state->errors_DEPRECATED.push_back(
-                        format("Argument of singleton type %s is not currently serializable by type functions", toString(ty).c_str())
-                    );
+                state->errors.emplace_back(Location{}, UnsupportedType{ty});
             }
         }
         else if (get<UnionType>(ty))
@@ -241,12 +228,7 @@ private:
         }
         else
         {
-            if (FFlag::LuauTypeFunctionStructuredErrors)
-                state->errors.emplace_back(Location{}, UnsupportedType{ty});
-            else
-                state->errors_DEPRECATED.push_back(
-                    format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
-                );
+            state->errors.emplace_back(Location{}, UnsupportedType{ty});
         }
 
         types[ty] = target;
@@ -278,12 +260,7 @@ private:
         }
         else
         {
-            if (FFlag::LuauTypeFunctionStructuredErrors)
-                state->errors.emplace_back(Location{}, UnsupportedTypePack{tp});
-            else
-                state->errors_DEPRECATED.push_back(
-                    format("Argument of type pack %s is not currently serializable by type functions", toString(tp).c_str())
-                );
+            state->errors.emplace_back(Location{}, UnsupportedTypePack{tp});
         }
 
         packs[tp] = target;
@@ -322,12 +299,7 @@ private:
         else
         {
             // Either this or ty and tfti do not represent the same type
-            if (FFlag::LuauTypeFunctionStructuredErrors)
-                state->errors.emplace_back(Location{}, UnsupportedType{ty});
-            else
-                state->errors_DEPRECATED.push_back(
-                    format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
-                );
+            state->errors.emplace_back(Location{}, UnsupportedType{ty});
         }
     }
 
@@ -342,10 +314,7 @@ private:
         else
         {
             // Either this or tp and tftp do not represent the same type
-            if (FFlag::LuauTypeFunctionStructuredErrors)
-                state->errors.emplace_back(Location{}, UnsupportedTypePack{tp});
-            else
-                state->errors_DEPRECATED.push_back(format("Type functions do not currently support types of the form '%s'", toString(tp).c_str()));
+            state->errors.emplace_back(Location{}, UnsupportedTypePack{tp});
         }
     }
 
@@ -635,17 +604,12 @@ private:
 
     bool hasErrors() const
     {
-        if (FFlag::LuauTypeFunctionStructuredErrors)
-            return !state->errors.empty();
-        return state->errors_DEPRECATED.size() != 0;
+        return !state->errors.empty();
     }
 
     void pushRuntimeError(std::string message)
     {
-        if (FFlag::LuauTypeFunctionStructuredErrors)
-            state->errors.emplace_back(Location{}, RuntimeError{std::move(message)});
-        else
-            state->errors_DEPRECATED.push_back(std::move(message));
+        state->errors.emplace_back(Location{}, RuntimeError{std::move(message)});
     }
 
     void run()

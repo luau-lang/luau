@@ -15,7 +15,6 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -473,12 +472,8 @@ b(a)
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = FFlag::LuauNewTypePathErrorMessages
-                                         ? "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
-                                           "Expected property `Y` to be `string`, but got `number`"
-                                         : "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
-                                           "accessing `Y` results in `number` in the latter type and `string` in the former type, "
-                                           "and `number` is not a subtype of `string`";
+        const std::string expected = "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
+                                     "Expected property `Y` to be `string`, but got `number`";
         CHECK_EQ(expected, toString(result.errors.at(0)));
     }
     else
@@ -568,17 +563,10 @@ local b: B = a
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        if (FFlag::LuauNewTypePathErrorMessages)
-            CHECK(
-                "Expected this to be 'B', but got 'A'; \n"
-                "Expected property `x` to be exactly `BaseClass`, but got `ChildClass`" == toString(result.errors.at(0))
-            );
-        else
-            CHECK(
-                "Expected this to be 'B', but got 'A'; \n"
-                "accessing `x` results in `ChildClass` in the latter type and `BaseClass` in the former type, and `ChildClass` is not "
-                "exactly `BaseClass`" == toString(result.errors.at(0))
-            );
+        CHECK(
+            "Expected this to be 'B', but got 'A'; \n"
+            "Expected property `x` to be exactly `BaseClass`, but got `ChildClass`" == toString(result.errors.at(0))
+        );
     }
     else
     {

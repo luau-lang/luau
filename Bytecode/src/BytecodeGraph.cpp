@@ -7,6 +7,7 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCostModel)
+LUAU_FASTFLAGVARIABLE(LuauInlinerNamecallSelfFromMove)
 LUAU_FASTFLAG(LuauCompileRefactorFeedback)
 
 namespace Luau

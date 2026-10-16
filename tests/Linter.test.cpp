@@ -12,8 +12,6 @@ LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
-LUAU_FASTFLAG(LuauImproveDeprecatedLint)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("Linter");
@@ -1916,7 +1914,6 @@ foo()
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTable")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
 
     LintResult result = lint(R"(
         local module = {}
@@ -1953,7 +1950,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTabl
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
 
     LintResult result = lint(R"(
         local module = {}
@@ -1991,7 +1987,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTabl
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnNestedCompositeFunctions")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
 
     LintResult result = lint(R"(
         local deprecatedNumber = @deprecated function(value: number): number

@@ -18,6 +18,7 @@
 
 LUAU_FASTFLAG(LuauCodegenExitSyncUpdate)
 LUAU_FASTFLAG(LuauCodegenConstPropMinOffset)
+LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 namespace Luau
 {
@@ -3747,7 +3748,20 @@ void IrLoweringX64::startBlock(const IrBlock& curr)
         );
 
     if (curr.kind == IrBlockKind::ExitSync)
-        regs.setupExitSyncEntry(function.getBlockIndex(curr));
+    {
+        if (FFlag::LuauCodegenImprovedExitSync)
+        {
+            uint32_t blockIdx = function.getBlockIndex(curr);
+            regs.setupExitSyncEntry(blockIdx);
+
+            // With register state restored, we can restore value location tracking
+            valueTracker.setupExitSyncEntry(blockIdx);
+        }
+        else
+        {
+            regs.setupExitSyncEntry(function.getBlockIndex(curr));
+        }
+    }
 }
 
 void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)

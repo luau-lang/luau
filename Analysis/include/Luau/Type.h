@@ -1090,6 +1090,8 @@ const Property* lookupExternTypeProp(const ExternType* cls, const Name& name);
 // Whether `cls` is a subclass of `parent`
 bool isSubclass(const ExternType* cls, const ExternType* parent);
 
+const ExternType* getClassInstanceType(TypeId classTy);
+
 Type* asMutable(TypeId ty);
 
 template<typename... Ts, typename T>

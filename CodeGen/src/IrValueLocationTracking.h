@@ -29,6 +29,8 @@ struct IrValueLocationTracking
     void invalidateRestoreOp(IrOp location, bool skipValueInvalidation);
     void invalidateRestoreVmRegs(int start, int count);
 
+    void setupExitSyncEntry(uint32_t blockIdx);
+
     LogBuilder* logger = nullptr;
     IrFunction& function;
 
