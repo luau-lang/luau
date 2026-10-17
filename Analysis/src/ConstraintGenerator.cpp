@@ -52,6 +52,7 @@ LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalAnalysis)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalAnalysis, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAGVARIABLE(LuauUnconditionallyVisitTypeAliasParams)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 namespace Luau
 {
@@ -4983,7 +4984,7 @@ TypeId ConstraintGenerator::resolveFunctionType(
         signatureScope = scope;
     }
 
-    AstTypePackExplicit tempArgTypes{Location{}, fn->argTypes};
+    AstTypePackExplicit tempArgTypes{Location{}, fn->argTypes, fn->argNames};
 
     Polarity p = polarity;
     polarity = invert(polarity);
@@ -5140,6 +5141,23 @@ TypePackId ConstraintGenerator::resolveTypePack_(const ScopePtr& scope, AstTypeP
     if (auto expl = tp->as<AstTypePackExplicit>())
     {
         result = resolveTypePack_(scope, expl->typeList, inTypeArgument, replaceErrorWithFresh);
+
+        if (FFlag::LuauNamedTypePacks && expl->names.size > 0)
+        {
+            auto pack = getMutable<TypePack>(result);
+            LUAU_ASSERT(pack);
+            LUAU_ASSERT(expl->names.size == pack->head.size());
+
+            pack->names.resize(pack->head.size());
+
+            for (std::size_t i = 0; i < expl->names.size; ++i)
+            {
+                if (expl->names.data[i].has_value())
+                {
+                    pack->names[i] = expl->names.data[i].value().first.value;
+                }
+            }
+        }
     }
     else if (auto var = tp->as<AstTypePackVariadic>())
     {

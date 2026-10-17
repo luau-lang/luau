@@ -15,6 +15,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 namespace
 {
@@ -366,17 +367,23 @@ struct Printer
                     /* unconditionallyParenthesize */ false,
                     cstNode->openParenthesesPosition,
                     cstNode->closeParenthesesPosition,
-                    cstNode->commaPositions
+                    cstNode->commaPositions,
+                    explicitTp->names
                 );
             else if (forFunctionReturn)
             {
                 size_t packSize = explicitTp->typeList.types.size + (explicitTp->typeList.tailType != nullptr ? 1 : 0);
                 visualizeTypeList(
-                    explicitTp->typeList, /* unconditionallyParenthesize */ forFunctionReturn ? packSize != 1 : unconditionallyParenthesize
+                    explicitTp->typeList,
+                    /* unconditionallyParenthesize */ forFunctionReturn ? packSize != 1 : unconditionallyParenthesize,
+                    Position::missing(),
+                    Position::missing(),
+                    {},
+                    explicitTp->names
                 );
             }
             else
-                visualizeTypeList(explicitTp->typeList, unconditionallyParenthesize);
+                visualizeTypeList(explicitTp->typeList, unconditionallyParenthesize, Position::missing(), Position::missing(), {}, explicitTp->names);
         }
         else
         {
@@ -449,10 +456,14 @@ struct Printer
         bool unconditionallyParenthesize,
         Position openParenthesesPosition = Position::missing(),
         Position closeParenthesesPosition = Position::missing(),
-        AstArray<Position> commaPositions = {}
+        AstArray<Position> commaPositions = {},
+        AstArray<std::optional<AstArgumentName>> names = {}
     )
     {
-        visualizeNamedTypeList(list, unconditionallyParenthesize, openParenthesesPosition, closeParenthesesPosition, commaPositions, {}, {});
+        if (!FFlag::LuauNamedTypePacks)
+            names = {};
+
+        visualizeNamedTypeList(list, unconditionallyParenthesize, openParenthesesPosition, closeParenthesesPosition, commaPositions, names, {});
     }
 
     bool isIntegerish(double d)

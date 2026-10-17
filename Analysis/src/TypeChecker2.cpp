@@ -781,7 +781,7 @@ void TypeChecker2::visit(AstStatReturn* ret)
         return;
     }
 
-    auto [head, _] = extendTypePack(*module->internalTypes, builtinTypes, expectedRetType, ret->list.size);
+    auto [head, _, names] = extendTypePack(*module->internalTypes, builtinTypes, expectedRetType, ret->list.size);
     bool isSubtype = true;
     std::vector<TypeId> actualHead;
     std::optional<TypePackId> actualTail;

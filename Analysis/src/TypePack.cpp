@@ -6,6 +6,8 @@
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
 
+LUAU_FASTFLAG(LuauNamedTypePacks)
+
 namespace Luau
 {
 
@@ -201,6 +203,14 @@ const TypeId& TypePackIterator::operator*()
     return tp->head[currentIndex];
 }
 
+const std::string* TypePackIterator::getName() const
+{
+    if (!tp || currentIndex >= tp->names.size() || !tp->names[currentIndex].has_value())
+        return nullptr;
+
+    return &tp->names[currentIndex].value();
+}
+
 std::optional<TypePackId> TypePackIterator::tryGetHead() const
 {
     if (currentIndex == 0)
@@ -372,7 +382,21 @@ TypePackId typePackFromIterator(NotNull<TypeArena> arena, TypePackIterator start
     TypePack p;
 
     for (; startIter != endIter; ++startIter)
+    {
         p.head.push_back(*startIter);
+
+        if (FFlag::LuauNamedTypePacks)
+        {
+            if (const std::string* name = startIter.getName())
+            {
+                p.names.push_back(*name);
+            }
+            else
+            {
+                p.names.push_back(std::nullopt);
+            }
+        }
+    }
 
     p.tail = startIter.tail();
 
@@ -507,7 +531,34 @@ TypePackId sliceTypePack(
         for (size_t i = 0; i < sliceIndex; ++i)
             ++superHeadIter;
         std::vector<TypeId> headSlice(std::move(superHeadIter), end(head));
-        return arena->addTypePack(std::move(headSlice), tail);
+
+        TypePack result;
+        result.head = std::move(headSlice);
+        result.tail = tail;
+
+        if (FFlag::LuauNamedTypePacks)
+        {
+            auto nameIter = begin(toBeSliced);
+
+            for (std::size_t i = 0; i < sliceIndex; ++i)
+                ++nameIter;
+
+            for (std::size_t i = 0; i < result.head.size(); ++i)
+            {
+                if (const std::string* name = nameIter.getName())
+                {
+                    result.names.push_back(*name);
+                }
+                else
+                {
+                    result.names.push_back(std::nullopt);
+                }
+
+                ++nameIter;
+            }
+        }
+
+        return arena->addTypePack(std::move(result));
     }
 }
 

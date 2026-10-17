@@ -707,6 +707,7 @@ TypePackId Substitution::clone(TypePackId tp)
         TypePack clone;
         clone.head = tpp->head;
         clone.tail = tpp->tail;
+        clone.names = tpp->names;
         return addTypePack(std::move(clone));
     }
     else if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
