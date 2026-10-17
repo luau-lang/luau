@@ -84,6 +84,7 @@ LUAU_FASTFLAG(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauCompileCallFbRemap)
 LUAU_DYNAMIC_FASTFLAG(LuauTableRobustOom)
+LUAU_FASTFLAG(LuauIsNotLua)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -3502,11 +3503,14 @@ TEST_CASE("IfLocal")
 // Optionally returns debug info for the first Luau stack frame that is encountered on the callstack.
 static std::optional<lua_Debug> getFirstLuauFrameDebugInfo(lua_State* L)
 {
-    static std::string_view kLua = "Lua";
+    static std::string_view kLuau = "Lua";
+    if (FFlag::LuauIsNotLua)
+        kLuau = "Luau";
+
     lua_Debug ar;
     for (int i = 0; lua_getinfo(L, i, "sl", &ar); i++)
     {
-        if (kLua == ar.what)
+        if (kLuau == ar.what)
             return ar;
     }
     return std::nullopt;
