@@ -434,7 +434,7 @@ static const char* match(MatchState* ms, const char* s, const char* p)
         luaL_error(ms->L, "pattern too complex");
 
     lua_State* L = ms->L;
-    void (*interrupt)(lua_State*, int) = L->global->cb.interrupt;
+    void (*interrupt)(lua_State*, int) = luaE_loadinterrupt(L->global);
 
     if (LUAU_UNLIKELY(!!interrupt))
     {

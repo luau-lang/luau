@@ -61,7 +61,7 @@ static void sigintCallback(lua_State* L, int gc)
     if (gc >= 0)
         return;
 
-    lua_callbacks(L)->interrupt = NULL;
+    lua_setinterrupt(L, nullptr);
 
     lua_rawcheckstack(L, 1); // reserve space for error string
     luaL_error(L, "Execution interrupted");
@@ -73,14 +73,14 @@ static lua_State* replState = NULL;
 BOOL WINAPI sigintHandler(DWORD signal)
 {
     if (signal == CTRL_C_EVENT && replState)
-        lua_callbacks(replState)->interrupt = &sigintCallback;
+        lua_setinterrupt(replState, sigintCallback);
     return TRUE;
 }
 #else
 static void sigintHandler(int signum)
 {
     if (signum == SIGINT && replState)
-        lua_callbacks(replState)->interrupt = &sigintCallback;
+        lua_setinterrupt(replState, sigintCallback);
 }
 #endif
 

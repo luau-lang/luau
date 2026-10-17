@@ -90,7 +90,7 @@ LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
 
 #define VM_INTERRUPT() \
     { \
-        void (*interrupt)(lua_State*, int) = L->global->cb.interrupt; \
+        void (*interrupt)(lua_State*, int) = luaE_loadinterrupt(L->global); \
         if (LUAU_UNLIKELY(!!interrupt)) \
         { /* the interrupt hook is called right before we advance pc */ \
             VM_PROTECT(L->ci->savedpc++; interrupt(L, -1)); \

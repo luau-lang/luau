@@ -6,6 +6,10 @@
 #include "ltm.h"
 #include "ludata.h"
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
+
 // registry
 #define registry(L) (&L->global->registry)
 
@@ -277,6 +281,55 @@ typedef struct global_State
 #endif
 } global_State;
 // clang-format on
+
+static_assert(sizeof(decltype(global_State::cb.interrupt)) == sizeof(void*), "interrupt must have pointer-sized representation");
+static_assert(offsetof(global_State, cb.interrupt) % sizeof(void*) == 0, "interrupt must be naturally aligned");
+
+#if !defined(_MSC_VER) || defined(__clang__)
+static_assert(__atomic_always_lock_free(sizeof(void*), nullptr), "interrupt access must be lock-free");
+#endif
+
+inline auto luaE_loadinterrupt(const global_State* g) -> decltype(g->cb.interrupt)
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+#if defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC)
+#ifdef _WIN64
+    return reinterpret_cast<decltype(g->cb.interrupt)>(__iso_volatile_load64(reinterpret_cast<const volatile __int64*>(&g->cb.interrupt)));
+#else
+    return reinterpret_cast<decltype(g->cb.interrupt)>(__iso_volatile_load32(reinterpret_cast<const volatile __int32*>(&g->cb.interrupt)));
+#endif
+#elif defined(_M_IX86) || defined(_M_X64)
+    auto interrupt = static_cast<decltype(g->cb.interrupt) const volatile&>(g->cb.interrupt);
+    _ReadWriteBarrier();
+    return interrupt;
+#else
+#error Unsupported MSVC target for interrupt access
+#endif
+#else
+    return __atomic_load_n(&g->cb.interrupt, __ATOMIC_RELAXED);
+#endif
+}
+
+inline void luaE_storeinterrupt(global_State* g, void (*interrupt)(lua_State*, int))
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+#if defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC)
+#ifdef _WIN64
+    __iso_volatile_store64(reinterpret_cast<volatile __int64*>(&g->cb.interrupt), reinterpret_cast<__int64>(interrupt));
+#else
+    __iso_volatile_store32(reinterpret_cast<volatile __int32*>(&g->cb.interrupt), reinterpret_cast<__int32>(interrupt));
+#endif
+#elif defined(_M_IX86) || defined(_M_X64)
+    _ReadWriteBarrier();
+    static_cast<decltype(g->cb.interrupt) volatile&>(g->cb.interrupt) = interrupt;
+    _ReadWriteBarrier();
+#else
+#error Unsupported MSVC target for interrupt access
+#endif
+#else
+    __atomic_store_n(&g->cb.interrupt, interrupt, __ATOMIC_RELAXED);
+#endif
+}
 
 /*
 ** `per thread' state

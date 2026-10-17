@@ -10,7 +10,7 @@
 struct Profiler
 {
     // static state
-    lua_Callbacks* callbacks = nullptr;
+    lua_State* state = nullptr;
     int frequency = 1000;
     std::thread thread;
 
@@ -69,7 +69,7 @@ static void profilerTrigger(lua_State* L, int gc)
     }
 
     gProfiler.currentTicks = currentTicks;
-    gProfiler.callbacks->interrupt = nullptr;
+    lua_setinterrupt(L, nullptr);
 }
 
 static void profilerLoop()
@@ -86,7 +86,7 @@ static void profilerLoop()
 
             gProfiler.ticks += ticks;
             gProfiler.samples++;
-            gProfiler.callbacks->interrupt = profilerTrigger;
+            lua_setinterrupt(gProfiler.state, profilerTrigger);
 
             last += ticks * 1e-6;
         }
@@ -100,7 +100,7 @@ static void profilerLoop()
 void profilerStart(lua_State* L, int frequency)
 {
     gProfiler.frequency = frequency;
-    gProfiler.callbacks = lua_callbacks(L);
+    gProfiler.state = L;
 
     gProfiler.exit = false;
     gProfiler.thread = std::thread(profilerLoop);
