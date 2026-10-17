@@ -606,8 +606,9 @@ LUA_API void lua_getcounters(lua_State* L, int funcindex, void* context, lua_Cou
 /* Callbacks that can be used to reconfigure behavior of the VM dynamically.
  * These are shared between all coroutines.
  *
- * Note: interrupt is safe to set from an arbitrary thread but all other callbacks
- * can only be changed when the VM is not running any code */
+ * Note: interrupt can be changed from an arbitrary thread using lua_setinterrupt.
+ * Direct access to interrupt and changes to all other callbacks require the VM
+ * to be stopped and no concurrent callback access. */
 struct lua_Callbacks
 {
     void* userdata; // arbitrary userdata pointer that is never overwritten by Luau
@@ -638,6 +639,10 @@ struct lua_Callbacks
 typedef struct lua_Callbacks lua_Callbacks;
 
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
+
+// Atomically updates the callback without synchronizing other shared state or waiting for an in-flight callback.
+// L must remain valid until this call returns; the callback must remain valid while it can still be invoked.
+LUA_API void lua_setinterrupt(lua_State* L, void (*interrupt)(lua_State*, int));
 
 // Must be called after lua_newstate and before the state creates any additional objects
 // The VM makes no assumptions about the layout or structure of the caged heap

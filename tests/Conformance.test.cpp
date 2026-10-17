@@ -25,7 +25,9 @@
 #include "BufferCage.h"
 #include "ConformanceIrHooks.h"
 
+#include <atomic>
 #include <cstdlib>
+#include <thread>
 #include <fstream>
 #include <string>
 #include <unordered_map>
@@ -3881,6 +3883,99 @@ return f, object
     }
 
     CHECK(totalFromRegistry + totalFromL == totalHeap);
+}
+
+TEST_CASE("InterruptConcurrentUpdates")
+{
+    struct Context
+    {
+        std::atomic<bool> entered{false};
+        std::atomic<bool> started{false};
+        std::atomic<bool> finished{false};
+        size_t calls = 0;
+        size_t updates = 0;
+    } context;
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+    REQUIRE(L);
+
+    lua_Callbacks* callbacks = lua_callbacks(L);
+    callbacks->userdata = &context;
+    void (*first)(lua_State*, int) = [](lua_State* L, int)
+    {
+        static_cast<Context*>(lua_callbacks(L)->userdata)->calls++;
+    };
+    void (*second)(lua_State*, int) = [](lua_State* L, int)
+    {
+        static_cast<Context*>(lua_callbacks(L)->userdata)->calls += 2;
+    };
+    lua_setinterrupt(L, first);
+    luaL_openlibs(L);
+
+    lua_pushcfunction(
+        L,
+        [](lua_State* L)
+        {
+            Context* context = static_cast<Context*>(lua_callbacks(L)->userdata);
+            context->entered.store(true, std::memory_order_release);
+            while (!context->started.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            return 0;
+        },
+        "entered"
+    );
+    lua_setglobal(L, "entered");
+
+    if (codegen && luau_codegen_supported())
+        luau_codegen_create(L);
+
+    std::string bytecode = Luau::compile(R"(
+        entered()
+        local sum = 0
+        for i = 1, 100000 do
+            if string.find(tostring(i), "^%d+$") then sum += i end
+        end
+        return sum
+    )");
+    REQUIRE(luau_load(L, "=InterruptConcurrentUpdates", bytecode.data(), bytecode.size(), 0) == LUA_OK);
+
+    if (codegen && luau_codegen_supported())
+    {
+        Luau::CodeGen::CompilationResult result = Luau::CodeGen::compile(L, -1, defaultCodegenOptions());
+        REQUIRE(result.result == Luau::CodeGen::CodeGenCompilationResult::Success);
+    }
+
+    std::thread writer(
+        [&context, L, first, second]
+        {
+            while (!context.entered.load(std::memory_order_acquire))
+            {
+                if (context.finished.load(std::memory_order_acquire))
+                    return;
+                std::this_thread::yield();
+            }
+
+            lua_setinterrupt(L, first);
+            context.updates++;
+            context.started.store(true, std::memory_order_release);
+            while (!context.finished.load(std::memory_order_acquire))
+            {
+                lua_setinterrupt(L, (context.updates & 1) ? first : second);
+                context.updates++;
+            }
+        }
+    );
+
+    int status = lua_resume(L, nullptr, 0);
+    context.finished.store(true, std::memory_order_release);
+    writer.join();
+    lua_setinterrupt(L, nullptr);
+
+    CHECK(status == LUA_OK);
+    CHECK(lua_tonumber(L, -1) == 5000050000.0);
+    CHECK(context.calls > 0);
+    CHECK(context.updates > 0);
 }
 
 TEST_CASE("Interrupt")

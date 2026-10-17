@@ -2202,6 +2202,11 @@ lua_Callbacks* lua_callbacks(lua_State* L)
     return &L->global->cb;
 }
 
+void lua_setinterrupt(lua_State* L, void (*interrupt)(lua_State*, int))
+{
+    luaE_storeinterrupt(L->global, interrupt);
+}
+
 void lua_setmemcat(lua_State* L, int category)
 {
     api_check(L, unsigned(category) < LUA_MEMORY_CATEGORIES);
