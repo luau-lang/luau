@@ -665,6 +665,15 @@ struct IncompatibleClassMethodOverride
     bool operator==(const IncompatibleClassMethodOverride& rhs) const;
 };
 
+struct IllegalClassPropertyOverride
+{
+    Name property;
+    Name className;
+    Name superName;
+
+    bool operator==(const IllegalClassPropertyOverride& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -735,7 +744,8 @@ using TypeErrorData = Variant<
     ConstructorsShouldNotReturnAnything,
     CyclicClassInheritance,
     InvalidClassExtension,
-    IncompatibleClassMethodOverride>;
+    IncompatibleClassMethodOverride,
+    IllegalClassPropertyOverride>;
 
 struct TypeErrorSummary
 {

@@ -22,9 +22,10 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
+LUAU_FASTFLAG(LuauCompileNoDebugConst)
 LUAU_FASTFLAG(LuauCodegenIntegerCompare)
+LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauLoadRemapOptionalUserdata)
 LUAU_FASTFLAG(LuauCodegenConstPropMinOffset)
@@ -3424,8 +3425,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoadAndMoveTypePropagation")
 {
-    ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -3889,7 +3888,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "ForInManualAnnotation")
     ensureVectorFloat();
 
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -5359,7 +5357,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveLoopRangeBase")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
     ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
 
     // TODO: opportunity 1 - buffer.len is not a fastcall, but under safe env we can treat it like one and read buffer len field
@@ -7142,6 +7139,28 @@ end
     );
 }
 
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest29")
+{
+    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+
+    assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+_ += _ + _
+_ { }
+integer.max(...,_,_,262144i,_,n0,`""{536870912}`)
+integer.extract(integer.extract(integer.extract(...,_,_,_,not _,_),_,_,_),_,_,0i,_)
+)"
+        )
+            .size() > 0
+    );
+}
+
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore1")
 {
     CHECK_EQ(
@@ -7271,7 +7290,6 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore4")
 {
-    ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
     ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
 
     CHECK_EQ(
@@ -7694,8 +7712,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoopStepDetection1")
 {
-    ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
-
     assemblyOptions.includeRegFlowInfo = Luau::CodeGen::IncludeRegFlowInfo::Yes;
 
     CHECK_EQ(
@@ -7759,7 +7775,6 @@ bb_bytecode_3:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoopStepDetection2")
 {
-    ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
     ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
 
     CHECK_EQ(
@@ -8742,6 +8757,7 @@ TEST_CASE_FIXTURE(LoweringFixture, "OptionalUserdataTypeRemapping")
         return;
 
     ScopedFastFlag remapOptional{FFlag::LuauLoadRemapOptionalUserdata, true};
+    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
 
     // Argument types
     CHECK_EQ(
@@ -8774,20 +8790,20 @@ bb_bytecode_1:
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
-local up: vec2? = nil
+local up: vec2? = ...
 local function foo()
     return up
 end
 return foo
 )",
-                   /* includeIrTypes */ true,
-                   /* debugLevel */ 2
+                   /* includeIrTypes */ true
                ),
         R"(
 ; function foo() line 3
-; U0: vec2? ['up']
+; U0: vec2?
 bb_bytecode_0:
-  STORE_TAG R0, tnil
+  %0 = GET_UPVALUE U0
+  STORE_TVALUE R0, %0
   INTERRUPT 1u
   RETURN R0, 1i
 )"
@@ -8797,21 +8813,19 @@ bb_bytecode_0:
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
-local function foo()
-    local v: vec2? = nil
+local function foo(x)
+    local v: vec2? = x
     return v
 end
 return foo
 )",
-                   /* includeIrTypes */ true,
-                   /* debugLevel */ 2
+                   /* includeIrTypes */ true
                ),
         R"(
-; function foo() line 2
-; R0: vec2? from 0 to 2 [local 'v']
+; function foo($arg0) line 2
+; R0: vec2? from 0 to 1
 bb_bytecode_0:
-  STORE_TAG R0, tnil
-  INTERRUPT 1u
+  INTERRUPT 0u
   RETURN R0, 1i
 )"
     );

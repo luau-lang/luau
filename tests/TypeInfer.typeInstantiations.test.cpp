@@ -6,7 +6,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -532,8 +531,6 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_type_in_explicit_type_instantiation")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         local function f<T>() end
         f<<Typo>>()
@@ -545,8 +542,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_in_explicit_type_instantiation")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_type_pack_in_explicit_type_instantiation")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         local function f<T...>() end
         f<<(Typo)>>()

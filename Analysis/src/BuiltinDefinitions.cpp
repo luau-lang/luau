@@ -1261,9 +1261,11 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
              {},
              {optionalString},
              {},
-             {arena->addType(TableType{{}, TableIndexer{numberType, stringType}, TypeLevel{},
-                FFlag::DebugLuauExactTableTypes ? TableState::Exact : TableState::Sealed
-             })},
+             {arena->addType(
+                 TableType{
+                     {}, TableIndexer{numberType, stringType}, TypeLevel{}, FFlag::DebugLuauExactTableTypes ? TableState::Exact : TableState::Sealed
+                 }
+             )},
              /* checked */ true
          )}},
         {"pack",

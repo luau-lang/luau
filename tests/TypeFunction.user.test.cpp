@@ -11,16 +11,10 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
-LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
-LUAU_FASTFLAG(LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
 
@@ -665,7 +659,6 @@ local function notok(idx: fail<number>): never return idx end
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_negation_type_mismatch")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     CheckResult result = check(R"(
         type function negate(ty)
@@ -685,7 +678,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_negation_type_mismatch")
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_negation_type_mismatch_in_union")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     CheckResult result = check(R"(
         type function negate(ty)
@@ -706,7 +698,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_negation_type_mismatch_in_union")
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_actual_negation_type_mismatch")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     CheckResult result = check(R"(
         type function negate(ty)
@@ -727,7 +718,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_actual_negation_type_mismatch")
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_two_negations_type_mismatch")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     CheckResult result = check(R"(
         type function negate(ty)
@@ -1402,10 +1392,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
     // We are only checking first errors, others are mostly duplicates
     LUAU_REQUIRE_ERROR_COUNT(3, result);
     CHECK(toString(result.errors[0]) == R"(Unknown global 'gcinfo'; consider assigning to it first)");
-    CHECK(
-        toString(result.errors[1]) ==
-        R"('illegal' type function errored at runtime: illegal:3: this function is not supported in type functions)"
-    );
+    CHECK(toString(result.errors[1]) == R"('illegal' type function errored at runtime: illegal:3: this function is not supported in type functions)");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_recursion_and_gc")
@@ -1721,8 +1708,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export_zero_arg")
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
-    ScopedFastFlag sff{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
-
     fileResolver.source["game/A"] = R"(
         export type function foo()
             return types.number
@@ -1745,8 +1730,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export_zero_arg")
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_function_property_access_across_modules")
 {
     ScopedFastFlag solverV2{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag retainSolvedStatus{FFlag::LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus, true};
-    ScopedFastFlag cloneForeignArena{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -1793,8 +1776,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_function_property_access_across
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_function_property_access_across_modules_2")
 {
     ScopedFastFlag solverV2{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag retainSolvedStatus{FFlag::LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus, true};
-    ScopedFastFlag cloneForeignArena{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -2215,8 +2196,7 @@ local function ok(idx: get<>): false return idx end
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(
-        toString(result.errors[0]) ==
-        R"('get' type function errored at runtime: get:4: types.newfunction: generic type cannot follow a generic pack)"
+        toString(result.errors[0]) == R"('get' type function errored at runtime: get:4: types.newfunction: generic type cannot follow a generic pack)"
     );
 }
 
@@ -3103,7 +3083,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_cannot_try_to_mutate_type_aliases")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag frozen{FFlag::LuauTypeFunctionSupportsFrozen, true};
     ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
@@ -3131,7 +3110,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_cannot_try_to_mutate_type_ali
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_mutate_cloned_type_aliases")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag frozen{FFlag::LuauTypeFunctionSupportsFrozen, true};
 
     CheckResult result = check(R"(
         type myType = { woof: string }
@@ -3150,7 +3128,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_mutate_cloned_type_aliase
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss2164_table_subtyping_bug")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag fix{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     CheckResult results = check(R"(
         export type function tblpartial(tbl: type)
@@ -3190,7 +3167,6 @@ local x: many<number, any, any, any, any, any, any, any, any, any, any, any, any
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unsupported_type_function_application_error")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag structuredErrors{FFlag::LuauTypeFunctionStructuredErrors, true};
 
     CheckResult result = check(R"(
 local function f<D, L>(data: D & {}, index: L | "Test"): index<D, L>
@@ -3494,8 +3470,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
     LUAU_REQUIRE_ERROR_COUNT(3, result);
     CHECK("Argument count mismatch. Function expects 1 to 2 arguments, but 3 are specified" == toString(result.errors[0]));
     CHECK(
-        "'extra_arg' type function errored at runtime: extra_arg:5: type.setgenerics: expected 2 arguments, but got 3" ==
-        toString(result.errors[1])
+        "'extra_arg' type function errored at runtime: extra_arg:5: type.setgenerics: expected 2 arguments, but got 3" == toString(result.errors[1])
     );
 }
 
@@ -3762,10 +3737,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, results);
-    CHECK_EQ(
-        toString(results.errors[0]),
-        "'meow' type function errored at runtime: meow:4: types.singleton: can't create a singleton from a type"
-    );
+    CHECK_EQ(toString(results.errors[0]), "'meow' type function errored at runtime: meow:4: types.singleton: can't create a singleton from a type");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
@@ -3843,7 +3815,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_type_function_type_check")
 TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag structuredErrors(FFlag::LuauTypeFunctionStructuredErrors, true);
     ScopedFastFlag fixTypeNameTypo{FFlag::LuauUdtfFixTypeNameTypo, true};
 
     CheckResult result = check(R"(

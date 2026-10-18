@@ -10,6 +10,7 @@
 #include "Luau/TypePairHash.h"
 #include "Luau/TypePath.h"
 
+#include <string>
 #include <vector>
 #include <optional>
 
@@ -55,6 +56,11 @@ struct SubtypingReasoningHash
 
 using SubtypingReasonings = DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>;
 inline const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
+
+// The leaf types at the end of the paths are the same type, so a
+// plain "X is not a subtype of X" message would be misleading.
+// Instead, explain that the mismatch is about the access modifier.
+std::string explainPropertyModifierViolation(const Path& subPath);
 
 /*
  * When we encounter a generic pack over the course of a subtyping test, we need

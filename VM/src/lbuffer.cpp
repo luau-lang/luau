@@ -15,7 +15,7 @@ Buffer* luaB_newbuffer(lua_State* L, size_t s)
 
     global_State* g = L->global;
     Buffer* b = (FFlag::LuauBufferCage && g->cagealloc) ? luaM_newgcocaged(L, Buffer, sizebuffer(s), L->activememcat, LUA_TBUFFER)
-                                                         : luaM_newgco(L, Buffer, sizebuffer(s), L->activememcat, LUA_TBUFFER);
+                                                        : luaM_newgco(L, Buffer, sizebuffer(s), L->activememcat, LUA_TBUFFER);
 
     luaC_init(L, b, LUA_TBUFFER);
     b->len = unsigned(s);

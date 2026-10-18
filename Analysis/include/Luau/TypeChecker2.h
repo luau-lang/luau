@@ -68,7 +68,8 @@ void check(
     Module* module
 );
 
-enum class AnnotationCheckMode {
+enum class AnnotationCheckMode
+{
     Function,
     Method,
     Constructor,
@@ -160,7 +161,9 @@ private:
     void checkExtendsClause(AstStatClass* stat);
     void visit(AstStatClass* stat);
     void visitConstructor(AstStatClass* stat, const AstClassMethod* method);
-    void checkMethodOverride(AstStatClass* stat, const AstClassMethod* method);
+    void checkMemberOverrides(AstStatClass* stat);
+    void checkPropertyOverride(AstStatClass* stat, const AstClassProperty* property, const ExternType* superInstanceEtv);
+    void checkMethodOverride(AstStatClass* stat, const AstClassMethod* method, const ExternType* superInstanceEtv);
     void visit(AstStatError* stat);
     void visit(AstExpr* expr, ValueContext context);
     void visit(AstExprGroup* expr, ValueContext context);

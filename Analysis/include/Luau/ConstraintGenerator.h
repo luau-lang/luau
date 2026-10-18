@@ -332,7 +332,12 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
 
-    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes, bool generalize);
+    InferencePack checkPack(
+        const ScopePtr& scope,
+        AstArray<AstExpr*> exprs,
+        const std::vector<std::optional<TypeId>>& expectedTypes,
+        bool generalize
+    );
 
     InferencePack checkPack_DEPRECATED(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
 
