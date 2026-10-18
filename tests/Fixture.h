@@ -54,7 +54,10 @@ LUAU_FASTFLAG(LuauSplitIceHandler)
 #define DOES_NOT_PASS_WITH_EXACT_TABLES() \
     ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauExactTableTypes, FFlag::DebugLuauRunFailingExactTableTests}; \
     ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauParseExactTables, FFlag::DebugLuauRunFailingExactTableTests}; \
-    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauForceExactTables, FFlag::DebugLuauRunFailingExactTableTests}
+    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__) \
+    { \
+        FFlag::DebugLuauForceExactTables, FFlag::DebugLuauRunFailingExactTableTests \
+    }
 
 // If CALLGRIND is on, then disable the timeout (doctest treats a timeout of 0 as disabled).
 #ifdef CALLGRIND

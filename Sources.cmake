@@ -49,6 +49,7 @@ target_sources(Luau.Bytecode PRIVATE
     Bytecode/include/Luau/BytecodeDump.h
     Bytecode/include/Luau/BytecodeGraph.h
     Bytecode/include/Luau/BytecodeOps.h
+    Bytecode/include/Luau/BytecodeSlotAllocation.h
     Bytecode/include/Luau/BytecodeValidation.h
     Bytecode/include/Luau/Sccp.h
 

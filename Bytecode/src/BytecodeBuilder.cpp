@@ -13,7 +13,6 @@
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauCompileRefactorFeedback)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
@@ -561,39 +560,36 @@ void BytecodeBuilder::undoEmit(LuauOpcode op)
     LUAU_ASSERT((insns.back() & 0xff) == op);
 
     // Adjust local ranges referencing this instruction
-    if (FFlag::LuauCompileUndoEmitAdjust)
+    for (size_t i = 0; i < debugLocals.size();)
     {
-        for (size_t i = 0; i < debugLocals.size();)
+        DebugLocal& l = debugLocals[i];
+
+        // If live range start has been removed, the local never existed
+        if (l.startpc == insns.size())
         {
-            DebugLocal& l = debugLocals[i];
-
-            // If live range start has been removed, the local never existed
-            if (l.startpc == insns.size())
-            {
-                debugLocals.erase(debugLocals.begin() + i);
-                continue;
-            }
-
-            if (l.endpc == insns.size())
-                l.endpc--;
-            i++;
+            debugLocals.erase(debugLocals.begin() + i);
+            continue;
         }
 
-        for (size_t i = 0; i < typedLocals.size();)
+        if (l.endpc == insns.size())
+            l.endpc--;
+        i++;
+    }
+
+    for (size_t i = 0; i < typedLocals.size();)
+    {
+        TypedLocal& l = typedLocals[i];
+
+        // If live range start has been removed, the local never existed
+        if (l.startpc == insns.size())
         {
-            TypedLocal& l = typedLocals[i];
-
-            // If live range start has been removed, the local never existed
-            if (l.startpc == insns.size())
-            {
-                typedLocals.erase(typedLocals.begin() + i);
-                continue;
-            }
-
-            if (l.endpc == insns.size())
-                l.endpc--;
-            i++;
+            typedLocals.erase(typedLocals.begin() + i);
+            continue;
         }
+
+        if (l.endpc == insns.size())
+            l.endpc--;
+        i++;
     }
 
     // Remove the instruction
