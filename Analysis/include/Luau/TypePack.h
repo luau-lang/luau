@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <vector>
+#include <string>
 
 namespace Luau
 {
@@ -74,6 +75,7 @@ struct TypePack
 {
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
+    std::vector<std::optional<std::string>> names;
 };
 
 struct VariadicTypePack
@@ -166,6 +168,9 @@ struct TypePackIterator
     bool operator==(const TypePackIterator& rhs);
 
     const TypeId& operator*();
+
+    // Returns the current element's name, or nullptr if it has no name.
+    const std::string* getName() const;
 
     // If the iterator currently points at the head of a type pack, return that
     // pack.  Else return nullopt.

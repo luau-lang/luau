@@ -12,6 +12,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauNamedTypePacks)
 
 using namespace Luau;
 
@@ -2790,6 +2791,31 @@ TEST_CASE("pretty_print_readonly_indexer")
     )";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("prettyPrint_named_type_pack")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+
+    const std::string code = "type Example = Callback<(name: string, number, enabled: boolean)>";
+
+    auto printed = prettyPrint(code, {}, /* withTypes */ true);
+
+    REQUIRE(printed.parseError.empty());
+    CHECK_EQ(code, printed.code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "prettyPrint_named_type_pack_without_cst")
+{
+    ScopedFastFlag namedPacks{FFlag::LuauNamedTypePacks, true};
+
+    const std::string code = "type Example = Callback<(name: string, number, enabled: boolean)>";
+
+    AstStatBlock* block = parse(code);
+    REQUIRE(block);
+
+    std::string printed = prettyPrintWithTypes(*block);
+    CHECK_EQ(code, printed);
 }
 
 TEST_SUITE_END();
