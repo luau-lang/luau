@@ -18,6 +18,7 @@
 #include "lvector.h"
 
 #include <string.h>
+#include <limits.h>
 
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAGVARIABLE(LuauNewPointerEncode)
@@ -435,9 +436,10 @@ int lua_tointegerx(lua_State* L, int idx, int* isnum)
     const TValue* o = index2addr(L, idx);
     if (tonumber(o, &n))
     {
-        int res;
+        int res = INT_MIN;
         double num = nvalue(o);
-        luai_num2int(res, num);
+        if (luai_numfitsint(num))
+            luai_num2int(res, num);
         if (isnum)
             *isnum = 1;
         return res;

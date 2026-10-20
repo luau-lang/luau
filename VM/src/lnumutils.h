@@ -99,6 +99,11 @@ inline double luai_lerpd(double a, double b, double t)
     return (t == 1.0) ? b : a + (b - a) * t;
 }
 
+inline bool luai_numfitsint(double d)
+{
+    return d >= -2147483648.0 && d < 2147483648.0;
+}
+
 #define luai_num2int(i, d) ((i) = (int)(d))
 
 #define luai_num2long(i, d) ((i) = (int64_t)(d))

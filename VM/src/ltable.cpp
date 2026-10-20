@@ -439,6 +439,9 @@ static LUAU_NOINLINE int rawfindnode(const LuaTable* t, int startpos, const TVal
 */
 static int arrayindex(double key)
 {
+    if (!luai_numfitsint(key))
+        return -1;
+
     int i;
     luai_num2int(i, key);
 
@@ -701,7 +704,7 @@ static TValue* reinsertkey(lua_State* L, LuaTable* t, const TValue* key, bool ch
 // TODO: remove with DFFlagLuauSplitTableLookups
 static TValue* arrayornewkey_DEPRECATED(lua_State* L, LuaTable* t, const TValue* key)
 {
-    if (ttisnumber(key))
+    if (ttisnumber(key) && luai_numfitsint(nvalue(key)))
     {
         int k;
         double n = nvalue(key);
@@ -1312,7 +1315,7 @@ static LUAU_NOINLINE TValue* newkeytagged(lua_State* L, LuaTable* t, const TValu
 // for the table rehash path, we cannot trigger nested reshashing
 static TValue* reinsertkey(lua_State* L, LuaTable* t, const TValue* key, bool checkarraypart)
 {
-    if (checkarraypart && ttisnumber(key))
+    if (checkarraypart && ttisnumber(key) && luai_numfitsint(nvalue(key)))
     {
         int k;
         double n = nvalue(key);
@@ -1410,11 +1413,14 @@ const TValue* luaH_get(LuaTable* t, const TValue* key)
             return luaH_getp(t, pvalue(key), lightuserdatatag(key)); // special search function with tag comparison
         case LUA_TNUMBER:
         {
-            int k;
             double n = nvalue(key);
-            luai_num2int(k, n);
-            if (luai_numeq(cast_num(k), nvalue(key))) // index is int?
-                return luaH_getnum(t, k);             // use specialized version
+            if (luai_numfitsint(n))
+            {
+                int k;
+                luai_num2int(k, n);
+                if (luai_numeq(cast_num(k), n)) // index is int?
+                    return luaH_getnum(t, k);   // use specialized version
+            }
 
             return chainsearchtagged<LUA_TNUMBER>(t, nvalue(key), LUA_TNUMBER);
         }
@@ -1440,11 +1446,14 @@ const TValue* luaH_get(LuaTable* t, const TValue* key)
             return luaH_getp(t, pvalue(key), lightuserdatatag(key)); // special search function with tag comparison
         case LUA_TNUMBER:
         {
-            int k;
             double n = nvalue(key);
-            luai_num2int(k, n);
-            if (luai_numeq(cast_num(k), nvalue(key))) // index is int?
-                return luaH_getnum(t, k);             // use specialized version
+            if (luai_numfitsint(n))
+            {
+                int k;
+                luai_num2int(k, n);
+                if (luai_numeq(cast_num(k), n)) // index is int?
+                    return luaH_getnum(t, k);   // use specialized version
+            }
 
             return chainsearchtagged_DEPRECATED<LUA_TNUMBER>(t, nvalue(key), LUA_TNUMBER);
         }
@@ -1468,12 +1477,15 @@ const TValue* luaH_get(LuaTable* t, const TValue* key)
             return luaH_getstr(t, tsvalue(key));
         case LUA_TNUMBER:
         {
-            int k;
             double n = nvalue(key);
-            luai_num2int(k, n);
-            if (luai_numeq(cast_num(k), nvalue(key))) // index is int?
-                return luaH_getnum(t, k);             // use specialized version
-            LUAU_FALLTHROUGH;                         // else go through
+            if (luai_numfitsint(n))
+            {
+                int k;
+                luai_num2int(k, n);
+                if (luai_numeq(cast_num(k), n)) // index is int?
+                    return luaH_getnum(t, k);   // use specialized version
+            }
+            LUAU_FALLTHROUGH; // else go through
         }
         default:
         {
@@ -1522,10 +1534,13 @@ TValue* luaH_newkey(lua_State* L, LuaTable* t, const TValue* key)
             if (luai_numisnan(n))
                 luaG_runerror(L, "table index is NaN");
 
-            int k;
-            luai_num2int(k, n);
-            if (luai_numeq(cast_num(k), n))
-                return newkeytagged<LUA_TNUMBER, true>(L, t, key, n, k);
+            if (luai_numfitsint(n))
+            {
+                int k;
+                luai_num2int(k, n);
+                if (luai_numeq(cast_num(k), n))
+                    return newkeytagged<LUA_TNUMBER, true>(L, t, key, n, k);
+            }
 
             return newkeytagged<LUA_TNUMBER, false>(L, t, key, n, -1);
         }

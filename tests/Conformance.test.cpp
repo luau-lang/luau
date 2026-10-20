@@ -26,6 +26,7 @@
 #include "ConformanceIrHooks.h"
 
 #include <cstdlib>
+#include <limits.h>
 #include <fstream>
 #include <string>
 #include <unordered_map>
@@ -84,6 +85,8 @@ LUAU_FASTFLAG(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauCompileCallFbRemap)
 LUAU_DYNAMIC_FASTFLAG(LuauTableRobustOom)
+LUAU_DYNAMIC_FASTFLAG(LuauSplitTableLookups)
+LUAU_DYNAMIC_FASTFLAG(LuauTableFindImprovement)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1265,6 +1268,57 @@ TEST_CASE("Assert")
 TEST_CASE("Basic")
 {
     runConformance("basic.luau");
+}
+
+TEST_CASE("FloatIntCast")
+{
+    ScopedFastFlag integerLibrary{FFlag::LuauIntegerLibrary, true};
+
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        ScopedFastFlag splitTableLookups{DFFlag::LuauSplitTableLookups, mode != 0};
+        ScopedFastFlag tableFindImprovement{DFFlag::LuauTableFindImprovement, mode == 2};
+        runConformance("floatintcast.luau");
+    }
+}
+
+TEST_CASE("ToIntegerRange")
+{
+    StateRef state(luaL_newstate(), lua_close);
+    lua_State* L = state.get();
+    const double outOfRange[] = {1e300, -1e300, 2147483648.0, -2147483649.0, NAN, INFINITY, -INFINITY};
+
+    for (double n : outOfRange)
+    {
+        lua_pushnumber(L, n);
+        int isnum = 0;
+        CHECK(lua_tointegerx(L, -1, &isnum) == INT_MIN);
+        CHECK(isnum == 1);
+        CHECK(lua_tointegerx(L, -1, nullptr) == INT_MIN);
+        lua_pop(L, 1);
+    }
+
+    const double inRange[] = {-2147483648.0, 2147483647.0, 2147483647.5, -2147483648.5, 17.75};
+    const int expected[] = {INT_MIN, INT_MAX, INT_MAX, INT_MIN, 17};
+    for (size_t i = 0; i < sizeof(inRange) / sizeof(inRange[0]); ++i)
+    {
+        lua_pushnumber(L, inRange[i]);
+        int isnum = 0;
+        CHECK(lua_tointegerx(L, -1, &isnum) == expected[i]);
+        CHECK(isnum == 1);
+        lua_pop(L, 1);
+    }
+
+    const char* strings[] = {"1e300", "-1e300", "17.75", "not a number"};
+    const int stringExpected[] = {INT_MIN, INT_MIN, 17, 0};
+    for (size_t i = 0; i < sizeof(strings) / sizeof(strings[0]); ++i)
+    {
+        lua_pushstring(L, strings[i]);
+        int isnum = -1;
+        CHECK(lua_tointegerx(L, -1, &isnum) == stringExpected[i]);
+        CHECK(isnum == (i == 3 ? 0 : 1));
+        lua_pop(L, 1);
+    }
 }
 
 TEST_CASE("Buffers")

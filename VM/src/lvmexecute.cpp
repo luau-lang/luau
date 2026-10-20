@@ -769,13 +769,16 @@ reentry:
                     LuaTable* h = hvalue(rb);
 
                     double indexd = nvalue(rc);
-                    int index = int(indexd);
-
-                    // index has to be an exact integer and in-bounds for the array portion
-                    if (LUAU_LIKELY(unsigned(index) - 1 < unsigned(h->sizearray) && !h->metatable && double(index) == indexd))
+                    if (luai_numfitsint(indexd))
                     {
-                        setobj2s(L, ra, &h->array[unsigned(index - 1)]);
-                        VM_NEXT();
+                        int index = int(indexd);
+
+                        // index has to be an exact integer and in-bounds for the array portion
+                        if (LUAU_LIKELY(unsigned(index) - 1 < unsigned(h->sizearray) && !h->metatable && double(index) == indexd))
+                        {
+                            setobj2s(L, ra, &h->array[unsigned(index - 1)]);
+                            VM_NEXT();
+                        }
                     }
 
                     // fall through to slow path
@@ -799,14 +802,17 @@ reentry:
                     LuaTable* h = hvalue(rb);
 
                     double indexd = nvalue(rc);
-                    int index = int(indexd);
-
-                    // index has to be an exact integer and in-bounds for the array portion
-                    if (LUAU_LIKELY(unsigned(index) - 1 < unsigned(h->sizearray) && !h->metatable && !h->readonly && double(index) == indexd))
+                    if (luai_numfitsint(indexd))
                     {
-                        setobj2t(L, &h->array[unsigned(index - 1)], ra);
-                        luaC_barriert(L, h, ra);
-                        VM_NEXT();
+                        int index = int(indexd);
+
+                        // index has to be an exact integer and in-bounds for the array portion
+                        if (LUAU_LIKELY(unsigned(index) - 1 < unsigned(h->sizearray) && !h->metatable && !h->readonly && double(index) == indexd))
+                        {
+                            setobj2t(L, &h->array[unsigned(index - 1)], ra);
+                            luaC_barriert(L, h, ra);
+                            VM_NEXT();
+                        }
                     }
 
                     // fall through to slow path

@@ -1363,7 +1363,7 @@ template<typename T>
 static int luauF_readinteger(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
 #if !defined(LUAU_BIG_ENDIAN)
-    if (nparams >= 2 && nresults <= 1 && ttisbuffer(arg0) && ttisnumber(args))
+    if (nparams >= 2 && nresults <= 1 && ttisbuffer(arg0) && ttisnumber(args) && luai_numfitsint(nvalue(args)))
     {
         int offset;
         luai_num2int(offset, nvalue(args));
@@ -1384,7 +1384,7 @@ template<typename T>
 static int luauF_writeinteger(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
 #if !defined(LUAU_BIG_ENDIAN)
-    if (nparams >= 3 && nresults <= 0 && ttisbuffer(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+    if (nparams >= 3 && nresults <= 0 && ttisbuffer(arg0) && ttisnumber(args) && ttisnumber(args + 1) && luai_numfitsint(nvalue(args)))
     {
         int offset;
         luai_num2int(offset, nvalue(args));
@@ -1408,7 +1408,7 @@ template<typename T>
 static int luauF_readfp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
 #if !defined(LUAU_BIG_ENDIAN)
-    if (nparams >= 2 && nresults <= 1 && ttisbuffer(arg0) && ttisnumber(args))
+    if (nparams >= 2 && nresults <= 1 && ttisbuffer(arg0) && ttisnumber(args) && luai_numfitsint(nvalue(args)))
     {
         int offset;
         luai_num2int(offset, nvalue(args));
@@ -1434,7 +1434,7 @@ template<typename T>
 static int luauF_writefp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
 #if !defined(LUAU_BIG_ENDIAN)
-    if (nparams >= 3 && nresults <= 0 && ttisbuffer(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+    if (nparams >= 3 && nresults <= 0 && ttisbuffer(arg0) && ttisnumber(args) && ttisnumber(args + 1) && luai_numfitsint(nvalue(args)))
     {
         int offset;
         luai_num2int(offset, nvalue(args));
@@ -2455,7 +2455,7 @@ static int luauF_integercreate(lua_State* L, StkId res, TValue* arg0, int nresul
 static int luauF_bufferreadlong(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
 #if !defined(LUAU_BIG_ENDIAN)
-    if (nparams >= 2 && nresults <= 1 && ttisbuffer(arg0) && ttisnumber(args))
+    if (nparams >= 2 && nresults <= 1 && ttisbuffer(arg0) && ttisnumber(args) && luai_numfitsint(nvalue(args)))
     {
         int offset;
         luai_num2int(offset, nvalue(args));
@@ -2475,7 +2475,7 @@ static int luauF_bufferreadlong(lua_State* L, StkId res, TValue* arg0, int nresu
 static int luauF_bufferwritelong(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
 #if !defined(LUAU_BIG_ENDIAN)
-    if (nparams >= 3 && nresults <= 0 && ttisbuffer(arg0) && ttisnumber(args) && ttisinteger(args + 1))
+    if (nparams >= 3 && nresults <= 0 && ttisbuffer(arg0) && ttisnumber(args) && ttisinteger(args + 1) && luai_numfitsint(nvalue(args)))
     {
         int offset;
         luai_num2int(offset, nvalue(args));
