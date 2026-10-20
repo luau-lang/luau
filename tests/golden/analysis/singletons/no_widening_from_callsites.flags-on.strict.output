@@ -1,0 +1,1 @@
+./analysis/singletons/no_widening_from_callsites.luau(7,7): LocalUnused: Variable 'd' is never used; prefix with '_' to silence

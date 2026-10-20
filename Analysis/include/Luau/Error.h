@@ -542,11 +542,11 @@ struct RecursiveRestraintViolation
 // Error during subtyping when the inferred bounds of a generic type are incompatible
 struct GenericBoundsMismatch
 {
-    std::string_view genericName;
+    std::string genericName;
     std::vector<TypeId> lowerBounds;
     std::vector<TypeId> upperBounds;
 
-    GenericBoundsMismatch(std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
+    GenericBoundsMismatch(std::string genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
 
     bool operator==(const GenericBoundsMismatch& rhs) const;
 };
@@ -665,6 +665,15 @@ struct IncompatibleClassMethodOverride
     bool operator==(const IncompatibleClassMethodOverride& rhs) const;
 };
 
+struct IllegalClassPropertyOverride
+{
+    Name property;
+    Name className;
+    Name superName;
+
+    bool operator==(const IllegalClassPropertyOverride& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -735,7 +744,8 @@ using TypeErrorData = Variant<
     ConstructorsShouldNotReturnAnything,
     CyclicClassInheritance,
     InvalidClassExtension,
-    IncompatibleClassMethodOverride>;
+    IncompatibleClassMethodOverride,
+    IllegalClassPropertyOverride>;
 
 struct TypeErrorSummary
 {

@@ -21,8 +21,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
-LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizeFunctionIntersections)
@@ -2788,7 +2786,12 @@ bool Normalizer::hasStringIndexer(const TableType* tt)
     return isIntersectionInhabited(tt->indexer->indexType, builtinTypes->stringType) == NormalizationResult::True;
 }
 
-std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet)
+std::optional<TypeId> Normalizer::intersectionOfTables(
+    TypeId here,
+    TypeId there,
+    SeenTablePropPairs& seenTablePropPairs,
+    DenseHashSet<TypeId>& seenSet
+)
 {
     if (!FFlag::DebugLuauExactTableTypes)
         return DEPRECATED_intersectionOfTables(here, there, seenTablePropPairs, seenSet);
@@ -2870,7 +2873,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         hereSubThere = false;
 
     // Handle props that are common between the two tables
-    for (const auto& [name, hprop]: httv->props)
+    for (const auto& [name, hprop] : httv->props)
     {
         auto it = tttv->props.find(name);
         if (it == tttv->props.end())
@@ -2943,7 +2946,8 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     const bool hereHasStringIndexer = hasStringIndexer(httv);
     const bool thereHasStringIndexer = hasStringIndexer(tttv);
 
-    enum class HandleResult {
+    enum class HandleResult
+    {
         Uninhabited,
         Ok
     };
@@ -2952,11 +2956,11 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     // Returns CombineResult::Uninhabited if the indexer is incompatible or if the right side table is exact.
     // Adds the prop to result->props otherwise.
     auto handleUnmatchedProp = [&](bool leftExact,
-                          bool rightExact,
-                          bool rightHasStringIndexer,
-                          const std::string& name,
-                          const Property& leftProp,
-                          const std::optional<TableIndexer>& rightIndexer)
+                                   bool rightExact,
+                                   bool rightHasStringIndexer,
+                                   const std::string& name,
+                                   const Property& leftProp,
+                                   const std::optional<TableIndexer>& rightIndexer)
     {
         if (rightHasStringIndexer)
         {
@@ -2993,7 +2997,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     };
 
     // Props only in `here`
-    for (const auto& [name, hprop]: httv->props)
+    for (const auto& [name, hprop] : httv->props)
     {
         if (0 != tttv->props.count(name))
             continue;
@@ -3005,7 +3009,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     }
 
     // Props only in `there`
-    for (const auto& [name, tprop]: tttv->props)
+    for (const auto& [name, tprop] : tttv->props)
     {
         if (0 != httv->props.count(name))
             continue;
@@ -3046,7 +3050,8 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     // Compare the tails themselves
     if (httv->indexer.has_value() && tttv->indexer.has_value())
     {
-        auto indexersCollide = [&]() {
+        auto indexersCollide = [&]()
+        {
             result->indexer.reset();
             result->state = TableState::Exact;
 
@@ -3157,7 +3162,12 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         return table;
 }
 
-std::optional<TypeId> Normalizer::DEPRECATED_intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet)
+std::optional<TypeId> Normalizer::DEPRECATED_intersectionOfTables(
+    TypeId here,
+    TypeId there,
+    SeenTablePropPairs& seenTablePropPairs,
+    DenseHashSet<TypeId>& seenSet
+)
 {
     consumeFuel();
 
@@ -3463,8 +3473,8 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
     else if (hftv->argTypes == tftv->argTypes)
     {
         std::optional<TypePackId> retTypesOpt = FFlag::LuauFixNormalizeFunctionIntersections
-            ? intersectionOfTypePacks_INTERNAL(hftv->retTypes, tftv->retTypes)
-            : intersectionOfTypePacks_INTERNAL(hftv->argTypes, tftv->argTypes);
+                                                    ? intersectionOfTypePacks_INTERNAL(hftv->retTypes, tftv->retTypes)
+                                                    : intersectionOfTypePacks_INTERNAL(hftv->argTypes, tftv->argTypes);
 
         if (!retTypesOpt)
             return std::nullopt;
@@ -3828,25 +3838,15 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             TypeIds tables = std::move(here.tables);
             clearNormal(here);
 
-            if (FFlag::LuauAlwaysIntersectTablesWithTables)
+            // We intersect this table against the table part of the
+            // normalized type, which may include the top table type.
+            intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+            if (!externTypes.isNever())
             {
-                // We intersect this table against the table part of the
-                // normalized type, which may include the top table type.
-                intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
-                if (!externTypes.isNever())
-                {
-                    // If we have extern types present, intersect this table
-                    // as a shape against the extern types of this normalized
-                    // type.
-                    intersectExternTypesWithShape(externTypes, there);
-                }
-            }
-            else
-            {
-                if (externTypes.isNever())
-                    intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
-                else
-                    intersectExternTypesWithShape(externTypes, there);
+                // If we have extern types present, intersect this table
+                // as a shape against the extern types of this normalized
+                // type.
+                intersectExternTypesWithShape(externTypes, there);
             }
 
             here.tables = std::move(tables);
@@ -4085,7 +4085,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
     if (isTop(builtinTypes, norm.externTypes))
     {
-        if (FFlag::LuauIncludeExternTypeExtensionsWithTopExternType && !norm.externTypes.shapeExtensions.empty())
+        if (!norm.externTypes.shapeExtensions.empty())
         {
             std::vector<TypeId> intersection;
             intersection.reserve(norm.externTypes.shapeExtensions.size() + 1);

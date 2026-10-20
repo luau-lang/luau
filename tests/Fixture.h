@@ -38,6 +38,7 @@ LUAU_FASTFLAG(DebugLuauRunFailingExactTableTests)
 LUAU_FASTFLAG(DebugLuauAlwaysShowConstraintSolvingIncomplete);
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauBetterInferredGenericNames)
+LUAU_FASTFLAG(LuauSplitIceHandler)
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, !FFlag::DebugLuauForceAllNewSolverTests};
 
@@ -53,7 +54,10 @@ LUAU_FASTFLAG(LuauBetterInferredGenericNames)
 #define DOES_NOT_PASS_WITH_EXACT_TABLES() \
     ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauExactTableTypes, FFlag::DebugLuauRunFailingExactTableTests}; \
     ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauParseExactTables, FFlag::DebugLuauRunFailingExactTableTests}; \
-    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauForceExactTables, FFlag::DebugLuauRunFailingExactTableTests}
+    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__) \
+    { \
+        FFlag::DebugLuauForceExactTables, FFlag::DebugLuauRunFailingExactTableTests \
+    }
 
 // If CALLGRIND is on, then disable the timeout (doctest treats a timeout of 0 as disabled).
 #ifdef CALLGRIND
@@ -197,6 +201,7 @@ struct Fixture
 
     ScopedFastFlag sff_LuauBetterMetatableStringification{FFlag::LuauBetterMetatableStringification, true};
     ScopedFastFlag sff_LuauBetterInferredGenericNames{FFlag::LuauBetterInferredGenericNames, true};
+    ScopedFastFlag sff_LuauSplitIceHandler{FFlag::LuauSplitIceHandler, true};
 
     ScopedFastFlag sff_ParseExactTables{FFlag::DebugLuauParseExactTables, FFlag::DebugLuauForceExactTables};
     ScopedFastFlag sff_ExactTableTypes{FFlag::DebugLuauExactTableTypes, FFlag::DebugLuauForceExactTables};

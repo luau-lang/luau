@@ -28,10 +28,9 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
-LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -277,7 +276,6 @@ static TypeCorrectKind checkTypeCorrectKind(
 
 static bool isTypeDeprecated(TypeId ty)
 {
-    LUAU_ASSERT(FFlag::LuauCheckTypeForDeprecated);
     ty = follow(ty);
 
     auto check = [](auto candidate)
@@ -562,7 +560,7 @@ static void autocompleteProps(
                 result[name] = AutocompleteEntry{
                     AutocompleteEntryKind::Property,
                     type,
-                    prop.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(type)),
+                    prop.deprecated || isTypeDeprecated(type),
                     wrong,
                     typeCorrect,
                     containingExternType,
@@ -1165,6 +1163,15 @@ AutocompleteEntryMap autocompleteTypeNames(
         {
             topType = asType;
         }
+        else if (FFlag::LuauRefactorAutocompleteAncestry && !(*it)->asExpr() && !(*it)->asStat())
+        {
+            // If we are not inside a type or a statement, just go up to the
+            // next node. It probably means we're inside an explicit type pack, as in:
+            //
+            //  local function f(): (num|
+            //
+            continue;
+        }
         else
         {
             parent = *it;
@@ -1503,7 +1510,7 @@ static AutocompleteEntryMap autocompleteStatement(
                 result[n] = {
                     AutocompleteEntryKind::Binding,
                     binding.typeId,
-                    binding.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(binding.typeId)),
+                    binding.deprecated || isTypeDeprecated(binding.typeId),
                     false,
                     TypeCorrectKind::None,
                     std::nullopt,
@@ -1601,8 +1608,7 @@ static bool autocompleteIfElseExpression(
     {
         if (const AstExprIfElse* selfIfElse = node->as<AstExprIfElse>())
         {
-            if (selfIfElse->conditionLocal && selfIfElse->conditionEqualsLocation &&
-                    position >= selfIfElse->conditionEqualsLocation->end)
+            if (selfIfElse->conditionLocal && selfIfElse->conditionEqualsLocation && position >= selfIfElse->conditionEqualsLocation->end)
                 return false;
             // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
             // expression).
@@ -1623,8 +1629,8 @@ static bool autocompleteIfElseExpression(
 
     if (FFlag::LuauExperimentalIfLocalSyntax)
     {
-        if (ifElseExpr && ifElseExpr->conditionLocal && ifElseExpr->conditionEqualsLocation &&
-            position >= ifElseExpr->conditionEqualsLocation->end && !ifElseExpr->hasThen)
+        if (ifElseExpr && ifElseExpr->conditionLocal && ifElseExpr->conditionEqualsLocation && position >= ifElseExpr->conditionEqualsLocation->end &&
+            !ifElseExpr->hasThen)
             return false;
     }
 
@@ -1687,6 +1693,7 @@ static AutocompleteContext autocompleteExpression(
         return AutocompleteContext::Unknown;
     else
     {
+
         // This is inefficient. :(
         ScopePtr scope = scopeAtPosition;
 
@@ -1708,7 +1715,7 @@ static AutocompleteContext autocompleteExpression(
                     result[n] = {
                         AutocompleteEntryKind::Binding,
                         binding.typeId,
-                        binding.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(binding.typeId)),
+                        binding.deprecated || isTypeDeprecated(binding.typeId),
                         false,
                         typeCorrect,
                         std::nullopt,
@@ -1721,6 +1728,19 @@ static AutocompleteContext autocompleteExpression(
             }
 
             scope = scope->parent;
+        }
+
+        if (FFlag::LuauRefactorAutocompleteAncestry)
+        {
+            // If we are in a situation like ...
+            //
+            //  function f|()
+            //  end
+            //
+            // ... then fill in all of the bindings that are legal at this position.
+            // It is pretty similar to the rest of this case, but we don't include keywords.
+            if ((node->is<AstExprGlobal>() || node->is<AstExprLocal>()) && ancestry.size() > 2 && ancestry.rbegin()[1]->is<AstStatFunction>())
+                return AutocompleteContext::Expression;
         }
 
         TypeCorrectKind correctForNil = checkTypeCorrectKind(module, typeArena, builtinTypes, node, position, builtinTypes->nilType);

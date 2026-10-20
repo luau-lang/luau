@@ -1,0 +1,3 @@
+./analysis/classes/overriding_props_is_illegal.luau:8: Cannot override instance member 'x' of parent class 'Point' in child class 'Point1'
+stacktrace:
+./analysis/classes/overriding_props_is_illegal.luau:8

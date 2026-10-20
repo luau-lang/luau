@@ -14,7 +14,6 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
@@ -902,17 +901,11 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 
     std::string expected;
     if (!FFlag::DebugLuauForceOldSolver)
-        expected = FFlag::LuauNewTypePathErrorMessages ? "Expected this to be\n\t"
-                                                         "'{ a: number, b: string, c: { d: number } }'\n"
-                                                         "but got\n\t"
-                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
-                                                         "Expected property `c.d` to be exactly `number`, but got `string`"
-                                                       : "Expected this to be\n\t"
-                                                         "'{ a: number, b: string, c: { d: number } }'\n"
-                                                         "but got\n\t"
-                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
-                                                         "accessing `c.d` results in `string` in the latter type and `number` in the former "
-                                                         "type, and `string` is not exactly `number`";
+        expected = "Expected this to be\n\t"
+                   "'{ a: number, b: string, c: { d: number } }'\n"
+                   "but got\n\t"
+                   "'{ a: number, b: string, c: { d: string } }'; \n"
+                   "Expected property `c.d` to be exactly `number`, but got `string`";
     else
         expected = "Expected this to be exactly\n\t"
                    "'{ a: number, b: string, c: { d: number } }'\n"
@@ -1252,50 +1245,59 @@ TEST_CASE_FIXTURE(Fixture, "tables_with_indexers_and_props")
             "{\n"
             "    [string]: number,\n"
             "    ...\n"
-            "}" == toString(sealedStrIdx, opts));
+            "}" == toString(sealedStrIdx, opts)
+        );
         CHECK(
             "{\n"
             "    [string]: number\n"
-            "}" == toString(exactStrIdx, opts));
+            "}" == toString(exactStrIdx, opts)
+        );
 
         CHECK(
             "{\n"
             "    x: number,\n"
             "    ...\n"
-            "}" == toString(sealedProps, opts));
+            "}" == toString(sealedProps, opts)
+        );
         CHECK(
             "{\n"
             "    x: number\n"
-            "}" == toString(exactProps, opts));
+            "}" == toString(exactProps, opts)
+        );
 
         CHECK(
             "{\n"
             "    [string]: number,\n"
             "    x: number,\n"
             "    ...\n"
-            "}" == toString(sealedBoth, opts));
+            "}" == toString(sealedBoth, opts)
+        );
         CHECK(
             "{\n"
             "    [string]: number,\n"
             "    x: number\n"
-            "}" == toString(exactBoth, opts));
+            "}" == toString(exactBoth, opts)
+        );
         CHECK(
             "{|\n"
             "    [string]: number,\n"
             "    x: number\n"
-            "|}" == toString(unsealedBoth, opts));
+            "|}" == toString(unsealedBoth, opts)
+        );
 
         CHECK(
             "{\n"
             "    [number]: string,\n"
             "    x: number,\n"
             "    ...\n"
-            "}" == toString(sealedNumIdxProps, opts));
+            "}" == toString(sealedNumIdxProps, opts)
+        );
         CHECK(
             "{\n"
             "    [number]: string,\n"
             "    x: number\n"
-            "}" == toString(exactNumIdxProps, opts));
+            "}" == toString(exactNumIdxProps, opts)
+        );
 
         CHECK("{string, ...}" == toString(sealedNumIdx, opts));
         CHECK("{string}" == toString(exactNumIdx, opts));
@@ -1304,11 +1306,13 @@ TEST_CASE_FIXTURE(Fixture, "tables_with_indexers_and_props")
             "{\n"
             "    read [string]: number,\n"
             "    ...\n"
-            "}" == toString(sealedReadOnlyStrIdx, opts));
+            "}" == toString(sealedReadOnlyStrIdx, opts)
+        );
         CHECK(
             "{\n"
             "    read [string]: number\n"
-            "}" == toString(exactReadOnlyStrIdx, opts));
+            "}" == toString(exactReadOnlyStrIdx, opts)
+        );
     }
 }
 

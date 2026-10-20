@@ -21,7 +21,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
-LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTFLAG(LuauCyclicRequireTopLevelAccessError)
@@ -88,7 +87,7 @@ struct FrontendFixture : BuiltinsFixture
 
     TypeId parseType(std::string_view src)
     {
-        return getFrontend().parseType(allocator, nameTable, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, arena, src);
+        return getFrontend().parseType(allocator, nameTable, NotNull{&ice}, TypeCheckLimits{}, arena, src);
     }
 };
 
@@ -905,7 +904,7 @@ local _ = 0x10000000000000000
 
 TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 {
-    Frontend fe{&fileResolver, &configResolver, {false}};
+    Frontend fe{SolverMode::New, &fileResolver, &configResolver, {false}};
 
     fileResolver.source["Module/A"] = R"(
         local a = {1,2,3,4,5}
@@ -1191,7 +1190,7 @@ TEST_CASE("check_without_builtin_next")
 {
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
-    Frontend frontend(&fileResolver, &configResolver);
+    Frontend frontend{SolverMode::New, &fileResolver, &configResolver};
     fileResolver.source["Module/A"] = "for k,v in 2 do end";
     fileResolver.source["Module/B"] = "return next";
 
@@ -2049,8 +2048,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursi
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     // Module A: exports a recursive type and a component that uses it.
     fileResolver.source["game/Gui/Modules/A"] = R"(

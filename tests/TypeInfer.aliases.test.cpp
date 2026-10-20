@@ -11,9 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
-LUAU_FASTFLAG(LuauInstantiationCheckArguments)
-LUAU_FASTFLAG(LuauInstantiationCheckArgumentsDedup)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauBlockingTypeAliasExpansion)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -109,8 +106,6 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
 
 TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         type T<A> = (A...) -> ()
     )");
@@ -1109,7 +1104,6 @@ type Foo<T> = Foo<T>
 TEST_CASE_FIXTURE(Fixture, "recursive_type_alias_bad_pack_use_warns")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff2{FFlag::LuauStrictVisitInstantiatedType, true};
 
     CheckResult result = check(R"(
 type Foo<T> = Foo<T...>
@@ -1422,8 +1416,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unpack_doesnt_emplace_typeof_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unused_type_arguments")
 {
-    ScopedFastFlag _{FFlag::LuauInstantiationCheckArguments, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Foo<T> = {}
         export type Export<T> = {Foo<Foo<T>>}
@@ -1433,9 +1425,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unused_type_arguments")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_argument_duplicate_pending_expansions")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag luauInstantiationCheckArguments{FFlag::LuauInstantiationCheckArguments, true};
-    ScopedFastFlag luauInstantiationCheckArgumentsDedup{FFlag::LuauInstantiationCheckArgumentsDedup, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"_(
 type Sym<Kind = string> = { text: Kind }

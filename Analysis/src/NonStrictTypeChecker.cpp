@@ -23,7 +23,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -170,6 +170,7 @@ struct NonStrictTypeChecker
     Subtyping subtyping;
     NotNull<const DataFlowGraph> dfg;
     DenseHashSet<TypeId> noTypeFunctionErrors;
+    TypeFunctionAbsenceCache typeFunctionAbsenceCache;
     std::vector<NotNull<Scope>> stack;
     DenseHashMap<TypeId, TypeId> cachedNegations;
 
@@ -250,7 +251,10 @@ struct NonStrictTypeChecker
             return instance;
 
         TypeFunctionContext context{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
-        ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
+        ErrorVec errors = reduceTypeFunctions(
+                              instance, location, NotNull{&context}, true, FFlag::LuauTypeFunctionsAbsenceCache ? &typeFunctionAbsenceCache : nullptr
+        )
+                              .errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -520,14 +524,74 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatClass* declClass)
     {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
         for (auto prop : declClass->members)
         {
-            if (auto property = get_if<AstClassProperty>(&prop))
-                visit(property->ty);
-            else if (auto method = get_if<AstClassMethod>(&prop))
-                visit(method->function);
-            else
-                LUAU_ASSERT(!"Unknown class field");
+            Luau::visit(
+                overloaded{
+                    [&](const AstClassProperty& classProp)
+                    {
+                        visit(classProp.ty);
+                    },
+                    [&](const AstClassMethod& method)
+                    {
+                        visit(method.function);
+                    }
+                },
+                prop
+            );
+        }
+
+        if (declClass->super)
+        {
+            // Subtlety: The extends clause names an expression, so the type of this
+            // expression will be the class object, not the instance type that we're
+            // inheriting from.
+            const ExternType* superInstanceEtv = getClassInstanceType(lookupType(declClass->super));
+            if (!superInstanceEtv)
+                return {};
+
+            for (auto prop : declClass->members)
+            {
+                if (auto property = get_if<AstClassProperty>(&prop))
+                {
+                    Name propName = Name{property->name.value};
+                    // Slightly inefficient: we walk the inheritance chain for each property
+                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    {
+                        if (curr->props.count(propName) != 0)
+                        {
+                            reportError(
+                                IllegalClassPropertyOverride{propName, Name{declClass->name->name.value}, Name{curr->name}}, property->nameLocation
+                            );
+                            break;
+                        }
+                    }
+                }
+                else if (auto method = get_if<AstClassMethod>(&prop);
+                         method && (method->functionName == "__eq" || method->functionName == "__lt" || method->functionName == "__le"))
+                {
+                    Name methodName = Name{method->functionName.value};
+                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    {
+                        if (curr->metatable)
+                        {
+                            if (const TableType* mt = get<TableType>(follow(*curr->metatable)))
+                            {
+                                if (mt->props.count(methodName) != 0)
+                                {
+                                    reportError(
+                                        IncompatibleClassMethodOverride{methodName, Name{declClass->name->name.value}, Name{curr->name}},
+                                        method->nameLocation
+                                    );
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         return {};
@@ -661,8 +725,7 @@ struct NonStrictTypeChecker
     NonStrictContext visit(AstExprCall* call)
     {
         visit(call->func, ValueContext::RValue);
-        if (FFlag::LuauStrictVisitInstantiatedType)
-            visitTypeArguments(call->typeArguments);
+        visitTypeArguments(call->typeArguments);
         for (auto arg : call->args)
             visit(arg, ValueContext::RValue);
 
@@ -881,21 +944,7 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprInstantiate* instantiate)
     {
-        if (FFlag::LuauStrictVisitInstantiatedType)
-            visitTypeArguments(instantiate->typeArguments);
-        else
-        {
-            for (const AstTypeOrPack& typeArgument : instantiate->typeArguments)
-            {
-                if (typeArgument.type)
-                    visit(typeArgument.type);
-                else
-                {
-                    LUAU_ASSERT(typeArgument.typePack);
-                    visit(typeArgument.typePack);
-                }
-            }
-        };
+        visitTypeArguments(instantiate->typeArguments);
 
         return visit(instantiate->expr, ValueContext::RValue);
     }
@@ -955,15 +1004,12 @@ struct NonStrictTypeChecker
 
         if (alias.has_value())
         {
-            if (FFlag::LuauStrictVisitInstantiatedType)
-            {
-                // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
-                // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
-                // As a result, we can't use `scope->lookupType` to check for the existence of the type, because it will find
-                // the parameter incorrectly, and thus accept a self-referece as a default value.
-                if (!ty->prefix && module->astTypeReferenceLookupFailures.contains(ty))
-                    return reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
-            }
+            // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+            // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+            // As a result, we can't use `scope->lookupType` to check for the existence of the type, because it will find
+            // the parameter incorrectly, and thus accept a self-referece as a default value.
+            if (!ty->prefix && module->astTypeReferenceLookupFailures.contains(ty))
+                return reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
 
             size_t typesRequired = alias->typeParams.size();
             size_t packsRequired = alias->typePackParams.size();
@@ -1167,15 +1213,12 @@ struct NonStrictTypeChecker
 
         if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
         {
-            if (FFlag::LuauStrictVisitInstantiatedType)
-            {
-                // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
-                // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
-                // As a result, we can't use `scope->lookupPack` to check for the existence of the type pack, because it will find
-                // the parameter incorrectly, and thus accept a self-referece as a default value.
-                if (module->astTypePackReferenceLookupFailures.contains(tp))
-                    return reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-            }
+            // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+            // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+            // As a result, we can't use `scope->lookupPack` to check for the existence of the type pack, because it will find
+            // the parameter incorrectly, and thus accept a self-referece as a default value.
+            if (module->astTypePackReferenceLookupFailures.contains(tp))
+                return reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
 
             return;
         }

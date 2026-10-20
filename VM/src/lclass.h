@@ -25,15 +25,9 @@ LUAI_FUNC LuauClass* luaR_newclass(
 );
 
 /**
- * Allocates and returns a new class object with the same members as `classobject`.
- * @param classobject The class object to clone.
- */
-LUAI_FUNC LuauClass* luaR_cloneclass(lua_State* L, LuauClass* classobject);
-
-/**
  * Returns a new LuauClass object containing `child`'s members extended with `parent`'s.
  */
-LUAI_FUNC void luaR_inheritclass(lua_State* L, LuauClass* child, LuauClass* parent);
+LUAI_FUNC LuauClass* luaR_inheritclass(lua_State* L, const LuauClass* child, LuauClass* parent);
 
 /**
  * Add a new class member to `classobject` named `name` and with value `value`.
@@ -59,6 +53,8 @@ LUAI_FUNC int luaR_defaultcreateobject(lua_State* L);
  * assign the new object to the top of the stack.
  */
 LUAI_FUNC int luaR_constructobject(lua_State* L);
+
+LUAI_FUNC void luaR_tryconstructobject(lua_State* L, StkId target, StkId maybeclass, uint32_t slotid);
 
 LUAI_FUNC void luaR_freeobject(lua_State* L, LuauObject* classinstance, lua_Page* page);
 

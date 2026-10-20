@@ -11,8 +11,6 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("AnnotationTests");
@@ -253,8 +251,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_reference_generates_one_error")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         --!strict
         type F = (IDoNotExist...) -> ()
@@ -270,8 +266,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_reference_generates_one_er
 
 TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_vararg_generates_one_error")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         --!strict
         function f(...: IDoNotExist...) end
@@ -287,8 +281,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_vararg_generates_one_error
 
 TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_in_explicit_instantiation_generates_one_error")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     for (const char* source : {
              R"(
                 --!strict
@@ -886,7 +878,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler
 
     bool caught = false;
 
-    getFrontend().iceHandler.onInternalError = [&](const char*)
+    getFrontend().onInternalError = [&](const char*)
     {
         caught = true;
     };

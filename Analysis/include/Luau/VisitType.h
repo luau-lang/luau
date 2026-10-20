@@ -10,6 +10,7 @@
 #include "Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
+LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 namespace Luau
 {
@@ -265,7 +266,17 @@ struct GenericTypeVisitor
         else if (auto gtv = get<GenericType>(ty))
             visit(ty, *gtv);
         else if (auto etv = get<ErrorType>(ty))
-            visit(ty, *etv);
+        {
+            if (FFlag::LuauReduceTypeFunctionToSyntheticError)
+            {
+                if (visit(ty, *etv) && etv->synthetic)
+                    traverse(*etv->synthetic);
+            }
+            else
+            {
+                visit(ty, *etv);
+            }
+        }
         else if (auto ptv = get<PrimitiveType>(ty))
             visit(ty, *ptv);
         else if (auto ftv = get<FunctionType>(ty))

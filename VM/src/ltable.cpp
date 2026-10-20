@@ -35,8 +35,8 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauFrozenMetaButterfly)
+LUAU_DYNAMIC_FASTFLAG(LuauTableFindImprovement)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauSplitTableLookups, false)
-LUAU_FASTFLAGVARIABLE(LuauTableArrayAdjustCheck)
 LUAU_FASTFLAGVARIABLE(LuauTableArrayShrinkOrder)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableRobustOom, false)
 
@@ -277,6 +277,7 @@ LUAU_FORCEINLINE LuaNode* mainpositiontagged<LUA_TGCO>(const LuaTable* t, GCObje
     return hashpointer(t, key);
 }
 
+// TODO: remove with FFlagLuauTableFindImprovement
 // For static luaO_rawequalKey dispatch on a known tag (or GCO). Only used specializations are implemented
 template<int Tag, typename T>
 static LUAU_FORCEINLINE int rawequalkeyvalue(const TKey* t1, T key) = delete;
@@ -313,7 +314,7 @@ LUAU_FORCEINLINE int rawequalkeyvalue<LUA_TGCO>(const TKey* t1, GCObject* key)
 
 // Lookup a node in the main position of the key or look through the node chain
 template<int Tag, typename T>
-static LUAU_FORCEINLINE const TValue* chainsearchtagged(const LuaTable* t, T key, int keytag)
+static LUAU_FORCEINLINE const TValue* chainsearchtagged_DEPRECATED(const LuaTable* t, T key, int keytag)
 {
     LuaNode* n = mainpositiontagged<Tag>(t, key);
 
@@ -329,6 +330,107 @@ static LUAU_FORCEINLINE const TValue* chainsearchtagged(const LuaTable* t, T key
     }
 
     return luaO_nilobject;
+}
+
+// For static raw equality dispatch on a known tag
+template<typename Obj, typename T>
+LUAU_FORCEINLINE int rawequalvalue(const Obj* lhs, T rhs) = delete;
+
+template<typename Obj>
+LUAU_FORCEINLINE int rawequalvalue(const Obj* lhs, int rhs)
+{
+    return bvalue(lhs) == rhs;
+}
+
+template<typename Obj>
+LUAU_FORCEINLINE int rawequalvalue(const Obj* lhs, double rhs)
+{
+    return luai_numeq(nvalue(lhs), rhs);
+}
+
+template<typename Obj>
+LUAU_FORCEINLINE int rawequalvalue(const Obj* lhs, int64_t rhs)
+{
+    return luai_inteq(lvalue(lhs), rhs);
+}
+
+struct LightUserdataVal
+{
+    void* p;
+    int extra;
+};
+
+template<typename Obj>
+LUAU_FORCEINLINE int rawequalvalue(const Obj* lhs, LightUserdataVal rhs)
+{
+    return pvalue(lhs) == rhs.p && lightuserdatatag(lhs) == rhs.extra;
+}
+
+template<typename Obj>
+LUAU_FORCEINLINE int rawequalvalue(const Obj* lhs, const LUA_VECTOR_TYPE* rhs)
+{
+    return luai_veceq(vvalue(lhs), rhs);
+}
+
+template<typename Obj>
+LUAU_FORCEINLINE int rawequalvalue(const Obj* lhs, GCObject* rhs)
+{
+    return gcvalue(lhs) == rhs;
+}
+
+// Lookup a node in the main position of the key or look through the node chain
+template<int Tag, typename T>
+static LUAU_FORCEINLINE const TValue* chainsearchtagged(const LuaTable* t, T key, int keytag)
+{
+    LuaNode* n = mainpositiontagged<Tag>(t, key);
+
+    // check whether `key' is somewhere in the chain
+    for (;;)
+    {
+        if (ttype(gkey(n)) == keytag && rawequalvalue(gkey(n), key))
+            return gval(n);
+
+        if (gnext(n) == 0)
+            break;
+        n += gnext(n);
+    }
+
+    return luaO_nilobject;
+}
+
+template<typename T>
+static int rawfindarray(const LuaTable* t, int startpos, T value, int valuetag)
+{
+    LUAU_ASSERT(startpos >= 1);
+
+    for (int i = startpos - 1; i < t->sizearray; ++i)
+    {
+        const TValue* e = &t->array[i];
+
+        if (ttisnil(e))
+            break;
+
+        if (ttype(e) == valuetag && rawequalvalue(e, value))
+            return i + 1;
+    }
+
+    return 0;
+}
+
+static LUAU_NOINLINE int rawfindnode(const LuaTable* t, int startpos, const TValue* value)
+{
+    for (int i = startpos;; i++)
+    {
+        const TValue* e = chainsearchtagged<LUA_TNUMBER>(t, cast_num(i), LUA_TNUMBER);
+
+        if (ttisnil(e))
+            return 0;
+
+        if (luaO_rawequalObj(e, value))
+            return i;
+    }
+
+    return 0;
 }
 
 /*
@@ -398,6 +500,47 @@ int luaH_next(lua_State* L, LuaTable* t, StkId key)
         }
     }
     return 0; // no more elements
+}
+
+int luaH_rawfind(LuaTable* t, int startpos, StkId value)
+{
+    // If we start outside the array part, we only need to check the hash part
+    if (LUAU_UNLIKELY(unsigned(startpos) - 1 >= unsigned(t->sizearray)))
+    {
+        if (t->node == dummynode || startpos < 1)
+            return 0;
+
+        return rawfindnode(t, startpos, value);
+    }
+
+    int index = 0;
+
+    switch (ttype(value))
+    {
+    case LUA_TNIL:
+        break;
+    case LUA_TBOOLEAN:
+        index = rawfindarray(t, startpos, bvalue(value), LUA_TBOOLEAN);
+        break;
+    case LUA_TLIGHTUSERDATA:
+        index = rawfindarray(t, startpos, LightUserdataVal{pvalue(value), lightuserdatatag(value)}, LUA_TLIGHTUSERDATA);
+        break;
+    case LUA_TNUMBER:
+        index = rawfindarray(t, startpos, nvalue(value), LUA_TNUMBER);
+        break;
+    case LUA_TINTEGER:
+        index = rawfindarray(t, startpos, lvalue(value), LUA_TINTEGER);
+        break;
+    case LUA_TVECTOR:
+        index = rawfindarray(t, startpos, (const LUA_VECTOR_TYPE*)vvalue(value), LUA_TVECTOR);
+        break;
+    default:
+        index = rawfindarray(t, startpos, gcvalue(value), ttype(value));
+        break;
+    }
+
+    // If we started inside the array part, boundary invariant ensures that key was inside or not in the table at all
+    return index;
 }
 
 /*
@@ -835,7 +978,7 @@ static int adjustasize(LuaTable* t, int size, int extraintkey)
 
 void luaH_resizearray(lua_State* L, LuaTable* t, int nasize)
 {
-    if (FFlag::LuauTableArrayAdjustCheck && nasize > MAXSIZE)
+    if (nasize > MAXSIZE)
         luaG_runerror(L, "table overflow");
 
     int nsize = (t->node == dummynode) ? 0 : sizenode(t);
@@ -1255,7 +1398,7 @@ const TValue* luaH_getp(LuaTable* t, void* key, int tag)
 */
 const TValue* luaH_get(LuaTable* t, const TValue* key)
 {
-    if (DFFlag::LuauSplitTableLookups)
+    if (DFFlag::LuauSplitTableLookups && DFFlag::LuauTableFindImprovement)
     {
         switch (ttype(key))
         {
@@ -1283,6 +1426,36 @@ const TValue* luaH_get(LuaTable* t, const TValue* key)
             return luaH_getstr(t, tsvalue(key));
         default:
             return chainsearchtagged<LUA_TGCO>(t, gcvalue(key), ttype(key));
+        }
+    }
+    else if (DFFlag::LuauSplitTableLookups)
+    {
+        switch (ttype(key))
+        {
+        case LUA_TNIL:
+            return luaO_nilobject;
+        case LUA_TBOOLEAN:
+            return chainsearchtagged_DEPRECATED<LUA_TBOOLEAN>(t, bvalue(key), LUA_TBOOLEAN);
+        case LUA_TLIGHTUSERDATA:
+            return luaH_getp(t, pvalue(key), lightuserdatatag(key)); // special search function with tag comparison
+        case LUA_TNUMBER:
+        {
+            int k;
+            double n = nvalue(key);
+            luai_num2int(k, n);
+            if (luai_numeq(cast_num(k), nvalue(key))) // index is int?
+                return luaH_getnum(t, k);             // use specialized version
+
+            return chainsearchtagged_DEPRECATED<LUA_TNUMBER>(t, nvalue(key), LUA_TNUMBER);
+        }
+        case LUA_TINTEGER:
+            return chainsearchtagged_DEPRECATED<LUA_TINTEGER>(t, lvalue(key), LUA_TINTEGER);
+        case LUA_TVECTOR:
+            return chainsearchtagged_DEPRECATED<LUA_TVECTOR>(t, (const LUA_VECTOR_TYPE*)vvalue(key), LUA_TVECTOR);
+        case LUA_TSTRING:
+            return luaH_getstr(t, tsvalue(key));
+        default:
+            return chainsearchtagged_DEPRECATED<LUA_TGCO>(t, gcvalue(key), ttype(key));
         }
     }
     else

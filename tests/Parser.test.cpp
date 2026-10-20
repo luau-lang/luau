@@ -1726,9 +1726,24 @@ TEST_CASE_FIXTURE(Fixture, "string_literal_call")
     REQUIRE(stc != nullptr);
     AstExprCall* ec = stc->expr->as<AstExprCall>();
     CHECK(ec->args.size == 1);
+    CHECK(ec->tableCall == false);
     AstExprConstantString* arg = ec->args.data[0]->as<AstExprConstantString>();
     REQUIRE(arg != nullptr);
     CHECK(std::string(arg->value.data, arg->value.size) == "bar");
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_call")
+{
+    AstStatBlock* stat = parse("do foo{x=1} end");
+    REQUIRE(stat != nullptr);
+    AstStatBlock* dob = stat->body.data[0]->as<AstStatBlock>();
+    AstStatExpr* stc = dob->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stc != nullptr);
+    AstExprCall* ec = stc->expr->as<AstExprCall>();
+    CHECK(ec->args.size == 1);
+    CHECK(ec->tableCall == true);
+    AstExprTable* arg = ec->args.data[0]->as<AstExprTable>();
+    REQUIRE(arg != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "multiline_strings_newlines")
@@ -3327,11 +3342,10 @@ TEST_CASE_FIXTURE(Fixture, "class_declaration")
     REQUIRE(call);
 
     REQUIRE(call->args.size == 1);
+    const AstExprLocal* local = call->args.data[0]->as<AstExprLocal>();
+    REQUIRE(local);
 
-    const AstExprGlobal* global = call->args.data[0]->as<AstExprGlobal>();
-    REQUIRE(global);
-
-    CHECK(global->name == first->name->name);
+    CHECK(local->local == first->name);
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_parse_errors")
@@ -3426,10 +3440,10 @@ end
     const AstExpr* super = cat->super;
     REQUIRE(super);
 
-    const AstExprGlobal* superGlobal = super->as<AstExprGlobal>();
-    REQUIRE(superGlobal);
+    const AstExprLocal* superLocal = super->as<AstExprLocal>();
+    REQUIRE(superLocal);
 
-    CHECK(superGlobal->name == "Animal");
+    CHECK(superLocal->local == animal->name);
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_exported_open")
@@ -3687,7 +3701,7 @@ TEST_CASE_FIXTURE(Fixture, "reassigned_class")
 class Animal end
 Animal = nil
         )",
-        "'Animal' refers to a class and cannot be used as a variable name (defined on line 2)" // const reassignment msg
+        "Variable 'Animal' is constant and may not be reassigned" // const reassignment msg
     );
 }
 

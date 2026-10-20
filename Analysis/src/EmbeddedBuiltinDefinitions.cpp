@@ -6,7 +6,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(DebugLuauCoroutineFinallyAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
 
 namespace Luau
@@ -496,7 +496,7 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
 
-    if (FFlag::DebugLuauCoroutineFinallyAnalysis)
+    if (FFlag::LuauCoroutineFinallyAnalysis)
         result += kBuiltinDefinitionCoroutineSrc;
     else
         result += kBuiltinDefinitionCoroutineSrc_DEPRECATED;

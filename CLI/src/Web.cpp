@@ -150,8 +150,7 @@ extern "C" const char* checkScript(const char* source, int useNewSolver)
         DemoConfigResolver configResolver;
         Luau::FrontendOptions options;
 
-        Luau::Frontend frontend(&fileResolver, &configResolver, options);
-        frontend.setLuauSolverMode(useNewSolver ? Luau::SolverMode::New : Luau::SolverMode::Old);
+        Luau::Frontend frontend(useNewSolver ? Luau::SolverMode::New : Luau::SolverMode::Old, &fileResolver, &configResolver, options);
         // Add Luau builtins
         Luau::unfreeze(frontend.globals.globalTypes);
         Luau::registerBuiltinGlobals(frontend, frontend.globals);

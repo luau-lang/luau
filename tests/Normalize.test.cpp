@@ -16,8 +16,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
-LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 
@@ -844,8 +842,7 @@ TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "write_only_property_is_satisf
 {
     getBuiltins();
     TypeId propertyTable = arena.addType(TableType{{{"x", Property::writeonly(builtinTypes->numberType)}}, std::nullopt, {}, TableState::Sealed});
-    TypeId indexerTable =
-        arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
+    TypeId indexerTable = arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
     TypeId intersection = arena.addType(IntersectionType{{propertyTable, indexerTable}});
 
     std::shared_ptr<const NormalizedType> normalized = normalize(intersection);
@@ -875,8 +872,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "split_read_write_property_must_satisfy_both
     TypeId propertyTable =
         arena.addType(TableType{{{"x", Property::rw(builtinTypes->numberType, builtinTypes->stringType)}}, std::nullopt, {}, TableState::Sealed});
     // {[string]: number}
-    TypeId indexerTable =
-        arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
+    TypeId indexerTable = arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
     TypeId intersection = arena.addType(IntersectionType{{propertyTable, indexerTable}});
 
     std::shared_ptr<const NormalizedType> normalized = normalize(intersection);
@@ -916,9 +912,7 @@ TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "string_indexer_intersections_
 TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "overlapping_inexact_indexers_are_uninhabited_due_to_variance")
 {
     // Capturing this intersection exactly would require a split indexer { read [string]: string, write [string]: string | boolean | number }
-    CHECK(
-        "{ }" ==
-        toString(normal("{ [string | boolean]: string | boolean, ... } & { [string | number]: string | number, ... }")));
+    CHECK("{ }" == toString(normal("{ [string | boolean]: string | boolean, ... } & { [string | number]: string | number, ... }")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
@@ -1396,8 +1390,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_table_and_truthy")
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauAlwaysIntersectTablesWithTables, true},
-        {FFlag::LuauIncludeExternTypeExtensionsWithTopExternType, true},
         {FFlag::DebugLuauParseExactTables, true},
         {FFlag::DebugLuauExactTableTypes, true},
     };

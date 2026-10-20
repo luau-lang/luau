@@ -15,8 +15,8 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2111,10 +2111,9 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_cyclic_add")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_type")
 {
-    if (FFlag::DebugLuauForceOldSolver)
-        return;
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
+    ScopedFastFlag _{FFlag::LuauReduceTypeFunctionToSyntheticError, true};
 
     fileResolver.source["game/A"] = R"(
         local function get(x: string, y: unknown)
@@ -2135,10 +2134,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
     ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
-    if (FFlag::LuauCloneTypeFunctionFromForeignArena)
-        CHECK(toString(requireType("x")) == "*error-type<concat<string, unknown>>*");
-    else
-        CHECK(toString(requireType("x")) == "*error-type*");
+    CHECK(toString(requireType("x")) == "*error-type*");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_negation_of_nontestable_type_doesnt_crash_1")

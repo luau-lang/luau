@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
@@ -983,22 +984,10 @@ AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
     return expr;
 }
 
-AstStatClass* Parser::getMatchingClass(AstExpr* expr)
+static bool isExprLValue(AstExpr* expr)
 {
-    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-    if (AstExprGlobal* g = expr->as<AstExprGlobal>())
-    {
-        if (AstStatClass** classDecl = classesWithinModule.find(g->name))
-            return *classDecl;
-    }
-    return nullptr;
-}
-
-bool Parser::isExprLValue(AstExpr* expr)
-{
-    return (expr->is<AstExprLocal>() && !expr->as<AstExprLocal>()->local->isConst) ||
-           (expr->is<AstExprGlobal>() && !(FFlag::DebugLuauUserDefinedClasses && getMatchingClass(expr) != nullptr)) ||
-           expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
+    return (expr->is<AstExprLocal>() && !expr->as<AstExprLocal>()->local->isConst) || expr->is<AstExprGlobal>() || expr->is<AstExprIndexExpr>() ||
+           expr->is<AstExprIndexName>();
 }
 
 // function funcname funcbody
@@ -1552,8 +1541,10 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
     if (!name)
         name = Name(nameError, lexer.current().location);
 
-    AstLocal* nameLocal =
-        allocator.alloc<AstLocal>(name->name, name->location, nullptr, functionStack.size() - 1, functionStack.back().loopDepth, nullptr, true);
+    // We save the locals here as part of error recovery later.
+    auto savedLocals = saveLocals();
+
+    AstLocal* nameLocal = pushLocal(Binding(*name, nullptr, {0, 0}, true));
 
     AstExpr* super = nullptr;
     if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "extends")
@@ -1701,18 +1692,19 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
     if (recursionCounter > 1)
         report(nameLocal->location, "Cannot declare class '%s' inside another statement or expression", nameLocal->name.value);
 
-    AstStatClass* cls = allocator.alloc<AstStatClass>(location, nameLocal, super, copy(declarations), exported, open);
+    AstStat* cls = allocator.alloc<AstStatClass>(location, nameLocal, super, copy(declarations), exported, open);
     if (classesWithinModule.contains(nameLocal->name))
     {
+        // We do not allow shadowing classes with the same name. However, we
+        // want to have a decent experience when editing classes that have
+        // the same name, so if we encounter this shadowing, we pop the local
+        // representing the class off the stack and return an error.
+        restoreLocals(savedLocals);
         return reportStatError(
-            nameLocal->location,
-            {},
-            copy({static_cast<AstStat*>(cls)}),
-            "A class named '%s' has already been declared in this module",
-            nameLocal->name.value
+            nameLocal->location, {}, copy({cls}), "A class named '%s' has already been declared in this module", nameLocal->name.value
         );
     }
-    classesWithinModule[nameLocal->name] = cls;
+    classesWithinModule.insert(nameLocal->name);
     return cls;
 }
 
@@ -2056,19 +2048,6 @@ AstExprError* Parser::reportLValueError(AstExpr* expr)
         AstExprLocal* local = expr->as<AstExprLocal>();
         return reportExprError(expr->location, copy({expr}), "Variable '%s' is constant and may not be reassigned", local->local->name.value);
     }
-    if (FFlag::DebugLuauUserDefinedClasses)
-    {
-        if (AstStatClass* classStat = getMatchingClass(expr))
-        {
-            return reportExprError(
-                expr->location,
-                copy({expr}),
-                "'%s' refers to a class and cannot be used as a variable name (defined on line %d)",
-                classStat->name->name.value,
-                classStat->location.begin.line + 1
-            );
-        }
-    }
 
     return reportExprError(expr->location, copy({expr}), "Assigned expression must be a variable or a field");
 }
@@ -2077,6 +2056,7 @@ AstExprError* Parser::reportLValueError(AstExpr* expr)
 AstStat* Parser::parseAssignment(AstExpr* initial)
 {
     if (!isExprLValue(initial))
+
         initial = FFlag::LuauExportValueSyntax
                       ? reportLValueError(initial)
                       : reportExprError(initial->location, copy({initial}), "Assigned expression must be a variable or a field");
@@ -4238,7 +4218,7 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         bool closingParenFound = expectMatchAndConsume(')', matchParen);
 
         AstExprCall* node = allocator.alloc<AstExprCall>(
-            Location(func->location, end), func, copy(args), self, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd)
+            Location(func->location, end), func, copy(args), self, /* tableCall */ false, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd)
         );
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(
@@ -4253,7 +4233,13 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         Position argEnd = lexer.previousLocation().end;
 
         AstExprCall* node = allocator.alloc<AstExprCall>(
-            Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd)
+            Location(func->location, expr->location),
+            func,
+            copy(&expr, 1),
+            self,
+            /* tableCall */ true,
+            AstArray<AstTypeOrPack>{},
+            Location(argStart, argEnd)
         );
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(Position::missing(), Position::missing(), AstArray<Position>{nullptr, 0});
@@ -4265,7 +4251,7 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         AstExpr* expr = parseString();
 
         AstExprCall* node = allocator.alloc<AstExprCall>(
-            Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, argLocation
+            Location(func->location, expr->location), func, copy(&expr, 1), self, /* tableCall */ false, AstArray<AstTypeOrPack>{}, argLocation
         );
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(Position::missing(), Position::missing(), AstArray<Position>{nullptr, 0});

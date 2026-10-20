@@ -19,12 +19,12 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
 
 using namespace Luau;
 
@@ -1149,14 +1149,42 @@ TEST_CASE_FIXTURE(ACFixture, "local_function")
 
     ac = autocomplete('1');
     CHECK(ac.entryMap.empty());
+}
+
+TEST_CASE_FIXTURE(ACFixture, "table_statement_full_stem_included")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
 
     check(R"(
         local tbl = {}
         function tbl.something@1() end
     )");
 
-    ac = autocomplete('1');
-    CHECK(ac.entryMap.empty());
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("something"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "table_assignment_full_stem_included")
+{
+    check(R"(
+        local tbl = {}
+        tbl.something@1 = 42
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("something"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "global_autocomplete_full_stem")
+{
+    check(R"(
+foobar = 42
+
+print(math.abs(foobar@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foobar"));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "local_function_params")
@@ -1199,28 +1227,46 @@ TEST_CASE_FIXTURE(ACFixture, "local_function_params")
     CHECK_EQ(ac3.context, AutocompleteContext::Unknown);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "global_function_params")
+TEST_CASE_FIXTURE(ACFixture, "global_function_params_1")
 {
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
+
     check(R"(
-        function abc(def)
+        funct@1ion abc@2(def@3)
     )");
 
-    for (unsigned int i = 17; i < 25; ++i)
-    {
-        CHECK(autocomplete(1, i).entryMap.empty());
-    }
-    CHECK(!autocomplete(1, 26).entryMap.empty());
+    auto ac1 = autocomplete('1');
+    CHECK(ac1.entryMap.empty());
+
+    auto ac2 = autocomplete('2');
+    CHECK(!ac2.entryMap.empty());
+
+    auto ac3 = autocomplete('3');
+    CHECK(ac3.entryMap.empty());
+}
+
+TEST_CASE_FIXTURE(ACFixture, "global_function_params_2")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
 
     check(R"(
-        function abc(def)
+        funct@1ion abc@2(def@3)
         end
     )");
 
-    for (unsigned int i = 17; i < 25; ++i)
-    {
-        CHECK(autocomplete(1, i).entryMap.empty());
-    }
-    CHECK(!autocomplete(1, 26).entryMap.empty());
+    auto ac1 = autocomplete('1');
+    CHECK(ac1.entryMap.empty());
+
+    auto ac2 = autocomplete('2');
+    CHECK(!ac2.entryMap.empty());
+
+    auto ac3 = autocomplete('3');
+    CHECK(ac3.entryMap.empty());
+}
+
+TEST_CASE_FIXTURE(ACFixture, "global_function_params_3")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
 
     check(R"(
         function abc(def)
@@ -1228,19 +1274,24 @@ TEST_CASE_FIXTURE(ACFixture, "global_function_params")
         end
     )");
 
-    auto ac2 = autocomplete('1');
-    CHECK_EQ(ac2.entryMap.count("abc"), 1);
-    CHECK_EQ(ac2.entryMap.count("def"), 1);
-    CHECK_EQ(ac2.context, AutocompleteContext::Statement);
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("abc"), 1);
+    CHECK_EQ(ac.entryMap.count("def"), 1);
+    CHECK_EQ(ac.context, AutocompleteContext::Statement);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "global_function_params_4")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
 
     check(R"(
         function abc(def, ghi@1)
         end
     )");
 
-    auto ac3 = autocomplete('1');
-    CHECK(ac3.entryMap.empty());
-    CHECK_EQ(ac3.context, AutocompleteContext::Unknown);
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::Unknown);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "arguments_to_global_lambda")
@@ -1753,7 +1804,19 @@ local a: boolean, b: n@1 = false, f()
     CHECK(ac.entryMap["number"].typeCorrect == TypeCorrectKind::Correct);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "type_correct_function_type_suggestion")
+TEST_CASE_FIXTURE(ACFixture, "type_correct_function_type_suggestion_1")
+{
+    check(R"(
+local b: (number, string) -> b@1 = function(a: number, b: string): boolean return a + #b == 0 end
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("boolean"));
+    CHECK(ac.entryMap["boolean"].typeCorrect == TypeCorrectKind::Correct);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "type_correct_function_type_suggestion_2")
 {
     check(R"(
 local b: (n@1) -> number = function(a: number, b: string) return a + #b end
@@ -1763,39 +1826,39 @@ local b: (n@1) -> number = function(a: number, b: string) return a + #b end
 
     CHECK(ac.entryMap.count("number"));
     CHECK(ac.entryMap["number"].typeCorrect == TypeCorrectKind::Correct);
+}
 
+TEST_CASE_FIXTURE(ACFixture, "type_correct_function_type_suggestion_3")
+{
     check(R"(
 local b: (number, s@1 = function(a: number, b: string) return a + #b end
     )");
 
-    ac = autocomplete('1');
+    auto ac = autocomplete('1');
 
     CHECK(ac.entryMap.count("string"));
     CHECK(ac.entryMap["string"].typeCorrect == TypeCorrectKind::Correct);
+}
 
-    check(R"(
-local b: (number, string) -> b@1 = function(a: number, b: string): boolean return a + #b == 0 end
-    )");
-
-    ac = autocomplete('1');
-
-    CHECK(ac.entryMap.count("boolean"));
-    CHECK(ac.entryMap["boolean"].typeCorrect == TypeCorrectKind::Correct);
-
+TEST_CASE_FIXTURE(ACFixture, "type_correct_function_type_suggestion_4")
+{
     check(R"(
 local b: (number, ...s@1) = function(a: number, ...: string) return a end
     )");
 
-    ac = autocomplete('1');
+    auto ac = autocomplete('1');
 
     CHECK(ac.entryMap.count("string"));
     CHECK(ac.entryMap["string"].typeCorrect == TypeCorrectKind::Correct);
+}
 
+TEST_CASE_FIXTURE(ACFixture, "type_correct_function_type_suggestion_5")
+{
     check(R"(
 local b: (number) -> ...s@1 = function(a: number): ...string return "a", "b", "c" end
     )");
 
-    ac = autocomplete('1');
+    auto ac = autocomplete('1');
 
     CHECK(ac.entryMap.count("string"));
     CHECK(ac.entryMap["string"].typeCorrect == TypeCorrectKind::Correct);
@@ -2355,21 +2418,46 @@ return b.@1
     CHECK_EQ(0, ac.entryMap.size());
 }
 
-TEST_CASE_FIXTURE(ACFixture, "no_function_name_suggestions")
+
+TEST_CASE_FIXTURE(ACFixture, "function_name_suggestions_1")
 {
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
+
     check(R"(
+local name
+
 function na@1
     )");
 
     auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("name"));
+}
 
-    CHECK(ac.entryMap.empty());
+TEST_CASE_FIXTURE(ACFixture, "function_name_suggestions_2")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
 
+    check(R"(
+local name1
+local name2
+
+function na@1()
+end
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("name1"));
+    CHECK(ac.entryMap.count("name2"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "no_function_name_suggestions")
+{
     check(R"(
 local function @1
     )");
 
-    ac = autocomplete('1');
+    auto ac = autocomplete('1');
 
     CHECK(ac.entryMap.empty());
 
@@ -4037,8 +4125,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_by_string")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(LUAU_TIMEOUT))
 {
-    if (!FFlag::DebugLuauForceOldSolver)
-        return; // FIXME: This test is just barely at the threshold which makes it very flaky under the new solver
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     // Build a function type with a large overload set
     const int parts = 100;
@@ -5328,7 +5415,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         \@deprecated
         function foo()
@@ -5346,7 +5432,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_local_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         \@deprecated
         local function foo()
@@ -5364,8 +5449,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_local_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_anonymous_function")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauCheckTypeForDeprecated, true}};
-
     check(R"(
         local foo = \@deprecated function()
         end
@@ -5382,7 +5465,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_anonymous_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function_in_table")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         local t = {}
 
@@ -5402,8 +5484,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function_in_table")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_global_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         @deprecated
         declare function foo(): ()
@@ -5422,8 +5502,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_global_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_extern_member_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         declare extern type MyClass with
             @deprecated
@@ -5445,8 +5523,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_extern_member_function"
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_overloaded_extern_member_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         declare extern type MyClass with
             @deprecated
@@ -5470,8 +5546,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_overloaded_extern_membe
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_not_deprecated_on_overloaded_extern_member_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         declare extern type MyClass with
             function foo(self, val: string): ()
@@ -6150,6 +6224,37 @@ TEST_CASE_FIXTURE(ACFixture, "if_const_expression_binding_is_in_scope_in_true_ex
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("x"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_function_statement_with_index_1")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
+
+    check(R"(
+        local tbl: { onHeartbeat: (number) -> (), onSimulate: (number) -> (), everyFrame: () -> () } = {}
+
+        function tbl.on@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("onHeartbeat"));
+    CHECK(ac.entryMap.count("onSimulate"));
+    CHECK(ac.entryMap.count("everyFrame"));
+    CHECK(ac.entryMap["everyFrame"].typeCorrect == TypeCorrectKind::None);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_function_statement_with_index_2")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorAutocompleteAncestry, true};
+
+    check(R"(
+        local tbl = { abs = math.abs }
+
+        function tbl.a@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("abs"));
 }
 
 TEST_SUITE_END();
