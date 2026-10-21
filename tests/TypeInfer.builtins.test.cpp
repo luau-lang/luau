@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
+LUAU_FASTFLAG(DebugLuauVectorAxisConstants)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1932,6 +1933,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vector_lerp_should_not_crash")
             return vector.lerp(vector.zero, vector.create(x, y, z), 0.5)
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "vector_axis_constants")
+{
+    ScopedFastFlag debugLuauVectorAxisConstants{FFlag::DebugLuauVectorAxisConstants, true};
+
+    CheckResult result = check(R"(
+        local x = vector.xaxis
+        local y = vector.yaxis
+        local z = vector.zaxis
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("vector", toString(requireType("x")));
+    CHECK_EQ("vector", toString(requireType("y")));
+    CHECK_EQ("vector", toString(requireType("z")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")

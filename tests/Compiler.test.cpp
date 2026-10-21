@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauCompileTableBuiltinsCreateClear)
 LUAU_FASTFLAG(LuauCompileReuseLowersLimit)
+LUAU_FASTFLAG(DebugLuauCompileVectorAxisConstants)
 
 using namespace Luau;
 
@@ -6203,6 +6204,40 @@ RETURN R0 2
     CHECK_EQ("\n" + compileFunction("return vector.one == vector.create(1, 1, 1)", 0, 2), R"(
 LOADB R0 1
 RETURN R0 1
+)");
+}
+
+TEST_CASE("VectorAxisConstantTypes")
+{
+    ScopedFastFlag debugLuauCompileVectorAxisConstants{FFlag::DebugLuauCompileVectorAxisConstants, true};
+
+    const char* source = R"(
+local x = vector.xaxis
+local y = vector.yaxis
+local z = vector.zaxis
+local w = vector.waxis
+return x, y, z, w
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.typeInfoLevel = 1;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+R0: vector from 1 to 10
+R1: vector from 3 to 10
+R2: vector from 5 to 10
+R3: any from 7 to 10
+GETIMPORT R0 2 [vector.xaxis]
+GETIMPORT R1 4 [vector.yaxis]
+GETIMPORT R2 6 [vector.zaxis]
+GETIMPORT R3 8 [vector.waxis]
+RETURN R0 4
 )");
 }
 

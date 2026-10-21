@@ -68,6 +68,8 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAG(DebugLuauVectorAxisConstants)
+LUAU_FASTFLAG(DebugLuauCompileVectorAxisConstants)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
 LUAU_FASTFLAG(LuauFastpcallInterrupt)
@@ -2091,6 +2093,8 @@ TEST_CASE("Vector")
 TEST_CASE("VectorLibrary")
 {
     ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
+    ScopedFastFlag debugLuauVectorAxisConstants{FFlag::DebugLuauVectorAxisConstants, true};
+    ScopedFastFlag debugLuauCompileVectorAxisConstants{FFlag::DebugLuauCompileVectorAxisConstants, true};
 
     lua_CompileOptions copts = defaultOptions();
 
