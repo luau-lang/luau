@@ -6189,6 +6189,8 @@ RETURN R0 1
 
 TEST_CASE("VectorConstantFields")
 {
+    ScopedFastFlag debugLuauCompileVectorAxisConstants{FFlag::DebugLuauCompileVectorAxisConstants, true};
+
     CHECK_EQ("\n" + compileFunction("return vector.one, vector.zero", 0, 2), R"(
 LOADK R0 K0 [1, 1, 1]
 LOADK R1 K1 [0, 0, 0]
@@ -6204,6 +6206,13 @@ RETURN R0 2
     CHECK_EQ("\n" + compileFunction("return vector.one == vector.create(1, 1, 1)", 0, 2), R"(
 LOADB R0 1
 RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("return vector.xaxis, vector.yaxis, vector.zaxis", 0, 2), R"(
+LOADK R0 K0 [1, 0, 0]
+LOADK R1 K1 [0, 1, 0]
+LOADK R2 K2 [0, 0, 1]
+RETURN R0 3
 )");
 }
 

@@ -49,6 +49,7 @@ LUAU_FASTFLAGVARIABLE(LuauExportedTypesParticipateInScc)
 LUAU_FLAGVERSION(LuauExportedTypesParticipateInScc, 3)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileReuseLocalRegs)
+LUAU_FASTFLAG(DebugLuauCompileVectorAxisConstants)
 
 namespace Luau
 {
@@ -1065,6 +1066,7 @@ struct Compiler
             locstants,
             builtinsFold,
             builtinsFoldLibraryK,
+            builtinsFoldVectorK,
             options.vectorPrecision == 1,
             options.libraryMemberConstantCb,
             func->body,
@@ -1305,6 +1307,7 @@ struct Compiler
             locstants,
             builtinsFold,
             builtinsFoldLibraryK,
+            builtinsFoldVectorK,
             options.vectorPrecision == 1,
             options.libraryMemberConstantCb,
             func->body,
@@ -4343,6 +4346,7 @@ struct Compiler
                     locstants,
                     builtinsFold,
                     builtinsFoldLibraryK,
+                    builtinsFoldVectorK,
                     options.vectorPrecision == 1,
                     options.libraryMemberConstantCb,
                     stat,
@@ -4358,6 +4362,7 @@ struct Compiler
                     locstants,
                     builtinsFold,
                     builtinsFoldLibraryK,
+                    builtinsFoldVectorK,
                     options.vectorPrecision == 1,
                     options.libraryMemberConstantCb,
                     stat,
@@ -5808,6 +5813,7 @@ struct Compiler
 
     const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
     bool builtinsFoldLibraryK = false;
+    bool builtinsFoldVectorK = false;
 
     // compileFunction state, gets reset for every function
     unsigned int regTop = 0;
@@ -5945,6 +5951,12 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
                 }
             }
         }
+
+        if (FFlag::DebugLuauCompileVectorAxisConstants)
+        {
+            if (AstName vector = names.get("vector"); vector.value && getGlobalState(compiler.globals, vector) == Global::Default)
+                compiler.builtinsFoldVectorK = true;
+        }
     }
 
     if (options.optimizationLevel >= 1)
@@ -5962,6 +5974,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
             compiler.locstants,
             compiler.builtinsFold,
             compiler.builtinsFoldLibraryK,
+            compiler.builtinsFoldVectorK,
             options.vectorPrecision == 1,
             options.libraryMemberConstantCb,
             root,

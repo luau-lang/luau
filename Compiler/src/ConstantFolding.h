@@ -88,6 +88,7 @@ void foldConstants(
     DenseHashMap<AstLocal*, Constant>& locals,
     const DenseHashMap<AstExprCall*, int>* builtins,
     bool foldLibraryK,
+    bool foldVectorK,
     bool vectorDoublePrecision,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
