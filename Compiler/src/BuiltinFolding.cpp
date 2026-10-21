@@ -688,5 +688,21 @@ Constant foldBuiltinMath(AstName index)
     return cvar();
 }
 
+Constant foldBuiltinVector(AstName index, bool vectorDoublePrecision)
+{
+    // 'w' component is 0 in both 3-wide and 4-wide modes
+    // 'waxis' is not folded because it only exists in 4-wide mode
+    if (index == "xaxis")
+        return vectorDoublePrecision ? cvectord(1.0, 0.0, 0.0, 0.0) : cvectorf(1.0f, 0.0f, 0.0f, 0.0f);
+
+    if (index == "yaxis")
+        return vectorDoublePrecision ? cvectord(0.0, 1.0, 0.0, 0.0) : cvectorf(0.0f, 1.0f, 0.0f, 0.0f);
+
+    if (index == "zaxis")
+        return vectorDoublePrecision ? cvectord(0.0, 0.0, 1.0, 0.0) : cvectorf(0.0f, 0.0f, 1.0f, 0.0f);
+
+    return cvar();
+}
+
 } // namespace Compile
 } // namespace Luau

@@ -6,6 +6,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauVectorAxisConstants)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
 
@@ -433,6 +434,40 @@ declare vector: {
 
 )BUILTIN_SRC";
 
+static const char* const kBuiltinDefinitionVectorAxisSrc = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
+declare extern type vector with
+    read x: number
+    read y: number
+    read z: number
+end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number?) -> vector,
+    magnitude: @checked (vec: vector) -> number,
+    normalize: @checked (vec: vector) -> vector,
+    cross: @checked (vec1: vector, vec2: vector) -> vector,
+    dot: @checked (vec1: vector, vec2: vector) -> number,
+    angle: @checked (vec1: vector, vec2: vector, axis: vector?) -> number,
+    floor: @checked (vec: vector) -> vector,
+    ceil: @checked (vec: vector) -> vector,
+    abs: @checked (vec: vector) -> vector,
+    sign: @checked (vec: vector) -> vector,
+    clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
+    max: @checked (vector, ...vector) -> vector,
+    min: @checked (vector, ...vector) -> vector,
+    lerp: @checked (vec1: vector, vec2: vector, t: number) -> vector,
+
+    zero: vector,
+    one: vector,
+    xaxis: vector,
+    yaxis: vector,
+    zaxis: vector,
+}
+
+)BUILTIN_SRC";
+
 static const char* const kBuiltinDefinitionIntegerSrc = R"BUILTIN_SRC(
 
 declare integer: {
@@ -512,7 +547,10 @@ std::string getBuiltinDefinitionSource()
     else
         result += kBuiltinDefinitionBufferSrc_NOINTEGER;
 
-    result += kBuiltinDefinitionVectorSrc;
+    if (FFlag::DebugLuauVectorAxisConstants)
+        result += kBuiltinDefinitionVectorAxisSrc;
+    else
+        result += kBuiltinDefinitionVectorSrc;
 
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
     {

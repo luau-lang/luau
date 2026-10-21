@@ -21,6 +21,21 @@ pcall(function()
     assert(not is_native_if_supported())
 end)
 
+-- axis constants
+assert(vector.xaxis == vector.create(1, 0, 0))
+assert(vector.yaxis == vector.create(0, 1, 0))
+assert(vector.zaxis == vector.create(0, 0, 1))
+assert(vector.xaxis + vector.yaxis + vector.zaxis == vector.create(1, 1, 1))
+assert(vector.cross(vector.xaxis, vector.yaxis) == vector.zaxis)
+
+if vector_size == 4 then
+    assert(vector.waxis == vector.create(0, 0, 0, 1))
+    assert(vector.xaxis + vector.yaxis + vector.zaxis + vector.waxis == vector.one)
+else
+    assert(vector.waxis == nil)
+    assert(vector.xaxis + vector.yaxis + vector.zaxis == vector.one)
+end
+
 -- 'create'
 local v12 = vector.create(1, 2)
 local v123 = vector.create(1, 2, 3)

@@ -7,6 +7,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(DebugLuauVectorAxisConstants)
+
 static int vector_create(lua_State* L)
 {
     // checking argument count to avoid accepting 'nil' as a valid value
@@ -344,11 +346,33 @@ int luaopen_vector(lua_State* L)
     lua_setfield(L, -2, "zero");
     lua_pushvector(L, 1.0, 1.0, 1.0, 1.0);
     lua_setfield(L, -2, "one");
+
+    if (FFlag::DebugLuauVectorAxisConstants)
+    {
+        lua_pushvector(L, 1.0, 0.0, 0.0, 0.0);
+        lua_setfield(L, -2, "xaxis");
+        lua_pushvector(L, 0.0, 1.0, 0.0, 0.0);
+        lua_setfield(L, -2, "yaxis");
+        lua_pushvector(L, 0.0, 0.0, 1.0, 0.0);
+        lua_setfield(L, -2, "zaxis");
+        lua_pushvector(L, 0.0, 0.0, 0.0, 1.0);
+        lua_setfield(L, -2, "waxis");
+    }
 #else
     lua_pushvector(L, 0.0, 0.0, 0.0);
     lua_setfield(L, -2, "zero");
     lua_pushvector(L, 1.0, 1.0, 1.0);
     lua_setfield(L, -2, "one");
+
+    if (FFlag::DebugLuauVectorAxisConstants)
+    {
+        lua_pushvector(L, 1.0, 0.0, 0.0);
+        lua_setfield(L, -2, "xaxis");
+        lua_pushvector(L, 0.0, 1.0, 0.0);
+        lua_setfield(L, -2, "yaxis");
+        lua_pushvector(L, 0.0, 0.0, 1.0);
+        lua_setfield(L, -2, "zaxis");
+    }
 #endif
 
     createmetatable(L);

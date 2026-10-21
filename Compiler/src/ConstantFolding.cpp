@@ -808,6 +808,7 @@ struct ConstantVisitor : AstVisitor
 
     const DenseHashMap<AstExprCall*, int>* builtins;
     bool foldLibraryK = false;
+    bool foldVectorK = false;
     bool vectorDoublePrecision;
     LibraryMemberConstantCallback libraryMemberConstantCb;
     AstNameTable& stringTable;
@@ -829,6 +830,7 @@ struct ConstantVisitor : AstVisitor
         DenseHashMap<AstLocal*, Constant>& locals,
         const DenseHashMap<AstExprCall*, int>* builtins,
         bool foldLibraryK,
+        bool foldVectorK,
         bool vectorDoublePrecision,
         LibraryMemberConstantCallback libraryMemberConstantCb,
         AstNameTable& stringTable,
@@ -841,6 +843,7 @@ struct ConstantVisitor : AstVisitor
         , locals(locals)
         , builtins(builtins)
         , foldLibraryK(foldLibraryK)
+        , foldVectorK(foldVectorK)
         , vectorDoublePrecision(vectorDoublePrecision)
         , libraryMemberConstantCb(libraryMemberConstantCb)
         , stringTable(stringTable)
@@ -1026,6 +1029,13 @@ struct ConstantVisitor : AstVisitor
                         }
                     }
                 }
+            }
+
+            // checked separately as 'vector' folding doesn't depend on 'math' or the custom handler libraries being unmodified
+            if (foldVectorK && result.type == Constant::Type_Unknown)
+            {
+                if (AstExprGlobal* eg = expr->expr->as<AstExprGlobal>(); eg && eg->name == "vector")
+                    result = foldBuiltinVector(expr->index, vectorDoublePrecision);
             }
         }
         else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
@@ -1367,6 +1377,7 @@ void foldConstants(
     DenseHashMap<AstLocal*, Constant>& locals,
     const DenseHashMap<AstExprCall*, int>* builtins,
     bool foldLibraryK,
+    bool foldVectorK,
     bool vectorDoublePrecision,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
@@ -1382,6 +1393,7 @@ void foldConstants(
         locals,
         builtins,
         foldLibraryK,
+        foldVectorK,
         vectorDoublePrecision,
         libraryMemberConstantCb,
         stringTable,

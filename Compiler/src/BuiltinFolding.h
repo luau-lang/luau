@@ -13,6 +13,7 @@ namespace Compile
 
 Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, size_t count, bool vectorDoublePrecision);
 Constant foldBuiltinMath(AstName index);
+Constant foldBuiltinVector(AstName index, bool vectorDoublePrecision);
 
 } // namespace Compile
 } // namespace Luau

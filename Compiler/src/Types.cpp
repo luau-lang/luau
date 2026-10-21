@@ -4,6 +4,7 @@
 #include "Luau/BytecodeBuilder.h"
 
 LUAU_FASTFLAG(LuauIntegerFastcalls)
+LUAU_FASTFLAGVARIABLE(DebugLuauCompileVectorAxisConstants)
 
 namespace Luau
 {
@@ -557,6 +558,15 @@ struct TypeMapVisitor : AstVisitor
         }
 
         if (isMatchingGlobalMember(globals, node, "vector", "zero") || isMatchingGlobalMember(globals, node, "vector", "one"))
+        {
+            recordResolvedType(node, &builtinTypes.vectorType);
+            return false;
+        }
+
+        // 'waxis' is not included because it only exists in 4-wide vector mode
+        if (FFlag::DebugLuauCompileVectorAxisConstants &&
+            (isMatchingGlobalMember(globals, node, "vector", "xaxis") || isMatchingGlobalMember(globals, node, "vector", "yaxis") ||
+             isMatchingGlobalMember(globals, node, "vector", "zaxis")))
         {
             recordResolvedType(node, &builtinTypes.vectorType);
             return false;
