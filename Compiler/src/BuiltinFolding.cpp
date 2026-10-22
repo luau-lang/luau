@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "BuiltinFolding.h"
 
+#include "Utils.h"
+
 #include "Luau/Bytecode.h"
 #include "Luau/Lexer.h"
 
@@ -140,8 +142,21 @@ static Constant ctypeof(const Constant& c)
     }
 }
 
+// Numbers that can't be converted to an integer without undefined behavior are never folded; the runtime defines the result
+static bool isBit32Number(const Constant& c)
+{
+    return c.type == Constant::Type_Number && numFitsInt64(c.valueNumber);
+}
+
+static bool isIntNumber(const Constant& c)
+{
+    return c.type == Constant::Type_Number && numFitsInt(c.valueNumber);
+}
+
 static uint32_t bit32(double v)
 {
+    LUAU_ASSERT(numFitsInt64(v));
+
     // convert through signed 64-bit integer to match runtime behavior and gracefully truncate negative integers
     return uint32_t(int64_t(v));
 }
@@ -213,7 +228,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         // Note: FREXP isn't folded since it returns multiple values
 
     case LBF_MATH_LDEXP:
-        if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
+        if (count == 2 && args[0].type == Constant::Type_Number && isIntNumber(args[1]))
             return cnum(ldexp(args[0].valueNumber, int(args[1].valueNumber)));
         break;
 
@@ -312,7 +327,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_ARSHIFT:
-        if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
+        if (count == 2 && isBit32Number(args[0]) && isIntNumber(args[1]))
         {
             uint32_t u = bit32(args[0].valueNumber);
             int s = int(args[1].valueNumber);
@@ -323,13 +338,13 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_BAND:
-        if (count >= 1 && args[0].type == Constant::Type_Number)
+        if (count >= 1 && isBit32Number(args[0]))
         {
             uint32_t r = bit32(args[0].valueNumber);
 
             for (size_t i = 1; i < count; ++i)
             {
-                if (args[i].type != Constant::Type_Number)
+                if (!isBit32Number(args[i]))
                     return cvar();
 
                 r &= bit32(args[i].valueNumber);
@@ -340,18 +355,18 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_BNOT:
-        if (count == 1 && args[0].type == Constant::Type_Number)
+        if (count == 1 && isBit32Number(args[0]))
             return cnum(double(uint32_t(~bit32(args[0].valueNumber))));
         break;
 
     case LBF_BIT32_BOR:
-        if (count >= 1 && args[0].type == Constant::Type_Number)
+        if (count >= 1 && isBit32Number(args[0]))
         {
             uint32_t r = bit32(args[0].valueNumber);
 
             for (size_t i = 1; i < count; ++i)
             {
-                if (args[i].type != Constant::Type_Number)
+                if (!isBit32Number(args[i]))
                     return cvar();
 
                 r |= bit32(args[i].valueNumber);
@@ -362,13 +377,13 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_BXOR:
-        if (count >= 1 && args[0].type == Constant::Type_Number)
+        if (count >= 1 && isBit32Number(args[0]))
         {
             uint32_t r = bit32(args[0].valueNumber);
 
             for (size_t i = 1; i < count; ++i)
             {
-                if (args[i].type != Constant::Type_Number)
+                if (!isBit32Number(args[i]))
                     return cvar();
 
                 r ^= bit32(args[i].valueNumber);
@@ -379,13 +394,13 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_BTEST:
-        if (count >= 1 && args[0].type == Constant::Type_Number)
+        if (count >= 1 && isBit32Number(args[0]))
         {
             uint32_t r = bit32(args[0].valueNumber);
 
             for (size_t i = 1; i < count; ++i)
             {
-                if (args[i].type != Constant::Type_Number)
+                if (!isBit32Number(args[i]))
                     return cvar();
 
                 r &= bit32(args[i].valueNumber);
@@ -396,14 +411,14 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_EXTRACT:
-        if (count >= 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number &&
-            (count == 2 || args[2].type == Constant::Type_Number))
+        if (count >= 2 && isBit32Number(args[0]) && isIntNumber(args[1]) && (count == 2 || isIntNumber(args[2])))
         {
             uint32_t u = bit32(args[0].valueNumber);
             int f = int(args[1].valueNumber);
             int w = count == 2 ? 1 : int(args[2].valueNumber);
 
-            if (f >= 0 && w > 0 && f + w <= 32)
+            // f + w <= 32, without overflowing for large f and w
+            if (f >= 0 && w > 0 && w <= 32 - f)
             {
                 uint32_t m = ~(0xfffffffeu << (w - 1));
 
@@ -413,17 +428,17 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_LROTATE:
-        if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
+        if (count == 2 && isBit32Number(args[0]) && isIntNumber(args[1]))
         {
             uint32_t u = bit32(args[0].valueNumber);
             int s = int(args[1].valueNumber);
 
-            return cnum(double((u << (s & 31)) | (u >> ((32 - s) & 31))));
+            return cnum(double((u << (s & 31)) | (u >> ((32u - unsigned(s)) & 31))));
         }
         break;
 
     case LBF_BIT32_LSHIFT:
-        if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
+        if (count == 2 && isBit32Number(args[0]) && isIntNumber(args[1]))
         {
             uint32_t u = bit32(args[0].valueNumber);
             int s = int(args[1].valueNumber);
@@ -434,15 +449,15 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_REPLACE:
-        if (count >= 3 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number && args[2].type == Constant::Type_Number &&
-            (count == 3 || args[3].type == Constant::Type_Number))
+        if (count >= 3 && isBit32Number(args[0]) && isBit32Number(args[1]) && isIntNumber(args[2]) && (count == 3 || isIntNumber(args[3])))
         {
             uint32_t n = bit32(args[0].valueNumber);
             uint32_t v = bit32(args[1].valueNumber);
             int f = int(args[2].valueNumber);
             int w = count == 3 ? 1 : int(args[3].valueNumber);
 
-            if (f >= 0 && w > 0 && f + w <= 32)
+            // f + w <= 32, without overflowing for large f and w
+            if (f >= 0 && w > 0 && w <= 32 - f)
             {
                 uint32_t m = ~(0xfffffffeu << (w - 1));
 
@@ -452,17 +467,17 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_BIT32_RROTATE:
-        if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
+        if (count == 2 && isBit32Number(args[0]) && isIntNumber(args[1]))
         {
             uint32_t u = bit32(args[0].valueNumber);
             int s = int(args[1].valueNumber);
 
-            return cnum(double((u >> (s & 31)) | (u << ((32 - s) & 31))));
+            return cnum(double((u >> (s & 31)) | (u << ((32u - unsigned(s)) & 31))));
         }
         break;
 
     case LBF_BIT32_RSHIFT:
-        if (count == 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number)
+        if (count == 2 && isBit32Number(args[0]) && isIntNumber(args[1]))
         {
             uint32_t u = bit32(args[0].valueNumber);
             int s = int(args[1].valueNumber);
@@ -483,7 +498,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
             if (args[0].stringLength > 0)
                 return cnum(double(uint8_t(args[0].valueString[0])));
         }
-        else if (count == 2 && args[0].type == Constant::Type_String && args[1].type == Constant::Type_Number)
+        else if (count == 2 && args[0].type == Constant::Type_String && isIntNumber(args[1]))
         {
             int i = int(args[1].valueNumber);
 
@@ -499,7 +514,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
             for (size_t i = 0; i < count; i++)
             {
-                if (args[i].type != Constant::Type_Number)
+                if (!isIntNumber(args[i]))
                     return cvar();
 
                 int ch = int(args[i].valueNumber);
@@ -529,9 +544,9 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_STRING_SUB:
-        if (count >= 2 && args[0].type == Constant::Type_String && args[1].type == Constant::Type_Number)
+        if (count >= 2 && args[0].type == Constant::Type_String && isIntNumber(args[1]))
         {
-            if (count >= 3 && args[2].type != Constant::Type_Number)
+            if (count >= 3 && !isIntNumber(args[2]))
                 return cvar();
 
             const char* str = args[0].valueString;

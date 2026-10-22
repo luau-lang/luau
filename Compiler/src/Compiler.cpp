@@ -1462,10 +1462,11 @@ struct Compiler
             Constant fc = getConstant(expr->args.data[1]);
             Constant wc = getConstant(expr->args.data[2]);
 
-            int fi = fc.type == Constant::Type_Number ? int(fc.valueNumber) : -1;
-            int wi = wc.type == Constant::Type_Number ? int(wc.valueNumber) : -1;
+            int fi = fc.type == Constant::Type_Number && numFitsInt(fc.valueNumber) ? int(fc.valueNumber) : -1;
+            int wi = wc.type == Constant::Type_Number && numFitsInt(wc.valueNumber) ? int(wc.valueNumber) : -1;
 
-            if (fi >= 0 && wi > 0 && fi + wi <= 32)
+            // fi + wi <= 32, without overflowing for large fi and wi
+            if (fi >= 0 && wi > 0 && wi <= 32 - fi)
             {
                 int fwp = fi | ((wi - 1) << 5);
                 int32_t cid = bytecode.addConstantNumber(fwp);

@@ -4735,6 +4735,35 @@ bb_bytecode_1:
     );
 }
 
+TEST_CASE_FIXTURE(LoweringFixture, "Bit32ExtractConstantFieldOutOfRange")
+{
+    // a constant field that can't be converted to an integer isn't specialized
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: number)
+    return bit32.extract(a, 1e300)
+end
+)"),
+        R"(
+; function foo($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  SET_SAVEDPC 2u
+  %6 = INVOKE_FASTCALL 34u, R1, R0, K0 (1.0000000000000001e+300), undef, 2i, 1i
+  CHECK_FASTCALL_RES %6, bb_fallback_3
+  JUMP bb_4
+bb_4:
+  INTERRUPT 7u
+  RETURN R1, 1i
+)"
+    );
+}
+
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32ReplaceDirect")
 {
     CHECK_EQ(

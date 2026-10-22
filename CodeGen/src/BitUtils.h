@@ -76,7 +76,7 @@ inline int lrotate(uint32_t u, int s)
 #ifdef _MSC_VER
     return _rotl(u, s);
 #else
-    return (u << (s & 31)) | (u >> ((32 - s) & 31));
+    return (u << (s & 31)) | (u >> ((32u - unsigned(s)) & 31));
 #endif
 }
 
@@ -86,7 +86,7 @@ inline int rrotate(uint32_t u, int s)
 #ifdef _MSC_VER
     return _rotr(u, s);
 #else
-    return (u >> (s & 31)) | (u << ((32 - s) & 31));
+    return (u >> (s & 31)) | (u << ((32u - unsigned(s)) & 31));
 #endif
 }
 

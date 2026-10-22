@@ -2729,6 +2729,32 @@ local _ = 0x80000000000000
     CHECK_EQ(result.warnings[1].location.begin.line, 4);
 }
 
+TEST_CASE_FIXTURE(Fixture, "IntegerParsingImpreciseNearMax")
+{
+    LintResult result = lint(R"(
+-- these round up to 2^64, which doesn't fit in a 64-bit integer
+local _ = 0xffffffffffffffff
+local _ = 0xfffffffffffffc00
+local _ = 0b1111111111111111111111111111111111111111111111111111111111111111
+
+-- this rounds down to the largest double below 2^64
+local _ = 0xfffffffffffffbff
+
+-- this is the largest double below 2^64 and is precise
+local _ = 0xfffffffffffff800
+)");
+
+    REQUIRE(4 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[0].location.begin.line, 2);
+    CHECK_EQ(result.warnings[1].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[1].location.begin.line, 3);
+    CHECK_EQ(result.warnings[2].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[2].location.begin.line, 4);
+    CHECK_EQ(result.warnings[3].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[3].location.begin.line, 7);
+}
+
 TEST_CASE_FIXTURE(Fixture, "ComparisonPrecedence")
 {
     LintResult result = lint(R"(

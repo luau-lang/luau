@@ -622,8 +622,14 @@ static BuiltinImplResult translateBuiltinBit32Extract(IrBuilder& build, int npar
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
-    if (nparams == 2 && args.kind == IrOpKind::Constant && unsigned(int(build.function.doubleOp(args))) >= 32)
-        return {BuiltinImplType::None, -1};
+    if (nparams == 2 && args.kind == IrOpKind::Constant)
+    {
+        double fd = build.function.doubleOp(args);
+
+        // To avoid undefined behavior of casting a value not representable in the target type, check the range first
+        if (!(fd >= INT_MIN && fd <= INT_MAX) || unsigned(int(fd)) >= 32)
+            return {BuiltinImplType::None, -1};
+    }
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);

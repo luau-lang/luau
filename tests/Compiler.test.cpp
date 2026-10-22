@@ -10621,6 +10621,97 @@ TEST_CASE("BuiltinFoldingProhibitedCoverage")
     }
 }
 
+TEST_CASE("BuiltinFoldingOutOfRange")
+{
+    // numbers that can't be converted to an integer are left for the runtime to handle
+    const char* calls[] = {
+        "math.ldexp(1, 1e300)",
+        "math.ldexp(1, 0/0)",
+        "math.ldexp(1, -math.huge)",
+        "math.ldexp(1, 2^31)",
+        "bit32.arshift(1, 1e300)",
+        "bit32.arshift(1e300, 1)",
+        "bit32.band(1e300)",
+        "bit32.band(1, 2^63)",
+        "bit32.band(1, -2^63 - 2048)",
+        "bit32.bnot(0/0)",
+        "bit32.bor(1, math.huge)",
+        "bit32.bxor(1, -math.huge)",
+        "bit32.btest(1, 1e300)",
+        "bit32.extract(1, 1e300)",
+        "bit32.extract(1, 0, 1e300)",
+        "bit32.extract(1e300, 0)",
+        "bit32.extract(1, 2147483647, 2147483647)",
+        "bit32.lrotate(1, 1e300)",
+        "bit32.lrotate(1, 0/0)",
+        "bit32.lshift(1, 1e300)",
+        "bit32.lshift(1, -2^31 - 1)",
+        "bit32.replace(1, 1, 1e300)",
+        "bit32.replace(1, 1, 0, 1e300)",
+        "bit32.replace(1, 1e300, 0)",
+        "bit32.replace(1, 1, 2147483647, 2147483647)",
+        "bit32.rrotate(1, -1e300)",
+        "bit32.rshift(1, math.huge)",
+        "string.byte('abc', 1e300)",
+        "string.byte('abc', 0/0)",
+        "string.char(1e300)",
+        "string.char(97, 0/0)",
+        "string.sub('abc', 1e300)",
+        "string.sub('abc', -1e300)",
+        "string.sub('abc', 1, 1e300)",
+        "string.sub('abc', 1, 0/0)",
+    };
+
+    for (const char* call : calls)
+    {
+        std::string source = "return (";
+        source += call;
+        source += ")";
+
+        std::string bc = compileFunction(source.c_str(), 0, 2);
+
+        CHECK_MESSAGE(bc.find("CALL R0") != std::string::npos, call, "\n", bc);
+    }
+
+    // values at the edges of the integer range are still folded
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+return
+    math.ldexp(1, -2^31),
+    bit32.band(2^63 - 1024),
+    bit32.band(-2^63),
+    bit32.lrotate(1, -2^31),
+    bit32.rrotate(2, -2^31),
+    bit32.extract(-1, 0, 32),
+    bit32.extract(-1, 31, 1),
+    bit32.replace(0, 1, 31, 1),
+    bit32.replace(0, -1, 0, 32),
+    string.byte("abc", 3.5),
+    string.sub("abc", -2^31),
+    string.sub("abc", 2, 2147483647.5)
+)",
+                   0,
+                   2
+               ),
+        R"(
+LOADN R0 0
+LOADK R1 K0 [4294966272]
+LOADN R2 0
+LOADN R3 1
+LOADN R4 2
+LOADK R5 K1 [4294967295]
+LOADN R6 1
+LOADK R7 K2 [2147483648]
+LOADK R8 K1 [4294967295]
+LOADN R9 99
+LOADK R10 K3 ['abc']
+LOADK R11 K4 ['bc']
+RETURN R0 12
+)"
+    );
+}
+
 TEST_CASE("BuiltinFoldingMultret")
 {
     CHECK_EQ(
@@ -11102,6 +11193,41 @@ CALL R1 3 -1
 L0: RETURN R1 -1
 )"
     );
+
+    // the edges of the valid f/w range still use extractk
+    CHECK(compileFunction0("local v = ... return bit32.extract(v, 0, 32)").find("FASTCALL2K 59") != std::string::npos);
+    CHECK(compileFunction0("local v = ... return bit32.extract(v, 31, 1)").find("FASTCALL2K 59") != std::string::npos);
+    CHECK(compileFunction0("local v = ... return bit32.extract(v, 31.5, 1.5)").find("FASTCALL2K 59") != std::string::npos);
+
+    // f/w that are out of range, including ones that can't be converted to an integer, use the generic path
+    const char* outOfRange[] = {
+        "1e300, 1",
+        "1, 1e300",
+        "0/0, 1",
+        "1, 0/0",
+        "math.huge, 1",
+        "1, -math.huge",
+        "2^31, 1",
+        "1, -2^31 - 1",
+        "2147483647, 2147483647",
+        "1, 2147483647",
+        "2147483647, 1",
+        "16, 17",
+        "-1, 1",
+        "0, 0",
+    };
+
+    for (const char* args : outOfRange)
+    {
+        std::string source = "local v = ... return bit32.extract(v, ";
+        source += args;
+        source += ")";
+
+        std::string bc = compileFunction0(source.c_str());
+
+        CHECK_MESSAGE(bc.find("FASTCALL2K 59") == std::string::npos, args, "\n", bc);
+        CHECK_MESSAGE(bc.find("CALL R1 3") != std::string::npos, args, "\n", bc);
+    }
 }
 
 TEST_CASE("SkipSelfAssignment")

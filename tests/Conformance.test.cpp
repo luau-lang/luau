@@ -1289,6 +1289,18 @@ TEST_CASE("FloatIntCast")
     }
 }
 
+TEST_CASE("FloatIntCastFold")
+{
+    // builtin folding and bit32.extract specialization need optimization level 1 or 2; check that each level agrees with the runtime
+    for (int level = 0; level <= 2; ++level)
+    {
+        lua_CompileOptions copts = defaultOptions();
+        copts.optimizationLevel = level;
+
+        runConformance("floatintcastfold.luau", nullptr, nullptr, nullptr, &copts);
+    }
+}
+
 TEST_CASE("ToIntegerRange")
 {
     StateRef state(luaL_newstate(), lua_close);

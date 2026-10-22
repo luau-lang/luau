@@ -3954,7 +3954,8 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
             return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
     }
 
-    if (value >= (1ull << 53) && static_cast<unsigned long long>(result) != value)
+    // values close to ULLONG_MAX round up to 2^64, which can't be converted back to unsigned long long
+    if (value >= (1ull << 53) && (result >= 18446744073709551616.0 || static_cast<unsigned long long>(result) != value))
         return ConstantNumberParseResult::Imprecise;
 
     return ConstantNumberParseResult::Ok;

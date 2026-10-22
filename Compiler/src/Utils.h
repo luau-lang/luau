@@ -60,6 +60,18 @@ inline bool alwaysTerminates(const DenseHashMap<AstExpr*, Constant>& constants, 
     return false;
 }
 
+// true iff the number can be converted to int without undefined behavior (matches luai_numfitsint)
+inline bool numFitsInt(double d)
+{
+    return d >= -2147483648.0 && d < 2147483648.0;
+}
+
+// true iff the number can be converted to int64_t without undefined behavior
+inline bool numFitsInt64(double d)
+{
+    return d >= -9223372036854775808.0 && d < 9223372036854775808.0;
+}
+
 template<typename T>
 T* unwrapExprOfType(AstExpr* node)
 {
