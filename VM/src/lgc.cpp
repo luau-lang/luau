@@ -23,7 +23,7 @@ LUAU_FLAGVERSION(LuauGcTraceUdata, 4)
 LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_FASTFLAG(LuauFrozenMetaButterfly)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, true)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
