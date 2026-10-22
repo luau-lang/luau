@@ -122,4 +122,63 @@ assert(call(buffer.readu8, b, -0.75) == 42)
 expectError(buffer.readu8, "buffer access out of bounds", b, -1)
 expectError(buffer.readu8, "buffer access out of bounds", b, 32)
 
+-- Direct calls take the VM fastcall path; `call` forces the library implementation.
+local function outcome(ok, ...)
+  if ok then
+    return table.pack(true, ...)
+  end
+  return table.pack(false)
+end
+
+local function sameOutcome(a, b)
+  if a.n ~= b.n then
+    return false
+  end
+  for i = 1, a.n do
+    if a[i] ~= b[i] and (a[i] == a[i] or b[i] == b[i]) then
+      return false
+    end
+  end
+  return true
+end
+
+local function sel(i, ...)
+  local r = select(i, ...)
+  return r
+end
+
+local function selLibrary(i, ...)
+  local r = call(select, i, ...)
+  return r
+end
+
+local fastcalls = {
+  {function(v) return math.ldexp(1, v) end, function(v) return call(math.ldexp, 1, v) end},
+  {function(v) return bit32.arshift(1, v) end, function(v) return call(bit32.arshift, 1, v) end},
+  {function(v) return bit32.lshift(1, v) end, function(v) return call(bit32.lshift, 1, v) end},
+  {function(v) return bit32.rshift(1, v) end, function(v) return call(bit32.rshift, 1, v) end},
+  {function(v) return bit32.lrotate(1, v) end, function(v) return call(bit32.lrotate, 1, v) end},
+  {function(v) return bit32.rrotate(1, v) end, function(v) return call(bit32.rrotate, 1, v) end},
+  {function(v) return bit32.extract(1, v) end, function(v) return call(bit32.extract, 1, v) end},
+  {function(v) return bit32.extract(1, 0, v) end, function(v) return call(bit32.extract, 1, 0, v) end},
+  {function(v) return bit32.replace(1, 1, v) end, function(v) return call(bit32.replace, 1, 1, v) end},
+  {function(v) return bit32.replace(1, 1, 0, v) end, function(v) return call(bit32.replace, 1, 1, 0, v) end},
+  {function(v) return string.byte("abc", v) end, function(v) return call(string.byte, "abc", v) end},
+  {function(v) return string.byte("abc", 1, v) end, function(v) return call(string.byte, "abc", 1, v) end},
+  {function(v) return string.char(v) end, function(v) return call(string.char, v) end},
+  {function(v) return string.sub("abc", v, 3) end, function(v) return call(string.sub, "abc", v, 3) end},
+  {function(v) return string.sub("abc", 1, v) end, function(v) return call(string.sub, "abc", 1, v) end},
+  {function(v) return table.unpack({1, 2}, 1, v) end, function(v) return call(table.unpack, {1, 2}, 1, v) end},
+  {function(v) return #table.create(v) end, function(v) return #call(table.create, v) end},
+}
+
+local fastcallKeys = table.move(keys, 1, #keys, 9, {0, 1, 2, 3, -1, 1.5, 2.9, -0.5})
+
+for _, key in fastcallKeys do
+  for _, case in fastcalls do
+    assert(sameOutcome(outcome(pcall(case[1], key)), outcome(pcall(case[2], key))), key)
+  end
+  assert(sameOutcome(outcome(pcall(sel, key, "a", "b", "c")), outcome(pcall(selLibrary, key, "a", "b", "c"))), key)
+end
+
 return "OK"
