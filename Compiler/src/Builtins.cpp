@@ -426,7 +426,7 @@ struct BuiltinVisitor : AstVisitor
                     AstName library = names.getWithType(*ptr, dot - *ptr).first;
                     AstName name = names.get(dot + 1);
 
-                    if (library.value && name.value && getGlobalState(globals, name) == Global::Default)
+                    if (library.value && name.value && getGlobalState(globals, library) == Global::Default)
                     {
                         Builtin builtin = Builtin{library, name};
 

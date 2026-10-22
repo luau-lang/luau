@@ -10713,6 +10713,43 @@ RETURN R0 4
     );
 }
 
+TEST_CASE("BuiltinFoldingProhibitedInOptionsWithGlobalMemberAssignment")
+{
+    static const char* kDisabledBuiltins[] = {"math.sin", nullptr};
+    static const char* kSources[] = {
+        "sin = 0\nlocal x = ...\nreturn math.sin(x), (math.cos(x))",
+        "if false then sin = 0 end\nlocal x = ...\nreturn math.sin(x), (math.cos(x))",
+        "if false then sin = 0 end\nlocal f = math.sin\nlocal x = ...\nreturn f(x), (math.cos(x))",
+    };
+    const int optimizationLevels[] = {1, 2};
+
+    for (int optimizationLevel : optimizationLevels)
+    {
+        for (const char* source : kSources)
+        {
+            Luau::BytecodeBuilder bcb;
+            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+            Luau::CompileOptions options;
+            options.optimizationLevel = optimizationLevel;
+            options.disabledBuiltins = kDisabledBuiltins;
+
+            Luau::compileOrThrow(bcb, source, options);
+
+            std::string result = bcb.dumpFunction(0);
+            size_t sinImport = result.find("[math.sin]");
+
+            CAPTURE(optimizationLevel);
+            CAPTURE(std::string(source));
+            CAPTURE(result);
+            CHECK(sinImport != std::string::npos);
+            CHECK(result.find("CALL", sinImport) != std::string::npos);
+            CHECK(result.find("FASTCALL1 24 ") == std::string::npos);
+            CHECK(result.find("FASTCALL1 9 ") != std::string::npos);
+        }
+    }
+}
+
 TEST_CASE("LocalReassign")
 {
     // locals can be re-assigned and the register gets reused
