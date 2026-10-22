@@ -87,6 +87,7 @@ LUAU_FASTFLAG(LuauCompileCallFbRemap)
 LUAU_DYNAMIC_FASTFLAG(LuauTableRobustOom)
 LUAU_DYNAMIC_FASTFLAG(LuauSplitTableLookups)
 LUAU_DYNAMIC_FASTFLAG(LuauTableFindImprovement)
+LUAU_FASTFLAG(FixMathNoisePrecision)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1278,6 +1279,12 @@ TEST_CASE("FloatIntCast")
     {
         ScopedFastFlag splitTableLookups{DFFlag::LuauSplitTableLookups, mode != 0};
         ScopedFastFlag tableFindImprovement{DFFlag::LuauTableFindImprovement, mode == 2};
+        runConformance("floatintcast.luau");
+    }
+
+    for (bool fixNoisePrecision : {false, true})
+    {
+        ScopedFastFlag noisePrecision{FFlag::FixMathNoisePrecision, fixNoisePrecision};
         runConformance("floatintcast.luau");
     }
 }

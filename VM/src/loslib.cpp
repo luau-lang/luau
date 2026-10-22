@@ -3,7 +3,9 @@
 #include "lualib.h"
 
 #include "lcommon.h"
+#include "lnumutils.h"
 
+#include <limits>
 #include <string.h>
 #include <time.h>
 
@@ -21,12 +23,21 @@ static tm* localtime_r(const time_t* timep, tm* result)
 }
 #endif
 
+// out-of-range times (including NaN and inf) convert to the minimum time_t, which matches x86-64 conversion behavior
+static time_t numtotime(double n)
+{
+    static_assert(sizeof(time_t) == 8 || sizeof(time_t) == 4, "unsupported time_t size");
+    bool fits = sizeof(time_t) == 8 ? luai_numfitsint64(n) : luai_numfitsint(n);
+    return fits ? time_t(n) : std::numeric_limits<time_t>::min();
+}
+
 static time_t os_timegm(struct tm* timep)
 {
     // Julian day number calculation
+    // out-of-range dates overflow int, so the arithmetic is done in unsigned to wrap like x86-64 did instead of being undefined
     int day = timep->tm_mday;
-    int month = timep->tm_mon + 1;
-    int year = timep->tm_year + 1900;
+    int month = int(unsigned(timep->tm_mon) + 1);
+    int year = int(unsigned(timep->tm_year) + 1900);
 
     // year adjustment, pretend that it starts in March
     int a = timep->tm_mon % 12 < 2 ? 1 : 0;
@@ -34,10 +45,11 @@ static time_t os_timegm(struct tm* timep)
     // also adjust for out-of-range month numbers in input
     a -= timep->tm_mon / 12;
 
-    int y = year + 4800 - a;
-    int m = month + (12 * a) - 3;
+    int y = int(unsigned(year) + 4800 - unsigned(a));
+    int m = int(unsigned(month) + (12 * unsigned(a)) - 3);
 
-    int julianday = day + ((153 * m + 2) / 5) + (365 * y) + (y / 4) - (y / 100) + (y / 400) - 32045;
+    int julianday =
+        int(unsigned(day) + unsigned(int(153 * unsigned(m) + 2) / 5) + (365 * unsigned(y)) + unsigned((y / 4) - (y / 100) + (y / 400)) - 32045);
 
     const int utcstartasjulianday = 2440588;                              // Jan 1st 1970 offset in Julian calendar
     const int64_t utcstartasjuliansecond = utcstartasjulianday * 86400ll; // same in seconds
@@ -112,7 +124,7 @@ static int getfield(lua_State* L, const char* key, int d)
 static int os_date(lua_State* L)
 {
     const char* s = luaL_optstring(L, 1, "%c");
-    time_t t = luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
+    time_t t = lua_isnoneornil(L, 2) ? time(NULL) : numtotime(luaL_checknumber(L, 2));
 
     struct tm tm;
     struct tm* stm;
@@ -139,7 +151,7 @@ static int os_date(lua_State* L)
         setfield(L, "hour", stm->tm_hour);
         setfield(L, "day", stm->tm_mday);
         setfield(L, "month", stm->tm_mon + 1);
-        setfield(L, "year", stm->tm_year + 1900);
+        setfield(L, "year", int(unsigned(stm->tm_year) + 1900)); // wraps like x86-64 for years near INT_MAX
         setfield(L, "wday", stm->tm_wday + 1);
         setfield(L, "yday", stm->tm_yday + 1);
         setboolfield(L, "isdst", stm->tm_isdst);
@@ -190,8 +202,9 @@ static int os_time(lua_State* L)
         ts.tm_min = getfield(L, "min", 0);
         ts.tm_hour = getfield(L, "hour", 12);
         ts.tm_mday = getfield(L, "day", -1);
-        ts.tm_mon = getfield(L, "month", -1) - 1;
-        ts.tm_year = getfield(L, "year", -1) - 1900;
+        // out-of-range fields are INT_MIN; wrap like x86-64 did instead of overflowing
+        ts.tm_mon = int(unsigned(getfield(L, "month", -1)) - 1);
+        ts.tm_year = int(unsigned(getfield(L, "year", -1)) - 1900);
         ts.tm_isdst = getboolfield(L, "isdst");
 
         // Note: upstream Lua uses mktime() here which assumes input is local time, but we prefer UTC for consistency
@@ -206,7 +219,8 @@ static int os_time(lua_State* L)
 
 static int os_difftime(lua_State* L)
 {
-    lua_pushnumber(L, difftime((time_t)(luaL_checknumber(L, 1)), (time_t)(luaL_optnumber(L, 2, 0))));
+    // subtract as doubles: some difftime implementations subtract in time_t, which can overflow
+    lua_pushnumber(L, double(numtotime(luaL_checknumber(L, 1))) - double(numtotime(luaL_optnumber(L, 2, 0))));
     return 1;
 }
 

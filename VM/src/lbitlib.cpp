@@ -66,7 +66,8 @@ static int b_not(lua_State* L)
     return 1;
 }
 
-static int b_shift(lua_State* L, b_uint r, int i)
+// 'i' is 64-bit so that callers can negate any int shift amount without overflow
+static int b_shift(lua_State* L, b_uint r, long long i)
 {
     if (i < 0)
     { // shift right?
@@ -96,7 +97,7 @@ static int b_lshift(lua_State* L)
 
 static int b_rshift(lua_State* L)
 {
-    return b_shift(L, luaL_checkunsigned(L, 1), -luaL_checkinteger(L, 2));
+    return b_shift(L, luaL_checkunsigned(L, 1), -(long long)luaL_checkinteger(L, 2));
 }
 
 static int b_arshift(lua_State* L)
@@ -104,7 +105,7 @@ static int b_arshift(lua_State* L)
     b_uint r = luaL_checkunsigned(L, 1);
     int i = luaL_checkinteger(L, 2);
     if (i < 0 || !(r & ((b_uint)1 << (NBITS - 1))))
-        return b_shift(L, r, -i);
+        return b_shift(L, r, -(long long)i);
     else
     { // arithmetic shift for 'negative' number
         if (i >= NBITS)
@@ -134,7 +135,8 @@ static int b_lrot(lua_State* L)
 
 static int b_rrot(lua_State* L)
 {
-    return b_rot(L, -luaL_checkinteger(L, 2));
+    // reduce before negating so that INT_MIN does not overflow; the rotation amount is taken modulo NBITS anyway
+    return b_rot(L, -(luaL_checkinteger(L, 2) & (NBITS - 1)));
 }
 
 /*
@@ -149,7 +151,7 @@ static int fieldargs(lua_State* L, int farg, int* width)
     int w = luaL_optinteger(L, farg + 1, 1);
     luaL_argcheck(L, 0 <= f, farg, "field cannot be negative");
     luaL_argcheck(L, 0 < w, farg + 1, "width must be positive");
-    if (f + w > NBITS)
+    if (w > NBITS - f)
         luaL_error(L, "trying to access non-existent bits");
     *width = w;
     return f;

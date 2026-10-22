@@ -181,4 +181,150 @@ for _, key in fastcallKeys do
   assert(sameOutcome(outcome(pcall(sel, key, "a", "b", "c")), outcome(pcall(selLibrary, key, "a", "b", "c"))), key)
 end
 
+-- Library functions: out-of-range numbers either raise the existing error or produce the result x86-64 hardware gave.
+do
+  local huge = {1e300, -1e300, 2^63, -2^63, 2^64, 0/0, math.huge, -math.huge, -2^63 - 4096}
+  local all = {1e300, -1e300, 2^31, -2^31, 2^63, -2^63, 0/0, math.huge, -math.huge}
+
+  -- string.format converts out-of-range values to INT_MIN (%c) or INT64_MIN (integer formats)
+  for _, v in huge do
+    assert(string.format("%c", v) == "\0")
+    assert(string.format("%d", v) == "-9223372036854775808")
+    assert(string.format("%i", v) == "-9223372036854775808")
+    assert(string.format("%5d", v) == "-9223372036854775808")
+    assert(string.format("%o", v) == "1000000000000000000000")
+    assert(string.format("%u", v) == "9223372036854775808")
+    assert(string.format("%x", v) == "8000000000000000")
+    assert(string.format("%X", v) == "8000000000000000")
+  end
+  local formatValues = {2^31, -2^31, 2^63 + 2^62, 2^32, -1.5, 0.5}
+  local formatX = {"80000000", "ffffffff80000000", "c000000000000000", "100000000", "ffffffffffffffff", "0"}
+  local formatD = {"2147483648", "-2147483648", "-9223372036854775808", "4294967296", "-1", "0"}
+  local formatU = {"2147483648", "18446744071562067968", "13835058055282163712", "4294967296", "18446744073709551615", "0"}
+  for i, v in formatValues do
+    if i <= 4 then
+      assert(string.format("%c", v) == "\0")
+    end
+    assert(string.format("%x", v) == formatX[i])
+    assert(string.format("%d", v) == formatD[i])
+    assert(string.format("%u", v) == formatU[i])
+  end
+
+  -- string.pack raises the overflow error for sized integers, and packs INT64_MIN for 8+ byte integers
+  for _, v in huge do
+    for _, f in {"i1", "i2", "i4", "i7", "j"} do
+      expectError(string.pack, "integer overflow", f, v)
+    end
+    for _, f in {"I1", "I4", "I7", "J"} do
+      expectError(string.pack, "unsigned overflow", f, v)
+    end
+    assert(string.pack("<i8", v) == "\0\0\0\0\0\0\0\x80")
+    assert(string.pack("<I8", v) == "\0\0\0\0\0\0\0\x80")
+    assert(string.pack("<i16", v) == "\0\0\0\0\0\0\0\x80\xff\xff\xff\xff\xff\xff\xff\xff")
+    assert(string.pack("<I16", v) == "\0\0\0\0\0\0\0\x80\0\0\0\0\0\0\0\0")
+  end
+  assert(string.pack("<i8", formatValues[3]) == "\0\0\0\0\0\0\0\x80")
+  assert(string.pack("<I4", formatValues[1]) == "\0\0\0\x80")
+  expectError(string.pack, "unsigned overflow", "I4", formatValues[2])
+
+  -- buffer.readbits/writebits reject offsets that don't fit, including near 2^63 where offset + count overflows
+  local b = buffer.create(8)
+  for _, v in table.move(huge, 1, #huge, 1, {2^31, -2^31, 2^63 - 1024, 2^62, 2^53}) do
+    expectError(buffer.readbits, "buffer access out of bounds", b, v, 32)
+    expectError(buffer.writebits, "buffer access out of bounds", b, v, 32, 1)
+    expectError(call, "buffer access out of bounds", buffer.readbits, b, v, 1)
+    expectError(call, "buffer access out of bounds", buffer.writebits, b, v, 1, 1)
+  end
+  local negativeHalf = formatValues[5] + 1
+  call(buffer.writebits, b, negativeHalf, 1, 1)
+  assert(call(buffer.readbits, b, negativeHalf, 8) == 1)
+
+  -- buffer.copy/fill compute their default size from very negative offsets without overflowing
+  for _, v in {-2^31, -2^31 + 1, 2^31 - 1, 1e300} do
+    expectError(buffer.copy, "buffer access out of bounds", b, 0, b, v)
+    expectError(buffer.fill, "buffer access out of bounds", b, v, 0)
+  end
+
+  -- os.date/os.difftime treat out-of-range times as INT64_MIN: an invalid date, or that value in a difference
+  for _, v in huge do
+    assert(os.date("!%Y", v) == nil)
+    assert(os.date("%Y", v) == nil)
+    assert(os.date("!*t", v) == nil)
+    assert(os.difftime(v, 0) == -2^63)
+    assert(os.difftime(0, v) == 2^63)
+    assert(os.difftime(v) == -2^63)
+  end
+  assert(os.date("!%Y", formatValues[1]) == "2038")
+  -- Windows rejects times before the epoch
+  local year1901 = os.date("!%Y", formatValues[2])
+  assert(year1901 == nil or year1901 == "1901")
+  assert(os.difftime(formatValues[1], formatValues[2]) == 2^32)
+  -- years near INT_MAX wrap when converted back to a calendar year (when the platform's gmtime supports them)
+  local lastYear = os.date("!*t", 67767976233316800)
+  local wrappedYear = os.date("!*t", 67767976233532800)
+  assert(lastYear == nil or lastYear.year == 2147483647)
+  assert(wrappedYear == nil or wrappedYear.year == -2147483648)
+
+  -- os.time wraps date arithmetic on out-of-range fields (INT_MIN) the way x86-64 did
+  for _, v in all do
+    assert(os.time({year = v, month = 1, day = 1}) == 140486342673600)
+    assert(os.time({year = 2000, month = v, day = 1}) == 81059861851200)
+    assert(os.time({year = 2000, month = 1, day = v}) == nil)
+    assert(os.time({year = 2000, month = 1, day = 1, hour = v}) == nil)
+    assert(os.time({year = 2000, month = 1, day = 1, sec = v}) == nil)
+  end
+  local intMax = formatValues[1] - 1
+  assert(os.time({year = 10000000, month = intMax, day = 1}) == 25481090894400)
+  assert(os.time({year = -10000000, month = 1, day = 1}) == 55453487284800)
+  assert(os.time({year = intMax, month = 1, day = 1}) == 140486311137600)
+  assert(os.time({year = 6000000, month = 1, day = 1}) == nil)
+  assert(os.time({year = 2000, month = 1, day = 1}) == 946728000)
+
+  -- math.noise maps out-of-range cells (and NaN/inf) to cell 0 instead of converting them to int
+  for _, v in {0/0, math.huge, -math.huge} do
+    local r = math.noise(v, 0.3, 0.7)
+    assert(r ~= r)
+    r = math.noise(0.3, 0.7, v)
+    assert(r ~= r)
+  end
+  local zero = formatValues[6] - 0.5
+  for _, v in {2^31, -2^31, 2^32, 2^63, -2^63, 2^64, 1e300, -1e300} do
+    local r = math.noise(v, 0.3, 0.7)
+    -- without FixMathNoisePrecision, 1e300 becomes inf as a float
+    assert(r == math.noise(zero, 0.3, 0.7) or (r ~= r and math.abs(v) > 1e300 / 2))
+    r = math.noise(0.3, v, 0.7)
+    assert(r == math.noise(0.3, zero, 0.7) or (r ~= r and math.abs(v) > 1e300 / 2))
+  end
+
+  -- bit32 shifts and rotates by INT_MIN (from -2^31 or any out-of-range value) behave like any |shift| >= 32
+  for _, s in {-2^31, 1e300, -1e300, 0/0, math.huge, -math.huge} do
+    for _, x in {1, 0x80000000, 0xffffffff, 0x12345678} do
+      assert(bit32.lshift(x, s) == 0 and call(bit32.lshift, x, s) == 0)
+      assert(bit32.rshift(x, s) == 0 and call(bit32.rshift, x, s) == 0)
+      assert(bit32.arshift(x, s) == 0 and call(bit32.arshift, x, s) == 0)
+      assert(bit32.lrotate(x, s) == x and call(bit32.lrotate, x, s) == x)
+      assert(bit32.rrotate(x, s) == x and call(bit32.rrotate, x, s) == x)
+    end
+  end
+  local minusIntMax = -intMax
+  assert(bit32.rrotate(1, minusIntMax) == 0x80000000 and call(bit32.rrotate, 1, minusIntMax) == 0x80000000)
+  assert(bit32.lrotate(1, minusIntMax) == 2 and call(bit32.lrotate, 1, minusIntMax) == 2)
+  assert(bit32.rshift(1, minusIntMax) == 0 and call(bit32.rshift, 1, minusIntMax) == 0)
+
+  -- bit32.extract/replace with field + width overflowing int: fastcall and library must both reject it
+  local fields = {intMax, intMax - 1, intMax - 31, 32, 31, 1}
+  for _, f in fields do
+    for _, w in fields do
+      if f + w > 32 then
+        expectError(function() return bit32.extract(0xffffffff, f, w) end, "trying to access non-existent bits")
+        expectError(call, "trying to access non-existent bits", bit32.extract, 0xffffffff, f, w)
+        expectError(function() return bit32.replace(0xffffffff, 0, f, w) end, "trying to access non-existent bits")
+        expectError(call, "trying to access non-existent bits", bit32.replace, 0xffffffff, 0, f, w)
+      end
+    end
+  end
+  assert(bit32.extract(0xffffffff, fields[5], fields[6]) == 1)
+  assert(bit32.replace(0xffffffff, 0, fields[5], fields[6]) == 0x7fffffff)
+end
+
 return "OK"

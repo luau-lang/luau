@@ -3,6 +3,7 @@
 #include "lualib.h"
 
 #include "lstate.h"
+#include "lnumutils.h"
 
 #include <limits>
 #include <math.h>
@@ -330,15 +331,21 @@ inline float perlin_grad(int hash, float x, float y, float z)
     return g[0] * x + g[1] * y + g[2] * z;
 }
 
+inline int perlin_cell(float flr)
+{
+    // floors outside int range (including NaN and inf) map to cell 0, which matches x86-64 conversion behavior (INT_MIN & 255)
+    return luai_numfitsint(flr) ? int(flr) & 255 : 0;
+}
+
 static float perlin(float x, float y, float z)
 {
     float xflr = floorf(x);
     float yflr = floorf(y);
     float zflr = floorf(z);
 
-    int xi = int(xflr) & 255;
-    int yi = int(yflr) & 255;
-    int zi = int(zflr) & 255;
+    int xi = perlin_cell(xflr);
+    int yi = perlin_cell(yflr);
+    int zi = perlin_cell(zflr);
 
     float xf = x - xflr;
     float yf = y - yflr;

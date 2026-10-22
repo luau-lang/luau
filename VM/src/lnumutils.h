@@ -104,6 +104,11 @@ inline bool luai_numfitsint(double d)
     return d >= -2147483648.0 && d < 2147483648.0;
 }
 
+inline bool luai_numfitsint64(double d)
+{
+    return d >= -9223372036854775808.0 && d < 9223372036854775808.0;
+}
+
 #define luai_num2int(i, d) ((i) = (int)(d))
 
 #define luai_num2long(i, d) ((i) = (int64_t)(d))

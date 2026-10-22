@@ -4719,10 +4719,10 @@ bb_bytecode_1:
   %14 = LOAD_DOUBLE R1
   %15 = NUM_TO_UINT %13
   %16 = NUM_TO_INT %14
-  %21 = ADD_INT %16, 4i
-  CHECK_CMP_INT %16, 0i, ge, bb_exit_4
+  %22 = ADD_INT %16, 4i
+  CHECK_CMP_INT %16, 32i, u_lt, bb_exit_4
    ; exit sync: R5, {}
-  CHECK_CMP_INT %21, 32i, le, bb_exit_5
+  CHECK_CMP_INT %22, 32i, le, bb_exit_5
    ; exit sync: R5, {}
   %28 = BITRSHIFT_UINT %15, %16
   %29 = BITAND_UINT %28, 15i
@@ -4731,6 +4731,63 @@ bb_bytecode_1:
   STORE_TAG R2, tnumber
   INTERRUPT 8u
   RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "Bit32ReplaceDirect")
+{
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(n: number, v: number, f: number, w: number)
+    return bit32.replace(n, v, f, w)
+end
+)"),
+        R"(
+; function foo($arg0, $arg1, $arg2, $arg3) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  CHECK_TAG R2, tnumber, exit(entry)
+  CHECK_TAG R3, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %10 = LOAD_TVALUE R0, 0i, tnumber
+  %12 = LOAD_TVALUE R1, 0i, tnumber
+  %14 = LOAD_TVALUE R2, 0i, tnumber
+  %16 = LOAD_TVALUE R3, 0i, tnumber
+  %25 = LOAD_DOUBLE R0
+  %26 = LOAD_DOUBLE R1
+  %27 = LOAD_DOUBLE R2
+  %28 = NUM_TO_UINT %25
+  %29 = NUM_TO_UINT %26
+  %30 = NUM_TO_INT %27
+  %33 = LOAD_DOUBLE R3
+  %34 = NUM_TO_INT %33
+  %35 = SUB_INT %34, 1i
+  %36 = ADD_INT %30, %34
+  CHECK_CMP_INT %30, 32i, u_lt, bb_exit_4
+   ; exit sync: R8, R7, R6, R5, {%16, %14, %12, %10}
+  CHECK_CMP_INT %35, 32i, u_lt, bb_exit_5
+   ; exit sync: R8, R7, R6, R5, {%16, %14, %12, %10}
+  CHECK_CMP_INT %36, 32i, le, bb_exit_6
+   ; exit sync: R8, R7, R6, R5, {%16, %14, %12, %10}
+  %40 = BITLSHIFT_UINT -2i, %35
+  %41 = BITNOT_UINT %40
+  %42 = BITLSHIFT_UINT %41, %30
+  %43 = BITNOT_UINT %42
+  %44 = BITAND_UINT %28, %43
+  %45 = BITAND_UINT %29, %41
+  %46 = BITLSHIFT_UINT %45, %30
+  %47 = BITOR_UINT %44, %46
+  %48 = UINT_TO_NUM %47
+  STORE_DOUBLE R4, %48
+  STORE_TAG R4, tnumber
+  INTERRUPT 8u
+  RETURN R4, 1i
 )"
     );
 }

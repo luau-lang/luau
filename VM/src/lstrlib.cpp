@@ -5,8 +5,12 @@
 #include "lstring.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <string.h>
 #include <stdio.h>
+
+// included after <ctype.h>: C++ headers included earlier would disable glibc's inline ctype functions
+#include "lnumutils.h"
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringSplit, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringGsub, false)
@@ -20,6 +24,12 @@ static int str_len(lua_State* L)
     luaL_checklstring(L, 1, &l);
     lua_pushinteger(L, (int)l);
     return 1;
+}
+
+// out-of-range values (including NaN and inf) convert to LLONG_MIN, which matches x86-64 conversion behavior
+static long long numtoint64(double n)
+{
+    return luai_numfitsint64(n) ? (long long)n : LLONG_MIN;
 }
 
 static int posrelat(int pos, size_t len)
@@ -1100,14 +1110,16 @@ static int str_format(lua_State* L)
             {
             case 'c':
             {
-                int count = snprintf(buff, sizeof(buff), form, (int)luaL_checknumber(L, arg));
+                double number = luaL_checknumber(L, arg);
+                // out-of-range values (including NaN and inf) convert to INT_MIN, which matches x86-64 conversion behavior
+                int count = snprintf(buff, sizeof(buff), form, luai_numfitsint(number) ? (int)number : INT_MIN);
                 luaL_addlstring(&b, buff, count);
                 continue; // skip the 'luaL_addlstring' at the end
             }
             case 'd':
             case 'i':
             {
-                long long value = lua_isinteger64(L, arg) ? luaL_checkinteger64(L, arg) : (int64_t)luaL_checknumber(L, arg);
+                long long value = lua_isinteger64(L, arg) ? luaL_checkinteger64(L, arg) : numtoint64(luaL_checknumber(L, arg));
                 addInt64Format(form, formatIndicator, formatItemSize);
                 snprintf(buff, sizeof(buff), form, value);
                 break;
@@ -1125,7 +1137,12 @@ static int str_format(lua_State* L)
                 else
                 {
                     double argValue = luaL_checknumber(L, arg);
-                    v = (argValue < 0) ? (unsigned long long)(long long)argValue : (unsigned long long)argValue;
+                    if (argValue < 0)
+                        v = (unsigned long long)numtoint64(argValue);
+                    else if (argValue < 18446744073709551616.0)
+                        v = (unsigned long long)argValue;
+                    else
+                        v = (unsigned long long)LLONG_MIN; // NaN and values >= 2^64, matching x86-64 conversion behavior
                 }
                 addInt64Format(form, formatIndicator, formatItemSize);
                 snprintf(buff, sizeof(buff), form, v);
@@ -1604,7 +1621,7 @@ static int str_pack(lua_State* L)
         {
         case Kint:
         { // signed integers
-            long long n = (long long)luaL_checknumber(L, arg);
+            long long n = numtoint64(luaL_checknumber(L, arg));
             if (size < SZINT)
             { // need overflow check?
                 long long lim = (long long)1 << ((size * NB) - 1);
@@ -1615,7 +1632,7 @@ static int str_pack(lua_State* L)
         }
         case Kuint:
         { // unsigned integers
-            long long n = (long long)luaL_checknumber(L, arg);
+            long long n = numtoint64(luaL_checknumber(L, arg));
             if (size < SZINT) // need overflow check?
                 luaL_argcheck(L, (unsigned long long)n < ((unsigned long long)1 << (size * NB)), arg, "unsigned overflow");
             packint(&b, (unsigned long long)n, h.islittle, size, 0);
