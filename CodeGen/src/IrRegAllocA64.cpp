@@ -616,7 +616,12 @@ void IrRegAllocA64::restore(const IrRegAllocA64::Spill& s, RegisterA64 reg)
             if (restoreLocation.conversionCmd == IrCmd::INT_TO_NUM)
                 build.fcvtzs(reg, temp);
             else if (restoreLocation.conversionCmd == IrCmd::UINT_TO_NUM)
-                build.fcvtzs(castReg(KindA64::x, reg), temp); // note: we don't use fcvtzu for consistency with C++ code
+            {
+                // note: this matches NUM_TO_UINT lowering, including the mapping of saturated INT64_MAX to 0
+                build.fcvtzs(castReg(KindA64::x, reg), temp);
+                build.cmn(castReg(KindA64::x, reg), 1);
+                build.csel(reg, wzr, reg, ConditionA64::Overflow);
+            }
             else
                 CODEGEN_ASSERT(!"re-materialization not supported for this conversion command");
 

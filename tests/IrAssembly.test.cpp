@@ -171,6 +171,109 @@ bb_0:
     );
 }
 
+TEST_CASE_FIXTURE(IrAssemblyFixture, "NumToUintRestoreFromDoubleVmReg")
+{
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    IrOp d = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp u = build.inst(IrCmd::NUM_TO_UINT, d);
+    build.inst(IrCmd::INTERRUPT, build.constUint(0));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), u);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+    updateUseCounts(build.function);
+
+    // %1 after INTERRUPT spill is restored from R1 using a 64-bit vcvttsd2si conversion, out-of-range values produce 0
+    CHECK_EQ(
+        "\n" + lower(),
+        R"(
+; align 32 using ud2
+bb_0:
+.L11:
+  %0 = LOAD_DOUBLE R1
+ vmovsd      xmm0,qword ptr [r14+010h]
+  %1 = NUM_TO_UINT %0
+ vcvttsd2si  rax,xmm0
+  INTERRUPT 0u
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
+ jne         .L12
+.L13:
+  STORE_INT R0, %1
+ vcvttsd2si  rax,qword ptr [r14+010h]
+ mov         dword ptr [r14],eax
+  STORE_TAG R0, tboolean
+ mov         dword ptr [r14+0Ch],1
+  RETURN R0, 1i
+ vmovups     xmm0,xmmword ptr [r14]
+ vmovups     xmmword ptr [r14-010h],xmm0
+ mov         rdi,r14
+ mov         ecx,1
+ jmp         .L7
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "NumToUintRestoreFromDoubleVmRegA64")
+{
+    // A64 lowering of a whole function needs a host where codegen is supported
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    options.target = AssemblyOptions::A64;
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    IrOp d = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp u = build.inst(IrCmd::NUM_TO_UINT, d);
+    build.inst(IrCmd::INTERRUPT, build.constUint(0));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), u);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+    updateUseCounts(build.function);
+
+    // fcvtzs saturates values >= 2^63 to INT64_MAX, which is mapped to 0 both in the lowering and when %1 is restored from R1
+    std::string text = lower();
+    text = std::regex_replace(text, std::regex(R"(\[x21,#\d+\])"), "[x21,#<offset>]");
+
+    CHECK_EQ(
+        "\n" + text,
+        R"(
+bb_0:
+.L12:
+  %0 = LOAD_DOUBLE R1
+ ldr         d31,[x25,#16]
+  %1 = NUM_TO_UINT %0
+ fcvtzs      x17,d31
+ cmn         x17,#1
+ csel        w17,wzr,w17,vs
+  INTERRUPT 0u
+ ldr         x0,[x21,#<offset>]
+ cbnz        x0,.L13
+.L14:
+  STORE_INT R0, %1
+ ldr         d31,[x25,#16]
+ fcvtzs      x17,d31
+ cmn         x17,#1
+ csel        w17,wzr,w17,vs
+ str         w17,[x25]
+  STORE_TAG R0, tboolean
+ movz        w17,#1
+ str         w17,[x25,#12]
+  RETURN R0, 1i
+ ldr         q0,[x25]
+ str         q0,[x25,#-16]
+ mov         x1,x25
+ movz        w2,#1
+ b           .L7
+
+)"
+    );
+}
+
 TEST_CASE_FIXTURE(IrAssemblyFixture, "PreserveIntChainedFromDoubleVmRegBoth")
 {
     IrOp entry = build.block(IrBlockKind::Internal);

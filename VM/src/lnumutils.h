@@ -121,17 +121,31 @@ inline bool luai_numfitsint64(double d)
 #define luai_clamp condvectordouble(luai_clampd, luai_clampf)
 #define luai_lerp condvectordouble(luai_lerpd, luai_lerpf)
 
-// On MSVC in 32-bit, double to unsigned cast compiles into a call to __dtoui3, so we invoke x87->int64 conversion path manually
-#if defined(_MSC_VER) && defined(_M_IX86)
-#define luai_num2unsigned(i, n) \
-    { \
-        __int64 l; \
-        __asm { __asm fld n __asm fistp l} \
-        ; \
-        i = (unsigned int)l; \
-    }
+// Converts a double to unsigned by truncating it to a 64-bit integer and keeping the low 32 bits, so in-range values wrap modulo 2^32.
+// Values outside of (-2^63, 2^63), including NaN and infinities, convert to 0.
+#if defined(_M_IX86) || defined(__i386__)
+// On 32-bit x86, converting to a 64-bit integer is a slow helper call, so values that fit into int use the 32-bit conversion
+inline unsigned luai_num2unsignedx86(double n)
+{
+    if (luai_numfitsint(n))
+        return unsigned(int(n));
+
+    return fabs(n) < 9223372036854775808.0 ? unsigned((long long)n) : 0u;
+}
+
+#define luai_num2unsigned(i, n) ((i) = luai_num2unsignedx86(n))
+#elif (defined(__x86_64__) || defined(_M_X64)) && !defined(_M_ARM64EC)
+#include <emmintrin.h>
+
+// cvttsd2si returns 0x8000000000000000 for values that don't fit, which truncates to 0
+#define luai_num2unsigned(i, n) ((i) = (unsigned)_mm_cvttsd_si64(_mm_set_sd(n)))
 #else
-#define luai_num2unsigned(i, n) ((i) = (unsigned)(long long)(n))
+inline unsigned luai_num2unsignedsafe(double n)
+{
+    return fabs(n) < 9223372036854775808.0 ? (unsigned)(long long)n : 0u;
+}
+
+#define luai_num2unsigned(i, n) ((i) = luai_num2unsignedsafe(n))
 #endif
 
 #define LUAI_MAXNUM2STR 48

@@ -1328,6 +1328,46 @@ TEST_CASE("ToIntegerRange")
     }
 }
 
+TEST_CASE("ToUnsignedRange")
+{
+    StateRef state(luaL_newstate(), lua_close);
+    lua_State* L = state.get();
+    const double outOfRange[] = {9223372036854775808.0, -9223372036854775808.0, 1e300, -1e300, NAN, INFINITY, -INFINITY};
+
+    for (double n : outOfRange)
+    {
+        lua_pushnumber(L, n);
+        int isnum = 0;
+        CHECK(lua_tounsignedx(L, -1, &isnum) == 0);
+        CHECK(isnum == 1);
+        CHECK(lua_tounsignedx(L, -1, nullptr) == 0);
+        lua_pop(L, 1);
+    }
+
+    // In-range values wrap modulo 2^32 after truncation
+    const double inRange[] = {9223372036854774784.0, -9223372036854774784.0, 9007199254740994.0, 4294967301.0, -1.0, 4294967295.5, -0.5};
+    const unsigned expected[] = {4294966272u, 1024u, 2u, 5u, 4294967295u, 4294967295u, 0u};
+    for (size_t i = 0; i < sizeof(inRange) / sizeof(inRange[0]); ++i)
+    {
+        lua_pushnumber(L, inRange[i]);
+        int isnum = 0;
+        CHECK(lua_tounsignedx(L, -1, &isnum) == expected[i]);
+        CHECK(isnum == 1);
+        lua_pop(L, 1);
+    }
+
+    const char* strings[] = {"1e300", "-inf", "4294967301", "not a number"};
+    const unsigned stringExpected[] = {0u, 0u, 5u, 0u};
+    for (size_t i = 0; i < sizeof(strings) / sizeof(strings[0]); ++i)
+    {
+        lua_pushstring(L, strings[i]);
+        int isnum = -1;
+        CHECK(lua_tounsignedx(L, -1, &isnum) == stringExpected[i]);
+        CHECK(isnum == (i == 3 ? 0 : 1));
+        lua_pop(L, 1);
+    }
+}
+
 TEST_CASE("Buffers")
 {
     runConformance(

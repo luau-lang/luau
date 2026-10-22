@@ -527,7 +527,8 @@ enum class IrCmd : uint8_t
     // A: double
     NUM_TO_INT64,
 
-    // Converts a double number to an unsigned integer. For out-of-range values of 'A', the result is arch-specific.
+    // Converts a double number to an unsigned integer by truncating it to a 64-bit integer and keeping the low 32 bits (matches luai_num2unsigned).
+    // If 'A' is outside of (-2^63, 2^63) or is NaN, the result is 0.
     // A: double
     NUM_TO_UINT,
 

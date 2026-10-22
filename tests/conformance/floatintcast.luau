@@ -327,4 +327,99 @@ do
   assert(bit32.replace(0xffffffff, 0, fields[5], fields[6]) == 0x7fffffff)
 end
 
+-- Unsigned conversions wrap in-range values modulo 2^32 and turn values outside (-2^63, 2^63) into 0.
+do
+  -- Constant field and width use the extractk fastcall, non-constant ones use the generic extract fastcall.
+  local field, width = tonumber("3"), tonumber("4")
+
+  local unsignedCases = {
+    {function(v) return bit32.band(v) end, function(v) return call(bit32.band, v) end},
+    {function(v) return bit32.band(v, 0xffffffff) end, function(v) return call(bit32.band, v, 0xffffffff) end},
+    {function(v) return bit32.band(v, 0xffffffff, 0xff00ff) end, function(v) return call(bit32.band, v, 0xffffffff, 0xff00ff) end},
+    {function(v) return bit32.band(0xffffffff, v) end, function(v) return call(bit32.band, 0xffffffff, v) end},
+    {function(v) return bit32.bor(v) end, function(v) return call(bit32.bor, v) end},
+    {function(v) return bit32.bor(v, 1) end, function(v) return call(bit32.bor, v, 1) end},
+    {function(v) return bit32.bor(v, 1, 2) end, function(v) return call(bit32.bor, v, 1, 2) end},
+    {function(v) return bit32.bor(1, v) end, function(v) return call(bit32.bor, 1, v) end},
+    {function(v) return bit32.bxor(v) end, function(v) return call(bit32.bxor, v) end},
+    {function(v) return bit32.bxor(v, 1) end, function(v) return call(bit32.bxor, v, 1) end},
+    {function(v) return bit32.bxor(v, 1, 2) end, function(v) return call(bit32.bxor, v, 1, 2) end},
+    {function(v) return bit32.bxor(1, 2, v) end, function(v) return call(bit32.bxor, 1, 2, v) end},
+    {function(v) return bit32.bnot(v) end, function(v) return call(bit32.bnot, v) end},
+    {function(v) return bit32.btest(v) end, function(v) return call(bit32.btest, v) end},
+    {function(v) return bit32.btest(v, 0xffffffff) end, function(v) return call(bit32.btest, v, 0xffffffff) end},
+    {function(v) return bit32.btest(v, 0xffffffff, 1) end, function(v) return call(bit32.btest, v, 0xffffffff, 1) end},
+    {function(v) return bit32.btest(0xffffffff, v) end, function(v) return call(bit32.btest, 0xffffffff, v) end},
+    {function(v) return bit32.lshift(v, 1) end, function(v) return call(bit32.lshift, v, 1) end},
+    {function(v) return bit32.rshift(v, 1) end, function(v) return call(bit32.rshift, v, 1) end},
+    {function(v) return bit32.arshift(v, 1) end, function(v) return call(bit32.arshift, v, 1) end},
+    {function(v) return bit32.lrotate(v, 1) end, function(v) return call(bit32.lrotate, v, 1) end},
+    {function(v) return bit32.rrotate(v, 1) end, function(v) return call(bit32.rrotate, v, 1) end},
+    {function(v) return bit32.extract(v, 3) end, function(v) return call(bit32.extract, v, 3) end},
+    {function(v) return bit32.extract(v, 3, 4) end, function(v) return call(bit32.extract, v, 3, 4) end},
+    {function(v) return bit32.extract(v, field, width) end, function(v) return call(bit32.extract, v, field, width) end},
+    {function(v) return bit32.replace(v, 1, 3) end, function(v) return call(bit32.replace, v, 1, 3) end},
+    {function(v) return bit32.replace(v, 1, 3, 4) end, function(v) return call(bit32.replace, v, 1, 3, 4) end},
+    {function(v) return bit32.replace(0xffffffff, v, 0, 32) end, function(v) return call(bit32.replace, 0xffffffff, v, 0, 32) end},
+    {function(v) return bit32.countlz(v) end, function(v) return call(bit32.countlz, v) end},
+    {function(v) return bit32.countrz(v) end, function(v) return call(bit32.countrz, v) end},
+    {function(v) return bit32.byteswap(v) end, function(v) return call(bit32.byteswap, v) end},
+  }
+
+  local unsignedBuffer = buffer.create(8)
+
+  -- Writes 'v' over a pattern and returns the buffer contents, so a store of the wrong value or width shows up.
+  local function written(write, v)
+    buffer.writeu32(unsignedBuffer, 0, 0xabababab)
+    buffer.writeu32(unsignedBuffer, 4, 0xabababab)
+    write(unsignedBuffer, v)
+    return buffer.tostring(unsignedBuffer)
+  end
+
+  local unsignedWrites = {
+    {function(b, v) buffer.writei8(b, 1, v) end, function(b, v) call(buffer.writei8, b, 1, v) end},
+    {function(b, v) buffer.writeu8(b, 1, v) end, function(b, v) call(buffer.writeu8, b, 1, v) end},
+    {function(b, v) buffer.writei16(b, 1, v) end, function(b, v) call(buffer.writei16, b, 1, v) end},
+    {function(b, v) buffer.writeu16(b, 1, v) end, function(b, v) call(buffer.writeu16, b, 1, v) end},
+    {function(b, v) buffer.writei32(b, 1, v) end, function(b, v) call(buffer.writei32, b, 1, v) end},
+    {function(b, v) buffer.writeu32(b, 1, v) end, function(b, v) call(buffer.writeu32, b, 1, v) end},
+    {function(b, v) buffer.fill(b, 1, v, 3) end, function(b, v) call(buffer.fill, b, 1, v, 3) end},
+    {function(b, v) buffer.writebits(b, 4, 32, v) end, function(b, v) call(buffer.writebits, b, 4, 32, v) end},
+  }
+
+  local function checkUnsigned(v, expected)
+    for i, case in unsignedCases do
+      local want = case[1](expected)
+      assert(case[1](v) == want, `case {i} direct {v}`)
+      assert(case[2](v) == want, `case {i} library {v}`)
+    end
+    for i, write in unsignedWrites do
+      local want = written(write[1], expected)
+      assert(written(write[1], v) == want, `write {i} direct {v}`)
+      assert(written(write[2], v) == want, `write {i} library {v}`)
+    end
+  end
+
+  for _, v in {2^63, -2^63, 1e300, -1e300, 0/0, math.huge, -math.huge} do
+    checkUnsigned(v, 0)
+  end
+
+  local inRange = {
+    {2^63 - 1024, 4294966272},
+    {-(2^63 - 1024), 1024},
+    {2^53 + 2, 2},
+    {2^32 + 5, 5},
+    {-1, 4294967295},
+    {-2^31, 2147483648},
+    {0xffffffff, 4294967295},
+    {1.75, 1},
+    {-0.5, 0},
+  }
+  for _, pair in inRange do
+    checkUnsigned(pair[1], pair[2])
+    assert(bit32.band(pair[1], 0xffffffff) == pair[2], `band {pair[1]}`)
+    assert(call(bit32.band, pair[1]) == pair[2], `library band {pair[1]}`)
+  end
+end
+
 return "OK"

@@ -110,6 +110,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(add(w3, w7, uint16_t(78)), 0x110138E3);
     SINGLE_COMPARE(sub(w3, w7, uint16_t(78)), 0x510138E3);
     SINGLE_COMPARE(cmp(w0, uint16_t(42)), 0x7100A81F);
+    SINGLE_COMPARE(cmn(x0, uint16_t(1)), 0xB100041F);
+    SINGLE_COMPARE(cmn(w0, uint16_t(1)), 0x3100041F);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryExtended")
@@ -550,6 +552,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Conditionals")
 {
     SINGLE_COMPARE(csel(x0, x1, x2, ConditionA64::Equal), 0x9A820020);
     SINGLE_COMPARE(csel(w0, w1, w2, ConditionA64::Equal), 0x1A820020);
+    SINGLE_COMPARE(csel(w0, wzr, w0, ConditionA64::Overflow), 0x1A8063E0);
     SINGLE_COMPARE(fcsel(d0, d1, d2, ConditionA64::Equal), 0x1E620C20);
 
     SINGLE_COMPARE(cset(x1, ConditionA64::Less), 0x9A9FA7E1);

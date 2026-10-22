@@ -2034,6 +2034,9 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp = tempDouble(OP_A(inst));
         // note: we don't use fcvtzu for consistency with C++ code
         build.fcvtzs(castReg(KindA64::x, inst.regA64), temp);
+        // fcvtzs saturates values >= 2^63 to INT64_MAX; map it to 0 to match luai_num2unsigned (INT64_MAX is the only value where +1 overflows)
+        build.cmn(castReg(KindA64::x, inst.regA64), 1);
+        build.csel(inst.regA64, wzr, inst.regA64, ConditionA64::Overflow);
         break;
     }
     case IrCmd::FLOAT_TO_NUM:
