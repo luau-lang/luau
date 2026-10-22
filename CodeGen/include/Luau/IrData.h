@@ -519,11 +519,13 @@ enum class IrCmd : uint8_t
     // A: uint
     UINT_TO_FLOAT,
 
-    // Converts a double number to an integer. 'A' may be any representable integer in a double.
+    // Converts a double number to an integer by truncating it (matches the x64 cvttsd2si instruction and lua_tointegerx).
+    // If 'A' is outside of [-2^31, 2^31) or is NaN, the result is INT_MIN.
     // A: double
     NUM_TO_INT,
 
-    // Converts a double number to a 64 bit integer. 'A' may be any representable integer in a double.
+    // Converts a double number to a 64 bit integer by truncating it (matches the x64 cvttsd2si instruction).
+    // If 'A' is outside of [-2^63, 2^63) or is NaN, the result is INT64_MIN.
     // A: double
     NUM_TO_INT64,
 

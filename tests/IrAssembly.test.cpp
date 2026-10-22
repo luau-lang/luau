@@ -274,6 +274,120 @@ bb_0:
     );
 }
 
+TEST_CASE_FIXTURE(IrAssemblyFixture, "NumToIntRestoreFromDoubleVmRegA64")
+{
+    // A64 lowering of a whole function needs a host where codegen is supported
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    options.target = AssemblyOptions::A64;
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    IrOp d = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp i = build.inst(IrCmd::NUM_TO_INT, d);
+    build.inst(IrCmd::INTERRUPT, build.constUint(0));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), i);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+    updateUseCounts(build.function);
+
+    // out-of-range values and NaN produce INT_MIN like x64 cvttsd2si, both in the lowering and when %1 is restored from R1
+    std::string text = lower();
+    text = std::regex_replace(text, std::regex(R"(\[x21,#\d+\])"), "[x21,#<offset>]");
+
+    CHECK_EQ(
+        "\n" + text,
+        R"(
+bb_0:
+.L12:
+  %0 = LOAD_DOUBLE R1
+ ldr         d31,[x25,#16]
+  %1 = NUM_TO_INT %0
+ fcvtzs      x17,d31
+ cmp         x17,w17 SXTW #0
+ fccmp       d31,d31,#0,eq
+ eor         w17,w17,#-2147483648
+ csel        w17,w17,wzr,eq
+ eor         w17,w17,#-2147483648
+  INTERRUPT 0u
+ ldr         x0,[x21,#<offset>]
+ cbnz        x0,.L13
+.L14:
+  STORE_INT R0, %1
+ ldr         d31,[x25,#16]
+ fcvtzs      x17,d31
+ cmp         x17,w17 SXTW #0
+ fccmp       d31,d31,#0,eq
+ eor         w17,w17,#-2147483648
+ csel        w17,w17,wzr,eq
+ eor         w17,w17,#-2147483648
+ str         w17,[x25]
+  STORE_TAG R0, tboolean
+ movz        w17,#1
+ str         w17,[x25,#12]
+  RETURN R0, 1i
+ ldr         q0,[x25]
+ str         q0,[x25,#-16]
+ mov         x1,x25
+ movz        w2,#1
+ b           .L7
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "NumToInt64A64")
+{
+    // A64 lowering of a whole function needs a host where codegen is supported
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    options.target = AssemblyOptions::A64;
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    IrOp d = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp i = build.inst(IrCmd::NUM_TO_INT64, d);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.inst(IrCmd::INT64_TO_NUM, i));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+    updateUseCounts(build.function);
+
+    // values that saturate to INT64_MAX and NaN produce INT64_MIN like x64 cvttsd2si
+    CHECK_EQ(
+        "\n" + lower(),
+        R"(
+bb_0:
+.L12:
+  %0 = LOAD_DOUBLE R1
+ ldr         d31,[x25,#16]
+  %1 = NUM_TO_INT64 %0
+ fcvtzs      x17,d31
+ cmn         x17,#1
+ fccmp       d31,d31,#1,vc
+ movz        x16,#32768 LSL #48
+ csel        x17,x16,x17,vs
+  %2 = INT64_TO_NUM %1
+ scvtf       d31,x17
+  STORE_DOUBLE R0, %2
+ str         d31,[x25]
+  STORE_TAG R0, tnumber
+ movz        w17,#3
+ str         w17,[x25,#12]
+  RETURN R0, 1i
+ ldr         q0,[x25]
+ str         q0,[x25,#-16]
+ mov         x1,x25
+ movz        w2,#1
+ b           .L7
+
+)"
+    );
+}
+
 TEST_CASE_FIXTURE(IrAssemblyFixture, "PreserveIntChainedFromDoubleVmRegBoth")
 {
     IrOp entry = build.block(IrBlockKind::Internal);

@@ -610,18 +610,14 @@ void IrRegAllocA64::restore(const IrRegAllocA64::Spill& s, RegisterA64 reg)
         if (spillValueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double)
         {
             // Handle restore of an int/uint value from a location storing a double number
+            // The value may come from NUM_TO_INT/NUM_TO_UINT of a VM register holding any number, so the conversion must match their lowering
             RegisterA64 temp = allocTemp(KindA64::d);
             build.ldr(temp, addr);
 
             if (restoreLocation.conversionCmd == IrCmd::INT_TO_NUM)
-                build.fcvtzs(reg, temp);
+                emitNumToInt(build, reg, temp);
             else if (restoreLocation.conversionCmd == IrCmd::UINT_TO_NUM)
-            {
-                // note: this matches NUM_TO_UINT lowering, including the mapping of saturated INT64_MAX to 0
-                build.fcvtzs(castReg(KindA64::x, reg), temp);
-                build.cmn(castReg(KindA64::x, reg), 1);
-                build.csel(reg, wzr, reg, ConditionA64::Overflow);
-            }
+                emitNumToUint(build, reg, temp);
             else
                 CODEGEN_ASSERT(!"re-materialization not supported for this conversion command");
 

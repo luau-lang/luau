@@ -2018,25 +2018,22 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regA64 = regs.allocReg(KindA64::w, index);
         RegisterA64 temp = tempDouble(OP_A(inst));
-        build.fcvtzs(inst.regA64, temp);
+        emitNumToInt(build, inst.regA64, temp);
         break;
     }
     case IrCmd::NUM_TO_INT64:
     {
         inst.regA64 = regs.allocReg(KindA64::x, index);
         RegisterA64 temp = tempDouble(OP_A(inst));
-        build.fcvtzs(inst.regA64, temp);
+        RegisterA64 temp2 = regs.allocTemp(KindA64::x);
+        emitNumToInt64(build, inst.regA64, temp, temp2);
         break;
     }
     case IrCmd::NUM_TO_UINT:
     {
         inst.regA64 = regs.allocReg(KindA64::w, index);
         RegisterA64 temp = tempDouble(OP_A(inst));
-        // note: we don't use fcvtzu for consistency with C++ code
-        build.fcvtzs(castReg(KindA64::x, inst.regA64), temp);
-        // fcvtzs saturates values >= 2^63 to INT64_MAX; map it to 0 to match luai_num2unsigned (INT64_MAX is the only value where +1 overflows)
-        build.cmn(castReg(KindA64::x, inst.regA64), 1);
-        build.csel(inst.regA64, wzr, inst.regA64, ConditionA64::Overflow);
+        emitNumToUint(build, inst.regA64, temp);
         break;
     }
     case IrCmd::FLOAT_TO_NUM:

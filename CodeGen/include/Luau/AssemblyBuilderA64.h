@@ -67,6 +67,9 @@ public:
     template<typename T>
     void cmp(RegisterA64 src1, T src2) = delete; // Prevent implicit conversions from happening
 
+    // Compares a 64-bit register with a sign-extended 32-bit register (cmp x, w, sxtw)
+    void cmp_sxtw(RegisterA64 src1, RegisterA64 src2);
+
     void ccmp(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv);
     void ccmn(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv);
     void ccmn(RegisterA64 src1, uint8_t src2, ConditionA64 cond, uint8_t nzcv);
@@ -206,6 +209,8 @@ public:
     // Floating-point comparisons
     void fcmp(RegisterA64 src1, RegisterA64 src2);
     void fcmpz(RegisterA64 src);
+    // nzcv is the flag state used when the condition is false
+    void fccmp(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv);
     void fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond);
 
     void udf();
@@ -274,7 +279,7 @@ private:
     void placeFMOV(const char* name, RegisterA64 dst, double src, uint32_t op);
     void placeBM(const char* name, RegisterA64 dst, RegisterA64 src1, uint32_t src2, uint8_t op);
     void placeBFM(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op, int immr, int imms);
-    void placeER(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift);
+    void placeER(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift, int option = 0b010);
     void placeVR(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint16_t op, uint8_t op2);
 
     void place(uint32_t word);

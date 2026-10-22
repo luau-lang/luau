@@ -422,4 +422,51 @@ do
   end
 end
 
+-- integer arguments outside of the int range convert to INT_MIN (int64 ones to INT64_MIN) in fastcalls and native code, like in the library
+do
+  local values = {0/0, math.huge, -math.huge, 1e300, -1e300, 2^31, -2^31 - 1, 2^63, -2^63, 2^31 - 0.5, -2^31}
+  local b = buffer.create(4)
+
+  local cases = {
+    {"ldexp", function(v) return math.ldexp(1, v) end, function(v) return call(math.ldexp, 1, v) end},
+    {"lshift", function(v) return bit32.lshift(0x80000001, v) end, function(v) return call(bit32.lshift, 0x80000001, v) end},
+    {"rshift", function(v) return bit32.rshift(0x80000001, v) end, function(v) return call(bit32.rshift, 0x80000001, v) end},
+    {"arshift", function(v) return bit32.arshift(0x80000001, v) end, function(v) return call(bit32.arshift, 0x80000001, v) end},
+    {"lrotate", function(v) return bit32.lrotate(0x80000001, v) end, function(v) return call(bit32.lrotate, 0x80000001, v) end},
+    {"rrotate", function(v) return bit32.rrotate(0x80000001, v) end, function(v) return call(bit32.rrotate, 0x80000001, v) end},
+    {"extract", function(v) return bit32.extract(0xffffffff, v) end, function(v) return call(bit32.extract, 0xffffffff, v) end},
+    {"extract width", function(v) return bit32.extract(0xffffffff, 0, v) end, function(v) return call(bit32.extract, 0xffffffff, 0, v) end},
+    {"replace", function(v) return bit32.replace(0, 1, v) end, function(v) return call(bit32.replace, 0, 1, v) end},
+    {"readu8", function(v) return buffer.readu8(b, v) end, function(v) return call(buffer.readu8, b, v) end},
+    {"writeu8", function(v) return buffer.writeu8(b, v, 1) end, function(v) return call(buffer.writeu8, b, v, 1) end},
+  }
+
+  if buffer.readinteger then
+    table.insert(cases, {"integer.create", function(v) return integer.create(v) end, function(v) return call(integer.create, v) end})
+  end
+
+  for _, case in cases do
+    local name, direct, library = case[1], case[2], case[3]
+
+    for _, v in values do
+      local ok1, r1 = pcall(direct, v)
+      local ok2, r2 = pcall(library, v)
+      assert(ok1 == ok2, `{name}({v}): direct {ok1} {r1}, library {ok2} {r2}`)
+
+      if ok1 then
+        assert(r1 == r2 or (r1 ~= r1 and r2 ~= r2), `{name}({v}): direct {r1}, library {r2}`)
+      else
+        -- errors are prefixed with the location of the calling function, which differs
+        local e1 = string.gsub(tostring(r1), "^[^:]*:%d+: ", "")
+        local e2 = string.gsub(tostring(r2), "^[^:]*:%d+: ", "")
+        assert(e1 == e2, `{name}({v}): direct error {r1}, library error {r2}`)
+
+        if name == "readu8" or name == "writeu8" then
+          assert(string.find(e1, "buffer access out of bounds", 1, true), e1)
+        end
+      end
+    end
+  end
+end
+
 return "OK"

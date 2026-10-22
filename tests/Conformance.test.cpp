@@ -65,6 +65,8 @@ LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
+LUAU_FASTFLAG(LuauCodegenInteger3)
+LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
@@ -1274,6 +1276,9 @@ TEST_CASE("Basic")
 TEST_CASE("FloatIntCast")
 {
     ScopedFastFlag integerLibrary{FFlag::LuauIntegerLibrary, true};
+    // integer.create fastcalls are lowered with NUM_TO_INT64 in native code
+    ScopedFastFlag integerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag codegenInteger{FFlag::LuauCodegenInteger3, true};
 
     for (int mode = 0; mode < 3; ++mode)
     {

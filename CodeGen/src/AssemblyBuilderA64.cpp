@@ -260,6 +260,13 @@ void AssemblyBuilderA64::cmp(RegisterA64 src1, uint16_t src2)
     placeI12("cmp", dst, src1, src2, 0b11'10001);
 }
 
+void AssemblyBuilderA64::cmp_sxtw(RegisterA64 src1, RegisterA64 src2)
+{
+    CODEGEN_ASSERT(src1.kind == KindA64::x && src2.kind == KindA64::w);
+
+    placeER("cmp", xzr, src1, src2, 0b11'01011, /* shift= */ 0, /* option= SXTW */ 0b110);
+}
+
 // nzcv is the flag bit specifier, an immediate in the range 0 to 15, giving the alternative state for the 4-bit NZCV condition flags
 void AssemblyBuilderA64::ccmp(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv)
 {
@@ -1233,6 +1240,32 @@ void AssemblyBuilderA64::fcmpz(RegisterA64 src)
         placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'00'1, 0b01);
 }
 
+// nzcv is the flag bit specifier, an immediate in the range 0 to 15, giving the alternative state for the 4-bit NZCV condition flags
+void AssemblyBuilderA64::fccmp(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "fccmp");
+        log(src1);
+        logger->append(",");
+        log(src2);
+        logAppend(",#%d,%s\n", nzcv, textForCondition[int(cond)] + 2);
+    }
+
+    CODEGEN_ASSERT(src1.kind == src2.kind);
+    CODEGEN_ASSERT(src1.kind == KindA64::d || src1.kind == KindA64::s);
+    CODEGEN_ASSERT(nzcv <= 15);
+
+    uint32_t type = (src1.kind == KindA64::d) ? 0b01 : 0b00;
+
+    // fccmp: 000 11110 type 1 Rm cond 01 Rn 0 nzcv
+    place(
+        nzcv | (src1.index << 5) | (0b01 << 10) | (codeForCondition[int(cond)] << 12) | (src2.index << 16) | (1 << 21) | (type << 22) |
+        (0b11110u << 24)
+    );
+    commit();
+}
+
 void AssemblyBuilderA64::fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond)
 {
     CODEGEN_ASSERT(dst.kind == src1.kind && src1.kind == src2.kind);
@@ -1718,17 +1751,35 @@ void AssemblyBuilderA64::placeBFM(const char* name, RegisterA64 dst, RegisterA64
     commit();
 }
 
-void AssemblyBuilderA64::placeER(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift)
+void AssemblyBuilderA64::placeER(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift, int option)
 {
     if (logText)
-        log(name, dst, src1, src2, shift);
+    {
+        if (option == 0b010)
+        {
+            log(name, dst, src1, src2, shift);
+        }
+        else
+        {
+            logAppend(" %-12s", name);
+            if (dst != xzr)
+            {
+                log(dst);
+                logger->append(",");
+            }
+            log(src1);
+            logger->append(",");
+            log(src2);
+            logAppend(" SXTW #%d\n", shift);
+        }
+    }
 
     CODEGEN_ASSERT(dst.kind == KindA64::x && src1.kind == KindA64::x);
     CODEGEN_ASSERT(src2.kind == KindA64::w);
     CODEGEN_ASSERT(shift >= 0 && shift <= 4);
+    CODEGEN_ASSERT(option == 0b010 || option == 0b110); // UXTW or SXTW
 
     uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0; // could be useful in the future for byte->word extends
-    int option = 0b010;                                      // UXTW
 
     place(dst.index | (src1.index << 5) | (shift << 10) | (option << 13) | (src2.index << 16) | (1 << 21) | (op << 24) | sf);
     commit();
