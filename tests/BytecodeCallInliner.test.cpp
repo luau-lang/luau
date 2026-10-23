@@ -1,11 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
+#include "Luau/BytecodeDump.h"
 #include "Luau/BytecodeGraph.h"
+#include "Luau/BytecodeSlotAllocation.h"
 #include "Luau/BytecodeWire.h"
 #include "Luau/BytecodeValidation.h"
 #include "Luau/BytecodeCallInliner.h"
 #include "Luau/Compiler.h"
 #include "Luau/Parser.h"
+#include "Luau/Sccp.h"
 
 #include <optional>
 
@@ -17,6 +20,7 @@ using namespace Luau;
 using namespace Luau::Bytecode;
 
 LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauInlinerNamecallSelfFromMove)
 
 namespace
 {
@@ -30,10 +34,46 @@ struct BytecodeRes
 
 struct BytecodeInlinerFixture
 {
-
-    std::optional<std::pair<Bytecode::CompTimeBcFunction, Bytecode::CompTimeBcFunction>> compileAndInline(std::string_view src, uint32_t callIdx = 0)
+    std::string printFunction(CompTimeBcFunction& function)
     {
-        auto res = buildBytecode(src);
+        BytecodeBuilder bcb;
+        bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
+        std::string result = toFunctionBytecode(bcb, function);
+        REQUIRE(!result.empty());
+        return bcb.dumpFunction(0);
+    }
+
+    SlotAllocationResult allocateSlots(CompTimeBcFunction& function)
+    {
+        // runtime inliner graphs do not contain compiler-local metadata
+        function.locals.clear();
+        function.localTypes.clear();
+        REQUIRE(verifyUseConsistency(function));
+        SlotAllocationResult result = allocateBytecodeSlots(function);
+        REQUIRE(verifyUseConsistency(function));
+        return result;
+    }
+
+    size_t countOpcode(const CompTimeBcFunction& function, LuauOpcode opcode)
+    {
+        size_t result = 0;
+        for (const BcBlock& block : function.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (BcOp instruction : block.ops)
+                result += static_cast<size_t>(function.instructions[instruction.index].op == opcode);
+        }
+        return result;
+    }
+
+    std::optional<std::pair<Bytecode::CompTimeBcFunction, Bytecode::CompTimeBcFunction>> compileAndInline(
+        std::string_view src,
+        uint32_t callIdx = 0,
+        int optimizationLevel = 0
+    )
+    {
+        auto res = buildBytecode(src, optimizationLevel);
 
         REQUIRE(res);
 
@@ -52,18 +92,21 @@ struct BytecodeInlinerFixture
         return res;
     }
 
-    std::string inlineAndPrint(std::string_view src, uint32_t callIdx = 0)
+    std::string inlineAndPrint(std::string_view src, uint32_t callIdx = 0, bool foldConstants = false, int optimizationLevel = 0)
     {
-        auto res = compileAndInline(src, callIdx);
+        auto res = compileAndInline(src, callIdx, optimizationLevel);
 
         REQUIRE(res);
         REQUIRE_EQ(verifyUseConsistency(res->second), true);
 
-        BytecodeBuilder bcb;
-        bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
-        std::string result = toFunctionBytecode(bcb, res->second);
-        REQUIRE(!result.empty());
-        return bcb.dumpFunction(0);
+        if (foldConstants)
+        {
+            BcVmConstImpl impl(res->second);
+            Bytecode::foldConstants(res->second, impl);
+        }
+        REQUIRE(verifyUseConsistency(res->second));
+
+        return printFunction(res->second);
     }
 
     std::optional<std::pair<Bytecode::CompTimeBcFunction, Bytecode::CompTimeBcFunction>> buildBytecode(
@@ -142,7 +185,9 @@ struct BytecodeInlinerFixture
             CompileOptions opts;
             opts.optimizationLevel = optimizationLevel;
             compileOrThrow(bcb, result, names, opts);
-            return {{bcb.getFunctionData(0), bcb.getFunctionData(1), extractStringTable(bcb)}};
+            uint32_t funcCount = bcb.getFunctionCount();
+            LUAU_ASSERT(funcCount >= 3);
+            return {{bcb.getFunctionData(funcCount - 3), bcb.getFunctionData(funcCount - 2), extractStringTable(bcb)}};
         }
         catch (CompileError& e)
         {
@@ -188,7 +233,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALLFB R1 2 1 [0]
@@ -208,7 +253,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L0
@@ -236,7 +281,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_undercall")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         CALL R1 1 1
         LOADK R3 K0 [2]
@@ -255,7 +300,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_undercall")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 CMPPROTO R1 #0 L1
 LOADNIL R3
@@ -282,7 +327,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_under_return")
         RETURN R0 1
 
         Function 1 (caller):
-        GETUPVAL R0 0
+        GETUPVAL R0 U0
         LOADK R1 K0 [10]
         CALL R0 1 2
         RETURN R1 1
@@ -300,7 +345,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_under_return")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [10]
 CMPPROTO R0 #0 L0
 MOVE R0 R1
@@ -315,6 +360,7 @@ RETURN R1 1
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "namecall_inlining")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag namecallSelfFromMove{FFlag::LuauInlinerNamecallSelfFromMove, true};
 
     /*
         Function 0 (inlinee):
@@ -328,7 +374,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "namecall_inlining")
         LOADK R3 K3 [7]
         SETTABLE R3 R1 R2
         LOADK R2 K1 ['inlinee']
-        GETUPVAL R3 0
+        GETUPVAL R3 U0
         SETTABLE R3 R1 R2
         LOADK R4 K4 [42]
         NAMECALL R2 R1 K1 ['inlinee']
@@ -356,7 +402,7 @@ LOADK R2 K0 ['v']
 LOADK R3 K3 [7]
 SETTABLE R3 R1 R2
 LOADK R2 K1 ['inlinee']
-GETUPVAL R3 0
+GETUPVAL R3 U0
 SETTABLE R3 R1 R2
 LOADK R4 K4 [42]
 MOVE R3 R1
@@ -389,7 +435,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "early_return_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALL R1 2 1
@@ -411,7 +457,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "early_return_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L1
@@ -446,7 +492,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "multi_return_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALLFB R1 2 1 [0]
@@ -468,7 +514,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "multi_return_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L1
@@ -523,7 +569,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_inlining")
         RETURN R3 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALL R1 2 1
@@ -547,7 +593,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L1
@@ -581,7 +627,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [100]
         CALL R1 2 1
@@ -602,7 +648,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [100]
 CMPPROTO R1 #0 L0
@@ -632,7 +678,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining_nil_factor
         RETURN R4 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [100]
         CALL R1 2 1
@@ -653,7 +699,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining_nil_factor
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [100]
 CMPPROTO R1 #0 L0
@@ -688,7 +734,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage")
         RETURN R1 1
 
         Function 1 (caller):
-        GETUPVAL R0 0
+        GETUPVAL R0 U0
         LOADK R1 K0 [10]
         LOADK R2 K1 [20]
         LOADK R3 K2 [30]
@@ -709,7 +755,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [10]
 LOADK R2 K1 [20]
 LOADK R3 K2 [30]
@@ -720,7 +766,7 @@ LOADK R6 K4 [2]
 MOVE R7 R1
 MOVE R8 R2
 MOVE R9 R3
-SETLIST R4 R5 6 [1]
+SETLIST R4 R5 5 [1]
 LOADK R6 K5 [3]
 GETTABLE R5 R4 R6
 MOVE R0 R5
@@ -747,7 +793,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage_2")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R0 0
+        GETUPVAL R0 U0
         LOADK R1 K0 [10]
         LOADK R2 K1 [20]
         LOADK R3 K2 [30]
@@ -768,7 +814,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage_2")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [10]
 LOADK R2 K1 [20]
 LOADK R3 K2 [30]
@@ -778,7 +824,7 @@ LOADK R6 K3 [1]
 MOVE R7 R1
 MOVE R8 R2
 MOVE R9 R3
-SETLIST R5 R6 5 [1]
+SETLIST R5 R6 4 [1]
 LOADK R7 K4 [3]
 GETTABLE R6 R5 R7
 MOVE R0 R6
@@ -810,7 +856,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "loop_phis")
         L3: RETURN R1 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         CALL R1 1 1
         RETURN R1 1
@@ -834,7 +880,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "loop_phis")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 CMPPROTO R1 #0 L4
 LOADK R3 K0 [0]
@@ -857,6 +903,52 @@ RETURN R1 1
     );
 }
 
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "preserve_loop_phi_registers_when_inlining")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    auto res = compileAndInline(R"(
+        local function inlinee(t)
+            local sum = 0
+            for _, row in t do
+                for _, value in row do
+                    sum = sum + value
+                end
+            end
+            return sum
+        end
+
+        local function caller(x)
+            local result = inlinee(x)
+            return result
+        end
+    )");
+
+    REQUIRE(res);
+
+    // for-loop state is represented by loop-carried phis, check that we have them and that they have registers associated
+    size_t inlineeRegisteredPhiCount = 0;
+    for (const auto& entry : res->first.regs)
+        if (entry.first.kind == BcOpKind::Phi)
+            ++inlineeRegisteredPhiCount;
+
+    REQUIRE(inlineeRegisteredPhiCount > 0);
+
+    // the caller has no loop or control-flow join so a phi here can only have come from call inlining the loop phis
+    // need to ensure that we did not lose this register assignment here
+    size_t callerRegisteredPhiCount = 0;
+    for (const auto& entry : res->second.regs)
+        if (entry.first.kind == BcOpKind::Phi)
+            ++callerRegisteredPhiCount;
+
+    CHECK_GT(callerRegisteredPhiCount, 0);
+    CHECK(verifyUseConsistency(res->second));
+
+    BytecodeBuilder bcb;
+    std::string result = toFunctionBytecode(bcb, res->second);
+    REQUIRE(!result.empty());
+}
+
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "retain_target_on_block_split")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
@@ -873,7 +965,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "retain_target_on_block_split")
         MOVE R2 R0
         LOADN R3 1
         FORNPREP R2 L1
-        L0: GETUPVAL R5 0
+        L0: GETUPVAL R5 U0
         MOVE R6 R4
         CALL R5 1 1
         ADD R1 R1 R5
@@ -901,7 +993,7 @@ LOADK R4 K1 [1]
 MOVE R2 R0
 LOADN R3 1
 FORNPREP R2 L3
-L0: GETUPVAL R5 0
+L0: GETUPVAL R5 U0
 MOVE R6 R4
 CMPPROTO R5 #0 L1
 LOADK R8 K1 [1]
@@ -912,6 +1004,437 @@ L1: CALLFB R5 1 1 [-1]
 L2: ADD R1 R1 R5
 FORNLOOP R2 L0
 L3: RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return a + b
+        end
+
+        local function caller(x)
+            local result = inlinee(5, 42)
+            return result + 2
+        end
+    )",
+        0,
+        true
+    );
+
+    // The inlined ADD (5+42) folds to LOADK 47, and the MOVE copying it also folds.
+    // The second ADD (result+2) cannot fold because R1 merges from both the inlined path (constant 47) and the CALLFB fallback path
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R1 U0
+LOADK R2 K0 [5]
+LOADK R3 K1 [42]
+CMPPROTO R1 #0 L0
+LOADK R4 K3 [47]
+LOADK R1 K3 [47]
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADDK R2 R1 K2 [2]
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_chained")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    // Multiple arithmetic ops that should all fold
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return (a + b) * 2
+        end
+
+        local function caller(x)
+            local result = inlinee(10, 11)
+            return result + x
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R1 U0
+LOADK R2 K0 [10]
+LOADK R3 K1 [11]
+CMPPROTO R1 #0 L0
+LOADK R5 K3 [21]
+LOADK R6 K2 [2]
+LOADK R4 K4 [42]
+LOADK R1 K4 [42]
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_div_by_zero")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    // Division by zero should fold to inf
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return a / b
+        end
+
+        local function caller(x)
+            local result = inlinee(10, 0)
+            return result + x
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R1 U0
+LOADK R2 K0 [10]
+LOADK R3 K1 [0]
+CMPPROTO R1 #0 L0
+LOADK R4 K2 [inf]
+LOADK R1 K2 [inf]
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branch")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+            local function inlinee(a)
+                if a then
+                    return 1
+                else
+                    return 2
+                end
+            end
+
+            local function caller()
+                local t = true
+                local res = inlinee(t)
+                return res
+            end
+            )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+LOADB R0 1
+GETUPVAL R1 U0
+LOADB R2 1
+CMPPROTO R1 #0 L0
+LOADK R3 K0 [1]
+LOADK R1 K0 [1]
+RETURN R1 1
+L0: CALLFB R1 1 1 [-1]
+RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branches")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+            local function inlinee(a)
+                if a then
+                    if a > 1 then
+                        return 3
+                    else
+                        return 1
+                    end
+                else
+                    return 2
+                end
+            end
+
+            local function caller()
+                local res = inlinee(5)
+                return res
+            end
+            )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ("\n" + result, R"(
+GETUPVAL R0 U0
+LOADK R1 K0 [5]
+CMPPROTO R0 #0 L0
+LOADK R2 K1 [1]
+LOADK R2 K2 [3]
+LOADK R0 K2 [3]
+RETURN R0 1
+L0: CALLFB R0 1 1 [-1]
+RETURN R0 1
+)");
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_for_loop")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+            local function inlinee(a)
+                local sum = 0
+                for i = 1, a do
+                    sum = sum + i
+                end
+                return sum
+            end
+
+            local function caller()
+                local t = 10
+                local res = inlinee(t)
+                return res
+            end
+            )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+LOADK R0 K0 [10]
+GETUPVAL R1 U0
+LOADK R2 K0 [10]
+CMPPROTO R1 #0 L2
+LOADK R3 K1 [0]
+LOADK R6 K2 [1]
+LOADK R4 K0 [10]
+LOADN R5 1
+FORNPREP R4 L1
+L0: ADD R3 R3 R6
+FORNLOOP R4 L0
+L1: MOVE R1 R3
+RETURN R1 1
+L2: CALLFB R1 1 1 [-1]
+RETURN R1 1
+)"
+    );
+}
+
+// tests JUMPIF(NOT)LT path in evaluateComparisonCondition
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_ordering_branch")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            if a < b then
+                return a
+            end
+            return b
+        end
+
+        local function caller()
+            local res = inlinee(3, 10)
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 U0
+LOADK R1 K0 [3]
+LOADK R2 K1 [10]
+CMPPROTO R0 #0 L0
+LOADK R0 K0 [3]
+RETURN R0 1
+L0: CALLFB R0 2 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+// JUMPIFEQ equality comparison folding
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_equality_branch")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            if a == b then
+                return 1
+            end
+            return 2
+        end
+
+        local function caller()
+            local res = inlinee(7, 7)
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 U0
+LOADK R1 K0 [7]
+LOADK R2 K0 [7]
+CMPPROTO R0 #0 L0
+LOADK R3 K1 [1]
+LOADK R0 K1 [1]
+RETURN R0 1
+L0: CALLFB R0 2 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+// constant string argument compared against a string literal tests evaluateXeqkCondition
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_string_equality")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(s)
+            if s == "yes" then
+                return 1
+            end
+            return 0
+        end
+
+        local function caller()
+            local res = inlinee("yes")
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 U0
+LOADK R1 K0 ['yes']
+CMPPROTO R0 #0 L0
+LOADK R2 K0 ['yes']
+LOADK R2 K1 [1]
+LOADK R0 K1 [1]
+RETURN R0 1
+L0: CALLFB R0 1 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+// the missing parameter is treated as a LOADNIL, which SCCP can fold to prune `return 1`
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_nil_argument")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a)
+            if a == nil then
+                return 0
+            end
+            return 1
+        end
+
+        local function caller()
+            local res = inlinee()
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 U0
+CMPPROTO R0 #0 L0
+LOADNIL R1
+LOADNIL R2
+LOADK R2 K0 [0]
+LOADK R0 K0 [0]
+RETURN R0 1
+L0: CALLFB R0 0 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+//  when the caller passes runtime values, no operand is constant, so the inlined ADD must survive unfolded
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "does_not_fold_runtime_arguments")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return a + b
+        end
+
+        local function caller(x, y)
+            local res = inlinee(x, y)
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R2 U0
+MOVE R3 R0
+MOVE R4 R1
+CMPPROTO R2 #0 L0
+ADD R5 R3 R4
+MOVE R2 R5
+RETURN R2 1
+L0: CALLFB R2 2 1 [-1]
+RETURN R2 1
 )"
     );
 }
@@ -998,6 +1521,845 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "graph_builds_loop_exit_phi_for_downst
             for (BcOp in : inst.ops)
                 CHECK_FALSE(isLoadNil(in));
         }
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_inlinee_with_vararg")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+        end
+
+        local function caller()
+            return {inlinee, (inlinee())}
+        end
+    )"),
+        R"(
+NEWTABLE R0 0 2
+GETUPVAL R1 U0
+GETUPVAL R2 U0
+CMPPROTO R2 #0 L0
+LOADNIL R3
+LOADNIL R2
+JUMP L1
+L0: CALLFB R2 0 1 [-1]
+L1: SETLIST R0 R1 2 [1]
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_setlist")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(...)
+            return {...}
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )"),
+        R"(
+GETUPVAL R0 U0
+CMPPROTO R0 #0 L0
+NEWTABLE R1 0 0
+MOVE R0 R1
+RETURN R0 0
+L0: CALLFB R0 0 0 [-1]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_for_loop")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+            for _ in ... do
+                pcall += _
+            end
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )"),
+        R"(
+GETUPVAL R0 U0
+CMPPROTO R0 #0 L2
+LOADNIL R1
+LOADNIL R3
+LOADNIL R4
+LOADNIL R5
+FORGPREP R3 L1
+L0: GETGLOBAL R8 K0 ['pcall']
+ADD R8 R8 R6
+SETGLOBAL R8 K0 ['pcall']
+L1: FORGLOOP R3 L0 1
+RETURN R0 0
+L2: CALLFB R0 0 0 [-1]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_in_loops_phi")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+            local function inlinee(...)
+                repeat
+                    local a = ...
+                    while a do break end
+                until false
+            end
+
+            local function caller()
+                inlinee()
+            end
+    )"),
+        R"(
+GETUPVAL R0 U0
+CMPPROTO R0 #0 L3
+L0: LOADNIL R1
+L1: JUMPIFNOT R1 L2
+JUMP L2
+JUMPBACK L1
+L2: LOADB R2 0
+JUMPIF R2 L4
+JUMPBACK L0
+RETURN R0 0
+L3: CALLFB R0 0 0 [-1]
+L4: RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_block")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function caller()
+            local f = function() end
+            while true do
+                local cap = function() f = f end
+                f()
+            end
+        end
+        caller()
+    )");
+
+    CompTimeBcFunction* caller = nullptr;
+    for (CompTimeBcFunction& fn : graphs)
+        if (fn.debugname == "caller")
+            caller = &fn;
+    REQUIRE(caller);
+
+    BcVmConstImpl impl(*caller);
+    Bytecode::foldConstants(*caller, impl);
+
+    CHECK_EQ(
+        "\n" + toString(*caller, true),
+        R"(
+; function caller() line 2 maxstacksize: 3 upvalues: 0 flags: 8
+; feedback slot 0: CALLTARGET %4
+bb_0 (entry):
+; successors: bb_2 [fallthrough], bb_2 [loop]
+  %0 = DUPCLOSURE K0 (0)                                     ; uses: phi.0, phi.0, %2, %3
+
+bb_2:
+; predecessors: bb_0 [fallthrough], bb_0 [loop]
+  %1 = NEWCLOSURE P1
+  %2 = CAPTURE 1, %0, 0
+  %3 = MOVE %0                                               ; uses: %4
+  %4 = CALLFB 0, 0, 0, %3
+  %5 = JUMPBACK bb_2
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_scc")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function caller(x)
+            repeat
+                x = nil
+                (function(...) end)()
+            until x
+
+            repeat
+                local y = {}
+            until function() y = nil end
+        end
+        caller()
+    )");
+
+    CompTimeBcFunction* caller = nullptr;
+    for (CompTimeBcFunction& fn : graphs)
+        if (fn.debugname == "caller")
+            caller = &fn;
+    REQUIRE(caller);
+
+    BcVmConstImpl impl(*caller);
+    Bytecode::foldConstants(*caller, impl);
+
+    CHECK_EQ(
+        "\n" + toString(*caller, true),
+        R"(
+; function caller($arg0) line 2 maxstacksize: 3 upvalues: 0 flags: 8
+; feedback slot 0: CALLTARGET %2
+bb_0 (entry):
+; predecessors: bb_3 [loop]
+; successors: bb_3 [fallthrough]
+  %0 = LOADNIL
+  %1 = DUPCLOSURE K0 (0)                                     ; uses: %2
+  %2 = CALLFB 0, 0, 0, %1
+
+bb_3:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_0 [loop]
+  %4 = JUMPBACK bb_0
+
+bb_1 (exit):
+; predecessors: bb_4 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_projection_in_return_phi")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+            return a and ...
+        end
+
+        local function caller(x)
+            local r = inlinee(x)
+            return r
+        end
+    )"),
+        R"(
+GETUPVAL R1 U0
+MOVE R2 R0
+CMPPROTO R1 #0 L1
+MOVE R4 R2
+JUMPIFNOT R4 L0
+LOADNIL R4
+L0: MOVE R1 R4
+RETURN R1 1
+L1: CALLFB R1 1 1 [-1]
+RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_sub_constant_lhs_is_negation_not_move")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(
+                   R"(
+        local function inlinee(a, x)
+            return a - x
+        end
+        local function caller(x)
+            local r = inlinee(0, x)
+            return r + x
+        end
+    )",
+                   0,
+                   true
+               ),
+        R"(
+GETUPVAL R1 U0
+LOADK R2 K0 [0]
+MOVE R3 R0
+CMPPROTO R1 #0 L0
+SUB R4 R2 R3
+MOVE R1 R4
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_div_constant_lhs_one_is_reciprocal_not_move")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(
+                   R"(
+        local function inlinee(a, x)
+            return a / x
+        end
+        local function caller(x)
+            local r = inlinee(1, x)
+            return r + x
+        end
+    )",
+                   0,
+                   true
+               ),
+        R"(
+GETUPVAL R1 U0
+LOADK R2 K0 [1]
+MOVE R3 R0
+CMPPROTO R1 #0 L0
+DIV R4 R2 R3
+MOVE R1 R4
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_jumpxeqkb_bool_immediate_value")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(
+                   R"(
+        local function inlinee(flag)
+            if flag == true then return 1 else return 2 end
+        end
+        local function caller(x)
+            local r = inlinee(true)
+            return r + x
+        end
+    )",
+                   0,
+                   true,
+                   1
+               ),
+        R"(
+GETUPVAL R1 U0
+LOADB R2 1
+CMPPROTO R1 #0 L0
+LOADN R3 1
+LOADN R1 1
+JUMP L1
+L0: CALLFB R1 1 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_removes_inlined_moves")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    std::string_view src = R"(
+        local function inlinee(a, b)
+            return a + (b or 42)
+        end
+
+        local function caller(x)
+            local value = inlinee(x)
+            return value + 2
+        end
+    )";
+
+    // the copies left by inlining fold into their producer or consumer:
+    //
+    //   before slot allocation  |  after slot allocation
+    //   ------------------------+-------------------------
+    //   LOADNIL R3              |  LOADNIL R5
+    //   MOVE R5 R3              |
+    //   L0: ADD R4 R2 R5        |  L0: ADD R1 R2 R5
+    //   MOVE R1 R4              |
+    {
+        std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(src);
+        REQUIRE(result);
+
+        CHECK_EQ("\n" + printFunction(result->second), R"(
+GETUPVAL R1 U0
+MOVE R2 R0
+CMPPROTO R1 #0 L1
+LOADNIL R3
+MOVE R5 R3
+JUMPIF R5 L0
+LOADK R5 K1 [42]
+L0: ADD R4 R2 R5
+MOVE R1 R4
+JUMP L2
+L1: CALLFB R1 1 1 [-1]
+L2: LOADK R3 K0 [2]
+ADD R2 R1 R3
+RETURN R2 1
+)");
+    }
+
+    std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(src);
+    REQUIRE(result);
+
+    CompTimeBcFunction& caller = result->second;
+    size_t movesBefore = countOpcode(caller, LOP_MOVE);
+    SlotAllocationResult allocation = allocateSlots(caller);
+    REQUIRE(allocation);
+    CHECK_EQ(allocation.movesRemoved, 2);
+    CHECK_EQ(allocation.frameSizeAfter, caller.maxstacksize);
+    CHECK_EQ(countOpcode(caller, LOP_MOVE) + allocation.movesRemoved, movesBefore);
+
+    CHECK_EQ("\n" + printFunction(caller), R"(
+GETUPVAL R1 U0
+MOVE R2 R0
+CMPPROTO R1 #0 L1
+LOADNIL R5
+JUMPIF R5 L0
+LOADK R5 K1 [42]
+L0: ADD R1 R2 R5
+JUMP L2
+L1: CALLFB R1 1 1 [-1]
+L2: LOADK R3 K0 [2]
+ADD R2 R1 R3
+RETURN R2 1
+)");
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_preserves_fastcall_and_loop_layouts")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, false};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(
+        R"(
+        local function sumValues(values)
+            local total = math.abs(values.x)
+            for _, value in pairs(values) do
+                total += value
+            end
+            return total
+        end
+
+        return sumValues
+    )",
+        2
+    );
+
+    CompTimeBcFunction* function = nullptr;
+    for (CompTimeBcFunction& graph : graphs)
+        if (graph.debugname == "sumValues")
+            function = &graph;
+    REQUIRE(function);
+
+    SlotAllocationResult allocation = allocateSlots(*function);
+    CHECK_FALSE(allocation);
+    CHECK_EQ("\n" + printFunction(*function), R"(
+GETTABLEKS R2 R0 K0 ['x']
+FASTCALL1 2 R2 L0
+GETIMPORT R1 3 [math.abs]
+CALL R1 1 1
+L0: GETIMPORT R2 5 [pairs]
+MOVE R3 R0
+CALL R2 1 3
+FORGPREP_NEXT R2 L2
+L1: ADD R1 R1 R6
+L2: FORGLOOP R2 L1 2
+RETURN R1 1
+)");
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_preserves_required_parallel_copies")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    std::string_view src = R"(
+        local function inlinee(a, b)
+            local c = a
+            a, b = b, c
+            return a + b
+        end
+
+        local function caller(x)
+            local value = inlinee(x, 42)
+            return value + 2
+        end
+    )";
+
+    // the result copy folds into its producer; the swap's parallel-copy cycle below is required and must remain:
+    //
+    //   before slot allocation  |  after slot allocation
+    //   ------------------------+-------------------------
+    //   ADD R5 R2 R3            |  ADD R1 R2 R3
+    //   MOVE R1 R5              |
+    {
+        std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(src);
+        REQUIRE(result);
+
+        CHECK_EQ("\n" + printFunction(result->second), R"(
+GETUPVAL R1 U0
+MOVE R2 R0
+LOADK R3 K0 [42]
+CMPPROTO R1 #0 L0
+MOVE R4 R2
+MOVE R2 R3
+MOVE R3 R4
+ADD R5 R2 R3
+MOVE R1 R5
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: LOADK R3 K1 [2]
+ADD R2 R1 R3
+RETURN R2 1
+)");
+    }
+
+    std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(src);
+    REQUIRE(result);
+
+    CompTimeBcFunction& caller = result->second;
+    SlotAllocationResult allocation = allocateSlots(caller);
+    REQUIRE(allocation);
+    CHECK_EQ(allocation.movesRemoved, 1);
+
+    CHECK_EQ("\n" + printFunction(caller), R"(
+GETUPVAL R1 U0
+MOVE R2 R0
+LOADK R3 K0 [42]
+CMPPROTO R1 #0 L0
+MOVE R4 R2
+MOVE R2 R3
+MOVE R3 R4
+ADD R1 R2 R3
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: LOADK R3 K1 [2]
+ADD R2 R1 R3
+RETURN R2 1
+)");
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_generic_for_key_value_pair_in_frame")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
+        local function inlinee(values)
+            for _ in values do
+            end
+        end
+
+        local function caller(x)
+            inlinee(x)
+            return 1
+        end
+    )");
+    REQUIRE(result);
+
+    // the loop has one unused variable, but the FORGLOOP fast paths still store a key/value pair to R6/R7
+    CompTimeBcFunction& caller = result->second;
+    REQUIRE(allocateSlots(caller));
+    CHECK_GE(caller.maxstacksize, 8);
+    CHECK_EQ("\n" + printFunction(caller), R"(
+GETUPVAL R1 U0
+MOVE R2 R0
+CMPPROTO R1 #0 L1
+MOVE R3 R2
+LOADNIL R4
+LOADNIL R5
+FORGPREP R3 L0
+L0: FORGLOOP R3 L0 1
+JUMP L2
+L1: CALLFB R1 1 0 [-1]
+L2: LOADK R1 K0 [1]
+RETURN R1 1
+)");
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_inlined_namecall_self_in_register")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag namecallSelfFromMove{FFlag::LuauInlinerNamecallSelfFromMove, true};
+
+    std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
+        local function inlinee(t, x)
+            return t.v + x
+        end
+
+        local function caller(x)
+            local t = {v = 7, inlinee = inlinee}
+            local result = t:inlinee(42)
+            return result + 2
+        end
+    )");
+    REQUIRE(result);
+
+    // the inlined body reads self from the MOVE, which the CALLFB operand keeps in place; without the fix slot
+    // allocation coalesces the MOVE away and the body reads a register nothing defines on the inlined path
+    CompTimeBcFunction& caller = result->second;
+    REQUIRE(allocateSlots(caller));
+    CHECK_EQ("\n" + printFunction(caller), R"(
+DUPTABLE R1 2
+LOADK R2 K0 ['v']
+LOADK R3 K3 [7]
+SETTABLE R3 R1 R2
+LOADK R2 K1 ['inlinee']
+GETUPVAL R3 U0
+SETTABLE R3 R1 R2
+LOADK R4 K4 [42]
+MOVE R3 R1
+GETTABLEKS R2 R3 K1 ['inlinee']
+CMPPROTO R2 #0 L0
+GETTABLEKS R1 R3 K0 ['v']
+ADD R2 R1 R4
+JUMP L1
+L0: NAMECALL R2 R3 K1 ['inlinee']
+CALLFB R2 2 1 [-1]
+L1: LOADK R4 K5 [2]
+ADD R3 R2 R4
+RETURN R3 1
+)");
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "folds_inlined_function_with_dead_loop")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    auto res = compileAndInline(R"(
+        local function inlinee(l0, ...)
+            (function(value: Vector3, ...)
+                vector.dot({}, "")
+            end)("")
+
+            while false do
+            end
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )");
+
+    REQUIRE(res);
+
+    BcVmConstImpl impl(res->second);
+    Bytecode::foldConstants(res->second, impl);
+
+    CHECK(verifyUseConsistency(res->second));
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "feedback_slots_after_inlining")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    auto res = compileAndInline(
+        R"(
+        local function inlinee(x)
+            return x + 1
+        end
+
+        local function caller(x)
+            local a = f()
+            local b = inlinee(x)
+            local c = g()
+            return a, b, c
+        end
+    )",
+        1
+    );
+    REQUIRE(res);
+    REQUIRE_EQ(verifyUseConsistency(res->second), true);
+
+    CHECK_EQ(
+        "\n" + toString(res->second, false),
+        R"(
+; function caller($arg0) line 6 maxstacksize: 7 upvalues: 1 flags: 0
+; feedback slot 0: CALLTARGET %1
+; feedback slot 1: CALLTARGET %4
+; feedback slot 2: CALLTARGET %6
+bb_0 (entry):
+; successors: bb_4 [fallthrough], bb_2 [branch]
+  %0 = GETGLOBAL 135, K0 ('f')
+  %1 = CALLFB 0, 1, 0, %0
+  %2 = GETUPVAL U0
+  %3 = MOVE R0
+  %8 = CMPPROTO %2, 0, bb_2
+
+bb_4:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_3 [fallthrough]
+  %9 = LOADK K2 (1)
+  %10 = ADD %3, %9
+  %12 = MOVE %10
+
+bb_2:
+; predecessors: bb_0 [branch]
+; successors: bb_3 [fallthrough]
+  %4 = CALLFB 1, 1, -1, %2, %3
+
+bb_3:
+; predecessors: bb_2 [fallthrough], bb_4 [fallthrough]
+; successors: bb_1 [fallthrough]
+  phi.0 = %4[0], %12 from bb_4
+  %5 = GETGLOBAL 134, K1 ('g')
+  %6 = CALLFB 0, 1, 2, %5
+  %7 = RETURN 3, %1[0], phi.0, %6[0]
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "inlinee_feedback_slots_after_inlining")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    auto res = compileAndInline(
+        R"(
+        local function inlinee(x)
+            local y = h()
+            return x + y
+        end
+
+        local function caller(x)
+            local a = f()
+            local b = inlinee(x)
+            local c = g()
+            return a, b, c
+        end
+    )",
+        1
+    );
+    REQUIRE(res);
+    REQUIRE_EQ(verifyUseConsistency(res->second), true);
+
+    CHECK_EQ(
+        "\n" + toString(res->second, false),
+        R"(
+; function caller($arg0) line 7 maxstacksize: 7 upvalues: 1 flags: 0
+; feedback slot 0: CALLTARGET %1
+; feedback slot 1: CALLTARGET %4
+; feedback slot 2: CALLTARGET %6
+; feedback slot 3: CALLTARGET %10
+bb_0 (entry):
+; successors: bb_4 [fallthrough], bb_2 [branch]
+  %0 = GETGLOBAL 135, K0 ('f')
+  %1 = CALLFB 0, 1, 0, %0
+  %2 = GETUPVAL U0
+  %3 = MOVE R0
+  %8 = CMPPROTO %2, 0, bb_2
+
+bb_4:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_3 [fallthrough]
+  %9 = GETGLOBAL 137, K2 ('h')
+  %10 = CALLFB 0, 1, 3, %9
+  %11 = ADD %3, %10[0]
+  %13 = MOVE %11
+
+bb_2:
+; predecessors: bb_0 [branch]
+; successors: bb_3 [fallthrough]
+  %4 = CALLFB 1, 1, -1, %2, %3
+
+bb_3:
+; predecessors: bb_2 [fallthrough], bb_4 [fallthrough]
+; successors: bb_1 [fallthrough]
+  phi.0 = %4[0], %13 from bb_4
+  %5 = GETGLOBAL 134, K1 ('g')
+  %6 = CALLFB 0, 1, 2, %5
+  %7 = RETURN 3, %1[0], phi.0, %6[0]
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "construct_feedback_slot_after_inlining")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+
+    auto res = compileAndInline(R"(
+        class Point
+            public x
+            public y
+        end
+
+        local function inlinee(Class, x)
+            local result = Class { x = x, y = 42 }
+            return result
+        end
+
+        local function caller(x)
+            local marker = "caller"
+            local value = inlinee(Point, x)
+            return marker, value
+        end
+    )");
+    REQUIRE(res);
+    REQUIRE_EQ(verifyUseConsistency(res->second), true);
+
+    CHECK_EQ(
+        "\n" + toString(res->second, false),
+        R"(
+; function caller($arg0) line 12 maxstacksize: 11 upvalues: 2 flags: 0
+; feedback slot 0: CALLTARGET %4
+; feedback slot 1: CONSTRUCT K3 ({...})
+bb_0 (entry):
+; successors: bb_4 [fallthrough], bb_2 [branch]
+  %0 = LOADK K0 ('caller')
+  %1 = GETUPVAL U0
+  %2 = GETUPVAL U1
+  %3 = MOVE R0
+  %6 = CMPPROTO %1, 0, bb_2
+
+bb_4:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_3 [fallthrough]
+  %7 = MOVE %2
+  %8 = CONSTRUCT %7, 1
+  %9 = LOADK K1 ('x')
+  %10 = SETTABLE %3, %8, %9
+  %11 = LOADK K2 ('y')
+  %12 = LOADK K4 (42)
+  %13 = SETTABLE %12, %8, %11
+  %14 = FINCONSTRUCT %8, 0
+  %15 = CALL 1, 1, %7, %8
+  %17 = MOVE %15[0]
+
+bb_2:
+; predecessors: bb_0 [branch]
+; successors: bb_3 [fallthrough]
+  %4 = CALLFB 2, 1, -1, %1, %2, %3
+
+bb_3:
+; predecessors: bb_2 [fallthrough], bb_4 [fallthrough]
+; successors: bb_1 [fallthrough]
+  phi.0 = %4[0], %17 from bb_4
+  %5 = RETURN 2, %0, phi.0
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+    );
 }
 
 TEST_SUITE_END();

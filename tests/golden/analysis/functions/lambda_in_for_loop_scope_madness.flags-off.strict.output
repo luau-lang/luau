@@ -1,0 +1,1 @@
+./analysis/functions/lambda_in_for_loop_scope_madness.luau(6,41): TypeError: Expected this to be 'string', but got 'number'

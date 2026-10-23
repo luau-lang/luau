@@ -22,10 +22,10 @@ LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAG(LuauTrackPrefixLocal)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
 
-LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
-
+LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -506,8 +506,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_span_is_correct")
 
 TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_links_to_local")
 {
-    ScopedFastFlag sff{FFlag::LuauTrackPrefixLocal, true};
-
     AstStatBlock* block = parse(R"(
         local Types = nil
         type Foo = Types.Bar
@@ -534,8 +532,6 @@ TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_links_to_local")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_prefixed_type_reference_has_no_local")
 {
-    ScopedFastFlag sff{FFlag::LuauTrackPrefixLocal, true};
-
     AstStatBlock* block = parse(R"(
         type Foo = Unknown.Bar
     )");
@@ -555,8 +551,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_prefixed_type_reference_has_no_local")
 
 TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_shadowing")
 {
-    ScopedFastFlag sff{FFlag::LuauTrackPrefixLocal, true};
-
     AstStatBlock* block = parse(R"(
         local Types = nil
         do
@@ -887,8 +881,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
-    ScopedFastFlag sff{FFlag::LuauNoDuplicateBinaryPrefix, true};
-
     matchParseError("return 0b123", "Malformed number");
     matchParseError("return 0b0b1", "Malformed number");
     matchParseError("return 123x", "Malformed number");
@@ -1734,9 +1726,24 @@ TEST_CASE_FIXTURE(Fixture, "string_literal_call")
     REQUIRE(stc != nullptr);
     AstExprCall* ec = stc->expr->as<AstExprCall>();
     CHECK(ec->args.size == 1);
+    CHECK(ec->tableCall == false);
     AstExprConstantString* arg = ec->args.data[0]->as<AstExprConstantString>();
     REQUIRE(arg != nullptr);
     CHECK(std::string(arg->value.data, arg->value.size) == "bar");
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_call")
+{
+    AstStatBlock* stat = parse("do foo{x=1} end");
+    REQUIRE(stat != nullptr);
+    AstStatBlock* dob = stat->body.data[0]->as<AstStatBlock>();
+    AstStatExpr* stc = dob->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stc != nullptr);
+    AstExprCall* ec = stc->expr->as<AstExprCall>();
+    CHECK(ec->args.size == 1);
+    CHECK(ec->tableCall == true);
+    AstExprTable* arg = ec->args.data[0]->as<AstExprTable>();
+    REQUIRE(arg != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "multiline_strings_newlines")
@@ -2957,8 +2964,10 @@ TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
     CHECK(group2->type->is<AstTypeReference>());
 }
 
-TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
+TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_pack_explicit")
 {
+    ScopedFastFlag sff{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
+
     AstStatBlock* stat = parse(R"(
         type Foo = () -> (string)
     )");
@@ -2975,7 +2984,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
     REQUIRE(returnTypePack);
     REQUIRE_EQ(1, returnTypePack->typeList.types.size);
     REQUIRE(!returnTypePack->typeList.tailType);
-    CHECK(returnTypePack->typeList.types.data[0]->is<AstTypeGroup>());
+    CHECK(returnTypePack->typeList.types.data[0]->is<AstTypeReference>());
 }
 
 TEST_CASE_FIXTURE(Fixture, "inner_and_outer_scope_of_functions_have_correct_end_position")
@@ -3401,6 +3410,170 @@ TEST_CASE_FIXTURE(Fixture, "class_public_function")
     REQUIRE(result.errors.empty());
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_extends_basic")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+open class Animal
+    public species: string
+end
+
+class Cat extends Animal
+    public meowMult: number
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 2);
+    const AstStatClass* animal = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(animal);
+    CHECK(animal->super == nullptr);
+    CHECK(animal->open);
+
+    const AstStatClass* cat = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(cat);
+    REQUIRE(cat->super != nullptr);
+    CHECK(!cat->open);
+
+    const AstExpr* super = cat->super;
+    REQUIRE(super);
+
+    const AstExprLocal* superLocal = super->as<AstExprLocal>();
+    REQUIRE(superLocal);
+
+    CHECK(superLocal->local == animal->name);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_exported_open")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+export open Animal
+    public species: string
+end
+        )",
+        "Incomplete statement: expected a class definition after 'open'"
+    );
+
+    matchParseError(
+        R"(
+open Animal
+    public species: string
+end
+        )",
+        "Incomplete statement: expected a class definition after 'open'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_class_after_open")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+export open class Animal
+    public species: string
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 1);
+    const AstStatClass* animal = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(animal);
+    CHECK(animal->super == nullptr);
+    CHECK(animal->exported);
+    CHECK(animal->open);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_extends_not_a_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+class Cat extends "Animal"
+    public meowMult: number
+end
+
+class Dog extends 42
+    public barkMult: number
+end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 2);
+
+    CHECK_EQ(result.errors[0].getMessage(), R"(Expected identifier when parsing class reference expression, got "Animal")");
+    CHECK_EQ(result.errors[1].getMessage(), R"(Expected identifier when parsing class reference expression, got '42')");
+
+    REQUIRE_EQ(result.root->body.size, 2);
+    const AstStatClass* cat = result.root->body.data[0]->as<AstStatClass>();
+
+    auto m1 = cat->members.data[0].get_if<AstClassProperty>();
+    REQUIRE(m1);
+    CHECK(m1->name == "meowMult");
+
+    const AstStatClass* dog = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(dog);
+
+    m1 = dog->members.data[0].get_if<AstClassProperty>();
+    REQUIRE(m1);
+    CHECK(m1->name == "barkMult");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_extends_imported_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+local m = require("module")
+
+class Cat extends m.Animal
+    public meowMult: number
+end
+
+class Dog extends m["Animal"]
+    public barkMult: number
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 3);
+    const AstStatClass* cat = result.root->body.data[1]->as<AstStatClass>();
+
+    const AstExpr* super = cat->super;
+    REQUIRE(super);
+
+    const AstExprIndexName* superIndex = super->as<AstExprIndexName>();
+    REQUIRE(superIndex);
+
+    const AstExprLocal* superLocal = superIndex->expr->as<AstExprLocal>();
+    REQUIRE(superLocal);
+
+    CHECK(superLocal->local->name == "m");
+    CHECK(superIndex->index == "Animal");
+
+    const AstStatClass* dog = result.root->body.data[2]->as<AstStatClass>();
+
+    super = dog->super;
+    REQUIRE(super);
+
+    const AstExprIndexExpr* superIndexExpr = super->as<AstExprIndexExpr>();
+    REQUIRE(superIndexExpr);
+
+    superLocal = superIndexExpr->expr->as<AstExprLocal>();
+    REQUIRE(superLocal);
+
+    CHECK(superLocal->local->name == "m");
+
+    const AstExprConstantString* superIndexString = superIndexExpr->index->as<AstExprConstantString>();
+    REQUIRE(superIndexString);
+    CHECK(std::string(superIndexString->value.data, superIndexString->value.size) == "Animal");
+}
+
 TEST_CASE_FIXTURE(Fixture, "class_recovery_invalid_body_token")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
@@ -3674,13 +3847,10 @@ TEST_CASE_FIXTURE(Fixture, "large_classes_example")
             public health: number
             public level: number
 
-            -- Static 'Constructor'
-            function new(name: string)
-                return PlayerStats {
-                    name = name,
-                    health = 100,
-                    level = 1
-                }
+            function __init(self, name: string)
+                self.name = name
+                self.health = 100
+                self.level = 1
             end
 
             -- Method
@@ -3695,7 +3865,7 @@ TEST_CASE_FIXTURE(Fixture, "large_classes_example")
             end
         end
 
-        local player = PlayerStats.new("John Doe")
+        local player = PlayerStats("John Doe")
         print(player.name)
         player:heal(20)
         print(player.name)
@@ -3959,6 +4129,162 @@ TEST_CASE_FIXTURE(Fixture, "type_group_with_cst")
     const auto cstNode = (*baseCstNode)->as<CstTypeGroup>();
     REQUIRE(cstNode);
     CHECK_EQ(cstNode->closePosition, Position{1, 24});
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_pack_explicit_with_cst")
+{
+    ScopedFastFlag sff{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    ParseResult result = parseEx("type T = () -> (number, ...string)", parseOptions);
+    REQUIRE(result.root);
+
+    REQUIRE_EQ(result.root->body.size, 1);
+    auto typeAlias = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(typeAlias);
+    auto funcType = typeAlias->type->as<AstTypeFunction>();
+    REQUIRE(funcType);
+    auto typePack = funcType->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    REQUIRE_EQ(typePack->typeList.types.size, 1);
+    REQUIRE(typePack->typeList.tailType);
+
+    const auto baseCstNode = result.cstNodeMap.find(typePack);
+    REQUIRE(baseCstNode);
+    const auto cstNode = (*baseCstNode)->as<CstTypePackExplicit>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->openParenthesesPosition, Position{0, 15});
+    CHECK_EQ(cstNode->closeParenthesesPosition, Position{0, 33});
+    REQUIRE_EQ(cstNode->commaPositions.size, 1);
+    CHECK_EQ(cstNode->commaPositions.data[0], Position{0, 22});
+}
+
+TEST_CASE_FIXTURE(Fixture, "valid_exact_table_types")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauParseExactTables, true},
+    };
+
+    ParseResult result = tryParse(R"(
+        type A = {}
+        type B = {x: number}
+        type C = {x: number, ...}
+        type D = {...}
+        type E = {[number]: boolean, ...}
+        type F = {number}
+        type G = {number, ...}
+    )");
+
+    AstStatBlock* block = result.root;
+    REQUIRE(7 == block->body.size);
+
+    auto alias0 = block->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(alias0->type->as<AstTypeTable>());
+    CHECK(alias0->type->as<AstTypeTable>()->isExact);
+
+    auto alias1 = block->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(alias1->type->as<AstTypeTable>());
+    CHECK(alias1->type->as<AstTypeTable>()->isExact);
+
+    auto alias2 = block->body.data[2]->as<AstStatTypeAlias>();
+    REQUIRE(alias2->type->as<AstTypeTable>());
+    CHECK(!alias2->type->as<AstTypeTable>()->isExact);
+
+    auto alias3 = block->body.data[3]->as<AstStatTypeAlias>();
+    REQUIRE(alias3->type->as<AstTypeTable>());
+    CHECK(!alias3->type->as<AstTypeTable>()->isExact);
+
+    auto alias4 = block->body.data[4]->as<AstStatTypeAlias>();
+    REQUIRE(alias4->type->as<AstTypeTable>());
+    CHECK(!alias4->type->as<AstTypeTable>()->isExact);
+
+    auto alias5 = block->body.data[5]->as<AstStatTypeAlias>();
+    REQUIRE(alias5->type->as<AstTypeTable>());
+    CHECK(alias5->type->as<AstTypeTable>()->isExact);
+
+    auto alias6 = block->body.data[6]->as<AstStatTypeAlias>();
+    REQUIRE(alias6->type->as<AstTypeTable>());
+    CHECK(!alias6->type->as<AstTypeTable>()->isExact);
+}
+
+TEST_CASE_FIXTURE(Fixture, "invalid_exact_table_types")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauParseExactTables, true},
+    };
+
+    ParseResult result = tryParse(R"(
+        type A = {read ...}
+    )");
+
+    CHECK(0 != result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "exact_table_type_ellipsis_must_be_last")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauParseExactTables, true},
+    };
+
+    ParseResult result = tryParse(R"(
+        type A = {..., x: number}
+    )");
+
+    CHECK(result.errors.size() == 1);
+
+    CHECK(Location({1, 21}, {1, 22}) == result.errors.at(0).getLocation());
+
+    REQUIRE(result.root);
+    REQUIRE(result.root->body.size == 1);
+
+    AstStatTypeAlias* alias = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+
+    AstTypeTable* table = alias->type->as<AstTypeTable>();
+    REQUIRE(table);
+    CHECK(!table->isExact);
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_return_type_pack_with_cst_func_return")
+{
+    ScopedFastFlag sff2{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    // `(string | number)?` as a return type is a single optional type:
+    //     union( group( union(string, number) ), nil )
+    // The one pair of parens belongs to the GROUP, so the enclosing return
+    // type pack is implicit and must NOT record any parenthesis positions.
+    ParseResult result = parseEx("type T = () -> (string | number)?", parseOptions);
+    REQUIRE(result.root);
+    REQUIRE_EQ(result.root->body.size, 1);
+
+    auto typeAlias = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(typeAlias);
+    auto funcType = typeAlias->type->as<AstTypeFunction>();
+    REQUIRE(funcType);
+
+    auto typePack = funcType->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    REQUIRE_EQ(typePack->typeList.types.size, 1);
+    REQUIRE(!typePack->typeList.tailType);
+
+    // The sole return type is the optional union `(string | number)?`.
+    auto optional = typePack->typeList.types.data[0]->as<AstTypeUnion>();
+    REQUIRE(optional);
+    REQUIRE_EQ(optional->types.size, 2);
+    CHECK(optional->types.data[0]->is<AstTypeGroup>());    // (string | number)
+    CHECK(optional->types.data[1]->is<AstTypeOptional>()); // ?
+
+    // The parens belong to the group, NOT the return type pack.
+    const auto baseCstNode = result.cstNodeMap.find(typePack);
+    REQUIRE(baseCstNode);
+    const auto cstNode = (*baseCstNode)->as<CstTypePackExplicit>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->openParenthesesPosition, Position::missing());
+    CHECK_EQ(cstNode->closeParenthesesPosition, Position::missing());
 }
 
 TEST_SUITE_END();
@@ -5860,7 +6186,7 @@ export local answer = 42
         R"(
 export class Player
     public health: number
-    
+
     function setHealth(self, health: number)
         self.health = health
         return self
@@ -5970,5 +6296,467 @@ TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
     CHECK_EQ(declaredExternType->props.data[3].access, AstTableAccess::ReadWrite);
 }
 
-// TODO unit tests for various parse errors.
+TEST_CASE_FIXTURE(Fixture, "parse_if_local")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if local x = getValue() then
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    CHECK(ifStat->conditionLocal != nullptr);
+    CHECK(ifStat->conditionLocal->name == "x");
+    CHECK_FALSE(ifStat->conditionIsConst);
+    CHECK(ifStat->condition != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_const")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if const y = getValue() then
+            print(y)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    CHECK(ifStat->conditionLocal != nullptr);
+    CHECK(ifStat->conditionLocal->name == "y");
+    CHECK(ifStat->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_with_annotation")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if local x: number = getValue() then
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    CHECK(ifStat->conditionLocal != nullptr);
+    CHECK(ifStat->conditionLocal->annotation != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_elseif_local")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if local x = a() then
+            print(x)
+        elseif local y = b() then
+            print(y)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    CHECK(ifStat->conditionLocal != nullptr);
+    CHECK(ifStat->conditionLocal->name == "x");
+
+    AstStatIf* elseifStat = ifStat->elsebody->as<AstStatIf>();
+    REQUIRE(elseifStat != nullptr);
+    CHECK(elseifStat->conditionLocal != nullptr);
+    CHECK(elseifStat->conditionLocal->name == "y");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_compat")
+{
+    AstStatBlock* block = parse(R"(
+        if const then
+            print(y)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    CHECK(ifStat->conditionLocal == nullptr);
+    CHECK(!ifStat->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_error_missing_equals")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    matchParseError("if local x then end", "Expected '=' when parsing if local declaration, got 'then'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_error_multiple_bindings")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    matchParseError(
+        "if local x, y = getValue() then end", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_disabled_flag")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, false};
+
+    // With flag disabled, `if local` should fail to parse
+    matchParseError("if local x = getValue() then end", "Expected identifier when parsing expression, got 'local'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_interleaved_with_non_initializers")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if a() then
+            print(1)
+        elseif local y = b() then
+            print(y)
+        elseif c() then
+            print(3)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+
+    AstStatIf* head = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(head != nullptr);
+    CHECK(head->conditionLocal == nullptr);
+
+    AstStatIf* firstElseif = head->elsebody->as<AstStatIf>();
+    REQUIRE(firstElseif != nullptr);
+    REQUIRE(firstElseif->conditionLocal != nullptr);
+    CHECK(firstElseif->conditionLocal->name == "y");
+
+    AstStatIf* secondElseif = firstElseif->elsebody->as<AstStatIf>();
+    REQUIRE(secondElseif != nullptr);
+    CHECK(secondElseif->conditionLocal == nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_deeply_nested_if_local")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    constexpr int depth = 64;
+
+    std::string src = "if local v0 = f() then\n";
+    for (int i = 1; i < depth; ++i)
+        src += "elseif local v" + std::to_string(i) + " = f() then\n";
+    src += "end\n";
+
+    AstStatBlock* block = parse(src);
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+
+    int count = 0;
+    for (AstStatIf* current = block->body.data[0]->as<AstStatIf>(); current != nullptr;
+         current = current->elsebody ? current->elsebody->as<AstStatIf>() : nullptr)
+    {
+        REQUIRE(current->conditionLocal != nullptr);
+        ++count;
+    }
+
+    CHECK(count == depth);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_with_annotation")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if const x: number = getValue() then
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    REQUIRE(ifStat->conditionLocal != nullptr);
+    CHECK(ifStat->conditionLocal->name == "x");
+    CHECK(ifStat->conditionIsConst);
+    CHECK(ifStat->conditionLocal->annotation != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_elseif_const")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if local x = a() then
+            print(x)
+        elseif const y = b() then
+            print(y)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    REQUIRE(ifStat->conditionLocal != nullptr);
+    CHECK_FALSE(ifStat->conditionIsConst);
+
+    AstStatIf* elseifStat = ifStat->elsebody->as<AstStatIf>();
+    REQUIRE(elseifStat != nullptr);
+    REQUIRE(elseifStat->conditionLocal != nullptr);
+    CHECK(elseifStat->conditionLocal->name == "y");
+    CHECK(elseifStat->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_with_else_block")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if local x = getValue() then
+            print(x)
+        else
+            print("nope")
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    REQUIRE(ifStat->conditionLocal != nullptr);
+
+    AstStatBlock* elseBlock = ifStat->elsebody->as<AstStatBlock>();
+    REQUIRE(elseBlock != nullptr);
+    CHECK(elseBlock->hasEnd);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_condition_keyword_location")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse("if local x = v then end");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    REQUIRE(ifStat->conditionKeywordLocation.has_value());
+
+    CHECK_EQ(*ifStat->conditionKeywordLocation, (Location{{0, 3}, {0, 8}}));
+
+    block = parse("if const x = v then end");
+    REQUIRE(block != nullptr);
+    ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    REQUIRE(ifStat->conditionKeywordLocation.has_value());
+
+    CHECK_EQ(*ifStat->conditionKeywordLocation, (Location{{0, 3}, {0, 8}}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_condition_is_if_else_expr")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if local x = if a then b else c then
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    REQUIRE(ifStat->conditionLocal != nullptr);
+    CHECK(ifStat->condition->is<AstExprIfElse>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_nested_binding_in_then_block")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        if local x = a() then
+            if local y = b() then
+                print(x, y)
+            end
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* outer = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(outer != nullptr);
+    REQUIRE(outer->conditionLocal != nullptr);
+    CHECK(outer->conditionLocal->name == "x");
+
+    REQUIRE(outer->thenbody != nullptr);
+    REQUIRE(outer->thenbody->body.size == 1);
+    AstStatIf* inner = outer->thenbody->body.data[0]->as<AstStatIf>();
+    REQUIRE(inner != nullptr);
+    REQUIRE(inner->conditionLocal != nullptr);
+    CHECK(inner->conditionLocal->name == "y");
+
+    CHECK(inner->conditionLocal != outer->conditionLocal);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_error_multiple_bindings")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    matchParseError(
+        "if const x, y = getValue() then end", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = getValue() then x else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    CHECK(str->list.size == 1);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->name == "x");
+    CHECK_FALSE(ifElseExpr->conditionIsConst);
+    CHECK(ifElseExpr->condition != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_expression")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if const y = getValue() then y else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->name == "y");
+    CHECK(ifElseExpr->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_expression_compat")
+{
+    AstStat* stat = parse("return if const then y else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal == nullptr);
+    CHECK(!ifElseExpr->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_with_annotation")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x: number = getValue() then x else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->annotation != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_elseif_local_expression")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = a() then x elseif const y = b() then y else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->name == "x");
+    CHECK_FALSE(ifElseExpr->conditionIsConst);
+
+    AstExprIfElse* elseifExpr = ifElseExpr->falseExpr->as<AstExprIfElse>();
+    REQUIRE(elseifExpr != nullptr);
+    REQUIRE(elseifExpr->conditionLocal != nullptr);
+    CHECK(elseifExpr->conditionLocal->name == "y");
+    CHECK(elseifExpr->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_binding_not_visible_in_else")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = getValue() then x else x");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+
+    AstExprLocal* trueLocal = ifElseExpr->trueExpr->as<AstExprLocal>();
+    REQUIRE(trueLocal != nullptr);
+    CHECK(trueLocal->local == ifElseExpr->conditionLocal);
+
+    CHECK(ifElseExpr->falseExpr->as<AstExprGlobal>() != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_error_multiple_bindings")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    matchParseError(
+        "return if local x, y = getValue() then x else 0", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_nested_in_true_branch")
+{
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = a() then (if local y = b() then y else 0) else -1");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* outer = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(outer != nullptr);
+    REQUIRE(outer->conditionLocal != nullptr);
+    CHECK(outer->conditionLocal->name == "x");
+
+    AstExprGroup* group = outer->trueExpr->as<AstExprGroup>();
+    REQUIRE(group != nullptr);
+    AstExprIfElse* inner = group->expr->as<AstExprIfElse>();
+    REQUIRE(inner != nullptr);
+    REQUIRE(inner->conditionLocal != nullptr);
+    CHECK(inner->conditionLocal->name == "y");
+    CHECK(inner->conditionLocal != outer->conditionLocal);
+}
+
 TEST_SUITE_END();

@@ -5,6 +5,7 @@
 #include "Luau/CodeGenOptions.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct Proto;
@@ -16,10 +17,13 @@ namespace CodeGen
 
 struct CfgInfo;
 
+const char* getTagName(uint8_t tag);
 const char* getCmdName(IrCmd cmd);
 const char* getBlockKindName(IrBlockKind kind);
 const char* getValueKindName(IrValueKind kind);
 const char* getConversionCmdSuffix(IrCmd conversionCmd);
+
+uint8_t parseTagName(std::string_view name);
 
 struct IrToStringContext
 {

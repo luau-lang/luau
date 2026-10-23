@@ -1,0 +1,1 @@
+./analysis/refinements/index_unknown_refined_with_type.luau(6,12): TypeError: Expected type table, got 'table' instead

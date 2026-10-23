@@ -1,0 +1,19 @@
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(4,11): TypeError: Type function instance add<T, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(3,1): TypeError: Expected this to be
+	'((number) -> number)?'
+but got
+	'<T>(T) -> concat<T, string>'
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(9,11): TypeError: Type function instance add<T, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(8,8): TypeError: Expected this to be
+	'((number) -> number)?'
+but got
+	'<T>(T) -> concat<T, string>'
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(15,1): TypeError: Expected this to be
+	'((number) -> number)?'
+but got
+	'(string) -> string'
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(20,11): TypeError: Type function instance add<T, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(19,8): TypeError: Expected this to be
+	'((number) -> number)?'
+but got
+	'<T>(T) -> concat<T, string>'

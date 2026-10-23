@@ -3,12 +3,12 @@
 
 #include "Luau/Config.h"
 #include "Luau/ConfigResolver.h"
+#include "Luau/DenseHash.h"
 #include "Luau/GlobalTypes.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/RequireTracer.h"
 #include "Luau/Scope.h"
-#include "Luau/Set.h"
 #include "Luau/TypeCheckLimits.h"
 
 #include <mutex>
@@ -44,6 +44,13 @@ struct LoadDefinitionFileResult
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments);
 
+struct ModuleSCC
+{
+    std::vector<ModuleName> members;
+    std::shared_ptr<TypeArena> sharedArena;
+};
+using ModuleSCCPtr = std::shared_ptr<ModuleSCC>;
+
 struct SourceNode
 {
     bool hasDirtySourceModule() const
@@ -71,9 +78,11 @@ struct SourceNode
 
     ModuleName name;
     std::string humanReadableName;
-    DenseHashSet<ModuleName> requireSet{{}};
+    std::weak_ptr<ModuleSCC> scc;
+    DenseHashSet<ModuleName> requireSet;
+
     std::vector<std::pair<ModuleName, Location>> requireLocations;
-    Set<ModuleName> dependents{{}};
+    DenseHashSet<ModuleName> dependents;
 
     bool dirtySourceModule = true;
     bool dirtyModule = true;
@@ -175,8 +184,8 @@ struct Frontend
 
         size_t dynamicConstraintsCreated = 0;
     };
+
     Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options = {});
-    Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
     void setLuauSolverMode(SolverMode mode);
     SolverMode getLuauSolverMode() const;
@@ -283,6 +292,8 @@ private:
         DenseHashSet<Luau::ModuleName>& seen,
         const FrontendOptions& frontendOptions
     );
+    void computeSCCs(const std::vector<ModuleName>& buildQueue);
+    void checkSCCBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
     void recordItemResult(const BuildQueueItem& item);
@@ -311,13 +322,17 @@ public:
 
     ConfigResolver* configResolver;
     FrontendOptions options;
-    InternalErrorReporter iceHandler;
+
+    std::function<void(const char*)> onInternalError;
+    InternalErrorReporter iceHandler_DEPRECATED; // TODO: remove with FFlagLuauSplitIceHandler
+
     std::function<void(const ModuleName& name, const ScopePtr& scope, bool forAutocomplete)> prepareModuleScope;
     std::function<void(const ModuleName& name, std::string log)> writeJsonLog = {};
 
     std::unordered_map<ModuleName, std::shared_ptr<SourceNode>> sourceNodes;
     std::unordered_map<ModuleName, std::shared_ptr<SourceModule>> sourceModules;
     std::unordered_map<ModuleName, RequireTraceResult> requireTrace;
+    DenseHashMap<ModuleName, ModuleSCCPtr> sccs;
 
     Stats stats = {};
 

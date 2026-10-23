@@ -83,7 +83,8 @@ public:
         Absent,
         Ambiguous,
         PresentJson,
-        PresentLuau
+        PresentLuau,
+        PresentLuauBytecode
     };
 
     virtual ConfigStatus getConfigStatus() const
@@ -100,7 +101,7 @@ public:
     {
         return ConfigBehavior::GetAlias;
     }
-    virtual std::optional<std::string> getAlias(const std::string& alias) const
+    virtual std::optional<std::string> getAlias(const std::string& alias)
     {
         return std::nullopt;
     }

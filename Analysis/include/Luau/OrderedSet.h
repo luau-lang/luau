@@ -63,7 +63,7 @@ struct OrderedSet
 
 private:
     std::vector<T> elements;
-    DenseHashSet<T> elementSet{nullptr};
+    DenseHashSet<T> elementSet;
 };
 
 } // namespace Luau

@@ -24,7 +24,7 @@ struct Profiler
     std::string stackScratch;
 
     // statistics, updated by trigger
-    Luau::DenseHashMap<std::string, uint64_t> data{""};
+    Luau::DenseHashMap<std::string, uint64_t> data;
     uint64_t gc[16] = {};
 } gProfiler;
 

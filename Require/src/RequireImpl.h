@@ -15,4 +15,8 @@ int registerModuleImpl(lua_State* L);
 int clearCacheEntry(lua_State* L);
 int clearCache(lua_State* L);
 
+void lockPlaceholder(lua_State* L, int idx);
+void populatePlaceholder(lua_State* L, int placeholderIdx, int resultIdx);
+void createPlaceholder(lua_State* L);
+
 } // namespace Luau::Require

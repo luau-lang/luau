@@ -522,6 +522,14 @@ static void applyBuiltinCall(LuauBuiltinFunction bfid, BytecodeTypes& types)
         types.result = LBC_TYPE_NIL;
         types.a = LBC_TYPE_TABLE;
         break;
+    case LBF_TABLE_CREATE:
+        types.result = LBC_TYPE_TABLE;
+        types.a = LBC_TYPE_NUMBER;
+        break;
+    case LBF_TABLE_CLEAR:
+        types.result = LBC_TYPE_NIL;
+        types.a = LBC_TYPE_TABLE;
+        break;
     case LBF_RAWSET:
         types.result = LBC_TYPE_ANY;
         types.a = LBC_TYPE_TABLE;
@@ -1503,7 +1511,21 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_PREPVARARGS:
             case LOP_GETVARARGS:
             case LOP_FORGPREP:
+            case LOP_NEWCLASS:
             case LOP_NEWCLASSMEMBER:
+            case LOP_FASTPCALL:
+                break;
+            case LOP_CONSTRUCT:
+            {
+                int ra = LUAU_INSN_A(*pc);
+
+                regTags[ra] = LBC_TYPE_OBJECT;
+                bcType.result = regTags[ra];
+
+                refineRegType(bcTypeInfo, ra, i, bcType.result);
+                break;
+            }
+            case LOP_FINCONSTRUCT:
                 break;
             default:
                 CODEGEN_ASSERT(!"Unknown instruction");

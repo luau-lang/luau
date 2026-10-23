@@ -18,6 +18,8 @@ TEST_CASE("TypeError_code_should_return_nonzero_code")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_names_show_instead_of_tables")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     getFrontend().options.retainFullTypeGraphs = false;
 
     CheckResult result = check(R"(

@@ -1,0 +1,5 @@
+./analysis/type-functions/keyof_metatable.luau(10,12): TypeError: Expected this to be
+	'"x" | "y" | "z"'
+but got
+	'"w" | "x" | "y" | "z"'; 
+`"w"` is not a subtype of `"x" | "y" | "z"`

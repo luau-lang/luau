@@ -158,11 +158,17 @@ struct FunctionGraphReductionResult
 {
     ErrorVec errors;
     ErrorVec messages;
-    DenseHashSet<TypeId> blockedTypes{nullptr};
-    DenseHashSet<TypePackId> blockedPacks{nullptr};
-    DenseHashSet<TypeId> reducedTypes{nullptr};
-    DenseHashSet<TypePackId> reducedPacks{nullptr};
-    DenseHashSet<TypeId> irreducibleTypes{nullptr};
+    DenseHashSet<TypeId> blockedTypes;
+    DenseHashSet<TypePackId> blockedPacks;
+    DenseHashSet<TypeId> reducedTypes;
+    DenseHashSet<TypePackId> reducedPacks;
+    DenseHashSet<TypeId> irreducibleTypes;
+};
+
+struct TypeFunctionAbsenceCache
+{
+    DenseHashSet<TypeId> types;
+    DenseHashSet<TypePackId> typePacks;
 };
 
 /**
@@ -177,7 +183,13 @@ struct FunctionGraphReductionResult
  * @param normalizer the normalizer to use when normalizing types
  * @param ice the internal error reporter to use for ICEs
  */
-FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force = false);
+FunctionGraphReductionResult reduceTypeFunctions(
+    TypeId entrypoint,
+    Location location,
+    NotNull<TypeFunctionContext> ctx,
+    bool force = false,
+    TypeFunctionAbsenceCache* cache = nullptr
+);
 
 /**
  * Attempt to reduce all instances of any type or type pack functions in the type
@@ -191,7 +203,13 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
  * @param normalizer the normalizer to use when normalizing types
  * @param ice the internal error reporter to use for ICEs
  */
-FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force = false);
+FunctionGraphReductionResult reduceTypeFunctions(
+    TypePackId entrypoint,
+    Location location,
+    NotNull<TypeFunctionContext> ctx,
+    bool force = false,
+    TypeFunctionAbsenceCache* cache = nullptr
+);
 
 /* Returns true if the type provided should block a type function from reducing.
  *

@@ -1,0 +1,2 @@
+./analysis/intersection-types/no_matching_overload.luau(4,12): TypeError: None of the overloads for function that accept 1 arguments are compatible.
+./analysis/intersection-types/no_matching_overload.luau(4,12): TypeError: Available overloads: (number) -> number; and (string) -> string

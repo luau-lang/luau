@@ -1,4 +1,4 @@
--- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime
+-- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime,LuauCallFeedback,LuauEmitCallFeedback
 local function prequire(name) local success, result = pcall(require, name); return success and result end
 local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../bench_support")
 
@@ -299,24 +299,22 @@ class Board
 	public material: number
 	public state: { [number]: Bitboard }
 
-	function new()
-		return Board {
-			ocupied = BITBOARD_ZERO,
-			white = BITBOARD_ZERO,
-			black = BITBOARD_ZERO,
-			unocupied = BITBOARD_FULL,
-			ep = BITBOARD_ZERO,
-			castle = BITBOARD_ZERO,
-			toMove = 1,
-			hm = 0,
-			moves = 0,
-			material = 0,
-			state = table.create(12, BITBOARD_ZERO)
-		}
+	function __init(self)
+		self.ocupied = BITBOARD_ZERO
+		self.white = BITBOARD_ZERO
+		self.black = BITBOARD_ZERO
+		self.unocupied = BITBOARD_FULL
+		self.ep = BITBOARD_ZERO
+		self.castle = BITBOARD_ZERO
+		self.toMove = 1
+		self.hm = 0
+		self.moves = 0
+		self.material = 0
+		self.state = table.create(12, BITBOARD_ZERO)
 	end
 
 	function fromFen(fen)
-		local b = Board.new()
+		local b = Board()
 		local i = 0
 		local rank = 7
 		local file = 0
@@ -709,7 +707,7 @@ class Board
 
 
 	function applyMove(self, move)
-		local out = Board.new()
+		local out = Board()
 		table.move(self.state, 1, 12, 1, out.state)
 		local from = bit32.extract(move, 6, 6)
 		local to = bit32.extract(move, 0, 6)

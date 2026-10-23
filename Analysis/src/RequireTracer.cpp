@@ -13,7 +13,7 @@ struct RequireTracer : AstVisitor
         : result(result)
         , fileResolver(fileResolver)
         , currentModuleName(currentModuleName)
-        , locals(nullptr)
+        , locals{}
     {
     }
 

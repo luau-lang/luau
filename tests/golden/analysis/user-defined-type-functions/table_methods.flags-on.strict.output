@@ -1,0 +1,2 @@
+./analysis/user-defined-type-functions/table_methods.luau(25,12): TypeError: Expected this to be unreachable, but got
+	'{ [boolean]: string, number: string }'

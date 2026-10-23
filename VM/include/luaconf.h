@@ -137,4 +137,14 @@
 #define LUA_VECTOR_SIZE 3 // must be 3 or 4
 #endif
 
+#ifndef LUA_VECTOR_DOUBLE
+#define LUA_VECTOR_DOUBLE 0
+#endif
+
+#if LUA_VECTOR_DOUBLE == 1
+#define LUA_VECTOR_TYPE double
+#else
+#define LUA_VECTOR_TYPE float
+#endif
+
 #define LUA_EXTRA_SIZE (LUA_VECTOR_SIZE - 2)

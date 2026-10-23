@@ -7,6 +7,7 @@
 #include <endian.h>
 #endif
 
+#include <stdint.h>
 #include <string.h>
 
 inline uint8_t* writeu8(uint8_t* target, uint8_t value)

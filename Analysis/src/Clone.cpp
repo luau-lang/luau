@@ -11,11 +11,8 @@
 #include "Luau/Unifiable.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -257,7 +254,11 @@ private:
 
     void cloneChildren(ErrorType* t)
     {
-        // noop.
+        if (FFlag::LuauReduceTypeFunctionToSyntheticError)
+        {
+            if (t->synthetic)
+                t->synthetic = shallowClone(*t->synthetic);
+        }
     }
 
     void cloneChildren(BoundType* t)
@@ -272,11 +273,8 @@ private:
         if (t->upperBound)
             t->upperBound = shallowClone(t->upperBound);
 
-        if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-        {
-            if (t->primitiveType)
-                t->primitiveType = shallowClone(*t->primitiveType);
-        }
+        if (t->primitiveType)
+            t->primitiveType = shallowClone(*t->primitiveType);
     }
 
     void cloneChildren(GenericType* t)

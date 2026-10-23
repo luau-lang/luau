@@ -10,6 +10,9 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAGVARIABLE(LuauCompileTableFoldFix)
 
 namespace Luau
 {
@@ -33,9 +36,13 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
     case Constant::Type_Number:
         return ra.type == Constant::Type_Number && la.valueNumber == ra.valueNumber;
 
-    case Constant::Type_Vector:
-        return ra.type == Constant::Type_Vector && la.valueVector[0] == ra.valueVector[0] && la.valueVector[1] == ra.valueVector[1] &&
-               la.valueVector[2] == ra.valueVector[2] && la.valueVector[3] == ra.valueVector[3];
+    case Constant::Type_Vectorf:
+        return ra.type == Constant::Type_Vectorf && la.valueVectorf[0] == ra.valueVectorf[0] && la.valueVectorf[1] == ra.valueVectorf[1] &&
+               la.valueVectorf[2] == ra.valueVectorf[2] && la.valueVectorf[3] == ra.valueVectorf[3];
+
+    case Constant::Type_Vectord:
+        return ra.type == Constant::Type_Vectord && la.valueVectord[0] == ra.valueVectord[0] && la.valueVectord[1] == ra.valueVectord[1] &&
+               la.valueVectord[2] == ra.valueVectord[2] && la.valueVectord[3] == ra.valueVectord[3];
 
     case Constant::Type_String:
         return ra.type == Constant::Type_String && la.stringLength == ra.stringLength && memcmp(la.valueString, ra.valueString, la.stringLength) == 0;
@@ -52,6 +59,20 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
         LUAU_ASSERT(!"Unexpected constant type in comparison");
         return false;
     }
+}
+
+// vector component 'w' is not visible to VM runtime configured with LUA_VECTOR_SIZE == 3, so vectors that only differ in 'w' can't be compared
+static bool vectorsDifferOnlyInW(const Constant& la, const Constant& ra)
+{
+    if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Vectorf)
+        return la.valueVectorf[0] == ra.valueVectorf[0] && la.valueVectorf[1] == ra.valueVectorf[1] && la.valueVectorf[2] == ra.valueVectorf[2] &&
+               la.valueVectorf[3] != ra.valueVectorf[3];
+
+    if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Vectord)
+        return la.valueVectord[0] == ra.valueVectord[0] && la.valueVectord[1] == ra.valueVectord[1] && la.valueVectord[2] == ra.valueVectord[2] &&
+               la.valueVectord[3] != ra.valueVectord[3];
+
+    return false;
 }
 
 static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg)
@@ -72,13 +93,21 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
             result.type = Constant::Type_Number;
             result.valueNumber = -arg.valueNumber;
         }
-        else if (arg.type == Constant::Type_Vector)
+        else if (arg.type == Constant::Type_Vectorf)
         {
-            result.type = Constant::Type_Vector;
-            result.valueVector[0] = -arg.valueVector[0];
-            result.valueVector[1] = -arg.valueVector[1];
-            result.valueVector[2] = -arg.valueVector[2];
-            result.valueVector[3] = -arg.valueVector[3];
+            result.type = Constant::Type_Vectorf;
+            result.valueVectorf[0] = -arg.valueVectorf[0];
+            result.valueVectorf[1] = -arg.valueVectorf[1];
+            result.valueVectorf[2] = -arg.valueVectorf[2];
+            result.valueVectorf[3] = -arg.valueVectorf[3];
+        }
+        else if (arg.type == Constant::Type_Vectord)
+        {
+            result.type = Constant::Type_Vectord;
+            result.valueVectord[0] = -arg.valueVectord[0];
+            result.valueVectord[1] = -arg.valueVectord[1];
+            result.valueVectord[2] = -arg.valueVectord[2];
+            result.valueVectord[3] = -arg.valueVectord[3];
         }
         break;
 
@@ -105,13 +134,21 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber + ra.valueNumber;
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Vectorf)
         {
-            result.type = Constant::Type_Vector;
-            result.valueVector[0] = la.valueVector[0] + ra.valueVector[0];
-            result.valueVector[1] = la.valueVector[1] + ra.valueVector[1];
-            result.valueVector[2] = la.valueVector[2] + ra.valueVector[2];
-            result.valueVector[3] = la.valueVector[3] + ra.valueVector[3];
+            result.type = Constant::Type_Vectorf;
+            result.valueVectorf[0] = la.valueVectorf[0] + ra.valueVectorf[0];
+            result.valueVectorf[1] = la.valueVectorf[1] + ra.valueVectorf[1];
+            result.valueVectorf[2] = la.valueVectorf[2] + ra.valueVectorf[2];
+            result.valueVectorf[3] = la.valueVectorf[3] + ra.valueVectorf[3];
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Vectord)
+        {
+            result.type = Constant::Type_Vectord;
+            result.valueVectord[0] = la.valueVectord[0] + ra.valueVectord[0];
+            result.valueVectord[1] = la.valueVectord[1] + ra.valueVectord[1];
+            result.valueVectord[2] = la.valueVectord[2] + ra.valueVectord[2];
+            result.valueVectord[3] = la.valueVectord[3] + ra.valueVectord[3];
         }
         break;
 
@@ -121,13 +158,21 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber - ra.valueNumber;
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Vectorf)
         {
-            result.type = Constant::Type_Vector;
-            result.valueVector[0] = la.valueVector[0] - ra.valueVector[0];
-            result.valueVector[1] = la.valueVector[1] - ra.valueVector[1];
-            result.valueVector[2] = la.valueVector[2] - ra.valueVector[2];
-            result.valueVector[3] = la.valueVector[3] - ra.valueVector[3];
+            result.type = Constant::Type_Vectorf;
+            result.valueVectorf[0] = la.valueVectorf[0] - ra.valueVectorf[0];
+            result.valueVectorf[1] = la.valueVectorf[1] - ra.valueVectorf[1];
+            result.valueVectorf[2] = la.valueVectorf[2] - ra.valueVectorf[2];
+            result.valueVectorf[3] = la.valueVectorf[3] - ra.valueVectorf[3];
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Vectord)
+        {
+            result.type = Constant::Type_Vectord;
+            result.valueVectord[0] = la.valueVectord[0] - ra.valueVectord[0];
+            result.valueVectord[1] = la.valueVectord[1] - ra.valueVectord[1];
+            result.valueVectord[2] = la.valueVectord[2] - ra.valueVectord[2];
+            result.valueVectord[3] = la.valueVectord[3] - ra.valueVectord[3];
         }
         break;
 
@@ -137,46 +182,88 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber * ra.valueNumber;
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Vectorf)
         {
-            bool hadW = la.valueVector[3] != 0.0f || ra.valueVector[3] != 0.0f;
-            float resultW = la.valueVector[3] * ra.valueVector[3];
+            bool hadW = la.valueVectorf[3] != 0.0f || ra.valueVectorf[3] != 0.0f;
+            float resultW = la.valueVectorf[3] * ra.valueVectorf[3];
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = la.valueVector[0] * ra.valueVector[0];
-                result.valueVector[1] = la.valueVector[1] * ra.valueVector[1];
-                result.valueVector[2] = la.valueVector[2] * ra.valueVector[2];
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = la.valueVectorf[0] * ra.valueVectorf[0];
+                result.valueVectorf[1] = la.valueVectorf[1] * ra.valueVectorf[1];
+                result.valueVectorf[2] = la.valueVectorf[2] * ra.valueVectorf[2];
+                result.valueVectorf[3] = resultW;
             }
         }
-        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vectorf)
         {
-            bool hadW = ra.valueVector[3] != 0.0f;
-            float resultW = float(la.valueNumber) * ra.valueVector[3];
+            bool hadW = ra.valueVectorf[3] != 0.0f;
+            float resultW = float(la.valueNumber) * ra.valueVectorf[3];
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = float(la.valueNumber) * ra.valueVector[0];
-                result.valueVector[1] = float(la.valueNumber) * ra.valueVector[1];
-                result.valueVector[2] = float(la.valueNumber) * ra.valueVector[2];
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = float(la.valueNumber) * ra.valueVectorf[0];
+                result.valueVectorf[1] = float(la.valueNumber) * ra.valueVectorf[1];
+                result.valueVectorf[2] = float(la.valueNumber) * ra.valueVectorf[2];
+                result.valueVectorf[3] = resultW;
             }
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Number)
         {
-            bool hadW = la.valueVector[3] != 0.0f;
-            float resultW = la.valueVector[3] * float(ra.valueNumber);
+            bool hadW = la.valueVectorf[3] != 0.0f;
+            float resultW = la.valueVectorf[3] * float(ra.valueNumber);
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = la.valueVector[0] * float(ra.valueNumber);
-                result.valueVector[1] = la.valueVector[1] * float(ra.valueNumber);
-                result.valueVector[2] = la.valueVector[2] * float(ra.valueNumber);
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = la.valueVectorf[0] * float(ra.valueNumber);
+                result.valueVectorf[1] = la.valueVectorf[1] * float(ra.valueNumber);
+                result.valueVectorf[2] = la.valueVectorf[2] * float(ra.valueNumber);
+                result.valueVectorf[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Vectord)
+        {
+            bool hadW = la.valueVectord[3] != 0.0 || ra.valueVectord[3] != 0.0;
+            double resultW = la.valueVectord[3] * ra.valueVectord[3];
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = la.valueVectord[0] * ra.valueVectord[0];
+                result.valueVectord[1] = la.valueVectord[1] * ra.valueVectord[1];
+                result.valueVectord[2] = la.valueVectord[2] * ra.valueVectord[2];
+                result.valueVectord[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vectord)
+        {
+            bool hadW = ra.valueVectord[3] != 0.0;
+            double resultW = la.valueNumber * ra.valueVectord[3];
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = la.valueNumber * ra.valueVectord[0];
+                result.valueVectord[1] = la.valueNumber * ra.valueVectord[1];
+                result.valueVectord[2] = la.valueNumber * ra.valueVectord[2];
+                result.valueVectord[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Number)
+        {
+            bool hadW = la.valueVectord[3] != 0.0;
+            double resultW = la.valueVectord[3] * ra.valueNumber;
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = la.valueVectord[0] * ra.valueNumber;
+                result.valueVectord[1] = la.valueVectord[1] * ra.valueNumber;
+                result.valueVectord[2] = la.valueVectord[2] * ra.valueNumber;
+                result.valueVectord[3] = resultW;
             }
         }
         break;
@@ -187,46 +274,88 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber / ra.valueNumber;
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Vectorf)
         {
-            bool hadW = la.valueVector[3] != 0.0f || ra.valueVector[3] != 0.0f;
-            float resultW = la.valueVector[3] / ra.valueVector[3];
+            bool hadW = la.valueVectorf[3] != 0.0f || ra.valueVectorf[3] != 0.0f;
+            float resultW = la.valueVectorf[3] / ra.valueVectorf[3];
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = la.valueVector[0] / ra.valueVector[0];
-                result.valueVector[1] = la.valueVector[1] / ra.valueVector[1];
-                result.valueVector[2] = la.valueVector[2] / ra.valueVector[2];
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = la.valueVectorf[0] / ra.valueVectorf[0];
+                result.valueVectorf[1] = la.valueVectorf[1] / ra.valueVectorf[1];
+                result.valueVectorf[2] = la.valueVectorf[2] / ra.valueVectorf[2];
+                result.valueVectorf[3] = resultW;
             }
         }
-        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vectorf)
         {
-            bool hadW = ra.valueVector[3] != 0.0f;
-            float resultW = float(la.valueNumber) / ra.valueVector[3];
+            bool hadW = ra.valueVectorf[3] != 0.0f;
+            float resultW = float(la.valueNumber) / ra.valueVectorf[3];
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = float(la.valueNumber) / ra.valueVector[0];
-                result.valueVector[1] = float(la.valueNumber) / ra.valueVector[1];
-                result.valueVector[2] = float(la.valueNumber) / ra.valueVector[2];
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = float(la.valueNumber) / ra.valueVectorf[0];
+                result.valueVectorf[1] = float(la.valueNumber) / ra.valueVectorf[1];
+                result.valueVectorf[2] = float(la.valueNumber) / ra.valueVectorf[2];
+                result.valueVectorf[3] = resultW;
             }
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Number)
         {
-            bool hadW = la.valueVector[3] != 0.0f;
-            float resultW = la.valueVector[3] / float(ra.valueNumber);
+            bool hadW = la.valueVectorf[3] != 0.0f;
+            float resultW = la.valueVectorf[3] / float(ra.valueNumber);
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = la.valueVector[0] / float(ra.valueNumber);
-                result.valueVector[1] = la.valueVector[1] / float(ra.valueNumber);
-                result.valueVector[2] = la.valueVector[2] / float(ra.valueNumber);
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = la.valueVectorf[0] / float(ra.valueNumber);
+                result.valueVectorf[1] = la.valueVectorf[1] / float(ra.valueNumber);
+                result.valueVectorf[2] = la.valueVectorf[2] / float(ra.valueNumber);
+                result.valueVectorf[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Vectord)
+        {
+            bool hadW = la.valueVectord[3] != 0.0 || ra.valueVectord[3] != 0.0;
+            double resultW = la.valueVectord[3] / ra.valueVectord[3];
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = la.valueVectord[0] / ra.valueVectord[0];
+                result.valueVectord[1] = la.valueVectord[1] / ra.valueVectord[1];
+                result.valueVectord[2] = la.valueVectord[2] / ra.valueVectord[2];
+                result.valueVectord[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vectord)
+        {
+            bool hadW = ra.valueVectord[3] != 0.0;
+            double resultW = la.valueNumber / ra.valueVectord[3];
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = la.valueNumber / ra.valueVectord[0];
+                result.valueVectord[1] = la.valueNumber / ra.valueVectord[1];
+                result.valueVectord[2] = la.valueNumber / ra.valueVectord[2];
+                result.valueVectord[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Number)
+        {
+            bool hadW = la.valueVectord[3] != 0.0;
+            double resultW = la.valueVectord[3] / ra.valueNumber;
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = la.valueVectord[0] / ra.valueNumber;
+                result.valueVectord[1] = la.valueVectord[1] / ra.valueNumber;
+                result.valueVectord[2] = la.valueVectord[2] / ra.valueNumber;
+                result.valueVectord[3] = resultW;
             }
         }
         break;
@@ -237,46 +366,88 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = floor(la.valueNumber / ra.valueNumber);
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Vectorf)
         {
-            bool hadW = la.valueVector[3] != 0.0f || ra.valueVector[3] != 0.0f;
-            float resultW = floor(la.valueVector[3] / ra.valueVector[3]);
+            bool hadW = la.valueVectorf[3] != 0.0f || ra.valueVectorf[3] != 0.0f;
+            float resultW = floor(la.valueVectorf[3] / ra.valueVectorf[3]);
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = floor(la.valueVector[0] / ra.valueVector[0]);
-                result.valueVector[1] = floor(la.valueVector[1] / ra.valueVector[1]);
-                result.valueVector[2] = floor(la.valueVector[2] / ra.valueVector[2]);
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = floor(la.valueVectorf[0] / ra.valueVectorf[0]);
+                result.valueVectorf[1] = floor(la.valueVectorf[1] / ra.valueVectorf[1]);
+                result.valueVectorf[2] = floor(la.valueVectorf[2] / ra.valueVectorf[2]);
+                result.valueVectorf[3] = resultW;
             }
         }
-        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vectorf)
         {
-            bool hadW = ra.valueVector[3] != 0.0f;
-            float resultW = floor(float(la.valueNumber) / ra.valueVector[3]);
+            bool hadW = ra.valueVectorf[3] != 0.0f;
+            float resultW = floor(float(la.valueNumber) / ra.valueVectorf[3]);
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = floor(float(la.valueNumber) / ra.valueVector[0]);
-                result.valueVector[1] = floor(float(la.valueNumber) / ra.valueVector[1]);
-                result.valueVector[2] = floor(float(la.valueNumber) / ra.valueVector[2]);
-                result.valueVector[3] = resultW;
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = floor(float(la.valueNumber) / ra.valueVectorf[0]);
+                result.valueVectorf[1] = floor(float(la.valueNumber) / ra.valueVectorf[1]);
+                result.valueVectorf[2] = floor(float(la.valueNumber) / ra.valueVectorf[2]);
+                result.valueVectorf[3] = resultW;
             }
         }
-        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
+        else if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Number)
         {
-            bool hadW = la.valueVector[3] != 0.0f;
-            float resultW = floor(la.valueVector[3] / float(ra.valueNumber));
+            bool hadW = la.valueVectorf[3] != 0.0f;
+            float resultW = floor(la.valueVectorf[3] / float(ra.valueNumber));
 
             if (resultW == 0.0f || hadW)
             {
-                result.type = Constant::Type_Vector;
-                result.valueVector[0] = floor(la.valueVector[0] / float(ra.valueNumber));
-                result.valueVector[1] = floor(la.valueVector[1] / float(ra.valueNumber));
-                result.valueVector[2] = floor(la.valueVector[2] / float(ra.valueNumber));
-                result.valueVector[3] = floor(la.valueVector[3] / float(ra.valueNumber));
+                result.type = Constant::Type_Vectorf;
+                result.valueVectorf[0] = floor(la.valueVectorf[0] / float(ra.valueNumber));
+                result.valueVectorf[1] = floor(la.valueVectorf[1] / float(ra.valueNumber));
+                result.valueVectorf[2] = floor(la.valueVectorf[2] / float(ra.valueNumber));
+                result.valueVectorf[3] = floor(la.valueVectorf[3] / float(ra.valueNumber));
+            }
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Vectord)
+        {
+            bool hadW = la.valueVectord[3] != 0.0 || ra.valueVectord[3] != 0.0;
+            double resultW = floor(la.valueVectord[3] / ra.valueVectord[3]);
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = floor(la.valueVectord[0] / ra.valueVectord[0]);
+                result.valueVectord[1] = floor(la.valueVectord[1] / ra.valueVectord[1]);
+                result.valueVectord[2] = floor(la.valueVectord[2] / ra.valueVectord[2]);
+                result.valueVectord[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vectord)
+        {
+            bool hadW = ra.valueVectord[3] != 0.0;
+            double resultW = floor(la.valueNumber / ra.valueVectord[3]);
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = floor(la.valueNumber / ra.valueVectord[0]);
+                result.valueVectord[1] = floor(la.valueNumber / ra.valueVectord[1]);
+                result.valueVectord[2] = floor(la.valueNumber / ra.valueVectord[2]);
+                result.valueVectord[3] = resultW;
+            }
+        }
+        else if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Number)
+        {
+            bool hadW = la.valueVectord[3] != 0.0;
+            double resultW = floor(la.valueVectord[3] / ra.valueNumber);
+
+            if (resultW == 0.0 || hadW)
+            {
+                result.type = Constant::Type_Vectord;
+                result.valueVectord[0] = floor(la.valueVectord[0] / ra.valueNumber);
+                result.valueVectord[1] = floor(la.valueVectord[1] / ra.valueNumber);
+                result.valueVectord[2] = floor(la.valueVectord[2] / ra.valueNumber);
+                result.valueVectord[3] = floor(la.valueVectord[3] / ra.valueNumber);
             }
         }
         break;
@@ -319,7 +490,8 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::CompareNe:
-        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
+        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown &&
+            !(FFlag::LuauCompileNoFoldVectorEqW && vectorsDifferOnlyInW(la, ra)))
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = !constantsEqual(la, ra);
@@ -327,7 +499,8 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::CompareEq:
-        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
+        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown &&
+            !(FFlag::LuauCompileNoFoldVectorEqW && vectorsDifferOnlyInW(la, ra)))
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = constantsEqual(la, ra);
@@ -436,7 +609,7 @@ struct TableMutationTracker : AstVisitor
 {
     const DenseHashMap<AstLocal*, Variable>& variables;
 
-    DenseHashSet<AstLocal*> escaped{nullptr};
+    DenseHashSet<AstLocal*> escaped;
 
     TableMutationTracker(const DenseHashMap<AstLocal*, Variable>& variables)
         : variables(variables)
@@ -488,7 +661,7 @@ struct TableMutationTracker : AstVisitor
         }
     }
 
-    void markEscapedTableIndex(AstExpr* expr, bool isLvalue)
+    void markEscapedTableIndex(AstExpr* expr, bool isLvalue_DEPRECATED)
     {
         if (AstExprIndexName* idx = expr->as<AstExprIndexName>())
         {
@@ -498,9 +671,31 @@ struct TableMutationTracker : AstVisitor
         {
             markEscaped(idx->expr);
 
-            if (isLvalue)
+            if (!FFlag::LuauCompileTableFoldFix && isLvalue_DEPRECATED)
                 markEscaped(idx->index);
         }
+    }
+
+    void markEscapedBinaryOp(AstExpr* lhs, AstExpr* rhs, AstExprBinary::Op op)
+    {
+        // Comparisons do not support operands with different metamethods, and/or don't have a metamethod
+        switch (op)
+        {
+        case AstExprBinary::CompareLt:
+        case AstExprBinary::CompareLe:
+        case AstExprBinary::CompareGt:
+        case AstExprBinary::CompareGe:
+        case AstExprBinary::CompareEq:
+        case AstExprBinary::CompareNe:
+        case AstExprBinary::And:
+        case AstExprBinary::Or:
+            return;
+        default:
+            break;
+        }
+
+        markEscaped(lhs);
+        markEscaped(rhs);
     }
 
     bool visit(AstExprCall* node) override
@@ -526,6 +721,22 @@ struct TableMutationTracker : AstVisitor
 
             markEscaped(item.value);
         }
+
+        return true;
+    }
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscapedBinaryOp(node->left, node->right, node->op);
+
+        return true;
+    }
+
+    bool visit(AstExprIndexExpr* node) override
+    {
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscaped(node->index);
 
         return true;
     }
@@ -556,6 +767,10 @@ struct TableMutationTracker : AstVisitor
     {
         // LHS index expressions mutate the table
         markEscapedTableIndex(node->var, true);
+
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscapedBinaryOp(node->var, node->value, node->op);
+
         return true;
     }
 
@@ -593,6 +808,7 @@ struct ConstantVisitor : AstVisitor
 
     const DenseHashMap<AstExprCall*, int>* builtins;
     bool foldLibraryK = false;
+    bool vectorDoublePrecision;
     LibraryMemberConstantCallback libraryMemberConstantCb;
     AstNameTable& stringTable;
     std::vector<DenseHashMap<AstName, Constant>> constantTables;
@@ -602,7 +818,7 @@ struct ConstantVisitor : AstVisitor
     std::vector<Constant> builtinArgs;
 
     const DenseHashMap<AstLocal*, TableConstantKind>& constantTableLocals;
-    DenseHashMap<AstLocal*, Constant> tableLocals{nullptr};
+    DenseHashMap<AstLocal*, Constant> tableLocals;
 
     ExprConstantChangeLog* exprChangeLog = nullptr;
     LocalConstantChangeLog* localChangeLog = nullptr;
@@ -613,6 +829,7 @@ struct ConstantVisitor : AstVisitor
         DenseHashMap<AstLocal*, Constant>& locals,
         const DenseHashMap<AstExprCall*, int>* builtins,
         bool foldLibraryK,
+        bool vectorDoublePrecision,
         LibraryMemberConstantCallback libraryMemberConstantCb,
         AstNameTable& stringTable,
         const DenseHashMap<AstLocal*, TableConstantKind>& constantTableLocals,
@@ -624,6 +841,7 @@ struct ConstantVisitor : AstVisitor
         , locals(locals)
         , builtins(builtins)
         , foldLibraryK(foldLibraryK)
+        , vectorDoublePrecision(vectorDoublePrecision)
         , libraryMemberConstantCb(libraryMemberConstantCb)
         , stringTable(stringTable)
         , constantTableLocals(constantTableLocals)
@@ -710,7 +928,7 @@ struct ConstantVisitor : AstVisitor
                 if (canFold)
                 {
                     LUAU_ASSERT(builtinArgs.size() == offset + expr->args.size);
-                    result = foldBuiltin(stringTable, *bfid, builtinArgs.data() + offset, expr->args.size);
+                    result = foldBuiltin(stringTable, *bfid, builtinArgs.data() + offset, expr->args.size, vectorDoublePrecision);
                 }
 
                 builtinArgs.resize(offset);
@@ -734,22 +952,43 @@ struct ConstantVisitor : AstVisitor
                         result = *prop;
                 }
             }
-            else if (value.type == Constant::Type_Vector)
+            else if (value.type == Constant::Type_Vectorf)
             {
                 if (expr->index == "x" || expr->index == "X")
                 {
                     result.type = Constant::Type_Number;
-                    result.valueNumber = value.valueVector[0];
+                    result.valueNumber = value.valueVectorf[0];
                 }
                 else if (expr->index == "y" || expr->index == "Y")
                 {
                     result.type = Constant::Type_Number;
-                    result.valueNumber = value.valueVector[1];
+                    result.valueNumber = value.valueVectorf[1];
                 }
                 else if (expr->index == "z" || expr->index == "Z")
                 {
                     result.type = Constant::Type_Number;
-                    result.valueNumber = value.valueVector[2];
+                    result.valueNumber = value.valueVectorf[2];
+                }
+
+                // Do not handle 'w' component because it isn't known if the runtime will be configured in 3-wide or 4-wide mode
+                // In 3-wide, access to 'w' will call unspecified metamethod or fail
+            }
+            else if (value.type == Constant::Type_Vectord)
+            {
+                if (expr->index == "x" || expr->index == "X")
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = value.valueVectord[0];
+                }
+                else if (expr->index == "y" || expr->index == "Y")
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = value.valueVectord[1];
+                }
+                else if (expr->index == "z" || expr->index == "Z")
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = value.valueVectord[2];
                 }
 
                 // Do not handle 'w' component because it isn't known if the runtime will be configured in 3-wide or 4-wide mode
@@ -764,7 +1003,28 @@ struct ConstantVisitor : AstVisitor
 
                     // if we have a custom handler and the constant hasn't been resolved
                     if (libraryMemberConstantCb && result.type == Constant::Type_Unknown)
+                    {
                         libraryMemberConstantCb(eg->name.value, expr->index.value, reinterpret_cast<Luau::CompileConstant*>(&result));
+
+                        if (vectorDoublePrecision && result.type == Constant::Type_Vectorf)
+                        {
+                            Constant copy = result;
+                            result.type = Constant::Type_Vectord;
+                            result.valueVectord[0] = double(copy.valueVectorf[0]);
+                            result.valueVectord[1] = double(copy.valueVectorf[1]);
+                            result.valueVectord[2] = double(copy.valueVectorf[2]);
+                            result.valueVectord[3] = double(copy.valueVectorf[3]);
+                        }
+                        else if (!vectorDoublePrecision && result.type == Constant::Type_Vectord)
+                        {
+                            Constant copy = result;
+                            result.type = Constant::Type_Vectorf;
+                            result.valueVectorf[0] = float(copy.valueVectord[0]);
+                            result.valueVectorf[1] = float(copy.valueVectord[1]);
+                            result.valueVectorf[2] = float(copy.valueVectord[2]);
+                            result.valueVectorf[3] = float(copy.valueVectord[3]);
+                        }
+                    }
                 }
             }
         }
@@ -793,7 +1053,7 @@ struct ConstantVisitor : AstVisitor
         else if (AstExprTable* expr = node->as<AstExprTable>())
         {
             // If expr is a constant table, update result to be a table constant, and insert it into constantTables
-            DenseHashMap<AstName, Constant> props{AstName()};
+            DenseHashMap<AstName, Constant> props;
             for (size_t i = 0; i < expr->items.size; ++i)
             {
                 const AstExprTable::Item& item = expr->items.data[i];
@@ -948,27 +1208,53 @@ struct ConstantVisitor : AstVisitor
         return false;
     }
 
+    void recordLocal(AstLocal* local, AstExpr* value)
+    {
+        Constant arg = analyze(value);
+
+        if (arg.type == Constant::Type_Table)
+        {
+            // If this table could be mutated later, record Constant_Unknown instead of Constant_Table
+            const TableConstantKind* kind = constantTableLocals.find(local);
+            if (kind && *kind == ConstantTable)
+                recordValue(local, arg);
+            else
+                recordValue(local, {});
+        }
+        else
+        {
+            recordValue(local, arg);
+        }
+    }
+
     bool visit(AstStatLocal* node) override
     {
         // all values that align wrt indexing are simple - we just match them 1-1
         for (size_t i = 0; i < node->vars.size && i < node->values.size; ++i)
         {
-            AstExpr* rhs = node->values.data[i];
-            Constant arg = analyze(rhs);
-
-            if (arg.type == Constant::Type_Table)
+            if (FFlag::LuauExperimentalIfLocalSyntax)
             {
-                AstLocal* local = node->vars.data[i];
-
-                // If this table could be mutated later, record Constant_Unknown instead of Constant_Table
-                const TableConstantKind* kind = constantTableLocals.find(local);
-                if (kind && *kind == ConstantTable)
-                    recordValue(local, arg);
-                else
-                    recordValue(local, {});
+                recordLocal(node->vars.data[i], node->values.data[i]);
             }
             else
-                recordValue(node->vars.data[i], arg);
+            {
+                AstExpr* rhs = node->values.data[i];
+                Constant arg = analyze(rhs);
+
+                if (arg.type == Constant::Type_Table)
+                {
+                    AstLocal* local = node->vars.data[i];
+
+                    // If this table could be mutated later, record Constant_Unknown instead of Constant_Table
+                    const TableConstantKind* kind = constantTableLocals.find(local);
+                    if (kind && *kind == ConstantTable)
+                        recordValue(local, arg);
+                    else
+                        recordValue(local, {});
+                }
+                else
+                    recordValue(node->vars.data[i], arg);
+            }
         }
 
         if (node->vars.size > node->values.size)
@@ -995,6 +1281,32 @@ struct ConstantVisitor : AstVisitor
                 analyze(node->values.data[i]);
         }
 
+        return false;
+    }
+
+    bool visit(AstStatIf* node) override
+    {
+        if (AstLocal* local = node->conditionLocal)
+        {
+            recordLocal(local, node->condition);
+
+            node->thenbody->visit(this);
+
+            if (node->elsebody)
+                node->elsebody->visit(this);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    bool visit(AstExprIfElse* node) override
+    {
+        if (node->conditionLocal)
+            recordLocal(node->conditionLocal, node->condition);
+
+        analyze(node);
         return false;
     }
 };
@@ -1055,6 +1367,7 @@ void foldConstants(
     DenseHashMap<AstLocal*, Constant>& locals,
     const DenseHashMap<AstExprCall*, int>* builtins,
     bool foldLibraryK,
+    bool vectorDoublePrecision,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
     AstNameTable& stringTable,
@@ -1064,7 +1377,17 @@ void foldConstants(
 )
 {
     ConstantVisitor visitor{
-        constants, variables, locals, builtins, foldLibraryK, libraryMemberConstantCb, stringTable, tableConstants, exprChangeLog, localChangeLog
+        constants,
+        variables,
+        locals,
+        builtins,
+        foldLibraryK,
+        vectorDoublePrecision,
+        libraryMemberConstantCb,
+        stringTable,
+        tableConstants,
+        exprChangeLog,
+        localChangeLog
     };
     root->visit(&visitor);
 }

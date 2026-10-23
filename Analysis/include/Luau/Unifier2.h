@@ -50,15 +50,15 @@ struct Unifier2
     NotNull<InternalErrorReporter> ice;
     TypeCheckLimits limits;
 
-    DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash> seenTypePairings{{nullptr, nullptr}};
-    DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash> seenTypePackPairings{{nullptr, nullptr}};
+    DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash> seenTypePairings;
+    DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash> seenTypePackPairings;
 
-    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes{nullptr};
+    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes;
 
     // Mapping from generic types to free types to be used in instantiation.
-    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
+    DenseHashMap<TypeId, TypeId> genericSubstitutions;
     // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
 
     // Unification sometimes results in the creation of new free types.
     // We collect them here so that other systems can perform necessary
@@ -104,6 +104,7 @@ private:
     UnifyResult unify_(TypeId subTy, const FunctionType* superFn);
     UnifyResult unify_(const UnionType* subUnion, TypeId superTy);
     UnifyResult unify_(TypeId subTy, const UnionType* superUnion);
+    UnifyResult unify_(const IntersectionType* subIntersection, const IntersectionType* superIntersection);
     UnifyResult unify_(const IntersectionType* subIntersection, TypeId superTy);
     UnifyResult unify_(TypeId subTy, const IntersectionType* superIntersection);
     UnifyResult unify_(TableType* subTable, const TableType* superTable);

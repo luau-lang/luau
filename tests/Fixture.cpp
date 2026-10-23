@@ -10,6 +10,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
+#include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
@@ -33,6 +34,11 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
 
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
+
+LUAU_FASTFLAGVARIABLE(DebugLuauForceExactTables)
+LUAU_FASTFLAGVARIABLE(DebugLuauRunFailingExactTableTests)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -312,7 +318,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
             }
             else
             {
-                TypeChecker typeChecker(getFrontend().globals.globalScope, &moduleResolver, getBuiltins(), &getFrontend().iceHandler);
+                TypeChecker typeChecker(getFrontend().globals.globalScope, &moduleResolver, getBuiltins(), &ice);
                 ModulePtr module = typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict), std::nullopt);
 
                 Luau::lint(sourceModule->root, *sourceModule->names, getFrontend().globals.globalScope, module.get(), sourceModule->hotcomments, {});
@@ -585,9 +591,7 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
 
 TypeId Fixture::parseType(std::string_view src)
 {
-    return getFrontend().parseType(
-        NotNull{&allocator}, NotNull{&nameTable}, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, NotNull{&arena}, src
-    );
+    return getFrontend().parseType(NotNull{&allocator}, NotNull{&nameTable}, NotNull{&ice}, TypeCheckLimits{}, NotNull{&arena}, src);
 }
 
 std::string Fixture::decorateWithTypes(const std::string& code)
@@ -768,6 +772,19 @@ void Fixture::limitStackSize(size_t size)
     uintptr_t addressSpaceSize = getStackAddressSpaceSize();
 
     dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, (int)(addressSpaceSize - size));
+}
+
+void Fixture::ignoreMissingAnnotations(CheckResult& result)
+{
+    auto it = std::remove_if(
+        result.errors.begin(),
+        result.errors.end(),
+        [](const TypeError& err)
+        {
+            return get<TypeAnnotationRequired>(err);
+        }
+    );
+    result.errors.erase(it, result.errors.end());
 }
 
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
@@ -1013,6 +1030,48 @@ void createSomeExternTypes(Frontend& frontend)
         persist(ty.type);
 
     freeze(arena);
+}
+
+doctest::String toString(Relation rel)
+{
+    switch (rel)
+    {
+    case Relation::Disjoint:
+        return "Relation::Disjoint";
+    case Relation::Coincident:
+        return "Relation::Coincident";
+    case Relation::Intersects:
+        return "Relation::Intersects";
+    case Relation::Subset:
+        return "Relation::Subset";
+    case Relation::Superset:
+        return "Relation::Superset";
+
+    default:
+        LUAU_ASSERT(0);
+        return "Relation::???";
+    }
+}
+
+doctest::String toString(TableState state)
+{
+    switch (state)
+    {
+    case TableState::Unsealed:
+        return "TableState::Unsealed";
+    case TableState::Sealed:
+        return "TableState::Sealed";
+    case TableState::Free:
+        return "TableState::Free";
+    case TableState::Generic:
+        return "TableState::Generic";
+    case TableState::Exact:
+        return "TableState::Exact";
+
+    default:
+        LUAU_ASSERT(0);
+        return "TableState::???";
+    }
 }
 
 void dump(const std::vector<Constraint>& constraints)

@@ -146,6 +146,21 @@ assert(integer.idiv(-7i, 3i) == -3i)
 assert(integer.idiv(noinline(32i), 7i) == 4i)
 assert(integer.idiv(noinline(-7i), 3i) == -3i)
 
+-- floored division must round toward -inf even when |a| < |b| (truncated quotient is 0)
+assert(integer.idiv( -1i, 3i) == -1i)
+assert(integer.idiv(  1i,-3i) == -1i)
+assert(integer.idiv( -1i,-3i) ==  0i)
+assert(integer.idiv(  1i, 3i) ==  0i)
+assert(integer.idiv(noinline(-1i), 3i) == -1i)
+assert(integer.idiv(noinline( 1i),-3i) == -1i)
+
+-- consistency with mod: a == (a//b)*b + (a%b) for all sign combinations
+for _, a in {-7i,-1i,1i,7i} do
+    for _, b in {-3i,-2i,2i,3i} do
+        assert(integer.add(integer.mul(integer.idiv(a,b), b), integer.mod(a,b)) == a)
+    end
+end
+
 local success,errmsg = pcall(function() integer.idiv(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))

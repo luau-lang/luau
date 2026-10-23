@@ -1,0 +1,2 @@
+./analysis/type-functions/index_invalid_key.luau(2,16): TypeError: Property '"d"' does not exist on type 'MyObject'
+./analysis/type-functions/index_invalid_key.luau(3,16): TypeError: Property 'boolean' does not exist on type 'MyObject'

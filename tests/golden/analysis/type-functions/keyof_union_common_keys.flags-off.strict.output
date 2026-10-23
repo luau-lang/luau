@@ -1,0 +1,2 @@
+./analysis/type-functions/keyof_union_common_keys.luau(6,12): TypeError: Expected this to be '"z"', but got '"y" | "z"'; 
+`"y"` is not a subtype of `"z"`

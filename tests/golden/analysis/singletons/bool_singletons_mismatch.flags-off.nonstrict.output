@@ -1,0 +1,1 @@
+./analysis/singletons/bool_singletons_mismatch.luau(1,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence

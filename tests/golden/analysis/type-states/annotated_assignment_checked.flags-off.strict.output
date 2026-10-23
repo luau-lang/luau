@@ -1,0 +1,2 @@
+./analysis/type-states/annotated_assignment_checked.luau(3,13): TypeError: Expected this to be 'number', but got 'string'
+./analysis/type-states/annotated_assignment_checked.luau(2,11): LocalUnused: Variable 'value' is never used; prefix with '_' to silence

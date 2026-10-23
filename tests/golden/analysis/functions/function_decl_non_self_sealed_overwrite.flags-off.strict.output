@@ -1,0 +1,3 @@
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(4,11): TypeError: Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(9,11): TypeError: Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time
+./analysis/functions/function_decl_non_self_sealed_overwrite.luau(20,11): TypeError: Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time

@@ -1,0 +1,4 @@
+./analysis/singletons/singleton_type_mismatch_via_variable.luau(2,7): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+./analysis/singletons/singleton_type_mismatch_via_variable.luau(3,7): LocalUnused: Variable 'y' is never used; prefix with '_' to silence
+./analysis/singletons/singleton_type_mismatch_via_variable.luau(4,7): LocalUnused: Variable 'z' is never used; prefix with '_' to silence
+./analysis/singletons/singleton_type_mismatch_via_variable.luau(5,7): LocalUnused: Variable 'w' is never used; prefix with '_' to silence

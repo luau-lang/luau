@@ -45,7 +45,7 @@ enum class FragmentTypeCheckStatus
 
 struct FragmentAutocompleteAncestryResult
 {
-    DenseHashMap<AstName, AstLocal*> localMap{AstName()};
+    DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
     std::vector<AstNode*> ancestry;
     AstStat* nearestStatement = nullptr;

@@ -5,6 +5,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+
 using namespace Luau;
 
 namespace
@@ -112,6 +114,26 @@ TEST_CASE_FIXTURE(Fixture, "LocalTwoAnnotatedBindingsWithTwoValues")
     CHECK(v[4]->is<AstTypeReference>());
     CHECK(v[5]->is<AstExprConstantNumber>());
     CHECK(v[6]->is<AstExprConstantNumber>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "IfLocalAnnotationVisit")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
+
+    AstStatBlock* block = parse(R"(
+        if local a: number = foo() then return end
+    )");
+
+    AstTypeVisitorTrackingWiths v;
+    block->visit(&v);
+
+    CHECK(v[0]->is<AstStatBlock>());
+    CHECK(v[1]->is<AstStatIf>());
+    CHECK(v[2]->is<AstTypeReference>());
+    CHECK(v[3]->is<AstExprCall>());
+    CHECK(v[4]->is<AstExprGlobal>());
+    CHECK(v[5]->is<AstStatBlock>());
+    CHECK(v[6]->is<AstStatReturn>());
 }
 
 TEST_SUITE_END();

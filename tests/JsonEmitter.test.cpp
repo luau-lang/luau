@@ -57,6 +57,21 @@ TEST_CASE("write_string")
     CHECK(emitter.str() == "\"foo,bar,baz,\\n\\\"this should be escaped\\\"\"");
 }
 
+TEST_CASE("write_string_escapes")
+{
+    JsonEmitter shorthand;
+    write(shorthand, "x\b\f\n\r\ty");
+    CHECK(shorthand.str() == "\"x\\b\\f\\n\\r\\ty\"");
+
+    JsonEmitter control;
+    write(control, "\x01\x1f");
+    CHECK(control.str() == "\"\\u0001\\u001f\"");
+
+    JsonEmitter utf8;
+    write(utf8, "e\xc3\xa9\xf0\x9f\x98\x80");
+    CHECK(utf8.str() == "\"e\xc3\xa9\xf0\x9f\x98\x80\"");
+}
+
 TEST_CASE("write_comma")
 {
     JsonEmitter emitter;

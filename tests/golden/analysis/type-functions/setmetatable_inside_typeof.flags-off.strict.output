@@ -1,0 +1,4 @@
+./analysis/type-functions/setmetatable_inside_typeof.luau(4,60): TypeError: Unknown type 'typeDefs.client'
+./analysis/type-functions/setmetatable_inside_typeof.luau(4,78): TypeError: Unknown type 'typeDefs.server'
+./analysis/type-functions/setmetatable_inside_typeof.luau(4,10): TypeError: Unknown type 'typeDefs.sharedCharacter'
+./analysis/type-functions/setmetatable_inside_typeof.luau(2,7): LocalUnused: Variable 'typeDefs' is never used; prefix with '_' to silence

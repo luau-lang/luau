@@ -101,7 +101,7 @@ struct OverloadResolution
     // If a particular overload is a __call metamethod, then type inference
     // needs to know so that it can prepend the self argument to the argument
     // list when it infers.
-    DenseHashSet<TypeId> metamethods{nullptr};
+    DenseHashSet<TypeId> metamethods;
 
     /**
      * Try to determine an unambiguous overload. See `SelectedOverload` for

@@ -83,9 +83,6 @@ struct IrRegAllocX64
 
     uint32_t findInstructionWithFurthestNextUse(const std::array<uint32_t, 16>& regInstUsers) const;
 
-    bool isExtraSpillSlot_DEPRECATED(unsigned slot) const;
-    int getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const;
-
     uint32_t getAllocToken() const
     {
         return allocActionCount;
@@ -102,21 +99,25 @@ struct IrRegAllocX64
 
     uint32_t currInstIdx = ~0u;
 
+    bool keepLazyLocations = false;
+
     std::array<bool, 16> freeGprMap;
     std::array<uint32_t, 16> gprInstUsers;
     std::array<bool, 16> freeXmmMap;
     std::array<uint32_t, 16> xmmInstUsers;
     uint8_t usableXmmRegCount = 0;
 
-    std::bitset<512> usedSpillSlotHalfs; // A bit for every stack slot split in 4 byte halfs
+    std::bitset<512> usedSpillSlotHalfs; // A bit for every stack slot split in 4 byte halves
     unsigned maxUsedSlot = 0;            // Maximum number of 8 byte stack slots used
 
     unsigned nextSpillId = 1;
     std::vector<IrSpillX64> spills;
 
-    DenseHashMap<uint32_t, ExitSyncArgsX64> exitSyncArgs{~0u};
+    DenseHashMap<uint32_t, ExitSyncArgsX64> exitSyncArgs;
 
     uint32_t allocActionCount = 0;
+
+    bool error = false;
 };
 
 struct ScopedRegX64

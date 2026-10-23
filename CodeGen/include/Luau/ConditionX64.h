@@ -3,6 +3,8 @@
 
 #include "Luau/CodeGenCommon.h"
 
+#include <stdint.h>
+
 namespace Luau
 {
 namespace CodeGen

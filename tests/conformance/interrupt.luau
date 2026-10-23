@@ -111,6 +111,16 @@ function hang6()
 	print(obj[100])
 end
 
+function hang7()
+	-- technically not a loop, but an exponentially recursive function
+	function l0()
+		pcall(l0)
+		pcall(l0)
+	end
+
+	l0()
+end
+
 function hangpcall()
 	for i = 1,100 do
 		local status, msg = pcall(string.find, haystack, pattern)

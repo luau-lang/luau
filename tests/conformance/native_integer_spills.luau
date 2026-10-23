@@ -440,6 +440,82 @@ FUNC_LIST[2] = function(hashtable: buffer, entries: buffer, px: buffer, py: buff
     end
 end
 
+FUNC_LIST[3] = function(buf: buffer): ()
+	local l01, l02, l03, l04, l05 = buffer.readinteger(buf, 0), buffer.readinteger(buf, 8), buffer.readinteger(buf, 16), buffer.readinteger(buf, 24), buffer.readinteger(buf, 32)
+	local l06, l07, l08, l09, l10 = buffer.readinteger(buf, 40), buffer.readinteger(buf, 48), buffer.readinteger(buf, 56), buffer.readinteger(buf, 64), buffer.readinteger(buf, 72)
+	local l11, l12, l13, l14, l15 = buffer.readinteger(buf, 80), buffer.readinteger(buf, 88), buffer.readinteger(buf, 96), buffer.readinteger(buf, 104), buffer.readinteger(buf, 112)
+	local l16, l17, l18, l19, l20 = buffer.readinteger(buf, 120), buffer.readinteger(buf, 128), buffer.readinteger(buf, 136), buffer.readinteger(buf, 144), buffer.readinteger(buf, 152)
+	local l21, l22, l23, l24, l25 = buffer.readinteger(buf, 160), buffer.readinteger(buf, 168), buffer.readinteger(buf, 176), buffer.readinteger(buf, 184), buffer.readinteger(buf, 192)
+
+	for r = 0, 8, 8 do
+		local c1 = integer.bxor(integer.bxor(integer.bxor(integer.bxor(l01, l06), l11), l16), l21)
+		local c2 = integer.bxor(integer.bxor(integer.bxor(integer.bxor(l02, l07), l12), l17), l22)
+		local c3 = integer.bxor(integer.bxor(integer.bxor(integer.bxor(l03, l08), l13), l18), l23)
+		local c4 = integer.bxor(integer.bxor(integer.bxor(integer.bxor(l04, l09), l14), l19), l24)
+		local c5 = integer.bxor(integer.bxor(integer.bxor(integer.bxor(l05, l10), l15), l20), l25)
+
+		local d = integer.bxor(c1, integer.lrotate(c3, 1i))
+		local t0, t1, t2, t3, t4 = integer.bxor(d, l02), integer.bxor(d, l07), integer.bxor(d, l12), integer.bxor(d, l17), integer.bxor(d, l22)
+		l02, l07, l12, l17, l22 = integer.rrotate(t1, 20i), integer.rrotate(t3, 19i), integer.rrotate(t0, 63i), integer.rrotate(t2, 54i), integer.rrotate(t4, 62i)
+		d = integer.bxor(c2, integer.rrotate(c4, 63i))
+
+		t0, t1, t2, t3, t4 = integer.bxor(d, l03), integer.bxor(d, l08), integer.bxor(d, l13), integer.bxor(d, l18), integer.bxor(d, l23)
+		l03, l08, l13, l18, l23 = integer.rrotate(t2, 21i), integer.rrotate(t4, 3i), integer.rrotate(t1, 58i), integer.rrotate(t3, 49i), integer.rrotate(t0, 2i)
+		d = integer.bxor(c3, integer.rrotate(c5, 63i))
+
+		t0, t1, t2, t3, t4 = integer.bxor(d, l04), integer.bxor(d, l09), integer.bxor(d, l14), integer.bxor(d, l19), integer.bxor(d, l24)
+		l04, l09, l14, l19, l24 = integer.rrotate(t3, 43i), integer.rrotate(t0, 36i), integer.rrotate(t2, 39i), integer.rrotate(t4, 8i), integer.rrotate(t1, 9i)
+		d = integer.bxor(c4, integer.rrotate(c1, 63i))
+
+		t0, t1, t2, t3, t4 = integer.bxor(d, l05), integer.bxor(d, l10), integer.bxor(d, l15), integer.bxor(d, l20), integer.bxor(d, l25)
+		l05, l10, l15, l20, l25 = integer.rrotate(t4, 50i), integer.rrotate(t1, 44i), integer.rrotate(t3, 56i), integer.rrotate(t0, 37i), integer.rrotate(t2, 25i)
+		d = integer.bxor(c5, integer.rrotate(c2, 63i))
+
+		t1, t2, t3, t4 = integer.bxor(d, l06), integer.bxor(d, l11), integer.bxor(d, l16), integer.bxor(d, l21)
+		l06, l11, l16, l21 = integer.rrotate(t2, 61i), integer.rrotate(t4, 46i), integer.rrotate(t1, 28i), integer.rrotate(t3, 23i)
+		l01 = integer.bxor(d, l01)
+
+		l01, l02, l03, l04, l05 =
+			integer.bxor(l01, integer.band(integer.bnot(l02), l03)),
+			integer.bxor(l02, integer.band(integer.bnot(l03), l04)),
+			integer.bxor(l03, integer.band(integer.bnot(l04), l05)),
+			integer.bxor(l04, integer.band(integer.bnot(l05), l01)),
+			integer.bxor(l05, integer.band(integer.bnot(l01), l02))
+
+		l06, l07, l08, l09, l10 =
+			integer.bxor(l09, integer.band(integer.bnot(l10), l06)),
+			integer.bxor(l10, integer.band(integer.bnot(l06), l07)),
+			integer.bxor(l06, integer.band(integer.bnot(l07), l08)),
+			integer.bxor(l07, integer.band(integer.bnot(l08), l09)),
+			integer.bxor(l08, integer.band(integer.bnot(l09), l10))
+
+		l11, l12, l13, l14, l15 =
+			integer.bxor(l12, integer.band(integer.bnot(l13), l14)),
+			integer.bxor(l13, integer.band(integer.bnot(l14), l15)),
+			integer.bxor(l14, integer.band(integer.bnot(l15), l11)),
+			integer.bxor(l15, integer.band(integer.bnot(l11), l12)),
+			integer.bxor(l11, integer.band(integer.bnot(l12), l13))
+
+		l16, l17, l18, l19, l20 =
+			integer.bxor(l20, integer.band(integer.bnot(l16), l17)),
+			integer.bxor(l16, integer.band(integer.bnot(l17), l18)),
+			integer.bxor(l17, integer.band(integer.bnot(l18), l19)),
+			integer.bxor(l18, integer.band(integer.bnot(l19), l20)),
+			integer.bxor(l19, integer.band(integer.bnot(l20), l16))
+
+		l21, l22, l23, l24, l25 =
+			integer.bxor(l23, integer.band(integer.bnot(l24), l25)),
+			integer.bxor(l24, integer.band(integer.bnot(l25), l21)),
+			integer.bxor(l25, integer.band(integer.bnot(l21), l22)),
+			integer.bxor(l21, integer.band(integer.bnot(l22), l23)),
+			integer.bxor(l22, integer.band(integer.bnot(l23), l24))
+
+		l01 = integer.bxor(l01, buffer.readinteger(buf, r))
+	end
+
+	buffer.writeinteger(buf, 0, l01)
+end
+
 mem = buffer.create(1024 * 1024)
 
 return('OK')

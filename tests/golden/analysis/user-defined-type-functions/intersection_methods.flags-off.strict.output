@@ -1,0 +1,5 @@
+./analysis/user-defined-type-functions/intersection_methods.luau(22,12): TypeError: Expected this to be unreachable, but got
+	'{ boolean: boolean, number: number } & { boolean: boolean, string: string }'; 
+this is because 
+	 * `{ boolean: boolean, number: number }` is not a subtype of `never`
+	 * `{ boolean: boolean, string: string }` is not a subtype of `never`

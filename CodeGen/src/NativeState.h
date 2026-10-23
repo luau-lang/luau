@@ -64,6 +64,8 @@ struct NativeContext
     const TValue* (*luaT_gettm)(LuaTable* events, TMS event, TString* ename) = nullptr;
     const TString* (*luaT_objtypenamestr)(lua_State* L, const TValue* o) = nullptr;
 
+    void (*luaR_tryconstructobject)(lua_State* L, StkId target, StkId maybeclass, uint32_t slotid) = nullptr;
+
     double (*libm_exp)(double) = nullptr;
     double (*libm_pow)(double, double) = nullptr;
     double (*libm_fmod)(double, double) = nullptr;
@@ -94,9 +96,11 @@ struct NativeContext
     Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
     void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
     Udata* (*newUserdata)(lua_State* L, size_t s, int tag) = nullptr;
+    LuauVector* (*newVector)(lua_State* L, double x, double y, double z) = nullptr;
     void (*getImport)(lua_State* L, StkId res, unsigned id, unsigned pc) = nullptr;
 
     Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
+    int (*fastPcallSetup)(lua_State* L, StkId ra, int pfid, int nparams, int nresults) = nullptr;
 
     // Opcode fallbacks, implemented in C
     const Instruction* (*executeGETGLOBAL)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;

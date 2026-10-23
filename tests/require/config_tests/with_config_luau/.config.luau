@@ -2,7 +2,8 @@ return {
     luau = {
         aliases = {
             dep = "./this_should_be_overwritten_by_child_luaurc",
-            otherdep = "./src/other_dependency"
+            otherdep = "./src/other_dependency",
+            self = "./this_should_never_be_read"
         }
     }
 }

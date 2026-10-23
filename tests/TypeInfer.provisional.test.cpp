@@ -13,15 +13,18 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -52,11 +55,11 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     )";
 
     const std::string expected = R"(
-        function f(a:{fn:()->(a,b...)}): ()
+        function f(a:{fn:()->(T,U...)}): ()
             if type(a) == 'boolean' then
                 local a1:boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(a,b...)}=a
+                local a2:{fn:()->(T,U...)}=a
             end
         end
     )";
@@ -170,6 +173,8 @@ TEST_CASE_FIXTURE(Fixture, "weirditer_should_not_loop_forever")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -186,6 +191,8 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
         f(3, 2, 1, 0)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -193,6 +200,8 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 // For now, infer it as just a free table.
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_table")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -311,7 +320,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(LUAU_TIMEOUT))
 {
     // We have to force this test case up here before the flags kick in.
     // The reason for this is that while loading the builtins, the below flags will cause that
@@ -392,8 +401,8 @@ TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type
     else
     {
         // f and g should have the type () -> ()
-        CHECK_EQ("() -> (a...)", toString(requireType("f")));
-        CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
+        CHECK_EQ("() -> (T...)", toString(requireType("f")));
+        CHECK_EQ("<T...>() -> (T...)", toString(requireType("g")));
         CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
     }
 }
@@ -405,6 +414,8 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
         local n2n: (number) -> number = id
         local s2s: (string) -> string = id
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -496,6 +507,8 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
             index += 1
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -838,6 +851,8 @@ Expected this to be exactly 'number', but got 'number?')";
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -872,6 +887,8 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions_of_tab
             return options.variable
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1057,6 +1074,8 @@ end
 
     CheckResult result = getFrontend().check("Module/Map");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1160,6 +1179,8 @@ TEST_CASE_FIXTURE(Fixture, "luau_roact_useState_nilable_state_1")
             b(nil :: ScriptConnection?)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1285,6 +1306,8 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
 #if 0
     // This #if block describes what should happen.
     LUAU_CHECK_NO_ERRORS(result);
@@ -1304,7 +1327,7 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
     {
         LUAU_CHECK_ERROR_COUNT(1, result);
 
-        CHECK("<T, b>({T}, b) -> number" == toString(requireType("find_first")));
+        CHECK("<T, U>({T}, U) -> number" == toString(requireType("find_first")));
     }
 #endif
 }
@@ -1349,6 +1372,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_indexer_satisfies_reading_property")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // We would like this code to have _no_ errors, but it requires one of:
@@ -1374,28 +1399,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_indexer_satisfies_reading_property"
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("{ @metatable { __index: (unknown, string) -> number }, {  } }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{  }, { __index: (unknown, string) -> number }>", toString(err->givenType, {/* exhaustive */ true}));
     CHECK_EQ("{ read X: number }", toString(err->wantedType));
-}
-
-TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local function __remove(__: number?) end
-
-        function __removeItem(self, itemId: number)
-            local index = self.getItem(itemId)
-            if index then
-               __remove(index)
-            end
-        end
-    )"));
-
-    // TODO CLI-168953: This is not correct. We should not be inferring `never`
-    // for the second return type of `getItem`.
-    CHECK_EQ("({ read getItem: (number) -> (never, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_many_nested_typeof_contexts")
@@ -1419,13 +1424,15 @@ TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     // CLI-169235: This is just wrong, we should be rejecting this code.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function foo(
             t: { [string]: number } | { [number]: number }
         )
             return t[true]
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typechecking")
@@ -1449,6 +1456,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
         -- this should work because they should match with the left-right dog variant with optionals!
         bark{ [molly] = { left = laika }, [draco] = { right = cindy } }
     )");
+
+    ignoreMissingAnnotations(result);
 
 
     // FIXME(CLI-178738): This should actually be no errors.
@@ -1558,7 +1567,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 }
 
 
-// LuauPropagateFreeTypesIntoUnionAndIntersectionBounds: when a union super type has multiple free-type members,
+// When a union super type has multiple free-type members,
 // propagateToFreeMembers adds subTy as a lower bound to ALL of them. This is an over-approximation:
 // `freeA <: T | U` only requires one of T or U to contain freeA, not both.
 //
@@ -1572,7 +1581,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_super_with_multiple_free_members_over_
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true},
     };
 
     CheckResult result = check(R"(

@@ -2,7 +2,7 @@
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 # Given a Luau heap dump, this tool generates a heap snapshot which can be imported by Chrome's DevTools Memory panel
-# To generate a snapshot, use luaC_dump, ideally preceded by luaC_fullgc
+# To generate a snapshot, use lua_memorydump, ideally preceded by lua_gc(L, LUA_GCCOLLECT, 0)
 # To import in Chrome, ensure the snapshot has the .heapsnapshot extension and go to: Inspect -> Memory -> Load Profile
 # A reference for the heap snapshot schema can be found here: https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/memory-problems/heap-snapshot-schema
 

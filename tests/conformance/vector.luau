@@ -15,6 +15,15 @@ assert(vector.create(1, 2, 3) == vector.create(1, 2, 3))
 assert(vector.create(0, 1, 2) == vector.create(-0, 1, 2))
 assert(vector.create(1, 2, 3) ~= vector.create(1, 2, 4))
 
+-- the 4th component is only visible to equality when vectors are 4-wide
+if vector_size == 4 then
+	assert(vector.create(1, 2, 3) ~= vector.create(1, 2, 3, 9))
+	assert(not (vector.create(1, 2, 3) == vector.create(1, 2, 3, 9)))
+else
+	assert(vector.create(1, 2, 3) == vector.create(1, 2, 3, 9))
+	assert(not (vector.create(1, 2, 3) ~= vector.create(1, 2, 3, 9)))
+end
+
 -- rawequal
 assert(rawequal(vector.create(1, 2, 3), vector.create(1, 2, 3)))
 assert(rawequal(vector.create(0, 1, 2), vector.create(-0, 1, 2)))

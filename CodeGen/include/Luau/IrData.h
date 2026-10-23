@@ -417,6 +417,13 @@ enum class IrCmd : uint8_t
     // E: block (if false)
     JUMP_CMP_INT,
 
+    // Perform a conditional jump based on the result of int64 comparison
+    // A, B: int64
+    // C: condition
+    // D: block (if true)
+    // E: block (if false)
+    JUMP_CMP_INT64,
+
     // Jump if pointers are equal
     // A, B: pointer (*)
     // C: block (if true)
@@ -489,6 +496,12 @@ enum class IrCmd : uint8_t
     // A: int (size)
     // B: int (tag)
     NEW_USERDATA,
+
+    // Create new heap-allocated vector
+    // A: double (x)
+    // B: double (y)
+    // C: double (z)
+    NEW_VECTOR,
 
     // Convert integer into a double number
     // A: int
@@ -571,6 +584,16 @@ enum class IrCmd : uint8_t
     // B: block (fallback)
     CHECK_FASTCALL_RES,
 
+    // Call the fast protected call function
+    // - if function yields, performs a yield
+    // - if a target Luau function needs to run, switches execution to it
+    // - continues if the target call resolved immediately
+    // A: Rn (result start)
+    // B: unsigned int (protected function id)
+    // C: int (argument count or -1 to use all arguments up to stack top)
+    // D: int (result count or -1 to preserve all results and adjust stack top)
+    INVOKE_FASTPCALL,
+
     // Fallback functions
 
     // Perform an arithmetic operation on TValues of any type
@@ -584,6 +607,12 @@ enum class IrCmd : uint8_t
     // A: Rn (where to store the result)
     // B: Rn
     DO_LEN,
+
+    // Construct a class object or a table, if the constructor is a class and shape in the CONSTRUCT feedback slot matches it
+    // A: Rn (where to store the result)
+    // B: Rn (constructor)
+    // C: unsigned int (feedback slot id)
+    CONSTRUCT,
 
     // Lookup a value in TValue of any type using a key of any type
     // A: Rn (where to store the result)
@@ -653,6 +682,11 @@ enum class IrCmd : uint8_t
     // A: block/vmexit/undef
     // When undef is specified, execution is aborted on check failure
     CHECK_SAFE_ENV,
+
+    // Guard against executing in a non-yieldable context, exits to VM on check failure
+    // A: block/vmexit/undef
+    // When undef is specified, execution is aborted on check failure
+    CHECK_YIELDABLE,
 
     // Guard against index overflowing the table array size
     // A: pointer (LuaTable)
@@ -1184,7 +1218,7 @@ struct IrInst
     IrOps ops;
 
     uint32_t lastUse = 0;
-    uint16_t useCount = 0;
+    uint32_t useCount = 0;
 
     // Location of the result (optional)
     X64::RegisterX64 regX64 = X64::noreg;
@@ -1334,7 +1368,7 @@ struct IrBlock
 {
     IrBlockKind kind;
     uint8_t flags = 0;
-    uint16_t useCount = 0;
+    uint32_t useCount = 0;
 
     // 'start' and 'finish' define an inclusive range of instructions which belong to this block inside the function
     // When block has been constructed, 'finish' always points to the first and only terminating instruction
@@ -1393,10 +1427,11 @@ struct BytecodeTypeInfo
 
 struct ValueRestoreLocation
 {
-    IrOp op;             // Operand representing the location (Rn/Kn)
-    IrValueKind kind;    // The kind of value at the restore location
-    IrCmd conversionCmd; // Type conversion instruction that was used to store the value at the restore location
-    bool lazy;           // This location comes from a DSE hint and is emitted on demand (see StoreLocationHint)
+    IrOp op;                                  // Operand representing the location (Rn/Kn)
+    IrValueKind kind;                         // The kind of value at the restore location
+    IrCmd conversionCmd;                      // Type conversion instruction that was used to store the value at the restore location
+    bool lazy;                                // This location comes from a DSE hint and is emitted on demand (see StoreLocationHint)
+    uint32_t sourceInstIdx = kInvalidInstIdx; // Instruction that is the source of the conversion
 };
 
 struct StoreLocationHint
@@ -1427,6 +1462,12 @@ struct VmExitSyncInfo
     SmallVector<IrOp, 2> argOps;
 };
 
+struct VmEnvironmentInfo
+{
+    bool hasPcall = false;
+    bool hasXpcall = false;
+};
+
 struct IrFunction
 {
     std::vector<IrBlock> blocks;
@@ -1446,13 +1487,15 @@ struct IrFunction
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
-    DenseHashMap<uint32_t, StoreLocationHint> storeLocationHints{kInvalidInstIdx};
+    DenseHashMap<uint32_t, StoreLocationHint> storeLocationHints;
 
-    DenseHashMap<uint32_t, VmExitSyncInfo> vmExitInfo{kInvalidInstIdx};
-    DenseHashMap<uint32_t, uint32_t> blockToVmExitMap{~0u};
+    DenseHashMap<uint32_t, VmExitSyncInfo> vmExitInfo;
+    DenseHashMap<uint32_t, uint32_t> blockToVmExitMap;
 
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
     BytecodeTypeInfo bcTypeInfo;         // Bytecode type information with additional inferences
+
+    VmEnvironmentInfo envInfo;
 
     Proto* proto = nullptr;
     bool variadic = false;
@@ -1467,6 +1510,9 @@ struct IrFunction
 
     // Stores register tags that are known after constant propagating through a block, indexed by that block's index
     std::vector<std::vector<uint8_t>> blockExitTags; // blockIdx → tag array
+
+    // Known VM register tag values on fallback entry (intersection of data from each individual jump point)
+    std::vector<std::vector<uint8_t>> fallbackEntryTags;
 
     IrBlock& blockOp(IrOp op)
     {

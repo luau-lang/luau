@@ -11,10 +11,8 @@
 #include <optional>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauDoNotOverwriteAstDefs)
-LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 namespace Luau
 {
@@ -228,47 +226,28 @@ void DataFlowGraphBuilder::join(DfgScope* p, DfgScope* a, DfgScope* b)
 
 void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b)
 {
-    if (FFlag::LuauAvoidTrivialPhis)
+    auto join = [&](auto sym, auto def1, auto def2)
     {
-        auto join = [&](auto sym, auto def1, auto def2)
-        {
-            // Refinements are keyed on `DefId`s, meaning that allocating
-            // a trivial phi node like this *breaks* refinements.
-            if (def1 == def2)
-                p->bindings[sym] = def1;
-            else
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{def2});
-        };
+        // Refinements are keyed on `DefId`s, meaning that allocating
+        // a trivial phi node like this *breaks* refinements.
+        if (def1 == def2)
+            p->bindings[sym] = def1;
+        else
+            p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{def2});
+    };
 
-        for (const auto& [sym, def1] : a.bindings)
-        {
-            if (auto def2 = b.bindings.find(sym))
-                join(sym, def1, *def2);
-            else if (auto def2 = p->lookup(sym))
-                join(sym, def1, *def2);
-        }
-
-        for (const auto& [sym, def1] : b.bindings)
-        {
-            if (auto def2 = p->lookup(sym))
-                join(sym, def1, *def2);
-        }
+    for (const auto& [sym, def1] : a.bindings)
+    {
+        if (auto def2 = b.bindings.find(sym))
+            join(sym, def1, *def2);
+        else if (auto def2 = p->lookup(sym))
+            join(sym, def1, *def2);
     }
-    else
-    {
-        for (const auto& [sym, def1] : a.bindings)
-        {
-            if (auto def2 = b.bindings.find(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-            else if (auto def2 = p->lookup(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-        }
 
-        for (const auto& [sym, def1] : b.bindings)
-        {
-            if (auto def2 = p->lookup(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-        }
+    for (const auto& [sym, def1] : b.bindings)
+    {
+        if (auto def2 = p->lookup(sym))
+            join(sym, def1, *def2);
     }
 }
 
@@ -408,6 +387,23 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatBlock* b)
 
 ControlFlow DataFlowGraphBuilder::visitBlockWithoutChildScope(AstStatBlock* b)
 {
+    // Classes are hoisted and so can be referred to before their declaration.
+    // Before we do anything, quickly zip through any classes and preallocate
+    // DefIds for them.
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        for (AstStat* stat : b->body)
+        {
+            if (auto d = stat->as<AstStatClass>())
+            {
+                DefId def = defArena->freshCell(d->name, d->name->location);
+                graph.localDefs[d->name] = def;
+                currentScope()->bindings[d->name] = def;
+                captures[d->name].allVersions.push_back(def);
+            }
+        }
+    }
+
     std::optional<ControlFlow> firstControlFlow;
     for (AstStat* stat : b->body)
     {
@@ -476,12 +472,24 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
 {
     visitExpr(i->condition);
 
+    if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal && i->conditionLocal->annotation)
+        visitType(i->conditionLocal->annotation);
+
     DfgScope* thenScope = makeChildScope();
     DfgScope* elseScope = makeChildScope();
 
     ControlFlow thencf;
     {
         PushScope ps{scopeStack, thenScope};
+
+        if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal)
+        {
+            DefId def = defArena->freshCell(i->conditionLocal, i->conditionLocal->location, false);
+            graph.localDefs[i->conditionLocal] = def;
+            thenScope->bindings[i->conditionLocal] = def;
+            captures[i->conditionLocal].allVersions.push_back(def);
+        }
+
         thencf = visit(i->thenbody);
     }
 
@@ -883,11 +891,9 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareExternType* d)
 ControlFlow DataFlowGraphBuilder::visit(AstStatClass* d)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-    DefId def = defArena->freshCell(d->name, d->name->location);
 
-    graph.localDefs[d->name] = def;
-    currentScope()->bindings[d->name] = def;
-    captures[d->name].allVersions.push_back(def);
+    if (d->super)
+        visitExpr(d->super);
 
     for (const auto& member : d->members)
     {
@@ -983,19 +989,18 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
 
     auto [def, key] = go();
 
-    if (FFlag::LuauDoNotOverwriteAstDefs)
-    {
-        if (!graph.astDefs.contains(e))
-        {
-            graph.astDefs[e] = def;
-            LUAU_ASSERT(!graph.astRefinementKeys.contains(e));
-            if (key)
-                graph.astRefinementKeys[e] = key;
-        }
-    }
-    else
+    // We, effectively, have an invariant that every expression in the tree
+    // corresponds to a single def: there's a single hash map, and we use
+    // defs as keys. Violating this (replacing a def value in this map)
+    // will result in pain (ICEs) in constraint generation.
+    //
+    // As a precaution, we only fill in a def when an expression does not
+    // have a def already. This should only really occur for the type-stateing
+    // functions like `setmetatable`, `assert` and the like.
+    if (!graph.astDefs.contains(e))
     {
         graph.astDefs[e] = def;
+        LUAU_ASSERT(!graph.astRefinementKeys.contains(e));
         if (key)
             graph.astRefinementKeys[e] = key;
     }
@@ -1065,19 +1070,11 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 
         auto [def, key] = *result;
 
-        if (FFlag::LuauDoNotOverwriteAstDefs)
-        {
-            if (!graph.astDefs.contains(firstArg))
-            {
-                graph.astDefs[firstArg] = def;
-                LUAU_ASSERT(!graph.astRefinementKeys.contains(firstArg));
-                if (key)
-                    graph.astRefinementKeys[firstArg] = key;
-            }
-        }
-        else
+        // See comment in visitExpr(AstExpr*) for why we do this.
+        if (!graph.astDefs.contains(firstArg))
         {
             graph.astDefs[firstArg] = def;
+            LUAU_ASSERT(!graph.astRefinementKeys.contains(firstArg));
             if (key)
                 graph.astRefinementKeys[firstArg] = key;
         }
@@ -1222,7 +1219,29 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIfElse* i)
 {
     visitExpr(i->condition);
-    visitExpr(i->trueExpr);
+
+    if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal)
+    {
+        if (i->conditionLocal->annotation)
+            visitType(i->conditionLocal->annotation);
+
+        DfgScope* thenScope = makeChildScope();
+        {
+            PushScope ps{scopeStack, thenScope};
+
+            DefId def = defArena->freshCell(i->conditionLocal, i->conditionLocal->location, false);
+            graph.localDefs[i->conditionLocal] = def;
+            thenScope->bindings[i->conditionLocal] = def;
+            captures[i->conditionLocal].allVersions.push_back(def);
+
+            visitExpr(i->trueExpr);
+        }
+    }
+    else
+    {
+        visitExpr(i->trueExpr);
+    }
+
     visitExpr(i->falseExpr);
 
     return {defArena->freshCell(Symbol{}, i->location), nullptr};
@@ -1284,15 +1303,9 @@ void DataFlowGraphBuilder::visitLValue(AstExpr* e, DefId incomingDef)
             handle->ice("Unknown AstExpr in DataFlowGraphBuilder::visitLValue");
     };
 
-    if (FFlag::LuauDoNotOverwriteAstDefs)
-    {
-        if (!graph.astDefs.contains(e))
-            graph.astDefs[e] = go();
-    }
-    else
-    {
+    // See comment in visitExpr(AstExpr*) for why we do this.
+    if (!graph.astDefs.contains(e))
         graph.astDefs[e] = go();
-    }
 }
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)

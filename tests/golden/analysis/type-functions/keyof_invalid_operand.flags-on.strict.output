@@ -1,0 +1,2 @@
+./analysis/type-functions/keyof_invalid_operand.luau(2,23): TypeError: Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid
+./analysis/type-functions/keyof_invalid_operand.luau(4,1): TypeError: Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid

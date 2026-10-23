@@ -1,0 +1,4 @@
+./analysis/user-defined-type-functions/optional_type.luau(6,12): TypeError: Expected this to be unreachable, but got 'number?'; 
+this is because 
+	 * `nil` is not a subtype of `never`
+	 * `number` is not a subtype of `never`

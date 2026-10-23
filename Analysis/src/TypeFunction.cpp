@@ -8,6 +8,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
 #include "Luau/OverloadResolver.h"
+#include "Luau/SmallVector.h"
 #include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
@@ -32,6 +33,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAbsenceCache)
 
 namespace Luau
 {
@@ -40,18 +42,47 @@ using TypeOrTypePackIdSet = DenseHashSet<const void*>;
 
 struct InstanceCollector : TypeOnceVisitor
 {
-    DenseHashSet<TypeId> recordedTys{nullptr};
+    DenseHashSet<TypeId> recordedTys;
     VecDeque<TypeId> tys;
-    DenseHashSet<TypePackId> recordedTps{nullptr};
+    DenseHashSet<TypePackId> recordedTps;
     VecDeque<TypePackId> tps;
-    TypeOrTypePackIdSet shouldGuess{nullptr};
+    TypeOrTypePackIdSet shouldGuess;
     std::vector<const void*> typeFunctionInstanceStack;
     std::vector<TypeId> cyclicInstance;
+    TypeFunctionAbsenceCache* cache = nullptr;
+    SmallVector<TypeId, 16> visitedTys;
+    SmallVector<TypePackId, 16> visitedTps;
 
-
-    InstanceCollector()
+    explicit InstanceCollector(TypeFunctionAbsenceCache* cache)
         : TypeOnceVisitor("InstanceCollector", /* skipBoundTypes */ true)
+        , cache(cache)
     {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        if (cache)
+        {
+            if (cache->types.contains(ty))
+                return false;
+
+            visitedTys.push_back(ty);
+        }
+
+        return true;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        if (cache)
+        {
+            if (cache->typePacks.contains(tp))
+                return false;
+
+            visitedTps.push_back(tp);
+        }
+
+        return true;
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
@@ -204,7 +235,7 @@ struct TypeFunctionReducer
     VecDeque<TypePackId> queuedTps;
     TypeOrTypePackIdSet shouldGuess;
     std::vector<TypeId> cyclicTypeFunctions;
-    TypeOrTypePackIdSet irreducible{nullptr};
+    TypeOrTypePackIdSet irreducible;
     FunctionGraphReductionResult result;
     bool force = false;
 
@@ -258,7 +289,7 @@ struct TypeFunctionReducer
     SkipTestResult testForSkippability(TypeId ty)
     {
         VecDeque<TypeId> queue;
-        DenseHashSet<TypeId> seen{nullptr};
+        DenseHashSet<TypeId> seen;
 
         queue.push_back(follow(ty));
 
@@ -692,9 +723,18 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
     return std::move(reducer.result);
 }
 
-FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force)
+FunctionGraphReductionResult reduceTypeFunctions(
+    TypeId entrypoint,
+    Location location,
+    NotNull<TypeFunctionContext> ctx,
+    bool force,
+    TypeFunctionAbsenceCache* cache
+)
 {
-    InstanceCollector collector;
+    if (cache && cache->types.contains(entrypoint))
+        return {};
+
+    InstanceCollector collector{cache};
 
     try
     {
@@ -706,7 +746,17 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
     }
 
     if (collector.tys.empty() && collector.tps.empty())
+    {
+        if (cache)
+        {
+            for (TypeId t : collector.visitedTys)
+                cache->types.insert(t);
+            for (TypePackId t : collector.visitedTps)
+                cache->typePacks.insert(t);
+        }
+
         return {};
+    }
 
     return reduceFunctionsInternal(
         std::move(collector.tys),
@@ -719,9 +769,18 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
     );
 }
 
-FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force)
+FunctionGraphReductionResult reduceTypeFunctions(
+    TypePackId entrypoint,
+    Location location,
+    NotNull<TypeFunctionContext> ctx,
+    bool force,
+    TypeFunctionAbsenceCache* cache
+)
 {
-    InstanceCollector collector;
+    if (cache && cache->typePacks.contains(entrypoint))
+        return {};
+
+    InstanceCollector collector{cache};
 
     try
     {
@@ -733,7 +792,17 @@ FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location
     }
 
     if (collector.tys.empty() && collector.tps.empty())
+    {
+        if (cache)
+        {
+            for (TypeId t : collector.visitedTys)
+                cache->types.insert(t);
+            for (TypePackId t : collector.visitedTps)
+                cache->typePacks.insert(t);
+        }
+
         return {};
+    }
 
     return reduceFunctionsInternal(
         std::move(collector.tys),

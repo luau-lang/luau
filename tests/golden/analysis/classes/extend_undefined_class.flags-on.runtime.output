@@ -1,0 +1,3 @@
+./analysis/classes/extend_undefined_class.luau:3: attempt to extend a nil value
+stacktrace:
+./analysis/classes/extend_undefined_class.luau:3

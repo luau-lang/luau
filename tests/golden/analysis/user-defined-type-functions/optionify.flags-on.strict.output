@@ -1,0 +1,1 @@
+./analysis/user-defined-type-functions/optionify.luau(18,12): TypeError: Expected this to be 'nil', but got '{ age: number?, alive: boolean?, name: string? }'

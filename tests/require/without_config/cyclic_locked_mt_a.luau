@@ -1,3 +1,0 @@
-local M = ...
-local b = require("./cyclic_locked_mt_b")
-return M

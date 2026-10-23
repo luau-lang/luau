@@ -10,7 +10,7 @@
 #include "Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 namespace Luau
 {
@@ -259,17 +259,24 @@ struct GenericTypeVisitor
                 traverse(ftv->lowerBound);
                 traverse(ftv->upperBound);
 
-                if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-                {
-                    if (ftv->primitiveType)
-                        traverse(*ftv->primitiveType);
-                }
+                if (ftv->primitiveType)
+                    traverse(*ftv->primitiveType);
             }
         }
         else if (auto gtv = get<GenericType>(ty))
             visit(ty, *gtv);
         else if (auto etv = get<ErrorType>(ty))
-            visit(ty, *etv);
+        {
+            if (FFlag::LuauReduceTypeFunctionToSyntheticError)
+            {
+                if (visit(ty, *etv) && etv->synthetic)
+                    traverse(*etv->synthetic);
+            }
+            else
+            {
+                visit(ty, *etv);
+            }
+        }
         else if (auto ptv = get<PrimitiveType>(ty))
             visit(ty, *ptv);
         else if (auto ftv = get<FunctionType>(ty))
@@ -529,7 +536,7 @@ struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
     explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes)
-        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{nullptr}, skipBoundTypes}
+        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{}, skipBoundTypes}
     {
     }
 };

@@ -1,0 +1,1 @@
+./analysis/union-types/missing_property.luau(4,12): TypeError: Key 'name' is missing from '{ common: number }' in the type '{ common: number } | { common: number, name: string }'

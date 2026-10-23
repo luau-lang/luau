@@ -1,0 +1,2 @@
+./analysis/singletons/bool_singletons_mismatch.luau(1,17): TypeError: Expected this to be 'true', but got 'false'
+./analysis/singletons/bool_singletons_mismatch.luau(1,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence

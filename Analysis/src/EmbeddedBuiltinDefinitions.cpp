@@ -4,13 +4,64 @@
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
 
 namespace Luau
 {
 
 static constexpr const char* kBuiltinDefinitionBaseSrc = R"BUILTIN_SRC(
+
+@checked declare function require(target: any): any
+
+@checked declare function getfenv(target: any): { [string]: any }
+
+declare _G: any
+declare _VERSION: string
+
+declare function gcinfo(): number
+
+declare function print<T...>(...: T...)
+
+declare function type<T>(value: T): string
+declare function typeof<T>(value: T): string
+
+-- `assert` has a magic function attached that will give more detailed type information
+declare function assert<T>(value: T, errorMessage: string?): T
+declare function error<T>(message: T, level: number?): never
+
+declare function tostring<T>(value: T): string
+declare function tonumber<T>(value: T, radix: number?): number?
+
+declare function rawequal<T1, T2>(a: T1, b: T2): boolean
+declare function rawget<K, V>(tab: {[K]: V}, k: K): V?
+declare function rawset<K, V>(tab: {[K]: V}, k: K, v: V): {[K]: V}
+declare function rawlen<K, V>(obj: {[K]: V} | string): number
+
+declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
+
+declare function ipairs<V>(tab: {V}): (({V}, number) -> (number?, V), {V}, number)
+
+declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...)
+
+-- FIXME: The actual type of `xpcall` is:
+-- <E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., A...) -> (true, R1...) | (false, R2...)
+-- Since we can't represent the return value, we use (boolean, R1...).
+declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., ...: A...): (boolean, R1...)
+
+-- `select` has a magic function attached to provide more detailed type information
+declare function select<A...>(i: string | number, ...: A...): ...any
+
+@checked declare function newproxy(mt: boolean?): any
+
+-- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
+declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionBaseSrc_DEPRECATED = R"BUILTIN_SRC(
 
 @checked declare function require(target: any): any
 
@@ -178,7 +229,7 @@ declare os: {
 
 )BUILTIN_SRC";
 
-static constexpr const char* kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+static constexpr const char* kBuiltinDefinitionCoroutineSrc_DEPRECATED = R"BUILTIN_SRC(
 
 declare coroutine: {
     create: <A..., R...>(f: (A...) -> R...) -> thread,
@@ -189,6 +240,22 @@ declare coroutine: {
     yield: <A..., R...>(A...) -> R...,
     isyieldable: () -> boolean,
     close: @checked (co: thread) -> (boolean, any)
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+
+declare coroutine: {
+    create: <A..., R...>(f: (A...) -> R...) -> thread,
+    resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
+    running: () -> thread,
+    status: @checked (co: thread) -> "dead" | "running" | "normal" | "suspended",
+    wrap: <A..., R...>(f: (A...) -> R...) -> ((A...) -> R...),
+    yield: <A..., R...>(A...) -> R...,
+    isyieldable: () -> boolean,
+    close: @checked (co: thread) -> (boolean, any),
+    finally: (co: thread, callback: (status: "finished" | "error" | "cancelled", ...any) -> ()) -> ()
 }
 
 )BUILTIN_SRC";
@@ -215,6 +282,32 @@ declare table: {
 
     clear: (table: {}) -> (),
     isfrozen: (t: {}) -> boolean,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTableSrc_EXACT_TABLES = R"BUILTIN_SRC(
+
+declare table: {
+    concat: <V>(t: {V, ...}, sep: string?, i: number?, j: number?) -> string,
+    insert: (<V>(t: {V, ...}, value: V) -> ()) & (<V>(t: {V, ...}, pos: number, value: V) -> ()),
+    maxn: <V>(t: {V, ...}) -> number,
+    remove: <V>(t: {V, ...}, number?) -> V?,
+    sort: <V>(t: {V, ...}, comp: ((V, V) -> boolean)?) -> (),
+    create: <V>(count: number, value: V?) -> {V},
+    find: <V>(haystack: {V, ...}, needle: V, init: number?) -> number?,
+
+    unpack: <V>(list: {V, ...}, i: number?, j: number?) -> ...V,
+    pack: <V>(...V) -> { n: number, [number]: V },
+
+    getn: <V>(t: {V, ...}) -> number,
+    foreach: <K, V>(t: {[K]: V, ...}, f: (K, V) -> ()) -> (),
+    foreachi: <V>({V, ...}, (number, V) -> ()) -> (),
+
+    move: <V>(src: {V, ...}, a: number, b: number, t: number, dst: {V, ...}?) -> {V, ...},
+
+    clear: (table: {...}) -> (),
+    isfrozen: (t: {...}) -> boolean,
 }
 
 )BUILTIN_SRC";
@@ -414,13 +507,21 @@ declare class: {
 
 std::string getBuiltinDefinitionSource(VectorSize vectorSize)
 {
-    std::string result = kBuiltinDefinitionBaseSrc;
+    std::string result = FFlag::LuauRemoveLoadstringFromBuiltinDefinitions ? kBuiltinDefinitionBaseSrc : kBuiltinDefinitionBaseSrc_DEPRECATED;
 
     result += kBuiltinDefinitionBit32Src;
     result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
-    result += kBuiltinDefinitionCoroutineSrc;
-    result += kBuiltinDefinitionTableSrc;
+
+    if (FFlag::LuauCoroutineFinallyAnalysis)
+        result += kBuiltinDefinitionCoroutineSrc;
+    else
+        result += kBuiltinDefinitionCoroutineSrc_DEPRECATED;
+
+    if (FFlag::DebugLuauExactTableTypes)
+        result += kBuiltinDefinitionTableSrc_EXACT_TABLES;
+    else
+        result += kBuiltinDefinitionTableSrc;
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
@@ -453,59 +554,6 @@ export type type = {
 
     is: (self: type, arg: string) -> boolean,
     issubtypeof: (self: type, arg: type) -> boolean,
-
-    -- for singleton type
-    value: (self: type) -> (string | boolean | nil),
-
-    -- for negation type
-    inner: (self: type) -> type,
-
-    -- for union and intersection types
-    components: (self: type) -> {type},
-
-    -- for table type
-    setproperty: (self: type, key: type, value: type?) -> (),
-    setreadproperty: (self: type, key: type, value: type?) -> (),
-    setwriteproperty: (self: type, key: type, value: type?) -> (),
-    readproperty: (self: type, key: type) -> type?,
-    writeproperty: (self: type, key: type) -> type?,
-    properties: (self: type) -> { [type]: { read: type?, write: type? } },
-    setindexer: (self: type, index: type, result: type) -> (),
-    setreadindexer: (self: type, index: type, result: type) -> (),
-    setwriteindexer: (self: type, index: type, result: type) -> (),
-    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
-    readindexer: (self: type) -> { index: type, result: type }?,
-    writeindexer: (self: type) -> { index: type, result: type }?,
-    setmetatable: (self: type, arg: type) -> (),
-    metatable: (self: type) -> type?,
-
-    -- for function type
-    setparameters: (self: type, head: {type}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {type}?, tail: type? },
-    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
-    returns: (self: type) -> { head: {type}?, tail: type? },
-    setgenerics: (self: type, {type}?) -> (),
-    generics: (self: type) -> {type},
-
-    -- for class type
-    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
-    readparent: (self: type) -> type?,
-    writeparent: (self: type) -> type?,
-
-    -- for generic type
-    name: (self: type) -> string?,
-    ispack: (self: type) -> boolean,
-}
-
-)BUILTIN_SRC";
-
-static constexpr const char* kBuiltinDefinitionTypeMethodSrc_NOISSUBTYPEOF = R"BUILTIN_SRC(
-
-export type type = {
-    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "integer" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
-
-    is: (self: type, arg: string) -> boolean,
 
     -- for singleton type
     value: (self: type) -> (string | boolean | nil),
@@ -606,59 +654,6 @@ export type type = {
 
 )BUILTIN_SRC";
 
-static constexpr const char* kBuiltinDefinitionTypeMethodSrc_DEPRECATED = R"BUILTIN_SRC(
-
-export type type = {
-    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
-
-    is: (self: type, arg: string) -> boolean,
-
-    -- for singleton type
-    value: (self: type) -> (string | boolean | nil),
-
-    -- for negation type
-    inner: (self: type) -> type,
-
-    -- for union and intersection types
-    components: (self: type) -> {type},
-
-    -- for table type
-    setproperty: (self: type, key: type, value: type?) -> (),
-    setreadproperty: (self: type, key: type, value: type?) -> (),
-    setwriteproperty: (self: type, key: type, value: type?) -> (),
-    readproperty: (self: type, key: type) -> type?,
-    writeproperty: (self: type, key: type) -> type?,
-    properties: (self: type) -> { [type]: { read: type?, write: type? } },
-    setindexer: (self: type, index: type, result: type) -> (),
-    setreadindexer: (self: type, index: type, result: type) -> (),
-    setwriteindexer: (self: type, index: type, result: type) -> (),
-    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
-    readindexer: (self: type) -> { index: type, result: type }?,
-    writeindexer: (self: type) -> { index: type, result: type }?,
-    setmetatable: (self: type, arg: type) -> (),
-    metatable: (self: type) -> type?,
-
-    -- for function type
-    setparameters: (self: type, head: {type}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {type}?, tail: type? },
-    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
-    returns: (self: type) -> { head: {type}?, tail: type? },
-    setgenerics: (self: type, {type}?) -> (),
-    generics: (self: type) -> {type},
-
-    -- for class type
-    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
-    readparent: (self: type) -> type?,
-    writeparent: (self: type) -> type?,
-
-    -- for generic type
-    name: (self: type) -> string?,
-    ispack: (self: type) -> boolean,
-}
-
-)BUILTIN_SRC";
-
 static constexpr const char* kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
 
 declare types: {
@@ -712,14 +707,10 @@ std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
 
-    if (FFlag::LuauUdtfTypeIsSubtypeOf && FFlag::LuauIntegerType2)
+    if (FFlag::LuauIntegerType2)
         result += kBuiltinDefinitionTypeMethodSrc;
-    else if (FFlag::LuauUdtfTypeIsSubtypeOf)
-        result += kBuiltinDefinitionTypeMethodSrc_NOINTEGER;
-    else if (FFlag::LuauIntegerType2)
-        result += kBuiltinDefinitionTypeMethodSrc_NOISSUBTYPEOF;
     else
-        result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
+        result += kBuiltinDefinitionTypeMethodSrc_NOINTEGER;
 
     if (FFlag::LuauIntegerType2)
         result += kBuiltinDefinitionTypesLibSrc;

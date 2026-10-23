@@ -19,14 +19,23 @@
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
-LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
+LUAU_FASTFLAG(LuauCodegenBufferInteger)
+LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCallFeedback)
-LUAU_FASTFLAG(LuauCodegenA64ExitUseCheck)
+LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
+LUAU_FASTFLAG(LuauCompileNoDebugConst)
+LUAU_FASTFLAG(LuauCodegenIntegerCompare)
+LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
+LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
+LUAU_FASTFLAG(LuauLoadRemapOptionalUserdata)
+LUAU_FASTFLAG(LuauCodegenConstPropMinOffset)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 #define ensureVectorSize3() \
-    if (LUA_VECTOR_SIZE != 3) \
+    if constexpr (LUA_VECTOR_SIZE != 3) \
+    return
+#define ensureVectorFloat() \
+    if constexpr (LUA_VECTOR_DOUBLE == 1) \
     return
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
@@ -96,6 +105,7 @@ public:
         compilationOptions.typeInfoLevel = 1;
         compilationOptions.vectorCtor = "vector";
         compilationOptions.vectorType = "vector";
+        compilationOptions.vectorPrecision = 0;
         compilationOptions.userdataTypes = kUserdataCompileTypes;
         compilationOptions.librariesWithKnownMembers = kLibrariesWithConstants;
         compilationOptions.libraryMemberTypeCb = luauLibraryTypeLookup;
@@ -106,6 +116,7 @@ public:
         compilationOptionsC.typeInfoLevel = 1;
         compilationOptionsC.vectorCtor = "vector";
         compilationOptionsC.vectorType = "vector";
+        compilationOptionsC.vectorPrecision = 0;
         compilationOptionsC.userdataTypes = kUserdataCompileTypes;
         compilationOptionsC.librariesWithKnownMembers = kLibrariesWithConstants;
         compilationOptionsC.libraryMemberTypeCb = luauLibraryTypeLookup;
@@ -290,6 +301,8 @@ TEST_SUITE_BEGIN("IrLowering");
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorReciprocal")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
@@ -317,6 +330,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorComponentRead")
 {
+    ensureVectorFloat();
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function compsum(a: vector)
@@ -349,6 +363,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorAdd")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3add(a: vector, b: vector)
@@ -377,6 +393,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorMinus")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3minus(a: vector)
@@ -403,6 +421,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorSubMulDiv")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -437,6 +457,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorSubMulDiv2")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector)
@@ -467,6 +489,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorMulDivMixed")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -509,6 +533,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLerp")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3lerp(a: vector, b: vector, t: number)
@@ -545,6 +571,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorMinMax")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vecops(a: vector, b: vector)
@@ -576,6 +604,8 @@ bb_bytecode_1:
 }
 TEST_CASE_FIXTURE(LoweringFixture, "VectorFloorCeilAbs")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vecops(a: vector)
@@ -1161,6 +1191,8 @@ bb_7:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorConstantTag")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
@@ -1188,7 +1220,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorNamecall")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -1258,6 +1289,8 @@ bb_6:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomAccess")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3magn(a: vector)
@@ -1293,7 +1326,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecall")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
+    ensureVectorFloat();
+
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -1334,7 +1368,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecall2")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
+    ensureVectorFloat();
+
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -1369,6 +1404,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomAccessChain")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: vector, b: vector)
@@ -1421,7 +1458,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecallChain")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
+    ensureVectorFloat();
+
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -1482,8 +1520,10 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecallChain2")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
+    ensureVectorFloat();
+
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1535,7 +1575,6 @@ bb_4:
   STORE_TVALUE R5, %44
   JUMP bb_6
 bb_6:
-  CHECK_TAG R3, tvector, exit(9)
   CHECK_TAG R5, tvector, exit(9)
   %53 = LOAD_FLOAT R3, 0i
   %54 = LOAD_FLOAT R5, 0i
@@ -1560,6 +1599,7 @@ bb_6:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLoadFloatPropagation")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -1593,6 +1633,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLibraryChain")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: vector, b: vector)
@@ -1635,6 +1677,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorIdiv")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -1674,6 +1717,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorNumberMixed1")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -1726,6 +1771,8 @@ bb_linear_11:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorNumberMixed2")
 {
+    ensureVectorFloat();
+
     assemblyOptions.includeOutlinedCode = true;
 
     CHECK_EQ(
@@ -1777,6 +1824,8 @@ bb_fallback_5:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorReverseOps")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
@@ -1864,7 +1913,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "UserDataNamecall")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -2094,6 +2142,8 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ExplicitUpvalueAndLocalTypes")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -2345,6 +2395,8 @@ bb_linear_23:
 // Our fast-path lowering checks that there is no metatable and all accesses are in bounds
 TEST_CASE_FIXTURE(LoweringFixture, "DuplicateArrayLoads4")
 {
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
+
     // TODO: opportunity 1 - if we can figure out that i+1 is exactly 1 integer slot away, we can reduce arithmetic
     // TODO: opportunity 2 - store at [i + 1] shouldn't invalidate value at [i]
     CHECK_EQ(
@@ -2405,14 +2457,14 @@ bb_linear_23:
   %229 = LOAD_DOUBLE R4
   %230 = ADD_NUM %229, %224
   STORE_SPLIT_TVALUE %219, tnumber, %230
-  %254 = LOAD_TVALUE %18
-  STORE_TVALUE R4, %254
-  %267 = LOAD_TVALUE %219
-  STORE_TVALUE R5, %267
+  %252 = LOAD_TVALUE %18
+  STORE_TVALUE R4, %252
+  %265 = LOAD_TVALUE %219
+  STORE_TVALUE R5, %265
   CHECK_TAG R4, tnumber, bb_fallback_19
-  %274 = LOAD_DOUBLE R4
-  %276 = SUB_NUM %274, %230
-  STORE_SPLIT_TVALUE %18, tnumber, %276
+  %272 = LOAD_DOUBLE R4
+  %274 = SUB_NUM %272, %230
+  STORE_SPLIT_TVALUE %18, tnumber, %274
   INTERRUPT 13u
   RETURN R0, 0i
 )"
@@ -2764,7 +2816,11 @@ bb_linear_11:
 // This test is based on an example of texture bilinear interpolation, t.w/t.h only have to be loaded once
 TEST_CASE_FIXTURE(LoweringFixture, "TableNodeLoadStoreProp5")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
+
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -2803,18 +2859,18 @@ bb_bytecode_1:
   STORE_TVALUE R3, %11
   JUMP bb_linear_34
 bb_linear_34:
-  %248 = GET_SLOT_NODE_ADDR %8, 2u, K1 ('h')
-  CHECK_SLOT_MATCH %248, K1 ('h'), bb_fallback_5
-  %250 = LOAD_TVALUE %248, 0i
-  STORE_TVALUE R4, %250
+  %250 = GET_SLOT_NODE_ADDR %8, 2u, K1 ('h')
+  CHECK_SLOT_MATCH %250, K1 ('h'), bb_fallback_5
+  %252 = LOAD_TVALUE %250, 0i
+  STORE_TVALUE R4, %252
   CHECK_SAFE_ENV exit(4)
   CHECK_TAG R3, tnumber, exit(6)
   CHECK_TAG R4, tnumber, exit(6)
-  %258 = LOAD_DOUBLE R3
-  %259 = LOAD_DOUBLE R4
-  %260 = NUM_TO_FLOAT %258
-  %261 = NUM_TO_FLOAT %259
-  STORE_VECTOR R2, %260, %261, 0
+  %260 = LOAD_DOUBLE R3
+  %261 = LOAD_DOUBLE R4
+  %262 = NUM_TO_FLOAT %260
+  %263 = NUM_TO_FLOAT %261
+  STORE_VECTOR R2, %262, %263, 0
   STORE_TAG R2, tvector
   %266 = LOAD_TVALUE R1, 0i, tvector
   %267 = LOAD_TVALUE R2, 0i, tvector
@@ -2829,31 +2885,30 @@ bb_linear_34:
   %285 = EXTRACT_VEC %276, 0i
   %286 = FLOAT_TO_NUM %285
   STORE_TVALUE R7, %11
-  %301 = MOD_NUM %286, %258
-  STORE_DOUBLE R5, %301
+  %299 = MOD_NUM %286, %260
+  STORE_DOUBLE R5, %299
   STORE_TAG R5, tnumber
-  %307 = EXTRACT_VEC %279, 0i
-  %308 = FLOAT_TO_NUM %307
-  STORE_DOUBLE R7, %308
+  %303 = EXTRACT_VEC %279, 0i
+  %304 = FLOAT_TO_NUM %303
+  STORE_DOUBLE R7, %304
   STORE_TVALUE R8, %11
-  %323 = MOD_NUM %308, %258
-  STORE_SPLIT_TVALUE R6, tnumber, %323
-  %329 = EXTRACT_VEC %276, 1i
-  %330 = FLOAT_TO_NUM %329
-  STORE_TVALUE R10, %250
-  %345 = MOD_NUM %330, %259
-  STORE_DOUBLE R8, %345
+  %317 = MOD_NUM %304, %260
+  STORE_SPLIT_TVALUE R6, tnumber, %317
+  %321 = EXTRACT_VEC %276, 1i
+  %322 = FLOAT_TO_NUM %321
+  %335 = MOD_NUM %322, %261
+  STORE_DOUBLE R8, %335
   STORE_TVALUE R9, %11
-  %361 = MUL_NUM %345, %258
-  STORE_DOUBLE R7, %361
-  %367 = EXTRACT_VEC %279, 1i
-  %368 = FLOAT_TO_NUM %367
-  STORE_DOUBLE R10, %368
-  %383 = MOD_NUM %368, %259
-  STORE_DOUBLE R9, %383
-  %399 = MUL_NUM %383, %258
-  STORE_DOUBLE R8, %399
-  INTERRUPT 49u
+  %351 = MUL_NUM %335, %260
+  STORE_DOUBLE R7, %351
+  %355 = EXTRACT_VEC %279, 1i
+  %356 = FLOAT_TO_NUM %355
+  STORE_DOUBLE R9, %356
+  %369 = MOD_NUM %356, %261
+  STORE_DOUBLE R8, %369
+  %385 = MUL_NUM %369, %260
+  STORE_SPLIT_TVALUE R8, tnumber, %385
+  INTERRUPT 50u
   RETURN R4, 5i
 )"
     );
@@ -3254,6 +3309,7 @@ bb_linear_9:
 
 TEST_CASE_FIXTURE(LoweringFixture, "FastcallTypeInferThroughLocal")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -3305,6 +3361,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "FastcallTypeInferThroughUpvalue")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     // TODO: opportunity - bb_3 and bb_bytecode_1 have only one predecessor, so they should know that the upvalue u0 is already in r2
@@ -3368,8 +3425,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoadAndMoveTypePropagation")
 {
-    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -3425,11 +3480,12 @@ bb_bytecode_2:
   STORE_DOUBLE R1, %43
   JUMP bb_bytecode_3
 bb_bytecode_3:
-  %46 = LOAD_DOUBLE R2
-  %47 = LOAD_DOUBLE R4
-  %48 = ADD_NUM %47, 1
-  STORE_DOUBLE R4, %48
-  JUMP_CMP_NUM %48, %46, le, bb_bytecode_1, bb_bytecode_4
+  CHECK_GC
+  %47 = LOAD_DOUBLE R2
+  %48 = LOAD_DOUBLE R4
+  %49 = ADD_NUM %48, 1
+  STORE_DOUBLE R4, %49
+  JUMP_CMP_NUM %49, %47, le, bb_bytecode_1, bb_bytecode_4
 bb_bytecode_4:
   INTERRUPT 12u
   RETURN R1, 1i
@@ -3439,6 +3495,7 @@ bb_bytecode_4:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ArgumentTypeRefinement")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -3474,6 +3531,8 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "InlineFunctionType")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -3525,6 +3584,8 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ResolveTablePathTypes")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -3583,6 +3644,8 @@ bb_6:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ResolvableSimpleMath")
 {
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
 type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
@@ -3613,8 +3676,10 @@ end
 ; U0: table ['mesh']
 ; R2: number from 0 to 78 [local 'i']
 ; R3: table from 7 to 78 [local 'a']
-; R4: table from 15 to 78 [local 'b']
-; R5: table from 24 to 78 [local 'c']
+; R4: table from 15 to 48 [local 'b']
+; R4: vector from 48 to 78 [local 'uvca']
+; R5: table from 24 to 53 [local 'c']
+; R5: number from 53 to 78 [local 'r']
 ; R6: vector from 33 to 78 [local 'vba']
 ; R7: vector from 37 to 38
 ; R7: vector from 38 to 78 [local 'vca']
@@ -3623,22 +3688,22 @@ end
 ; R8: vector from 43 to 78 [local 'uvba']
 ; R9: vector from 42 to 43
 ; R9: vector from 47 to 48
-; R9: vector from 48 to 78 [local 'uvca']
+; R9: vector from 52 to 53
+; R9: vector from 65 to 78 [local 'sdir']
 ; R10: vector from 47 to 48
 ; R10: vector from 52 to 53
-; R10: number from 53 to 78 [local 'r']
-; R11: vector from 52 to 53
-; R11: vector from 65 to 78 [local 'sdir']
-; R12: vector from 72 to 73
-; R12: vector from 75 to 76
-; R13: vector from 71 to 72
-; R14: vector from 71 to 72
+; R10: vector from 72 to 73
+; R10: vector from 75 to 76
+; R11: vector from 71 to 72
+; R12: vector from 71 to 72
 )"
     );
 }
 
 TEST_CASE_FIXTURE(LoweringFixture, "ResolvableFunctionReturns")
 {
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
 type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
@@ -3668,26 +3733,28 @@ end
 ; U0: table ['mesh']
 ; R2: number from 0 to 63 [local 'i']
 ; R3: table from 7 to 63 [local 'a']
-; R4: table from 15 to 63 [local 'b']
-; R5: table from 24 to 63 [local 'c']
+; R4: table from 15 to 38 [local 'b']
+; R4: vector from 43 to 55 [local 'c']
+; R4: vector from 38 to 63 [local 'uvca']
+; R5: table from 24 to 43 [local 'c']
+; R5: number from 43 to 63 [local 'r']
 ; R6: vector from 43 to 55 [local 'b']
 ; R6: vector from 33 to 63 [local 'uvba']
 ; R7: vector from 37 to 38
-; R7: vector from 43 to 55 [local 'c']
-; R7: vector from 38 to 63 [local 'uvca']
+; R7: vector from 42 to 43
+; R7: vector from 60 to 61
 ; R8: vector from 37 to 38
 ; R8: vector from 42 to 43
-; R8: number from 43 to 63 [local 'r']
-; R9: vector from 42 to 43
-; R9: vector from 60 to 61
-; R10: vector from 60 to 61
-; R11: vector from 59 to 60
+; R8: vector from 60 to 61
+; R9: vector from 59 to 60
 )"
     );
 }
 
 TEST_CASE_FIXTURE(LoweringFixture, "ResolveVectorNamecalls")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -3752,6 +3819,8 @@ bb_6:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ImmediateTypeAnnotationHelp")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -3816,7 +3885,8 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "ForInManualAnnotation")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
+    ensureVectorFloat();
+
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -3888,21 +3958,22 @@ bb_8:
   JUMP bb_bytecode_3
 bb_bytecode_3:
   INTERRUPT 12u
+  CHECK_GC
   CHECK_TAG R2, tnil, bb_fallback_10
-  %54 = LOAD_POINTER R3
-  %55 = LOAD_INT R4
-  %56 = GET_ARR_ADDR %54, %55
-  CHECK_ARRAY_SIZE %54, %55, bb_9
-  %58 = LOAD_TAG %56
-  JUMP_EQ_TAG %58, tnil, bb_9, bb_11
+  %55 = LOAD_POINTER R3
+  %56 = LOAD_INT R4
+  %57 = GET_ARR_ADDR %55, %56
+  CHECK_ARRAY_SIZE %55, %56, bb_9
+  %59 = LOAD_TAG %57
+  JUMP_EQ_TAG %59, tnil, bb_9, bb_11
 bb_11:
-  %60 = ADD_INT %55, 1i
-  STORE_INT R4, %60
-  %62 = INT_TO_NUM %60
-  STORE_DOUBLE R5, %62
+  %61 = ADD_INT %56, 1i
+  STORE_INT R4, %61
+  %63 = INT_TO_NUM %61
+  STORE_DOUBLE R5, %63
   STORE_TAG R5, tnumber
-  %65 = LOAD_TVALUE %56
-  STORE_TVALUE R6, %65
+  %66 = LOAD_TVALUE %57
+  STORE_TVALUE R6, %66
   JUMP bb_bytecode_2
 bb_9:
   INTERRUPT 14u
@@ -3913,7 +3984,6 @@ bb_9:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ForInAutoAnnotationIpairs")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -3943,7 +4013,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "ForInAutoAnnotationPairs")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -4059,6 +4128,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataPropertyAccess2")
 {
+    ensureVectorFloat();
+
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
@@ -4098,8 +4169,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataNamecall1")
 {
-    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
-
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
@@ -4152,8 +4221,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataNamecall2")
 {
-    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
-
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
@@ -4196,11 +4263,10 @@ bb_bytecode_1:
   %25 = MIN_NUM %23, %24
   %26 = NUM_TO_FLOAT %20
   %27 = NUM_TO_FLOAT %25
-  CHECK_GC
-  %29 = NEW_USERDATA 8i, 12i
-  BUFFER_WRITEF32 %29, 0i, %26, tuserdata
-  BUFFER_WRITEF32 %29, 4i, %27, tuserdata
-  STORE_POINTER R2, %29
+  %28 = NEW_USERDATA 8i, 12i
+  BUFFER_WRITEF32 %28, 0i, %26, tuserdata
+  BUFFER_WRITEF32 %28, 4i, %27, tuserdata
+  STORE_POINTER R2, %28
   STORE_TAG R2, tuserdata
   ADJUST_STACK_TO_REG R2, 1i
   INTERRUPT 4u
@@ -4341,28 +4407,27 @@ bb_bytecode_1:
   %13 = BUFFER_READF32 %10, 4i, tuserdata
   %14 = UNM_FLOAT %12
   %15 = UNM_FLOAT %13
-  CHECK_GC
-  %17 = NEW_USERDATA 8i, 12i
-  BUFFER_WRITEF32 %17, 0i, %14, tuserdata
-  BUFFER_WRITEF32 %17, 4i, %15, tuserdata
-  %26 = LOAD_POINTER R0
-  CHECK_USERDATA_TAG %26, 12i, bb_exit_3
-   ; exit sync: R4, {%17}
-  %28 = LOAD_POINTER R1
-  CHECK_USERDATA_TAG %28, 12i, bb_exit_4
-   ; exit sync: R4, {%17}
-  %30 = BUFFER_READF32 %26, 0i, tuserdata
-  %31 = BUFFER_READF32 %28, 0i, tuserdata
-  %32 = MUL_FLOAT %30, %31
-  %33 = BUFFER_READF32 %26, 4i, tuserdata
-  %34 = BUFFER_READF32 %28, 4i, tuserdata
-  %35 = MUL_FLOAT %33, %34
-  %52 = ADD_FLOAT %14, %32
-  %55 = ADD_FLOAT %15, %35
-  %57 = NEW_USERDATA 8i, 12i
-  BUFFER_WRITEF32 %57, 0i, %52, tuserdata
-  BUFFER_WRITEF32 %57, 4i, %55, tuserdata
-  STORE_POINTER R3, %57
+  %16 = NEW_USERDATA 8i, 12i
+  BUFFER_WRITEF32 %16, 0i, %14, tuserdata
+  BUFFER_WRITEF32 %16, 4i, %15, tuserdata
+  %25 = LOAD_POINTER R0
+  CHECK_USERDATA_TAG %25, 12i, bb_exit_3
+   ; exit sync: R4, {%16}
+  %27 = LOAD_POINTER R1
+  CHECK_USERDATA_TAG %27, 12i, bb_exit_4
+   ; exit sync: R4, {%16}
+  %29 = BUFFER_READF32 %25, 0i, tuserdata
+  %30 = BUFFER_READF32 %27, 0i, tuserdata
+  %31 = MUL_FLOAT %29, %30
+  %32 = BUFFER_READF32 %25, 4i, tuserdata
+  %33 = BUFFER_READF32 %27, 4i, tuserdata
+  %34 = MUL_FLOAT %32, %33
+  %50 = ADD_FLOAT %14, %31
+  %53 = ADD_FLOAT %15, %34
+  %54 = NEW_USERDATA 8i, 12i
+  BUFFER_WRITEF32 %54, 0i, %50, tuserdata
+  BUFFER_WRITEF32 %54, 4i, %53, tuserdata
+  STORE_POINTER R3, %54
   STORE_TAG R3, tuserdata
   INTERRUPT 3u
   RETURN R3, 1i
@@ -4372,7 +4437,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataMapping")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // This test requires runtime component to be present
@@ -4420,6 +4484,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LibraryFieldTypesAndConstants")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -4456,6 +4522,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LibraryFieldTypesAndConstants")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -4577,6 +4645,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32ReplaceDirect")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -4734,6 +4803,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLoadReuse")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function shuffle(v: vector)
@@ -4765,6 +4836,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorShuffle1")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     // TODO: opportunity - if we introduce a separate vector shuffle instruction, this can be done in a single shuffle (+/- load and store)
@@ -4796,6 +4868,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorShuffle2")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -4828,6 +4901,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorShuffleFromComposite1")
 {
+    ensureVectorFloat();
+
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
@@ -4887,11 +4962,10 @@ bb_bytecode_1:
   CHECK_USERDATA_TAG %6, 13i, exit(0)
   %8 = BUFFER_READF32 %6, 24i, tuserdata
   %9 = BUFFER_READF32 %6, 28i, tuserdata
-  CHECK_GC
-  %21 = FLOAT_TO_NUM %8
-  %41 = FLOAT_TO_NUM %9
-  %50 = MUL_NUM %21, %41
-  STORE_DOUBLE R1, %50
+  %20 = FLOAT_TO_NUM %8
+  %39 = FLOAT_TO_NUM %9
+  %48 = MUL_NUM %20, %39
+  STORE_DOUBLE R1, %48
   STORE_TAG R1, tnumber
   INTERRUPT 9u
   RETURN R1, 1i
@@ -4901,6 +4975,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCreateXY")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -5034,6 +5109,7 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLoadStoreOnlySamePrecision")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -5280,8 +5356,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveLoopRangeBase")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
 
     // TODO: opportunity 1 - buffer.len is not a fastcall, but under safe env we can treat it like one and read buffer len field
     // TODO: opportunity 2 - range of 'i' is known, we can check it in loop header
@@ -5325,7 +5401,6 @@ bb_6:
   STORE_DOUBLE R4, 12
   STORE_TAG R4, tnumber
   CHECK_TAG R3, tnumber, exit(9)
-  CHECK_TAG R5, tnumber, exit(9)
   %33 = LOAD_DOUBLE R3
   JUMP_CMP_NUM R5, %33, not_le, bb_bytecode_3, bb_bytecode_2
 bb_bytecode_2:
@@ -5351,10 +5426,11 @@ bb_bytecode_2:
   %113 = LOAD_DOUBLE R2
   %115 = ADD_NUM %113, %106
   STORE_DOUBLE R2, %115
-  %117 = LOAD_DOUBLE R3
-  %119 = ADD_NUM %43, 12
-  STORE_DOUBLE R5, %119
-  JUMP_CMP_NUM %119, %117, le, bb_bytecode_2, bb_bytecode_3
+  CHECK_GC
+  %118 = LOAD_DOUBLE R3
+  %120 = ADD_NUM %43, 12
+  STORE_DOUBLE R5, %120
+  JUMP_CMP_NUM %120, %118, le, bb_bytecode_2, bb_bytecode_3
 bb_bytecode_3:
   INTERRUPT 35u
   RETURN R2, 1i
@@ -5817,6 +5893,87 @@ bb_bytecode_1:
     );
 }
 
+TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesConstantRange")
+{
+    ScopedFastFlag luauCodegenConstPropMinOffset{FFlag::LuauCodegenConstPropMinOffset, true};
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(buf: buffer, n: number, x, y, z, w)
+    n = 0
+
+    buffer.writeu8(buf, n, x + y + z + w)
+    buffer.writeu8(buf, n - 4, 0)
+end
+)",
+                   false,
+                   1,
+                   2,
+                   true
+               ),
+        R"(
+; function foo($arg0, $arg1, $arg2, $arg3, $arg4, $arg5) line 2
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  STORE_DOUBLE R1, 0
+  CHECK_TAG R2, tnumber, bb_fallback_3
+  CHECK_TAG R3, tnumber, bb_fallback_3
+  %12 = LOAD_DOUBLE R2
+  %14 = ADD_NUM %12, R3
+  STORE_DOUBLE R11, %14
+  STORE_TAG R11, tnumber
+  JUMP bb_linear_11
+bb_linear_11:
+  CHECK_TAG R4, tnumber, bb_fallback_5
+  %93 = ADD_NUM %14, R4
+  STORE_DOUBLE R10, %93
+  STORE_TAG R10, tnumber
+  CHECK_TAG R5, tnumber, bb_fallback_7
+  %103 = ADD_NUM %93, R5
+  STORE_DOUBLE R9, %103
+  STORE_TAG R9, tnumber
+  CHECK_SAFE_ENV exit(4)
+  JUMP exit(6)
+bb_4:
+  CHECK_TAG R11, tnumber, bb_fallback_5
+  CHECK_TAG R4, tnumber, bb_fallback_5
+  %25 = LOAD_DOUBLE R11
+  %27 = ADD_NUM %25, R4
+  STORE_DOUBLE R10, %27
+  STORE_TAG R10, tnumber
+  JUMP bb_6
+bb_6:
+  CHECK_TAG R10, tnumber, bb_fallback_7
+  CHECK_TAG R5, tnumber, bb_fallback_7
+  %38 = LOAD_DOUBLE R10
+  %40 = ADD_NUM %38, R5
+  STORE_DOUBLE R9, %40
+  STORE_TAG R9, tnumber
+  JUMP bb_8
+bb_8:
+  implicit CHECK_SAFE_ENV exit(4)
+  CHECK_TAG R9, tnumber, exit(6)
+  %54 = LOAD_POINTER R0
+  %55 = LOAD_DOUBLE R1
+  %56 = NUM_TO_INT %55
+  CHECK_BUFFER_LEN %54, %56, -4i, 1i, %55, exit(6)
+  %58 = LOAD_DOUBLE R9
+  %59 = NUM_TO_UINT %58
+  BUFFER_WRITEI8 %54, %56, %59, tbuffer
+  %79 = ADD_INT %56, -4i
+  BUFFER_WRITEI8 %54, %79, 0i, tbuffer
+  INTERRUPT 19u
+  RETURN R0, 0i
+)"
+    );
+}
 TEST_CASE_FIXTURE(LoweringFixture, "BufferVmExitSync")
 {
     CHECK_EQ(
@@ -5865,8 +6022,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferVmExitSyncMultiUseSink")
 {
-    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
-
     // This test captures that 'a * b' is only needed for the VM exit to display the 'expected' value of 's' if buffer read throws an exception
     // If the compiler output makes this test outdated, it can be removed as we have IR builder tests covering this as well
     CHECK_EQ(
@@ -6920,7 +7075,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest26")
     ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
     ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
     ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
-    ScopedFastFlag luauCodegenA64ExitUseCheck{FFlag::LuauCodegenA64ExitUseCheck, true};
 
     CHECK(
         getCodegenAssembly(
@@ -6929,6 +7083,78 @@ local function foo(...)
     local _ = ...
     buffer.readu32(_,_,_,nil,integer.max(0i,_,_,_,_,_,_,_,_,_,_,_,_,_,nil,- _,_,_),_)
 end
+)"
+        )
+            .size() > 0
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest27")
+{
+    assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+for _ in 1,10 do
+    _ /= _
+    while math.acos(...,math.modf,{[_]=_,[169877609]=math.sinh,["z"]=169877609,},_) do
+        _()
+    end
+end
+)"
+        )
+            .size() > 0
+    );
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+local _ = ...
+bit32.replace(_ + _ + _ + _,_,_,_);
+bit32.replace(0,bit32.replace(_,_,_,_),28257,_);
+(0)(28257,bit32.replace(_,bit32.replace((_),_ + _,(_),_,_),_,_ + _),_);
+)"
+        )
+            .size() > 0
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest28")
+{
+    assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+local _ = vector.cross(pcall(_),nil,- _)
+do
+    _ = _[_] + ...,- - - - - _ + ...,_
+    _ = - - - - - _ + ...
+    return _
+end
+)"
+        )
+            .size() > 0
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest29")
+{
+    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+
+    assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+_ += _ + _
+_ { }
+integer.max(...,_,_,262144i,_,n0,`""{536870912}`)
+integer.extract(integer.extract(integer.extract(...,_,_,_,not _,_),_,_,_),_,_,0i,_)
 )"
         )
             .size() > 0
@@ -7064,6 +7290,8 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore4")
 {
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local arr: {number}
@@ -7099,8 +7327,6 @@ bb_bytecode_1:
 bb_6:
   STORE_DOUBLE R2, 1
   STORE_TAG R2, tnumber
-  CHECK_TAG R1, tnumber, exit(4)
-  CHECK_TAG R3, tnumber, exit(4)
   %26 = LOAD_DOUBLE R1
   JUMP_CMP_NUM R3, %26, not_le, bb_bytecode_3, bb_bytecode_2
 bb_bytecode_2:
@@ -7109,7 +7335,6 @@ bb_bytecode_2:
   STORE_TVALUE R4, %30
   STORE_TVALUE R7, %30
   CHECK_TAG R7, ttable, exit(7)
-  CHECK_TAG R3, tnumber, exit(7)
   %38 = LOAD_POINTER R7
   %39 = LOAD_DOUBLE R3
   %40 = TRY_NUM_TO_INDEX %39, bb_fallback_7
@@ -7123,22 +7348,22 @@ bb_bytecode_2:
 bb_linear_17:
   STORE_TVALUE R8, %45
   CHECK_TAG R8, tnumber, bb_fallback_11
-  %141 = LOAD_DOUBLE R8
-  %143 = MUL_NUM %141, R0
-  %153 = ADD_NUM %141, %143
-  STORE_DOUBLE R5, %153
+  %140 = LOAD_DOUBLE R8
+  %142 = MUL_NUM %140, R0
+  %152 = ADD_NUM %140, %142
+  STORE_DOUBLE R5, %152
   STORE_TAG R5, tnumber
   CHECK_READONLY %38, bb_fallback_15
-  STORE_SPLIT_TVALUE %44, tnumber, %153
-  %173 = LOAD_DOUBLE R1
-  %175 = ADD_NUM %39, 1
-  STORE_DOUBLE R3, %175
-  JUMP_CMP_NUM %175, %173, le, bb_bytecode_2, bb_bytecode_3
+  STORE_SPLIT_TVALUE %44, tnumber, %152
+  CHECK_GC
+  %171 = LOAD_DOUBLE R1
+  %173 = ADD_NUM %39, 1
+  STORE_DOUBLE R3, %173
+  JUMP_CMP_NUM %173, %171, le, bb_bytecode_2, bb_bytecode_3
 bb_8:
   %51 = GET_UPVALUE U0
   STORE_TVALUE R9, %51
   CHECK_TAG R9, ttable, exit(9)
-  CHECK_TAG R3, tnumber, exit(9)
   %57 = LOAD_POINTER R9
   %58 = LOAD_DOUBLE R3
   %59 = TRY_NUM_TO_INDEX %58, bb_fallback_9
@@ -7166,7 +7391,6 @@ bb_12:
   JUMP bb_14
 bb_14:
   CHECK_TAG R4, ttable, exit(12)
-  CHECK_TAG R3, tnumber, exit(12)
   %100 = LOAD_POINTER R4
   %101 = LOAD_DOUBLE R3
   %102 = TRY_NUM_TO_INDEX %101, bb_fallback_15
@@ -7180,11 +7404,12 @@ bb_14:
   BARRIER_TABLE_FORWARD %100, R5, undef
   JUMP bb_16
 bb_16:
-  %115 = LOAD_DOUBLE R1
-  %116 = LOAD_DOUBLE R3
-  %117 = ADD_NUM %116, 1
-  STORE_DOUBLE R3, %117
-  JUMP_CMP_NUM %117, %115, le, bb_bytecode_2, bb_bytecode_3
+  CHECK_GC
+  %116 = LOAD_DOUBLE R1
+  %117 = LOAD_DOUBLE R3
+  %118 = ADD_NUM %117, 1
+  STORE_DOUBLE R3, %118
+  JUMP_CMP_NUM %118, %116, le, bb_bytecode_2, bb_bytecode_3
 bb_bytecode_3:
   INTERRUPT 14u
   RETURN R0, 0i
@@ -7487,8 +7712,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoopStepDetection1")
 {
-    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
-
     assemblyOptions.includeRegFlowInfo = Luau::CodeGen::IncludeRegFlowInfo::Yes;
 
     CHECK_EQ(
@@ -7537,10 +7760,11 @@ bb_bytecode_2:
   %25 = LOAD_DOUBLE R4
   %26 = ADD_NUM %24, %25
   STORE_DOUBLE R1, %26
-  %28 = LOAD_DOUBLE R2
-  %30 = ADD_NUM %25, 1
-  STORE_DOUBLE R4, %30
-  JUMP_CMP_NUM %30, %28, le, bb_bytecode_2, bb_bytecode_3
+  CHECK_GC
+  %29 = LOAD_DOUBLE R2
+  %31 = ADD_NUM %25, 1
+  STORE_DOUBLE R4, %31
+  JUMP_CMP_NUM %31, %29, le, bb_bytecode_2, bb_bytecode_3
 bb_bytecode_3:
 ; in regs: R1
   INTERRUPT 7u
@@ -7551,6 +7775,8 @@ bb_bytecode_3:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoopStepDetection2")
 {
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -7586,8 +7812,6 @@ bb_bytecode_1:
 bb_6:
   STORE_DOUBLE R4, 1
   STORE_TAG R4, tnumber
-  CHECK_TAG R3, tnumber, exit(4)
-  CHECK_TAG R5, tnumber, exit(4)
   %28 = LOAD_DOUBLE R3
   JUMP_CMP_NUM R5, %28, not_le, bb_bytecode_3, bb_bytecode_2
 bb_bytecode_2:
@@ -7611,11 +7835,12 @@ bb_8:
   STORE_DOUBLE R2, %55
   JUMP bb_10
 bb_10:
-  %61 = LOAD_DOUBLE R3
-  %62 = LOAD_DOUBLE R5
-  %63 = ADD_NUM %62, 1
-  STORE_DOUBLE R5, %63
-  JUMP_CMP_NUM %63, %61, le, bb_bytecode_2, bb_bytecode_3
+  CHECK_GC
+  %62 = LOAD_DOUBLE R3
+  %63 = LOAD_DOUBLE R5
+  %64 = ADD_NUM %63, 1
+  STORE_DOUBLE R5, %64
+  JUMP_CMP_NUM %64, %62, le, bb_bytecode_2, bb_bytecode_3
 bb_bytecode_3:
   INTERRUPT 8u
   RETURN R2, 1i
@@ -7684,6 +7909,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LibmIsPure")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -7735,6 +7961,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VecOpReuse")
 {
+    ensureVectorFloat();
     ensureVectorSize3();
 
     CHECK_EQ(
@@ -7782,6 +8009,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VecOpReuse2")
 {
+    ensureVectorFloat();
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -7875,7 +8104,6 @@ bb_linear_9:
 
 TEST_CASE_FIXTURE(LoweringFixture, "TableOperationTagSuggestion2")
 {
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
@@ -7943,6 +8171,64 @@ bb_linear_19:
   CHECK_SLOT_MATCH %149, K1 ('id'), bb_fallback_17
   %151 = LOAD_TVALUE %149, 0i
   STORE_TVALUE R6, %151
+  JUMP bb_18
+bb_4:
+  %18 = LOAD_POINTER R1
+  %19 = GET_SLOT_NODE_ADDR %18, 2u, K1 ('id')
+  CHECK_SLOT_MATCH %19, K1 ('id'), bb_fallback_5
+  %21 = LOAD_TVALUE %19, 0i
+  STORE_TVALUE R4, %21
+  JUMP bb_6
+bb_6:
+  CHECK_TAG R0, ttable, bb_fallback_7
+  %28 = LOAD_POINTER R0
+  %29 = GET_SLOT_NODE_ADDR %28, 4u, K0 ('map')
+  CHECK_SLOT_MATCH %29, K0 ('map'), bb_fallback_7
+  %31 = LOAD_TVALUE %29, 0i
+  STORE_TVALUE R7, %31
+  JUMP bb_8
+bb_8:
+  %38 = LOAD_POINTER R1
+  %39 = GET_SLOT_NODE_ADDR %38, 6u, K1 ('id')
+  CHECK_SLOT_MATCH %39, K1 ('id'), bb_fallback_9
+  %41 = LOAD_TVALUE %39, 0i
+  STORE_TVALUE R8, %41
+  JUMP bb_10
+bb_10:
+  SET_SAVEDPC 9u
+  GET_TABLE R6, R7, R8
+  CHECK_TAG R6, tnumber, bb_fallback_11
+  %52 = LOAD_DOUBLE R6
+  %54 = ADD_NUM %52, R2
+  STORE_DOUBLE R5, %54
+  STORE_TAG R5, tnumber
+  JUMP bb_12
+bb_12:
+  SET_SAVEDPC 11u
+  SET_TABLE R5, R3, R4
+  CHECK_TAG R0, ttable, bb_fallback_13
+  %65 = LOAD_POINTER R0
+  %66 = GET_SLOT_NODE_ADDR %65, 11u, K2 ('foo')
+  CHECK_SLOT_MATCH %66, K2 ('foo'), bb_fallback_13
+  %68 = LOAD_TVALUE %66, 0i
+  STORE_TVALUE R3, %68
+  JUMP bb_14
+bb_14:
+  CHECK_TAG R0, ttable, bb_fallback_15
+  %75 = LOAD_POINTER R0
+  %76 = GET_SLOT_NODE_ADDR %75, 13u, K0 ('map')
+  CHECK_SLOT_MATCH %76, K0 ('map'), bb_fallback_15
+  %78 = LOAD_TVALUE %76, 0i
+  STORE_TVALUE R5, %78
+  JUMP bb_16
+bb_16:
+  %85 = LOAD_POINTER R1
+  %86 = GET_SLOT_NODE_ADDR %85, 15u, K1 ('id')
+  CHECK_SLOT_MATCH %86, K1 ('id'), bb_fallback_17
+  %88 = LOAD_TVALUE %86, 0i
+  STORE_TVALUE R6, %88
+  JUMP bb_18
+bb_18:
   SET_SAVEDPC 18u
   GET_TABLE R4, R5, R6
   INTERRUPT 18u
@@ -8306,4 +8592,300 @@ bb_bytecode_1:
 )"
     );
 }
+
+TEST_CASE_FIXTURE(LoweringFixture, "BufferWriteChecksExtraArgs")
+{
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: buffer, offset: number, val)
+    return buffer.writeu32(b, offset, val, 0) -- unused extra argument
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1, $arg2) line 2
+; R0: buffer [argument]
+; R1: number [argument]
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %6 = LOAD_TVALUE R0, 0i, tbuffer
+  STORE_TVALUE R4, %6
+  %8 = LOAD_TVALUE R1, 0i, tnumber
+  STORE_TVALUE R5, %8
+  %10 = LOAD_TVALUE R2
+  STORE_TVALUE R6, %10
+  STORE_DOUBLE R7, 0
+  STORE_TAG R7, tnumber
+  CHECK_TAG R2, tnumber, exit(5)
+  %21 = LOAD_POINTER R0
+  %22 = LOAD_DOUBLE R1
+  %23 = NUM_TO_INT %22
+  CHECK_BUFFER_LEN %21, %23, 0i, 4i, undef, exit(5)
+  %25 = LOAD_DOUBLE R2
+  %26 = NUM_TO_UINT %25
+  BUFFER_WRITEI32 %21, %23, %26, tbuffer
+  ADJUST_STACK_TO_REG R3, 0i
+  INTERRUPT 8u
+  RETURN R3, -1i
+)"
+    );
+}
+TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompare")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenIntegerCompare{FFlag::LuauCodegenIntegerCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(x: integer, y: integer)
+    if x == y then
+        return 1
+    end
+    return 2
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: integer [argument]
+; R1: integer [argument]
+bb_0:
+  CHECK_TAG R0, tinteger, exit(entry)
+  CHECK_TAG R1, tinteger, exit(entry)
+  JUMP bb_3
+bb_3:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %10 = LOAD_INT64 R0
+  %11 = LOAD_INT64 R1
+  JUMP_CMP_INT64 %10, %11, not_eq, bb_bytecode_2, bb_4
+bb_4:
+  STORE_DOUBLE R2, 1
+  STORE_TAG R2, tnumber
+  INTERRUPT 3u
+  RETURN R2, 1i
+bb_bytecode_2:
+  STORE_DOUBLE R2, 2
+  STORE_TAG R2, tnumber
+  INTERRUPT 5u
+  RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompareConstLhs")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenBufferInteger{FFlag::LuauCodegenBufferInteger, true};
+    ScopedFastFlag luauIntegerBufferFastcalls{FFlag::LuauIntegerBufferFastcalls, true};
+    ScopedFastFlag luauCodegenIntegerCompare{FFlag::LuauCodegenIntegerCompare, true};
+    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: buffer, x: integer)
+    -- bytecode compiler is unlikely to constant-fold this
+    buffer.writeinteger(b, 0, 2i)
+    local lhs = buffer.readinteger(b, 0)
+
+    if lhs == x then
+        return 1
+    end
+    return 2
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: buffer [argument]
+; R1: integer [argument]
+; R2: integer from 8 to 21
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tinteger, exit(entry)
+  JUMP bb_3
+bb_3:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %17 = LOAD_POINTER R0
+  CHECK_BUFFER_LEN %17, 0i, 0i, 8i, undef, bb_exit_8
+   ; exit sync: R5, R4, {}
+  BUFFER_WRITEI64 %17, 0i, 2i, tbuffer
+  %39 = LOAD_INT64 R1
+  JUMP_CMP_INT64 2i, %39, not_eq, bb_bytecode_2, bb_6
+bb_6:
+  STORE_DOUBLE R3, 1
+  STORE_TAG R3, tnumber
+  INTERRUPT 18u
+  RETURN R3, 1i
+bb_bytecode_2:
+  STORE_DOUBLE R3, 2
+  STORE_TAG R3, tnumber
+  INTERRUPT 20u
+  RETURN R3, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "OptionalUserdataTypeRemapping")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag remapOptional{FFlag::LuauLoadRemapOptionalUserdata, true};
+    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
+
+    // Argument types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: vec2?)
+    return b
+end
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo($arg0) line 2
+; R0: vec2? [argument]
+bb_0:
+  %0 = LOAD_TAG R0
+  JUMP_EQ_TAG %0, tnil, bb_2, bb_3
+bb_3:
+  CHECK_TAG %0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  INTERRUPT 0u
+  RETURN R0, 1i
+)"
+    );
+
+    // Upvalue types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local up: vec2? = ...
+local function foo()
+    return up
+end
+return foo
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo() line 3
+; U0: vec2?
+bb_bytecode_0:
+  %0 = GET_UPVALUE U0
+  STORE_TVALUE R0, %0
+  INTERRUPT 1u
+  RETURN R0, 1i
+)"
+    );
+
+    // Local types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(x)
+    local v: vec2? = x
+    return v
+end
+return foo
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo($arg0) line 2
+; R0: vec2? from 0 to 1
+bb_bytecode_0:
+  INTERRUPT 0u
+  RETURN R0, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "ClassConstruction")
+{
+    ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag debugLuauUserDefinedClassesRuntime{FFlag::DebugLuauUserDefinedClassesRuntime, true};
+
+    assemblyOptions.includeOutlinedCode = true;
+
+    assemblyOptions.includeCfgInfo = Luau::CodeGen::IncludeCfgInfo::Yes;
+    assemblyOptions.includeRegFlowInfo = Luau::CodeGen::IncludeRegFlowInfo::Yes;
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(Class, x, y)
+    local o = Class{x = x, y = y}
+    return o
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1, $arg2) line 2
+; R3: any from 0 to 10
+bb_bytecode_0:
+; successors: bb_fallback_1, bb_2
+; in regs: R0, R1, R2
+; out regs: R3
+  %0 = LOAD_TVALUE R0
+  STORE_TVALUE R3, %0
+  SET_SAVEDPC 3u
+  CONSTRUCT R4, R3, 0u
+  FALLBACK_SETTABLEKS 3u, R1, R4, K0 ('x')
+  FALLBACK_SETTABLEKS 5u, R2, R4, K1 ('y')
+  CHECK_TAG R4, tobject, bb_fallback_1
+  %9 = LOAD_TVALUE R4, 0i, tobject
+  STORE_TVALUE R3, %9
+  JUMP bb_2
+bb_2:
+; predecessors: bb_bytecode_0, bb_fallback_1
+; in regs: R3
+  INTERRUPT 9u
+  RETURN R3, 1i
+bb_fallback_1:
+; predecessors: bb_bytecode_0
+; successors: bb_2
+; in regs: R3, R4
+; out regs: R3
+  INTERRUPT 8u
+  SET_SAVEDPC 9u
+  CALL R3, 1i, 1i
+  JUMP bb_2
+)"
+    );
+}
+
 TEST_SUITE_END();

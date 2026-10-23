@@ -6,6 +6,7 @@
 #include "CodeGenUtils.h"
 
 #include "lbuiltins.h"
+#include "lclass.h"
 #include "lgc.h"
 #include "ltable.h"
 #include "lfunc.h"
@@ -60,6 +61,8 @@ void initFunctions(NativeContext& context)
     context.luaT_gettm = luaT_gettm;
     context.luaT_objtypenamestr = luaT_objtypenamestr;
 
+    context.luaR_tryconstructobject = luaR_tryconstructobject;
+
     context.libm_exp = exp;
     context.libm_pow = pow;
     context.libm_fmod = fmod;
@@ -90,9 +93,11 @@ void initFunctions(NativeContext& context)
     context.callProlog = callProlog;
     context.callEpilogC = callEpilogC;
     context.newUserdata = newUserdata;
+    context.newVector = newVector;
     context.getImport = getImport;
 
     context.callFallback = callFallback;
+    context.fastPcallSetup = fastPcallSetup;
 
     context.executeGETGLOBAL = executeGETGLOBAL;
     context.executeSETGLOBAL = executeSETGLOBAL;

@@ -19,7 +19,7 @@ struct LineCounters
 struct FunctionCounters
 {
     std::string name;
-    Luau::DenseHashMap<int, LineCounters> counters{-1};
+    Luau::DenseHashMap<int, LineCounters> counters;
 };
 
 struct ModuleCounters

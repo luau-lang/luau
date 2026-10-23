@@ -12,8 +12,6 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauCIProto)
-
 namespace Luau
 {
 namespace CodeGen
@@ -49,16 +47,12 @@ void emitInstCall(IrRegAllocX64& regs, AssemblyBuilderX64& build, ModuleHelpers&
         RegisterX64 argi = rsi;
         RegisterX64 argend = rdi;
 
-        if (!FFlag::LuauCIProto)
-            build.mov(proto, qword[ccl + offsetof(Closure, l.p)]);
-
         // Switch current Closure
         build.mov(sClosure, ccl); // Last use of 'ccl'
 
         build.mov(ci, qword[rState + offsetof(lua_State, ci)]);
 
-        if (FFlag::LuauCIProto)
-            build.mov(proto, qword[ci + offsetof(CallInfo, p)]);
+        build.mov(proto, qword[ci + offsetof(CallInfo, p)]);
 
         Label fillnil, exitfillnil;
 

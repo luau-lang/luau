@@ -1,0 +1,1 @@
+./analysis/type-functions/index_union_key.luau(8,22): TypeError: Property '"a" | "d"' does not exist on type 'MyObject'

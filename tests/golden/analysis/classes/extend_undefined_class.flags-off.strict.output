@@ -1,0 +1,1 @@
+./analysis/classes/extend_undefined_class.luau(3,19): TypeError: Unknown global 'nope_not_defined'; consider assigning to it first

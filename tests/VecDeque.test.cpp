@@ -797,4 +797,93 @@ TEST_CASE("push_front_elements_are_destroyed_correctly")
     REQUIRE(t.use_count() == 1);
 }
 
+struct EmplaceOnly
+{
+    int x = 0;
+    int y = 0;
+
+    EmplaceOnly(int x, int y) noexcept
+        : x(x)
+        , y(y)
+    {
+    }
+
+    EmplaceOnly(const EmplaceOnly&)
+    {
+        throw std::runtime_error("copy constructor invoked");
+    }
+
+    EmplaceOnly(EmplaceOnly&& other) noexcept
+        : x(other.x)
+        , y(other.y)
+    {
+    }
+
+    ~EmplaceOnly() noexcept = default;
+
+    EmplaceOnly& operator=(const EmplaceOnly&)
+    {
+        throw std::runtime_error("copy assignment invoked");
+    }
+
+    EmplaceOnly& operator=(EmplaceOnly&& other) noexcept
+    {
+        x = other.x;
+        y = other.y;
+        return *this;
+    }
+};
+
+TEST_CASE("emplace_back_constructs_in_place")
+{
+    Luau::VecDeque<EmplaceOnly> queue;
+
+    CHECK_NOTHROW(queue.emplace_back(10, 20));
+    CHECK_NOTHROW(queue.emplace_back(30, 40));
+
+    REQUIRE(queue.size() == 2);
+    CHECK(queue[0].x == 10);
+    CHECK(queue[0].y == 20);
+    CHECK(queue[1].x == 30);
+    CHECK(queue[1].y == 40);
+}
+
+TEST_CASE("emplace_front_constructs_in_place")
+{
+    Luau::VecDeque<EmplaceOnly> queue;
+
+    CHECK_NOTHROW(queue.emplace_front(10, 20));
+    CHECK_NOTHROW(queue.emplace_front(30, 40));
+
+    REQUIRE(queue.size() == 2);
+    CHECK(queue[0].x == 30);
+    CHECK(queue[0].y == 40);
+    CHECK(queue[1].x == 10);
+    CHECK(queue[1].y == 20);
+}
+
+TEST_CASE("emplace_mixed_front_and_back")
+{
+    Luau::VecDeque<EmplaceOnly> queue;
+
+    queue.emplace_back(1, 2);
+    queue.emplace_front(3, 4);
+    queue.emplace_back(5, 6);
+    queue.emplace_back(7, 8);
+    queue.emplace_front(9, 10);
+    // expected order: (9,10), (3,4), (1,2), (5,6), (7,8)
+
+    REQUIRE(queue.size() == 5);
+    CHECK(queue[0].x == 9);
+    CHECK(queue[0].y == 10);
+    CHECK(queue[1].x == 3);
+    CHECK(queue[1].y == 4);
+    CHECK(queue[2].x == 1);
+    CHECK(queue[2].y == 2);
+    CHECK(queue[3].x == 5);
+    CHECK(queue[3].y == 6);
+    CHECK(queue[4].x == 7);
+    CHECK(queue[4].y == 8);
+}
+
 TEST_SUITE_END();

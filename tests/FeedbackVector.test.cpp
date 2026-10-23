@@ -14,7 +14,6 @@
 #include <cstdlib>
 
 LUAU_FASTINT(LuauInlineHitsThreshold)
-LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 
 using namespace Luau;
@@ -101,7 +100,6 @@ Proto* idInlinerWithAssert(lua_State* L, Closure* caller, Closure* target, uint3
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -112,7 +110,7 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call")
     )");
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 CALLFB R1 0 1 [0]
 LOADK R2 K0 [1]
 ADD R0 R1 R2
@@ -150,7 +148,6 @@ RETURN R0 1
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -179,7 +176,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed")
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed_on_inline")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -205,7 +201,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed_on_inline")
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "high_order_call")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -254,7 +249,6 @@ RETURN R1 1
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "polymorphic_call_sealed")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -281,7 +275,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "polymorphic_call_sealed")
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "c_call_sealed")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -308,7 +301,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "c_call_sealed")
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "metamethod_call_sealed")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -340,7 +332,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "metamethod_call_sealed")
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "namecall")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
