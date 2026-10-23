@@ -80,6 +80,33 @@ std::string_view stringAtLocation(std::string_view source, const Location& locat
     return source.substr(byteStart, byteEnd - byteStart);
 }
 
+
+// Returns the AstExprIndexName that the sole statement of the sole method of the
+// sole class in `source` returns. Used by private field parsing tests
+//  class C
+//      function m(self) return <expr> end
+//  end
+const AstExprIndexName* getMethodReturnIndexName(const ParseResult& result)
+{
+    REQUIRE(result.root->body.size >= 1);
+
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    REQUIRE(cls->members.size == 1);
+
+    auto method = cls->members.data[0].get_if<AstClassMethod>();
+    REQUIRE(method);
+
+    const AstStatBlock* body = method->function->body;
+    REQUIRE(body->body.size == 1);
+
+    const AstStatReturn* ret = body->body.data[0]->as<AstStatReturn>();
+    REQUIRE(ret);
+    REQUIRE(ret->list.size == 1);
+
+    return ret->list.data[0]->as<AstExprIndexName>();
+}
+
 } // namespace
 
 TEST_SUITE_BEGIN("AllocatorTests");
@@ -3782,8 +3809,6 @@ TEST_CASE_FIXTURE(Fixture, "allowed_metamethods_still_work")
             function __tostring(self) end
             function __add(self, other) end
             function __eq(self, other) end
-            -- Silly, but allowed.
-            function _(self) end
         end
     )");
 
@@ -4076,6 +4101,327 @@ TEST_CASE_FIXTURE(Fixture, "export_class")
     AstStatClass* classDecl = block->body.data[0]->as<AstStatClass>();
     REQUIRE(classDecl != nullptr);
     CHECK(classDecl->exported);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_private_property")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Point
+            private _x: number
+            public y: number
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    REQUIRE(cls->members.size == 2);
+
+    auto priv = cls->members.data[0].get_if<AstClassProperty>();
+    REQUIRE(priv);
+    CHECK(priv->name == "_x");
+    CHECK(priv->access == AstClassAccess::Private);
+
+    auto pub = cls->members.data[1].get_if<AstClassProperty>();
+    REQUIRE(pub);
+    CHECK(pub->name == "y");
+    CHECK(pub->access == AstClassAccess::Public);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_private_method")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Point
+            private function _helper(self) end
+            public function visible(self) end
+            function unqualified(self) end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    REQUIRE(cls->members.size == 3);
+
+    auto priv = cls->members.data[0].get_if<AstClassMethod>();
+    REQUIRE(priv);
+    CHECK(priv->functionName == "_helper");
+    CHECK(priv->access == AstClassAccess::Private);
+
+    auto pub = cls->members.data[1].get_if<AstClassMethod>();
+    REQUIRE(pub);
+    CHECK(pub->access == AstClassAccess::Public);
+
+    // A method with no qualifier at all is public.
+    auto unqualified = cls->members.data[2].get_if<AstClassMethod>();
+    REQUIRE(unqualified);
+    CHECK(!unqualified->qualifierLocation.has_value());
+    CHECK(unqualified->access == AstClassAccess::Public);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_private_field_access")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Point
+            function getX(self) return self._x end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    const AstExprIndexName* index = getMethodReturnIndexName(result);
+    REQUIRE(index);
+    CHECK(index->index == "_x");
+    CHECK(index->op == '.');
+    CHECK(index->privateAccess);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_private_method_call")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Point
+            function getMag(self) 
+                return self:_mag() 
+            end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE(result.root->body.size == 1);
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    REQUIRE(cls->members.size == 1);
+
+    auto method = cls->members.data[0].get_if<AstClassMethod>();
+    REQUIRE(method);
+    REQUIRE(method->function->body->body.size == 1);
+
+    const AstStatReturn* ret = method->function->body->body.data[0]->as<AstStatReturn>();
+    REQUIRE(ret);
+    REQUIRE(ret->list.size == 1);
+
+    const AstExprCall* call = ret->list.data[0]->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(call->self);
+
+    const AstExprIndexName* func = call->func->as<AstExprIndexName>();
+    REQUIRE(func);
+    CHECK(func->index == "_mag");
+    CHECK(func->op == ':');
+    CHECK(func->privateAccess);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_private_access_in_nested_closure")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Point
+            function each(self)
+                return function() return self._x end
+            end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE(result.root->body.size == 1);
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    REQUIRE(cls->members.size == 1);
+
+    auto method = cls->members.data[0].get_if<AstClassMethod>();
+    REQUIRE(method);
+    REQUIRE(method->function->body->body.size == 1);
+
+    const AstStatReturn* outerReturn = method->function->body->body.data[0]->as<AstStatReturn>();
+    REQUIRE(outerReturn);
+    REQUIRE(outerReturn->list.size == 1);
+
+    const AstExprFunction* closure = outerReturn->list.data[0]->as<AstExprFunction>();
+    REQUIRE(closure);
+    REQUIRE(closure->body->body.size == 1);
+
+    const AstStatReturn* innerReturn = closure->body->body.data[0]->as<AstStatReturn>();
+    REQUIRE(innerReturn);
+    REQUIRE(innerReturn->list.size == 1);
+
+    const AstExprIndexName* index = innerReturn->list.data[0]->as<AstExprIndexName>();
+    REQUIRE(index);
+    CHECK(index->privateAccess);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_private_access_only_inside_method_body")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Point
+        end
+        local t = {}
+        return t._x
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE(result.root->body.size == 3);
+    const AstStatReturn* ret = result.root->body.data[2]->as<AstStatReturn>();
+    REQUIRE(ret);
+    REQUIRE(ret->list.size == 1);
+
+    const AstExprIndexName* index = ret->list.data[0]->as<AstExprIndexName>();
+    REQUIRE(index);
+    CHECK(index->index == "_x");
+    CHECK(!index->privateAccess);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_metamethod_access_is_not_private")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // `__`-prefixed names are metamethods and stay public even inside a method body.
+    // tests/conformance/classes.luau relies on this: it calls Animal.__tostring(self)
+    // from within a method.
+    ParseResult result = tryParse(R"(
+        class Point
+            function describe(self) return self.__tostring end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    const AstExprIndexName* index = getMethodReturnIndexName(result);
+    REQUIRE(index);
+    CHECK(index->index == "__tostring");
+    CHECK(!index->privateAccess);
+}
+
+TEST_CASE_FIXTURE(Fixture, "private_class_field_must_begin_with_underscore")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+class Hello
+    private x: number
+end
+        )",
+        "Private class properties must begin with '_'"
+    );
+
+    matchParseError(
+        R"(
+class Hello
+    private function helper(self) end
+end
+        )",
+        "Private class properties must begin with '_'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "private_class_field_cannot_start_with_double_underscore")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+class Hello
+    private __x: number
+end
+        )",
+        "Private class properties cannot start with '__'"
+    );
+
+    // Takes precedence over the metamethod allowlist: `__eq` is a valid metamethod name, but not a valid private field name.
+    matchParseError(
+        R"(
+class Hello
+    private function __eq(self, other) end
+end
+        )",
+        "Private class properties cannot start with '__'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "public_class_field_cannot_begin_with_underscore")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+class Hello
+    public _x: number
+end
+        )",
+        "Public class properties cannot begin with '_'"
+    );
+
+    matchParseError(
+        R"(
+class Hello
+    public function _helper(self) end
+end
+        )",
+        "Public class properties cannot begin with '_'"
+    );
+
+    // An unqualified method is public, so the same rule applies.
+    matchParseError(
+        R"(
+class Hello
+    function _helper(self) end
+end
+        )",
+        "Public class properties cannot begin with '_'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "public_metamethods_are_allowed")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Hello
+            function __tostring(self) return "hello" end
+        end
+    )");
+
+    CHECK(result.errors.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_cannot_declare_more_than_256_private_properties")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = "class Hello\n";
+    for (int i = 0; i < 257; i++)
+        source += "    private _p" + std::to_string(i) + "\n";
+    source += "end\n";
+
+    matchParseError(source, "Exceeded the maximum of 255 private fields in a class");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_cannot_declare_more_than_256_private_methods")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = "class Hello\n";
+    for (int i = 0; i < 257; i++)
+        source += "    private function _m" + std::to_string(i) + "(self) end\n";
+    source += "end\n";
+
+    matchParseError(source, "Exceeded the maximum of 255 private methods in a class");
 }
 
 TEST_CASE_FIXTURE(Fixture, "expr_group_with_cst")

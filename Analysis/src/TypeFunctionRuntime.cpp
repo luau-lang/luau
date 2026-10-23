@@ -28,7 +28,6 @@ LUAU_FASTINTVARIABLE(DebugLuauTypeFunctionRuntimeHeapLimit, 0)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 
@@ -2874,8 +2873,7 @@ private:
 
         f2->argTypes = shallowClone(f1->argTypes);
         f2->retTypes = shallowClone(f1->retTypes);
-        if (FFlag::LuauTypeFunctionSerializeArgNames)
-            f2->argNames = f1->argNames;
+        f2->argNames = f1->argNames;
     }
 
     void cloneChildren(TypeFunctionExternType* c1, TypeFunctionExternType* c2)

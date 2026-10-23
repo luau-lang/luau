@@ -2,6 +2,7 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lgc.h"
 
+#include "lclass.h"
 #include "lfunc.h"
 #include "lmem.h"
 #include "lobject.h"
@@ -13,8 +14,6 @@
 
 #include <string.h>
 #include <stdio.h>
-
-LUAU_FASTFLAG(LuauFrozenMetaButterfly)
 
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
@@ -144,18 +143,26 @@ static void validateproto(global_State* g, Proto* f)
 static void validateclass(global_State* g, LuauClass* lco)
 {
     GCObject* obj = obj2gco(lco);
+
     validateobjref(g, obj, obj2gco(lco->name));
+
     if (lco->super)
         validateobjref(g, obj, obj2gco(lco->super));
+
     validateobjref(g, obj, obj2gco(lco->memberstooffset));
-    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
+
+    for (uint32_t i = 0; i < luaR_offsettomemberlength(lco); i++)
     {
-        validateobjref(g, obj, obj2gco(lco->offsettomember[i]));
-        if (i >= lco->numberofinstancemembers)
-            validateref(g, obj, &lco->staticmembers[i - lco->numberofinstancemembers]);
+        if (TString* str = lco->offsettomember[i])
+            validateobjref(g, obj, obj2gco(str));
     }
+
+    for (uint32_t i = lco->numberofinstancemembers; i < lco->numberofmembers; i++)
+        validateref(g, obj, &lco->staticmembers[i - lco->numberofinstancemembers]);
+
     if (lco->metatable)
         validateobjref(g, obj, obj2gco(lco->metatable));
+
     if (lco->instancemetatable)
         validateobjref(g, obj, obj2gco(lco->instancemetatable));
 }
@@ -361,7 +368,7 @@ static void dumptable(FILE* f, LuaTable* h)
 {
     size_t size = sizeof(LuaTable) + (h->node == &luaH_dummynode ? 0 : sizenode(h) * sizeof(LuaNode)) + h->sizearray * sizeof(TValue);
 
-    if (FFlag::LuauFrozenMetaButterfly && hasmetacache(h))
+    if (hasmetacache(h))
         size += TM_N * sizeof(TValue);
 
     fprintf(f, "{\"type\":\"table\",\"cat\":%d,\"size\":%d", h->memcat, int(size));
@@ -617,14 +624,20 @@ static void dumpclass(FILE* f, LuauClass* lco)
     else
         fprintf(f, "null");
     fprintf(f, R"(,"membernames":[)");
-    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
+    bool memberNameDumped = false;
+    for (uint32_t i = 0; i < luaR_offsettomemberlength(lco); i++)
     {
-        if (i != 0)
+        // Private fields have NULL entries in offsettomember
+        if (lco->offsettomember[i] == NULL)
+            continue;
+
+        if (memberNameDumped)
             fputc(',', f);
         dumpref(f, (GCObject*)lco->offsettomember[i]);
+        memberNameDumped = true;
     }
     fprintf(f, R"(],"staticmembers":[)");
-    dumprefs(f, lco->staticmembers, lco->numberofallmembers - lco->numberofinstancemembers);
+    dumprefs(f, lco->staticmembers, luaR_numstaticmembers(lco));
     fprintf(f, R"(],"metatable":)");
     if (lco->metatable)
         dumpref(f, obj2gco(lco->metatable));
@@ -785,7 +798,7 @@ static void enumtable(EnumContext* ctx, LuaTable* h)
 {
     size_t size = sizeof(LuaTable) + (h->node == &luaH_dummynode ? 0 : sizenode(h) * sizeof(LuaNode)) + h->sizearray * sizeof(TValue);
 
-    if (FFlag::LuauFrozenMetaButterfly && hasmetacache(h))
+    if (hasmetacache(h))
         size += TM_N * sizeof(TValue);
 
     // Provide a name for a special registry table
@@ -1022,7 +1035,7 @@ static void enumclass(EnumContext* ctx, LuauClass* lco)
     GCObject* obj = obj2gco(lco);
 
     char buf[LUA_IDSIZE];
-    snprintf(buf, sizeof(buf), "class object %s", getstr(lco->name));
+    snprintf(buf, sizeof(buf), "class %s", getstr(lco->name));
     enumnode(ctx, obj, sizeof(LuauClass), buf);
     enumedge(ctx, obj, obj2gco(lco->name), "classname");
 
@@ -1030,7 +1043,8 @@ static void enumclass(EnumContext* ctx, LuauClass* lco)
         enumedge(ctx, obj, obj2gco(lco->super), "super");
 
     enumedge(ctx, obj, obj2gco(lco->memberstooffset), "classoffsets");
-    uint32_t numberofstaticmembers = lco->numberofallmembers - lco->numberofinstancemembers;
+    uint32_t numberofstaticmembers = luaR_numstaticmembers(lco);
+    uint32_t numberofpublicstaticmembers = numberofstaticmembers - lco->numberofprivatestaticmembers;
 
     for (uint32_t i = 0; i < numberofstaticmembers; i++)
     {
@@ -1038,12 +1052,18 @@ static void enumclass(EnumContext* ctx, LuauClass* lco)
             continue;
 
         char membername[32];
-        snprintf(membername, sizeof(membername), "%s", getstr(lco->offsettomember[i + lco->numberofinstancemembers]));
+        if (i < numberofpublicstaticmembers)
+            snprintf(membername, sizeof(membername), "%s", getstr(lco->offsettomember[i + lco->numberofinstancemembers]));
+        else
+            snprintf(membername, sizeof(membername), "privatestaticmember%u", i - numberofpublicstaticmembers);
         enumedge(ctx, obj, gcvalue(&lco->staticmembers[i]), membername);
     }
 
-    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
-        enumedge(ctx, obj, obj2gco(lco->offsettomember[i]), "membername");
+    for (uint32_t i = 0; i < luaR_offsettomemberlength(lco); i++)
+    {
+        if (TString* str = lco->offsettomember[i])
+            enumedge(ctx, obj, obj2gco(str), "membername");
+    }
 
     if (lco->metatable)
         enumedge(ctx, obj, obj2gco(lco->metatable), "metatable");
@@ -1060,18 +1080,23 @@ static void enumobject(EnumContext* ctx, LuauObject* inst)
     snprintf(buf, sizeof(buf), "object %s", getstr(inst->lclass->name));
     enumnode(ctx, obj, sizeof(LuauObject), buf);
 
-    for (uint32_t i = 0; i < inst->lclass->numberofinstancemembers; i++)
+    if (inst->lclass)
+        enumedge(ctx, obj, obj2gco(inst->lclass), "class");
+
+    uint32_t privatefieldsenumerated = 0;
+    for (uint32_t i = 0; i < inst->numberofmembers; i++)
     {
         if (!iscollectable(&inst->members[i]))
             continue;
 
         char membername[32];
-        snprintf(membername, sizeof(membername), "%s", getstr(inst->lclass->offsettomember[i]));
+        TString* nametstring = inst->lclass->offsettomember[i];
+        if (nametstring != NULL)
+            snprintf(membername, sizeof(membername), "%s", getstr(nametstring));
+        else
+            snprintf(membername, sizeof(membername), "privatefield%u", privatefieldsenumerated++);
         enumedge(ctx, obj, gcvalue(&inst->members[i]), membername);
     }
-
-    if (inst->lclass)
-        enumedge(ctx, obj, obj2gco(inst->lclass), "class");
 }
 
 static void enumobj(EnumContext* ctx, GCObject* o)

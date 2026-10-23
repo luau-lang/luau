@@ -20,6 +20,7 @@
 
 LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAGVARIABLE(LuauPcallErrorContinuationReentry)
+LUAU_FASTFLAGVARIABLE(LuauIsYieldableSimplify)
 
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
@@ -878,7 +879,11 @@ int lua_break(lua_State* L)
 
 int lua_isyieldable(lua_State* L)
 {
-    return (L->nCcalls <= L->baseCcalls);
+    if (!FFlag::LuauIsYieldableSimplify)
+        return L->nCcalls <= L->baseCcalls;
+
+    LUAU_ASSERT(L->nCcalls >= L->baseCcalls);
+    return L->nCcalls == L->baseCcalls;
 }
 
 int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t ef)
@@ -916,7 +921,7 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
         if (!oldactive)
             L->isactive = false;
 
-        bool yieldable = L->nCcalls <= L->baseCcalls; // Inlined logic from 'lua_isyieldable' to avoid potential for an out of line call.
+        bool yieldable = FFlag::LuauIsYieldableSimplify ? lua_isyieldable(L) : (L->nCcalls <= L->baseCcalls);
 
         // restore nCcalls and baseCcalls before calling the debugprotectederror callback which may rely on the proper value to have been restored.
         L->nCcalls = oldnCcalls;

@@ -435,7 +435,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
         end
         test(false)
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -464,7 +464,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
 
     CheckResult result = getFrontend().check("Module/ListFns");
 
-    ignoreMissingAnnotations(result);
     auto modListFns = getFrontend().moduleResolver.getModule("Module/ListFns");
     freeze(modListFns->interfaceTypes);
     freeze(*modListFns->internalTypes);
@@ -596,7 +595,6 @@ TEST_CASE_FIXTURE(Fixture, "mixed_polarity_is_recovered")
         end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     auto ty = requireType("identity");

@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
-LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrorsInArgs)
 
 namespace Luau
 {
@@ -731,7 +730,7 @@ void OverloadResolver::maybeEmplaceError(
                 break;
             }
 
-            if (FFlag::LuauPropertyModifierMismatchErrorsInArgs && reason->isPropertyModifierViolation)
+            if (reason->isPropertyModifierViolation)
             {
                 std::string reasonStr = explainPropertyModifierViolation(reason->subPath);
                 errors->emplace_back(argLocation, moduleName, TypeMismatch{*wantedType, *givenType, std::move(reasonStr), context});

@@ -17,10 +17,8 @@
 // limit for table tag-method chains (to avoid loops)
 #define MAXTAGLOOP 100
 
-LUAU_FASTFLAG(LuauFrozenMetaButterfly)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauPromoteProto)
-LUAU_FASTFLAGVARIABLE(LuauCallLuauTm)
 
 const TValue* luaV_tonumber(const TValue* obj, TValue* n)
 {
@@ -108,37 +106,24 @@ static StkId callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p
     // * we cannot use savestack/restorestack because the arguments are sometimes on the C++ stack
     // * during stack reallocation all of the allocated stack is copied (even beyond stack_last) so these
     // values will be preserved even if they go past stack_last
-    if (FFlag::LuauCallLuauTm)
-    {
-        StkId top = L->top;
-        LUAU_ASSERT((top + 3) < (L->stack + L->stacksize));
-        setobj2s(L, top, f);      // push function
-        setobj2s(L, top + 1, p1); // 1st argument
-        setobj2s(L, top + 2, p2); // 2nd argument
+    StkId top = L->top;
+    LUAU_ASSERT((top + 3) < (L->stack + L->stacksize));
+    setobj2s(L, top, f);      // push function
+    setobj2s(L, top + 1, p1); // 1st argument
+    setobj2s(L, top + 2, p2); // 2nd argument
 
-        // fast-path for Luau to Luau calls
-        if (L->isactive && isLua(L->ci) && ttisfunction(top) && !clvalue(top)->isC)
-        {
-            L->top += 3;
-            callTMluau(L, top, clvalue(top), 1);
-        }
-        else
-        {
-            luaD_checkstack(L, 3);
-            StkId func = L->top;
-            L->top += 3;
-            luaD_call(L, func, 1);
-        }
+    // fast-path for Luau to Luau calls
+    if (L->isactive && isLua(L->ci) && ttisfunction(top) && !clvalue(top)->isC)
+    {
+        L->top += 3;
+        callTMluau(L, top, clvalue(top), 1);
     }
     else
     {
-        LUAU_ASSERT((L->top + 3) < (L->stack + L->stacksize));
-        setobj2s(L, L->top, f);      // push function
-        setobj2s(L, L->top + 1, p1); // 1st argument
-        setobj2s(L, L->top + 2, p2); // 2nd argument
         luaD_checkstack(L, 3);
+        StkId func = L->top;
         L->top += 3;
-        luaD_call(L, L->top - 3, 1);
+        luaD_call(L, func, 1);
     }
 
     res = restorestack(L, result);
@@ -157,39 +142,25 @@ static LUAU_NOINLINE void callTM(lua_State* L, const TValue* f, const TValue* p1
     // * we cannot use savestack/restorestack because the arguments are sometimes on the C++ stack
     // * during stack reallocation all of the allocated stack is copied (even beyond stack_last) so these
     // values will be preserved even if they go past stack_last
-    if (FFlag::LuauCallLuauTm)
-    {
-        StkId top = L->top;
-        LUAU_ASSERT((top + 4) < (L->stack + L->stacksize));
-        setobj2s(L, top, f);      // push function
-        setobj2s(L, top + 1, p1); // 1st argument
-        setobj2s(L, top + 2, p2); // 2nd argument
-        setobj2s(L, top + 3, p3); // 3th argument
+    StkId top = L->top;
+    LUAU_ASSERT((top + 4) < (L->stack + L->stacksize));
+    setobj2s(L, top, f);      // push function
+    setobj2s(L, top + 1, p1); // 1st argument
+    setobj2s(L, top + 2, p2); // 2nd argument
+    setobj2s(L, top + 3, p3); // 3th argument
 
-        // fast-path for Luau to Luau calls
-        if (L->isactive && isLua(L->ci) && ttisfunction(top) && !clvalue(top)->isC)
-        {
-            L->top += 4;
-            callTMluau(L, top, clvalue(top), 0);
-        }
-        else
-        {
-            luaD_checkstack(L, 4);
-            StkId func = L->top;
-            L->top += 4;
-            luaD_call(L, func, 0);
-        }
+    // fast-path for Luau to Luau calls
+    if (L->isactive && isLua(L->ci) && ttisfunction(top) && !clvalue(top)->isC)
+    {
+        L->top += 4;
+        callTMluau(L, top, clvalue(top), 0);
     }
     else
     {
-        LUAU_ASSERT((L->top + 4) < (L->stack + L->stacksize));
-        setobj2s(L, L->top, f);      // push function
-        setobj2s(L, L->top + 1, p1); // 1st argument
-        setobj2s(L, L->top + 2, p2); // 2nd argument
-        setobj2s(L, L->top + 3, p3); // 3th argument
         luaD_checkstack(L, 4);
+        StkId func = L->top;
         L->top += 4;
-        luaD_call(L, L->top - 4, 0);
+        luaD_call(L, func, 0);
     }
 }
 
@@ -208,28 +179,16 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
             if (res != luaO_nilobject)
                 L->cachedslot = gval2slot(h, res); // remember slot to accelerate future lookups
 
-            if (FFlag::LuauFrozenMetaButterfly)
+            if (LUAU_LIKELY(!ttisnil(res)))
             {
-                if (LUAU_LIKELY(!ttisnil(res)))
-                {
-                    setobj2s(L, val, res);
-                    return;
-                }
-
-                if ((tm = fasttm(L, h->metatable, TM_INDEX)) == NULL)
-                {
-                    setnilvalue(val);
-                    return;
-                }
+                setobj2s(L, val, res);
+                return;
             }
-            else
+
+            if ((tm = fasttm(L, h->metatable, TM_INDEX)) == NULL)
             {
-                if (!ttisnil(res) // result is no nil?
-                    || (tm = fasttm(L, h->metatable, TM_INDEX)) == NULL)
-                { // or no TM?
-                    setobj2s(L, val, res);
-                    return;
-                }
+                setnilvalue(val);
+                return;
             }
 
             // t isn't a table, so see if it has an INDEX meta-method to look up the key with
@@ -259,7 +218,7 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
                 luaG_missingmembererror(L, t, key);
 
             const uint32_t offset = uint32_t(nvalue(res));
-            LUAU_ASSERT(offset < lco->numberofallmembers);
+            LUAU_ASSERT(offset < lco->numberofmembers);
 
             // This is the case where we try to access an instance member on a
             // class object, for example:
@@ -327,7 +286,7 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
             if (ttisnil(offset))
                 luaG_missingmembererror(L, t, key);
             const uint32_t offsetnum = uint32_t(nvalue(offset));
-            LUAU_ASSERT(offsetnum < inst->lclass->numberofallmembers);
+            LUAU_ASSERT(offsetnum < inst->lclass->numberofmembers);
             if (offsetnum >= inst->lclass->numberofinstancemembers)
                 luaG_indexerror(L, t, key);
             setobj2class(L, &inst->members[offsetnum], val);

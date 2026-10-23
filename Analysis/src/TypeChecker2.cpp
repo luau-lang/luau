@@ -38,12 +38,9 @@ LUAU_FASTFLAGVARIABLE(LuauSkipUnusedTypeTraversals)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAGVARIABLE(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
-LUAU_FASTFLAGVARIABLE(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauDontUseInnermostScope)
 LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
@@ -1348,56 +1345,6 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
     testIsSubtype(*resultTy, varTy, stat->location);
 }
 
-void TypeChecker2::checkFunctionAnnotations(AstExprFunction* func, AnnotationCheckMode mode, Location nameLocation)
-{
-    TypeId ty = lookupType(func);
-    const FunctionType* ft = get<FunctionType>(ty);
-
-    bool missing = false;
-
-    if (ft)
-    {
-        TypePack args = extendTypePack(*module->internalTypes, builtinTypes, ft->argTypes, func->args.size);
-
-        for (size_t i = 0; i < func->args.size; ++i)
-        {
-            const AstLocal* arg = func->args.data[i];
-            if (i == 0 && arg->name == "self" && mode != AnnotationCheckMode::Function)
-            {
-                // Annotating the self parameter is already a syntax error.  We
-                // don't need to report anything here.
-            }
-            else if (!arg->annotation && i < args.head.size())
-                missing = true;
-        }
-
-        if (func->vararg && !func->varargAnnotation && args.tail.has_value())
-            missing = true;
-
-        if (mode == AnnotationCheckMode::Constructor && func->returnAnnotation)
-        {
-            reportError(ConstructorsShouldNotReturnAnything{}, func->returnAnnotation->location);
-        }
-        else if (!func->returnAnnotation)
-        {
-            auto [head, tail] = flatten(ft->retTypes);
-
-            if (!head.empty() || tail.has_value())
-                missing = true;
-        }
-    }
-
-    if (missing)
-    {
-        Location location = nameLocation;
-        if (func->argLocation)
-            location.extend(*func->argLocation);
-        if (func->returnAnnotation)
-            location.extend(func->returnAnnotation->location);
-        reportError(TypeAnnotationRequired{ty}, location);
-    }
-}
-
 void TypeChecker2::visit(AstStatFunction* stat)
 {
     visit(stat->name, ValueContext::LValue);
@@ -1420,17 +1367,11 @@ void TypeChecker2::visit(AstStatFunction* stat)
         auto rhsType = lookupType(stat->func);
         testIsSubtype(rhsType, lhsType, stat->func->location);
     }
-
-    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
-        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(AstStatLocalFunction* stat)
 {
     visit(stat->func);
-
-    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
-        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(const AstTypeList* typeList)
@@ -1602,12 +1543,7 @@ void TypeChecker2::visit(AstStatClass* stat)
             visit(method->function);
 
             if (method->functionName == "__init")
-            {
-                checkFunctionAnnotations(method->function, AnnotationCheckMode::Constructor, method->nameLocation);
                 visitConstructor(stat, method);
-            }
-            else
-                checkFunctionAnnotations(method->function, AnnotationCheckMode::Method, method->nameLocation);
         }
         else
             LUAU_ASSERT(!"Unknown class member!");
@@ -2557,8 +2493,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         return indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
     }
-    else if (const auto primitive = get<PrimitiveType>(exprType);
-             FFlag::LuauCannotAddIndexerToTablePrimitive && primitive && primitive->type == PrimitiveType::Table)
+    else if (const auto primitive = get<PrimitiveType>(exprType); primitive && primitive->type == PrimitiveType::Table)
         reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     else if (auto cls = get<ExternType>(exprType))
     {
@@ -3729,7 +3664,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
 
         std::stringstream reason;
 
-        if (FFlag::LuauPropertyModifierMismatchErrors && reasoning.isPropertyModifierViolation)
+        if (reasoning.isPropertyModifierViolation)
         {
             reason << explainPropertyModifierViolation(reasoning.subPath);
         }

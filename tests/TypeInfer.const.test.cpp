@@ -142,8 +142,6 @@ TEST_CASE_FIXTURE(Fixture, "const_recursive_function_works")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(unknown) -> ()", toString(requireType("f")));
@@ -164,8 +162,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "const_tables_are_still_mutable")
 
         return TABLE
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (FFlag::DebugLuauForceOldSolver)

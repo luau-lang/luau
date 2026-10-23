@@ -1,2 +1,2 @@
 ./analysis/property-modifiers/read_only_indexer_argument.luau(4,3): TypeError: Expected this to be 'T', but got '{ read [string]: number }'; 
-Expected the indexer result to be `number`, but got `number`
+the indexer is read-only in the latter type, but the former type requires a read-write indexer
