@@ -249,6 +249,10 @@ const char* getLuauOpcodeName(LuauOpcode cmd)
         return "CONSTRUCT";
     case LOP_FINCONSTRUCT:
         return "FINCONSTRUCT";
+    case LOP_GETPRIVATEFIELD:
+        return "GETPRIVATEFIELD";
+    case LOP_SETPRIVATEFIELD:
+        return "SETPRIVATEFIELD";
     default:
         LUAU_ASSERT(!"Unsupported opcode");
         return "unknown";

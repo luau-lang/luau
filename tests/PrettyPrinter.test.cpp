@@ -2329,6 +2329,25 @@ end
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
+TEST_CASE("class_with_private_members")
+{
+    ScopedFastFlag fflag{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string code = R"(
+class Point
+    private _x: number
+    public y: number
+    private function _mag(self)
+        return self._x
+    end
+    public function getMag(self)
+        return self:_mag()
+    end
+end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
 TEST_CASE("prettyPrint_function_attributes")
 {
     ScopedFastFlag sff{FFlag::LuauExportValueSyntax, true};

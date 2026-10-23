@@ -40,8 +40,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
         someTable.Function1() -- Argument count mismatch
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<CountMismatch>(result.errors[0]));
 }
@@ -66,8 +64,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
 
         someTable.Function2() -- Argument count mismatch
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<CountMismatch>(result.errors[0]));
@@ -115,8 +111,6 @@ TEST_CASE_FIXTURE(Fixture, "methods_are_topologically_sorted")
 
         local a, b = T:foo()
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
@@ -242,8 +236,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_se
         -- foo.fooConn()
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -333,8 +325,6 @@ function test()
     print(string.format("%d %d", n, nn))
 end
 )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -443,8 +433,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
         local cName = C.name
         local hello = i.props.hello
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -578,8 +566,6 @@ TEST_CASE_FIXTURE(Fixture, "method_should_not_create_cyclic_type")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -601,8 +587,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
     )";
 
     CheckResult result = getFrontend().check("game/B");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -642,8 +626,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
             return setmetatable(self, Account)
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -690,8 +672,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -717,9 +697,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
         local container = ItemContainer.new()
 
         container:removeItem(0, "magic")
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
@@ -745,9 +723,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
         local container = ItemContainer.new("library")
 
         container:removeItem(0, "magic")
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")

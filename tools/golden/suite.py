@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .execution import execute_configuration
 from .expectations import update_configuration, validate_configuration, write_actual_outputs
 from .models import ConfigResult, Executables, GoldenTest, UpdateMode
+from .text import diff_color_enabled
 
 
 def run_suite(
@@ -23,6 +25,7 @@ def run_suite(
     jobs: int,
     dump: bool = False,
     fflags: Sequence[str] = (),
+    environ: Mapping[str, str] | None = None,
 ) -> int:
     # Each `(test, config)` run is an independent batch of processes for the CLI, so they
     # execute will concurrently. Validation and file writes then run sequentially in
@@ -42,10 +45,11 @@ def run_suite(
             results = list(pool.map(execute, work))
 
     errors: list[str] = []
+    color = diff_color_enabled(sys.stderr, os.environ if environ is None else environ)
     writes = 0
     actual_writes = 0
     for (test, config), result in zip(work, results, strict=True):
-        errors.extend(validate_configuration(test, config, result, update))
+        errors.extend(validate_configuration(test, config, result, update, color=color))
         if update is not None:
             update_errors, update_writes = update_configuration(test, config, result, update)
             errors.extend(update_errors)

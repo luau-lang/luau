@@ -22,7 +22,6 @@ LUAU_FASTFLAGVARIABLE(LuauGcTraceUdata)
 LUAU_FLAGVERSION(LuauGcTraceUdata, 4)
 LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAG(LuauCoroutineFinally)
-LUAU_FASTFLAG(LuauFrozenMetaButterfly)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, false)
 
 /*
@@ -471,9 +470,13 @@ static void traverseclass(global_State* g, LuauClass* classobject)
     if (classobject->super)
         markobject(g, classobject->super);
     markobject(g, classobject->memberstooffset);
-    for (uint32_t i = 0; i < classobject->numberofallmembers; i++)
-        markobject(g, classobject->offsettomember[i]);
-    for (uint32_t i = 0; i < classobject->numberofallmembers - classobject->numberofinstancemembers; i++)
+    for (uint32_t i = 0; i < luaR_offsettomemberlength(classobject); i++)
+    {
+        if (TString* str = classobject->offsettomember[i])
+            markobject(g, str);
+    }
+    // Includes this class's private static members, which live at the tail of staticmembers.
+    for (uint32_t i = 0; i < luaR_numstaticmembers(classobject); i++)
         markvalue(g, &classobject->staticmembers[i]);
     if (classobject->metatable)
         markobject(g, classobject->metatable);
@@ -609,19 +612,17 @@ static size_t propagatemark(global_State* g)
         // We've traversed the "object" itself ...
         return sizeof(LuauClass) +
                // ... plus the method closures, each a `TValue` wide ...
-               ((classobject->numberofallmembers - classobject->numberofinstancemembers) * sizeof(TValue)) +
-               // ... plus a string pointer for each method or property, each a pointer wide.
-               (classobject->numberofallmembers * sizeof(TString*));
+               (luaR_numstaticmembers(classobject) * sizeof(TValue)) +
+               // ... plus a string pointer for each method or property except for private static members, each a pointer wide.
+               (luaR_offsettomemberlength(classobject) * sizeof(TString*));
     }
     case LUA_TOBJECT:
     {
         LuauObject* classinst = gco2object(o);
         g->gray = classinst->gclist;
         traverseobject(g, classinst);
-        // We've traversed the instance ...
-        return sizeof(LuauObject) +
-               // ... plus all of the instance fields.
-               classinst->numberofmembers * sizeof(TValue);
+        // We've traversed the instance and its instance fields
+        return sizeof(LuauObject) + classinst->numberofmembers * sizeof(TValue);
     }
     default:
         LUAU_ASSERT(0);
@@ -746,10 +747,10 @@ static size_t cleartable(lua_State* L, GCObject* l)
             }
         }
 
-        if (FFlag::LuauFrozenMetaButterfly && hasmetacache(h))
+        if (hasmetacache(h))
             rebuildmetacache(L, h);
 
-        if (!FFlag::LuauFrozenMetaButterfly || !h->readonly) // frozen tables do not shrink
+        if (!h->readonly) // frozen tables do not shrink
         {
             if (const char* modev = gettablemode(L->global, h))
             {

@@ -43,6 +43,8 @@ inline int getOpLength(LuauOpcode op)
     case LOP_CMPPROTO:
     case LOP_NEWCLASS:
     case LOP_CONSTRUCT:
+    case LOP_GETPRIVATEFIELD:
+    case LOP_SETPRIVATEFIELD:
         return 2;
 
     default:

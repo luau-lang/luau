@@ -486,7 +486,8 @@ public:
         const AstName& index,
         const Location& indexLocation,
         const Position& opPosition,
-        char op
+        char op,
+        bool privateAccess = false
     );
 
     void visit(AstVisitor* visitor) override;
@@ -496,6 +497,8 @@ public:
     Location indexLocation;
     Position opPosition;
     char op = '.';
+    // Indicates a private field/method access made within a class method body
+    bool privateAccess = false;
 };
 
 class AstExprIndexExpr : public AstExpr
@@ -1141,6 +1144,12 @@ struct AstDeclaredExternTypeProperty
     AstTableAccess access = AstTableAccess::ReadWrite;
 };
 
+enum class AstClassAccess
+{
+    Public,
+    Private,
+};
+
 struct AstClassProperty
 {
     Location qualifierLocation;
@@ -1148,15 +1157,18 @@ struct AstClassProperty
     Location nameLocation;
     std::optional<Location> typeColonLocation = std::nullopt;
     AstType* ty = nullptr;
+    AstClassAccess access = AstClassAccess::Public;
 };
 
 struct AstClassMethod
 {
+    // Methods with no access modifiers are public by default.
     std::optional<Location> qualifierLocation;
     Location keywordLocation;
     AstName functionName;
     Location nameLocation;
-    AstExprFunction* function;
+    AstExprFunction* function = nullptr;
+    AstClassAccess access = AstClassAccess::Public;
 };
 
 using AstClassMember = Variant<AstClassProperty, AstClassMethod>;

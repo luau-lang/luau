@@ -7,6 +7,8 @@
 
 #include <optional>
 
+LUAU_FASTFLAG(LuauCodegenUpdateSafeEnvList)
+
 namespace Luau
 {
 namespace CodeGen
@@ -107,6 +109,8 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
     case IrCmd::FALLBACK_NAMECALL:
     case IrCmd::FALLBACK_FORGPREP:
         return true;
+    case IrCmd::INVOKE_FASTPCALL:
+        return FFlag::LuauCodegenUpdateSafeEnvList;
     default:
         break;
     }

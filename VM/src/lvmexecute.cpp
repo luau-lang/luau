@@ -21,7 +21,6 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
 LUAU_FASTFLAG(LuauFastpcall)
-LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
 
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
@@ -126,7 +125,7 @@ LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
         VM_DISPATCH_OP(LOP_IDIVK), VM_DISPATCH_OP(LOP_GETUDATAKS), VM_DISPATCH_OP(LOP_SETUDATAKS), VM_DISPATCH_OP(LOP_NAMECALLUDATA), \
         VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO), VM_DISPATCH_OP(LOP_FASTPCALL), \
-        VM_DISPATCH_OP(LOP_NEWCLASS), VM_DISPATCH_OP(LOP_CONSTRUCT), VM_DISPATCH_OP(LOP_FINCONSTRUCT),
+        VM_DISPATCH_OP(LOP_NEWCLASS), VM_DISPATCH_OP(LOP_CONSTRUCT), VM_DISPATCH_OP(LOP_FINCONSTRUCT), VM_DISPATCH_OP(LOP_GETPRIVATEFIELD), VM_DISPATCH_OP(LOP_SETPRIVATEFIELD),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -654,7 +653,7 @@ reentry:
                         // to the class member with the same name.
                         uint8_t slot = LUAU_INSN_C(insn);
                         LuauObject* inst = objectvalue(rb);
-                        if (LUAU_LIKELY(slot < inst->lclass->numberofallmembers && tsvalue(kv) == inst->lclass->offsettomember[slot]))
+                        if (LUAU_LIKELY(slot < luaR_offsettomemberlength(inst->lclass) && tsvalue(kv) == inst->lclass->offsettomember[slot]))
                         {
                             setobj2s(L, ra, luaR_lookupmemberatoffset(inst, slot));
                             VM_NEXT();
@@ -1011,7 +1010,7 @@ reentry:
                     {
                         uint8_t slot = LUAU_INSN_C(insn);
                         LuauObject* inst = objectvalue(rb);
-                        if (slot < inst->lclass->numberofallmembers && tsvalue(kv) == inst->lclass->offsettomember[slot])
+                        if (slot < luaR_offsettomemberlength(inst->lclass) && tsvalue(kv) == inst->lclass->offsettomember[slot])
                         {
                             // note: order of copies allows rb to alias ra+1 or ra
                             setobj2s(L, ra + 1, rb);
@@ -3642,15 +3641,24 @@ reentry:
 
             VM_CASE(LOP_NEWCLASSMEMBER)
             {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
                 VM_CASE_INSTRUCTION insn = *pc++;
                 uint32_t aux = *pc++;
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* membername = VM_KV(aux);
-                LUAU_ASSERT(ttisstring(membername));
-                LUAU_ASSERT(LUAU_INSN_B(insn) == 0);
+                uint8_t visibility = LuauClassMemberVisibility(LUAU_INSN_B(insn));
+                LUAU_ASSERT(visibility == LuauClassMemberVisibility::LCMV_PUBLIC || visibility == LuauClassMemberVisibility::LCMV_PRIVATE);
                 VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
                 VM_PROTECT_PC();
-                luaR_addclassmember(L, classvalue(ra), tsvalue(membername), rc);
+                if (visibility == LuauClassMemberVisibility::LCMV_PUBLIC)
+                {
+                    TValue* membername = VM_KV(aux);
+                    luaR_addpublicstaticmember(L, classvalue(ra), tsvalue(membername), rc);
+                }
+                else
+                {
+                    uint8_t pindex = LUAU_INSN_AUX_A(aux);
+                    luaR_addprivatestaticmember(L, classvalue(ra), pindex, rc);
+                }
                 VM_NEXT();
             }
 
@@ -3683,8 +3691,7 @@ reentry:
                 if (!FFlag::LuauFastpcall)
                     VM_NEXT();
 
-                if (FFlag::LuauFastpcallInterrupt)
-                    VM_INTERRUPT();
+                VM_INTERRUPT();
 
                 int pfid = LUAU_INSN_A(insn);
                 int skip = LUAU_INSN_C(insn);
@@ -3752,6 +3759,7 @@ reentry:
 
             VM_CASE(LOP_NEWCLASS)
             {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
                 VM_CASE_INSTRUCTION insn = *pc++;
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
                 uint8_t super = LUAU_INSN_B(insn);
@@ -3819,6 +3827,107 @@ reentry:
                     pc += skip + 1;
                     VM_ASSERT_PC(pc);
                 }
+
+                VM_NEXT();
+            }
+
+            VM_CASE(LOP_GETPRIVATEFIELD)
+            {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
+
+                VM_CASE_INSTRUCTION insn = *pc++;
+                uint32_t aux = *pc++;
+
+                VM_PROTECT_PC();
+
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+                if (LUAU_UNLIKELY(!(ttisobject(rb) || ttisclass(rb))))
+                    luaG_typeerror(L, rb, "access private field of");
+
+                TValue* clsuv = VM_UV(LUAU_INSN_C(insn));
+                TValue* clsv = ttisupval(clsuv) ? upvalue(clsuv)->v : clsuv;
+                if (LUAU_UNLIKELY(!ttisclass(clsv)))
+                    luaG_typeerror(L, clsv, "verify object is an instance of");
+
+                LuauClass* cls = classvalue(clsv);
+
+                if (ttisobject(rb))
+                {
+                    LuauObject* inst = objectvalue(rb);
+
+                    if (!luaR_isinstance(inst, cls))
+                        luaG_runerror(L, "attempt to illegally access private field");
+
+                    if (LUAU_INSN_AUX_STATIC(aux))
+                    {
+                        uint8_t pindex = LUAU_INSN_AUX_A(aux);
+                        // If namecall flag is set, put class instance/object into register after target
+                        if (LUAU_INSN_AUX_NAMECALL(aux))
+                            setobj2s(L, ra + 1, rb);
+                        setobj2s(L, ra, luaR_privatestaticmember(cls, pindex));
+                    }
+                    else
+                    {
+                        uint32_t pindex = LUAU_INSN_AUX_A(aux) + cls->ownprivatefieldsstart;
+                        LUAU_ASSERT(pindex < inst->numberofmembers);
+                        // If namecall flag is set, put class instance/object into register after target
+                        if (LUAU_INSN_AUX_NAMECALL(aux))
+                            setobj2s(L, ra + 1, rb);
+                        setobj2s(L, ra, &inst->members[pindex]);
+                    }
+                }
+                else
+                {
+                    LuauClass* srccls = classvalue(rb);
+
+                    if (LUAU_UNLIKELY(!luaR_issubclass(srccls, cls)))
+                        luaG_runerror(L, "attempt to illegally access private field of a class");
+                    if (LUAU_UNLIKELY(!LUAU_INSN_AUX_STATIC(aux)))
+                        luaG_runerror(L, "attempt to access private instance field of a class");
+
+                    uint8_t pindex = LUAU_INSN_AUX_A(aux);
+                    // If namecall flag is set, put class instance/object into register after target
+                    if (LUAU_INSN_AUX_NAMECALL(aux))
+                        setobj2s(L, ra + 1, rb);
+                    setobj2s(L, ra, luaR_privatestaticmember(cls, pindex));
+                }
+
+                VM_NEXT();
+            }
+
+            VM_CASE(LOP_SETPRIVATEFIELD)
+            {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
+
+                VM_CASE_INSTRUCTION insn = *pc++;
+                uint32_t aux = *pc++;
+
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+
+                VM_PROTECT_PC();
+
+                if (!ttisobject(rb))
+                    luaG_typeerror(L, rb, "assign private field of");
+
+                TValue* clsuv = VM_UV(LUAU_INSN_C(insn));
+                TValue* clsv = ttisupval(clsuv) ? upvalue(clsuv)->v : clsuv;
+                if (!ttisclass(clsv))
+                    luaG_typeerror(L, clsv, "assign private field of");
+
+                LuauObject* inst = objectvalue(rb);
+                LuauClass* cls = classvalue(clsv);
+
+                if (!luaR_isinstance(inst, cls))
+                    luaG_runerror(L, "attempt to assign private field of an object with a different class");
+
+                uint32_t pindex = (aux & 0xffu) + cls->ownprivatefieldsstart;
+                LUAU_ASSERT(pindex < inst->numberofmembers);
+
+                setobj2class(L, &inst->members[pindex], ra);
+                luaC_barrier(L, inst, ra);
 
                 VM_NEXT();
             }

@@ -20,8 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
-
 namespace Luau
 {
 
@@ -415,16 +413,13 @@ private:
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
 
-        if (FFlag::LuauTypeFunctionSerializeArgNames)
+        f2->argNames.reserve(f1->argNames.size());
+        for (const auto& argName : f1->argNames)
         {
-            f2->argNames.reserve(f1->argNames.size());
-            for (const auto& argName : f1->argNames)
-            {
-                if (argName)
-                    f2->argNames.emplace_back(argName->name);
-                else
-                    f2->argNames.emplace_back();
-            }
+            if (argName)
+                f2->argNames.emplace_back(argName->name);
+            else
+                f2->argNames.emplace_back();
         }
     }
 
@@ -1028,16 +1023,13 @@ private:
         if (f2->retTypes)
             f1->retTypes = shallowDeserialize(f2->retTypes);
 
-        if (FFlag::LuauTypeFunctionSerializeArgNames)
+        f1->argNames.reserve(f2->argNames.size());
+        for (const auto& name : f2->argNames)
         {
-            f1->argNames.reserve(f2->argNames.size());
-            for (const auto& name : f2->argNames)
-            {
-                if (name)
-                    f1->argNames.emplace_back(FunctionArgument{*name, {}});
-                else
-                    f1->argNames.emplace_back();
-            }
+            if (name)
+                f1->argNames.emplace_back(FunctionArgument{*name, {}});
+            else
+                f1->argNames.emplace_back();
         }
     }
 

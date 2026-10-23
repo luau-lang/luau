@@ -1382,7 +1382,7 @@ struct Printer
                         [&](const AstClassProperty& prop)
                         {
                             writer.advance(prop.qualifierLocation.begin);
-                            writer.keyword("public");
+                            writer.keyword(prop.access == AstClassAccess::Private ? "private" : "public");
                             writer.advance(prop.nameLocation.begin);
                             writer.identifier(prop.name.value);
                             if (writeTypes && prop.ty)
@@ -1398,7 +1398,7 @@ struct Printer
                             if (method.qualifierLocation)
                             {
                                 writer.advance(method.qualifierLocation->begin);
-                                writer.keyword("public");
+                                writer.keyword(method.access == AstClassAccess::Private ? "private" : "public");
                             }
                             writer.advance(method.keywordLocation.begin);
                             writer.keyword("function");

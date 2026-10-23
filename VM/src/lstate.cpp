@@ -14,7 +14,6 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauGcTraceUdata)
-LUAU_FASTFLAGVARIABLE(LuauEasyStateInit)
 LUAU_FASTFLAGVARIABLE(LuauBufferCage)
 
 /*
@@ -86,28 +85,6 @@ static void f_luaopen(lua_State* L, void* ud)
     g->GCthreshold = 4 * g->totalbytes;
 }
 
-static void preinit_state(lua_State* L, global_State* g)
-{
-    LUAU_ASSERT(!FFlag::LuauEasyStateInit);
-
-    L->global = g;
-    L->stack = NULL;
-    L->stacksize = 0;
-    L->gt = NULL;
-    L->openupval = NULL;
-    L->size_ci = 0;
-    L->nCcalls = L->baseCcalls = 0;
-    L->status = 0;
-    L->base_ci = L->ci = NULL;
-    L->namecall = NULL;
-    L->cachedslot = 0;
-    L->singlestep = false;
-    L->isactive = false;
-    L->activememcat = 0;
-    L->finalizers = NULL;
-    L->userdata = NULL;
-}
-
 static void close_state(lua_State* L)
 {
     global_State* g = L->global;
@@ -138,17 +115,11 @@ static void close_state(lua_State* L)
 lua_State* luaE_newthread(lua_State* L)
 {
     lua_State* L1 = luaM_newgco(L, lua_State, sizeof(lua_State), L->activememcat, LUA_TTHREAD);
-
-    if (FFlag::LuauEasyStateInit)
-        memset(L1, 0, sizeof(lua_State));
+    memset(L1, 0, sizeof(lua_State));
 
     luaC_init(L, L1, LUA_TTHREAD);
 
-    if (FFlag::LuauEasyStateInit)
-        L1->global = L->global;
-    else
-        preinit_state(L1, L->global);
-
+    L1->global = L->global;
     L1->activememcat = L->activememcat; // inherit the active memory category
     stack_init(L1, L);                  // init stack
     L1->gt = L->gt;                     // share table of globals
@@ -212,180 +183,56 @@ void lua_setmemorycage(lua_State* L, lua_CageAlloc alloc, void* ud)
 
 lua_State* lua_newstate(lua_Alloc allocator, void* ud)
 {
-    if (FFlag::LuauEasyStateInit)
-    {
-        void* l = allocator(ud, nullptr, 0, sizeof(LG));
-        if (l == nullptr)
-            return nullptr;
+    void* l = allocator(ud, nullptr, 0, sizeof(LG));
+    if (l == nullptr)
+        return nullptr;
 
-        memset(l, 0, sizeof(LG));
+    memset(l, 0, sizeof(LG));
 
-        lua_State* L = &((LG*)l)->l;
-        global_State* g = &((LG*)l)->g;
+    lua_State* L = &((LG*)l)->l;
+    global_State* g = &((LG*)l)->g;
 
-        L->tt = LUA_TTHREAD;
-        L->marked = g->currentwhite = bit2mask(WHITE0BIT, FIXEDBIT);
+    L->tt = LUA_TTHREAD;
+    L->marked = g->currentwhite = bit2mask(WHITE0BIT, FIXEDBIT);
 
-        L->global = g;
-        g->mainthread = L;
+    L->global = g;
+    g->mainthread = L;
 
-        g->frealloc = allocator;
-        g->ud = ud;
+    g->frealloc = allocator;
+    g->ud = ud;
 
-        g->uvhead.u.open.prev = &g->uvhead;
-        g->uvhead.u.open.next = &g->uvhead;
+    g->uvhead.u.open.prev = &g->uvhead;
+    g->uvhead.u.open.next = &g->uvhead;
 
 
-        g->ptrenckey[0] = 1;
+    g->ptrenckey[0] = 1;
 
-        g->totalbytes = sizeof(LG);
-        g->memcatbytes[0] = sizeof(LG);
+    g->totalbytes = sizeof(LG);
+    g->memcatbytes[0] = sizeof(LG);
 
-        g->gcstate = GCSpause;
-        g->gcgoal = LUAI_GCGOAL;
-        g->gcstepmul = LUAI_GCSTEPMUL;
-        g->gcstepsize = LUAI_GCSTEPSIZE << 10;
+    g->gcstate = GCSpause;
+    g->gcgoal = LUAI_GCGOAL;
+    g->gcstepmul = LUAI_GCSTEPMUL;
+    g->gcstepsize = LUAI_GCSTEPSIZE << 10;
 
-        g->cb = lua_Callbacks();
-        g->ecb = lua_ExecutionCallbacks();
-        g->gcstats = GCStats();
+    g->cb = lua_Callbacks();
+    g->ecb = lua_ExecutionCallbacks();
+    g->gcstats = GCStats();
 
-        g->lastprotoid = 1;
-        g->lastclassid = 1;
+    g->lastprotoid = 1;
+    g->lastclassid = 1;
 
 #ifdef LUAI_GCMETRICS
-        g->gcmetrics = GCMetrics();
+    g->gcmetrics = GCMetrics();
 #endif
 
-        if (luaD_rawrunprotected(L, f_luaopen, nullptr) != 0)
-        {
-            // memory allocation error: free partial state
-            close_state(L);
-            L = nullptr;
-        }
-        return L;
-    }
-    else
+    if (luaD_rawrunprotected(L, f_luaopen, nullptr) != 0)
     {
-        int i;
-        lua_State* L;
-        global_State* g;
-        void* l = (*allocator)(ud, NULL, 0, sizeof(LG));
-        if (l == NULL)
-            return NULL;
-        L = (lua_State*)l;
-        g = &((LG*)L)->g;
-        L->tt = LUA_TTHREAD;
-        L->marked = g->currentwhite = bit2mask(WHITE0BIT, FIXEDBIT);
-        L->memcat = 0;
-        preinit_state(L, g);
-        g->frealloc = allocator;
-        g->ud = ud;
-        g->mainthread = L;
-        g->uvhead.u.open.prev = &g->uvhead;
-        g->uvhead.u.open.next = &g->uvhead;
-        g->GCthreshold = 0; // mark it as unfinished state
-        g->registryfree = 0;
-        g->errorjmp = NULL;
-        g->rngstate = 0;
-        g->ptrenckey[0] = 1;
-        g->ptrenckey[1] = 0;
-        g->ptrenckey[2] = 0;
-        g->ptrenckey[3] = 0;
-        for (int i = 0; i < 8; i++)
-            g->ptrenckeynew[i] = 0;
-        g->ptrencactive = 0;
-        g->strt.size = 0;
-        g->strt.nuse = 0;
-        g->strt.hash = NULL;
-        setnilvalue(&g->pseudotemp);
-        setnilvalue(registry(L));
-        setnilvalue(&g->weakregistry);
-        g->weakregistryfree = 0;
-        g->weakregistrytop = 0;
-        g->embeddergc = NULL;
-        g->gcstate = GCSpause;
-        g->gray = NULL;
-        g->grayagain = NULL;
-        g->weak = NULL;
-        g->totalbytes = sizeof(LG);
-        g->gcgoal = LUAI_GCGOAL;
-        g->gcstepmul = LUAI_GCSTEPMUL;
-        g->gcstepsize = LUAI_GCSTEPSIZE << 10;
-
-        for (i = 0; i < LUA_SIZECLASSES; i++)
-        {
-            g->freepages[i] = NULL;
-            g->freegcopages[i] = NULL;
-            g->freegcopages_cage[i] = NULL;
-        }
-
-        g->allpages = NULL;
-        g->allgcopages = NULL;
-        g->sweepgcopage = NULL;
-        g->cagealloc = NULL;
-        g->cageud = NULL;
-        g->allgcopages_cage = NULL;
-        g->sweepgcopage_cage = NULL;
-
-        for (i = 0; i < LUA_T_COUNT; i++)
-            g->mt[i] = NULL;
-
-        for (i = 0; i < LUA_UTAG_LIMIT; i++)
-        {
-            g->udatagc[i] = NULL;
-            g->udatamark[i] = NULL;
-            g->udatamt[i] = NULL;
-        }
-
-        for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
-        {
-            lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
-
-            setnilvalue(&udatadirect.indextm);
-            setnilvalue(&udatadirect.newindextm);
-            setnilvalue(&udatadirect.namecalltm);
-            udatadirect.index = NULL;
-            udatadirect.newindex = NULL;
-            udatadirect.namecall = NULL;
-        }
-
-        for (i = 0; i < LUA_LUTAG_LIMIT; i++)
-            g->lightuserdataname[i] = NULL;
-
-        for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
-            g->udatadirectfields[i] = NULL;
-
-        for (i = 0; i < LUA_MEMORY_CATEGORIES; i++)
-            g->memcatbytes[i] = 0;
-
-        g->memcatbytes[0] = sizeof(LG);
-
-        g->cb = lua_Callbacks();
-
-        g->ecb = lua_ExecutionCallbacks();
-
-        memset(g->ecbdata, 0, LUA_EXECUTION_CALLBACK_STORAGE * sizeof(g->ecbdata[0]));
-
-        g->gcstats = GCStats();
-        g->lastprotoid = 1;
-        g->lastclassid = 1;
-
-        g->builtinPcall = NULL;
-        g->builtinXpcall = NULL;
-
-#ifdef LUAI_GCMETRICS
-        g->gcmetrics = GCMetrics();
-#endif
-
-        if (luaD_rawrunprotected(L, f_luaopen, NULL) != 0)
-        {
-            // memory allocation error: free partial state
-            close_state(L);
-            L = NULL;
-        }
-        return L;
+        // memory allocation error: free partial state
+        close_state(L);
+        L = nullptr;
     }
+    return L;
 }
 
 void lua_close(lua_State* L)
