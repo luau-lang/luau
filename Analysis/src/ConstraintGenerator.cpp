@@ -52,6 +52,7 @@ LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalAnalysis)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalAnalysis, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAGVARIABLE(LuauUnconditionallyVisitTypeAliasParams)
+LUAU_FASTFLAGVARIABLE(LuauSingletonLiteralsInTypeAssertions)
 
 namespace Luau
 {
@@ -3797,7 +3798,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifEls
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
 {
-    check(scope, typeAssert->expr, std::nullopt);
+    // Literals are kept as singletons so that casts like `"a" :: "b"` are reported as unrelated.
+    check(scope, typeAssert->expr, std::nullopt, /* forceSingleton */ FFlag::LuauSingletonLiteralsInTypeAssertions);
     return Inference{resolveType(scope, typeAssert->annotation, /* inTypeArguments */ false)};
 }
 
