@@ -1,0 +1,5 @@
+Block 0 (entry "Entry Block"):
+  local a-0 = 1
+  local b-0 = 2
+  a-1 = b-0
+  b-1 = a-0

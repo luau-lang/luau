@@ -27,7 +27,6 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCompileTableFoldFix)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
-LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileMoveElision)
 LUAU_FASTFLAG(LuauCompileNoDebugConst)
 LUAU_FASTFLAG(LuauCompileMoveElisionFix)
@@ -994,7 +993,7 @@ K1: 'species'
 K2: function live
 K3: 'live'
 K4: '__init'
-K5: class Animal (props: 1, methods: 2)
+K5: class Animal (public fields: 1, public methods: 2, private fields: 0, private methods: 0)
   props:
     K1 ['species']
   methods:
@@ -1004,7 +1003,7 @@ K6: 'Cat'
 K7: 'breed'
 K8: function describe
 K9: 'describe'
-K10: class Cat (props: 1, methods: 2)
+K10: class Cat (public fields: 1, public methods: 2, private fields: 0, private methods: 0)
   props:
     K7 ['breed']
   methods:
@@ -1012,12 +1011,12 @@ K10: class Cat (props: 1, methods: 2)
     K4 ['__init']
 K11: 'print'
 K12: print
-NEWCLASS R0 no_base K5 1 [class Animal (props: 1, methods: 2)]
+NEWCLASS R0 no_base K5 1 [class Animal (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
 DUPCLOSURE R1 K2 ['live']
-NEWCLASSMEMBER R0 R1 ['live']
-NEWCLASS R1 R0 K10 0 [class Cat (props: 1, methods: 2)]
+NEWCLASSMEMBER R0 R1 [public] ['live']
+NEWCLASS R1 R0 K10 0 [class Cat (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
 DUPCLOSURE R2 K8 ['describe']
-NEWCLASSMEMBER R1 R2 ['describe']
+NEWCLASSMEMBER R1 R2 [public] ['describe']
 GETIMPORT R2 12 [print]
 MOVE R3 R1
 CALL R2 1 0
@@ -12276,7 +12275,7 @@ TEST_CASE("ClassDeclBasic")
     )";
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K4 0 [class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)]
 GETGLOBAL R1 K5 ['print']
 MOVE R2 R0
 CALL R1 1 0
@@ -12311,9 +12310,9 @@ RETURN R1 1
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(R"(
-NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+NEWCLASS R0 no_base K5 0 [class Point (public fields: 2, public methods: 2, private fields: 0, private methods: 0)]
 NEWCLOSURE R1 P0
-NEWCLASSMEMBER R0 R1 ['magnitude']
+NEWCLASSMEMBER R0 R1 [public] ['magnitude']
 GETGLOBAL R1 K6 ['print']
 MOVE R2 R0
 CALL R1 1 0
@@ -12351,9 +12350,9 @@ RETURN R0 0
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(res1 == R"(
-NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+NEWCLASS R0 no_base K5 0 [class Point (public fields: 2, public methods: 2, private fields: 0, private methods: 0)]
 NEWCLOSURE R1 P0
-NEWCLASSMEMBER R0 R1 ['print']
+NEWCLASSMEMBER R0 R1 [public] ['print']
 DUPTABLE R1 6
 LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
@@ -12387,13 +12386,939 @@ RETURN R0 0
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(res1 == R"(
-NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K4 0 [class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)]
 NEWCLOSURE R1 P0
-NEWCLASSMEMBER R0 R1 ['__init']
+NEWCLASSMEMBER R0 R1 [public] ['__init']
 DUPTABLE R1 5
 LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
 RETURN R1 1
+)");
+}
+
+TEST_CASE("ClassPrivateFieldRead")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            private _x: number
+            private _y: number
+            function getX(self)
+                return self._x
+            end
+            function getY(self)
+                return self._y
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETPRIVATEFIELD R1 R0 U0 0 [instance]
+RETURN R1 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+GETPRIVATEFIELD R1 R0 U0 1 [instance]
+RETURN R1 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+NEWCLASS R0 no_base K4 0 [class Point (public fields: 0, public methods: 3, private fields: 2, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['getX']
+NEWCLOSURE R1 P1
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['getY']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateFieldReadInExpression")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            private _x: number
+            private _y: number
+            function magnitude(self)
+                return self._x * self._x + self._y * self._y
+            end
+        end
+        print(Point)
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETPRIVATEFIELD R3 R0 U0 0 [instance]
+GETPRIVATEFIELD R4 R0 U0 0 [instance]
+MUL R2 R3 R4
+GETPRIVATEFIELD R4 R0 U0 1 [instance]
+GETPRIVATEFIELD R5 R0 U0 1 [instance]
+MUL R3 R4 R5
+ADD R1 R2 R3
+RETURN R1 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R0 no_base K3 0 [class Point (public fields: 0, public methods: 2, private fields: 2, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['magnitude']
+GETGLOBAL R1 K4 ['print']
+MOVE R2 R0
+CALL R1 1 0
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateFieldSlotsDontCountPublicFields")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // Slot indices count just private fields
+    std::string source = R"(
+        class Account
+            public owner: string
+            private _balance: number
+            public id: number
+            private _pin: number
+            function peek(self)
+                return self.owner, self._balance, self.id, self._pin
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETTABLEKS R1 R0 K0 ['owner']
+GETPRIVATEFIELD R2 R0 U0 0 [instance]
+GETTABLEKS R3 R0 K1 ['id']
+GETPRIVATEFIELD R4 R0 U0 1 [instance]
+RETURN R1 4
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R0 no_base K5 0 [class Account (public fields: 2, public methods: 2, private fields: 2, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['peek']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateMethodAsValue")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // Private methods live on the class rather than the instance, so reading one sets the AUX
+    // 'static' bit. Their slots are numbered independently of the instance fields.
+    std::string source = R"(
+        class C
+            private function _first(self)
+                return 0
+            end
+            private function _second(self)
+                return 1
+            end
+            function pick(self)
+                return self._first, self._second
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+GETPRIVATEFIELD R1 R0 U0 0 [static]
+GETPRIVATEFIELD R2 R0 U0 1 [static]
+RETURN R1 2
+)");
+
+    // A private member carries no name constant, so its NEWCLASSMEMBER AUX slot is 0 and the dump
+    // shows constant 0 -- the class name -- rather than the member name.
+    CHECK_EQ("\n" + bcb.dumpFunction(3), R"(
+NEWCLASS R0 no_base K3 0 [class C (public fields: 0, public methods: 2, private fields: 0, private methods: 2)]
+NEWCLOSURE R1 P0
+NEWCLASSMEMBER R0 R1 0 [private]
+NEWCLOSURE R1 P1
+NEWCLASSMEMBER R0 R1 1 [private]
+NEWCLOSURE R1 P2
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['pick']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateMethodCallDoesNotUseNamecall")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class C
+            private _x: number
+            private function _helper(self)
+                return self._x
+            end
+            function get(self)
+                return self:_helper()
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+GETPRIVATEFIELD R1 R0 U0 0 [static] [namecall]
+CALL R1 1 -1
+RETURN R1 -1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+NEWCLASS R0 no_base K3 0 [class C (public fields: 0, public methods: 2, private fields: 1, private methods: 1)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 0 [private]
+NEWCLOSURE R1 P1
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['get']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassMetamethodNamesAreNotPrivate")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // A single leading underscore marks a private member; '__' names are metamethods and stay
+    // ordinary property accesses even inside a method body.
+    std::string source = R"(
+        class Point
+            private _x: number
+            function describe(self)
+                return self.__tostring, self._x
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETTABLEKS R1 R0 K0 ['__tostring']
+GETPRIVATEFIELD R2 R0 U0 0 [instance]
+RETURN R1 2
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R0 no_base K3 0 [class Point (public fields: 0, public methods: 2, private fields: 1, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['describe']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateFieldInNestedClosure")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // Closures nested inside a method body are still class-method context, so a private read
+    // through a captured 'self' compiles to GETPRIVATEFIELD.
+    std::string source = R"(
+        class Point
+            private _x: number
+            function makeGetter(self)
+                return function()
+                    return self._x
+                end
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETUPVAL R0 U0
+GETPRIVATEFIELD R0 R0 U1 0 [instance]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+CAPTURE UPVAL U0
+RETURN R1 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+NEWCLASS R0 no_base K3 0 [class Point (public fields: 0, public methods: 2, private fields: 1, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['makeGetter']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateFieldOutsideClassBodyIsPlainIndex")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // An underscore-prefixed name only denotes a private member inside a class method body.
+    std::string source = R"(
+        class Point
+            private _x: number
+        end
+        local function peek(p)
+            return p._x
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETTABLEKS R1 R0 K0 ['_x']
+RETURN R1 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, private fields: 1, private methods: 0)]
+NEWCLOSURE R1 P0
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassUndeclaredPrivateFieldProducesError")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            private _x: number
+            function get(self)
+                return self._y
+            end
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 0, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        std::string msg = e.what();
+        CHECK(msg == "Attempt to access undefined private field");
+    }
+}
+
+TEST_CASE("ClassUndeclaredPrivateFieldNotInlined")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            private _x: number
+            function get(self)
+                local t = { _f = function() return 42 end }
+                return t._f()
+            end
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 2, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        std::string msg = e.what();
+        CHECK(msg == "Attempt to access undefined private field");
+    }
+}
+
+TEST_CASE("ClassPrivateFieldDeclaredAfterUseProducesError")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // Private slots are computed before the class body is fully compiled, so a field declared after its use is still recognized.
+    std::string source = R"(
+        class Point
+            function get(self)
+                return self._x
+            end
+            private _x: number
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETPRIVATEFIELD R1 R0 U0 0 [instance]
+RETURN R1 1
+)");
+}
+
+TEST_CASE("ClassPrivateFieldAssignment")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            private _x: number
+            private _y: number
+            function __init(self, x, y)
+                self._x = x
+                self._y = y
+            end
+        end
+
+        local p = Point(3, 4)
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+SETPRIVATEFIELD R1 R0 U0 0
+SETPRIVATEFIELD R2 R0 U0 1
+RETURN R0 0
+)");
+
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, private fields: 2, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['__init']
+MOVE R1 R0
+LOADK R2 K3 [3]
+LOADK R3 K4 [4]
+CALL R1 2 1
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateFieldAssignmentFromPrivateField")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            private _x: number
+            private _y: number
+            function mirror(self)
+                self._y = self._x
+            end
+        end
+    )"),
+        R"(
+GETPRIVATEFIELD R1 R0 U0 0 [instance]
+SETPRIVATEFIELD R1 R0 U0 1
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateFieldCompoundAssignment")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Counter
+            private _n: number
+            function bump(self)
+                self._n += 1
+            end
+        end
+    )"),
+        R"(
+GETPRIVATEFIELD R1 R0 U0 0 [instance]
+ADDK R1 R1 K0 [1]
+SETPRIVATEFIELD R1 R0 U0 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateFieldMultipleAssignment")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            private _x: number
+            private _y: number
+            function reset(self)
+                self._x, self._y = 0, 0
+            end
+        end
+    )"),
+        R"(
+LOADN R1 0
+LOADN R2 0
+SETPRIVATEFIELD R1 R0 U0 0
+SETPRIVATEFIELD R2 R0 U0 1
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateFieldMultipleAssignmentConflict")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // Make sure multiple assignemnt with private fields does operations in the correct order
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            private _x: number
+            function reassign(self, other)
+                other, other._x = self, 1
+            end
+        end
+    )"),
+        R"(
+MOVE R2 R0
+LOADN R3 1
+SETPRIVATEFIELD R3 R1 U0 0
+MOVE R1 R2
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateFieldAssignmentInNestedClosure")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            private _x: number
+            function makeSetter(self)
+                return function(v)
+                    self._x = v
+                end
+            end
+        end
+    )"),
+        R"(
+GETUPVAL R1 U0
+SETPRIVATEFIELD R0 R1 U1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateFieldAssignmentOnOtherInstance")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            private _x: number
+            function copyTo(self, other)
+                other._x = self._x
+            end
+        end
+    )"),
+        R"(
+GETPRIVATEFIELD R2 R0 U0 0 [instance]
+SETPRIVATEFIELD R2 R1 U0 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateFieldAssignmentDeclaredAfterUse")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            function set(self, x)
+                self._x = x
+            end
+            private _x: number
+        end
+    )"),
+        R"(
+SETPRIVATEFIELD R1 R0 U0 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateFieldAssignmentOutsideClassBodyIsPlainIndex")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            private _x: number
+        end
+        local function poke(p)
+            p._x = 1
+        end
+    )"),
+        R"(
+LOADN R1 1
+SETTABLEKS R1 R0 K0 ['_x']
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassMetamethodNameAssignmentIsNotPrivate")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+        class Point
+            private _x: number
+            function rig(self, f)
+                self.__tostring = f
+            end
+        end
+    )"),
+        R"(
+SETTABLEKS R1 R0 K0 ['__tostring']
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassPrivateMethodAssignmentProducesError")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            private function _helper(self)
+            end
+            function rig(self, f)
+                self._helper = f
+            end
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 0, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        CHECK(std::string(e.what()) == "Attempt to assign static field of a class");
+    }
+}
+
+TEST_CASE("ClassUndeclaredPrivateFieldAssignmentProducesError")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            private _x: number
+            function set(self, y)
+                self._y = y
+            end
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 0, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        CHECK(std::string(e.what()) == "Attempt to assign undefined private field");
+    }
+}
+
+TEST_CASE("ClassPrivateFieldAssignmentWithNoPrivateMembersProducesError")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            public x: number
+            function set(self, y)
+                self._y = y
+            end
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 0, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        CHECK(std::string(e.what()) == "Attempt to assign private field of a class with no private fields");
+    }
+}
+
+
+TEST_CASE("ClassPrivateFieldIndexGlobal")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class C
+            private _x
+            function f(self)
+                return string._x
+            end
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 1, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        CHECK(std::string(e.what()) == "Attempt to access private field of a global");
+    }
+
+    source = R"(
+        class C
+            private _x
+            function f(self)
+                return string._x.y
+            end
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 1, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        CHECK(std::string(e.what()) == "Attempt to access private field of a global");
+    }
+}
+
+
+TEST_CASE("ClassConstructedInsidePrivateMethod")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag reuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    std::string source = R"(
+        class Vec
+            private _x
+            private _y
+
+            private function _scaled(self, k)
+                return Vec(self._x * k, self._y * k)
+            end
+
+            function __init(self, x, y)
+                self._x = x
+                self._y = y
+            end
+
+            function double(self)
+                return self:_scaled(2)
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::compileOrThrow(bcb, source);
+
+    // _scaled: the class name resolves to the captured class upvalue, so the construction inside a
+    // private method is an ordinary call on that upvalue.
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETUPVAL R2 U0
+GETPRIVATEFIELD R4 R0 U0 0 [instance]
+MUL R3 R4 R1
+GETPRIVATEFIELD R5 R0 U0 1 [instance]
+MUL R4 R5 R1
+CALL R2 2 -1
+RETURN R2 -1
+)");
+
+    // __init
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+SETPRIVATEFIELD R1 R0 U0 0
+SETPRIVATEFIELD R2 R0 U0 1
+RETURN R0 0
+)");
+
+    // double: the private method is fetched as a private static member instead of via NAMECALL. CALL
+    // passes R2 and R3 as the two arguments, and R3 holds the literal 2, so R2 is the 'self' slot that
+    // NAMECALL would have filled by moving the object into ra+1 — GETPRIVATEFIELD only writes ra, so
+    // nothing ever stores into R2.
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+LOADN R3 2
+GETPRIVATEFIELD R1 R0 U0 0 [static] [namecall]
+CALL R1 2 -1
+RETURN R1 -1
+)");
+
+    // main chunk: the class is built in a local that every method captures by reference, which is the
+    // upvalue the private accesses above index through.
+    CHECK_EQ("\n" + bcb.dumpFunction(3), R"(
+NEWCLASS R0 no_base K6 0 [class Vec (public fields: 0, public methods: 2, private fields: 2, private methods: 1)]
+DUPCLOSURE R1 K1 ['_scaled']
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 0 [private]
+DUPCLOSURE R1 K2 ['__init']
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['__init']
+DUPCLOSURE R1 K4 ['double']
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['double']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassPrivateStaticMethodNamecallOnClassObject")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag reuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
+
+    std::string source = R"(
+        class StaticNamecall
+            private _x
+
+            private function _receiver(receiver)
+                return receiver
+            end
+
+            function __init(self, x)
+                self._x = x
+            end
+
+            function staticReceiver(self)
+                return StaticNamecall:_receiver()
+            end
+        end
+    )";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+
+    Luau::compileOrThrow(bcb, source);
+
+    // _receiver: it touches no private field and does not name its own class, so it captures nothing.
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+RETURN R0 1
+)");
+
+    // __init
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+SETPRIVATEFIELD R1 R0 U0 0
+RETURN R0 0
+)");
+
+    // staticReceiver: the receiver of the namecall is the class object, which lives in an upvalue rather
+    // than a local, so it is computed into the call's base register R1 — the same register
+    // GETPRIVATEFIELD writes the callee into. The instance form (self:_method()) instead uses the
+    // receiver's own local register as the source and so does not alias the callee register.
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+GETUPVAL R1 U0
+GETPRIVATEFIELD R1 R1 U0 0 [static] [namecall]
+CALL R1 1 -1
+RETURN R1 -1
+)");
+
+    // main chunk
+    CHECK_EQ("\n" + bcb.dumpFunction(3), R"(
+NEWCLASS R0 no_base K6 0 [class StaticNamecall (public fields: 0, public methods: 2, private fields: 1, private methods: 1)]
+DUPCLOSURE R1 K1 ['_receiver']
+NEWCLASSMEMBER R0 R1 0 [private]
+DUPCLOSURE R1 K2 ['__init']
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['__init']
+DUPCLOSURE R1 K4 ['staticReceiver']
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['staticReceiver']
+RETURN R0 0
 )");
 }
 
@@ -13345,6 +14270,51 @@ TEST_CASE("ExportSyntaxRegression")
     )"));
 }
 
+TEST_CASE("ExportSyntaxRegression2")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+
+    CHECK_NOTHROW(compileFunction0(R"(
+-- 130 top-level locals push regTop past 127 before the export table is lazily allocated
+local a1, a2, a3, a4, a5, a6, a7, a8, a9, a10 = 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+local a11, a12, a13, a14, a15, a16, a17, a18, a19, a20 = 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+local a21, a22, a23, a24, a25, a26, a27, a28, a29, a30 = 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
+local a31, a32, a33, a34, a35, a36, a37, a38, a39, a40 = 31, 32, 33, 34, 35, 36, 37, 38, 39, 40
+local a41, a42, a43, a44, a45, a46, a47, a48, a49, a50 = 41, 42, 43, 44, 45, 46, 47, 48, 49, 50
+local a51, a52, a53, a54, a55, a56, a57, a58, a59, a60 = 51, 52, 53, 54, 55, 56, 57, 58, 59, 60
+local a61, a62, a63, a64, a65, a66, a67, a68, a69, a70 = 61, 62, 63, 64, 65, 66, 67, 68, 69, 70
+local a71, a72, a73, a74, a75, a76, a77, a78, a79, a80 = 71, 72, 73, 74, 75, 76, 77, 78, 79, 80
+local a81, a82, a83, a84, a85, a86, a87, a88, a89, a90 = 81, 82, 83, 84, 85, 86, 87, 88, 89, 90
+local a91, a92, a93, a94, a95, a96, a97, a98, a99, a100 = 91, 92, 93, 94, 95, 96, 97, 98, 99, 100
+local a101, a102, a103, a104, a105, a106, a107, a108, a109, a110 = 101, 102, 103, 104, 105, 106, 107, 108, 109, 110
+local a111, a112, a113, a114, a115, a116, a117, a118, a119, a120 = 111, 112, 113, 114, 115, 116, 117, 118, 119, 120
+local a121, a122, a123, a124, a125, a126, a127, a128, a129, a130 = 121, 122, 123, 124, 125, 126, 127, 128, 129, 130
+
+-- a1 is mutable (written below), so this is not folded into the constant export shape
+export local first = a1
+
+-- every local is written after the export, so none are constant and all stay live past it
+a1, a2, a3, a4, a5, a6, a7, a8, a9, a10 = a1 + 1, a2 + 1, a3 + 1, a4 + 1, a5 + 1, a6 + 1, a7 + 1, a8 + 1, a9 + 1, a10 + 1
+a11, a12, a13, a14, a15, a16, a17, a18, a19, a20 = a11 + 1, a12 + 1, a13 + 1, a14 + 1, a15 + 1, a16 + 1, a17 + 1, a18 + 1, a19 + 1, a20 + 1
+a21, a22, a23, a24, a25, a26, a27, a28, a29, a30 = a21 + 1, a22 + 1, a23 + 1, a24 + 1, a25 + 1, a26 + 1, a27 + 1, a28 + 1, a29 + 1, a30 + 1
+a31, a32, a33, a34, a35, a36, a37, a38, a39, a40 = a31 + 1, a32 + 1, a33 + 1, a34 + 1, a35 + 1, a36 + 1, a37 + 1, a38 + 1, a39 + 1, a40 + 1
+a41, a42, a43, a44, a45, a46, a47, a48, a49, a50 = a41 + 1, a42 + 1, a43 + 1, a44 + 1, a45 + 1, a46 + 1, a47 + 1, a48 + 1, a49 + 1, a50 + 1
+a51, a52, a53, a54, a55, a56, a57, a58, a59, a60 = a51 + 1, a52 + 1, a53 + 1, a54 + 1, a55 + 1, a56 + 1, a57 + 1, a58 + 1, a59 + 1, a60 + 1
+a61, a62, a63, a64, a65, a66, a67, a68, a69, a70 = a61 + 1, a62 + 1, a63 + 1, a64 + 1, a65 + 1, a66 + 1, a67 + 1, a68 + 1, a69 + 1, a70 + 1
+a71, a72, a73, a74, a75, a76, a77, a78, a79, a80 = a71 + 1, a72 + 1, a73 + 1, a74 + 1, a75 + 1, a76 + 1, a77 + 1, a78 + 1, a79 + 1, a80 + 1
+a81, a82, a83, a84, a85, a86, a87, a88, a89, a90 = a81 + 1, a82 + 1, a83 + 1, a84 + 1, a85 + 1, a86 + 1, a87 + 1, a88 + 1, a89 + 1, a90 + 1
+a91, a92, a93, a94, a95, a96, a97, a98, a99, a100 = a91 + 1, a92 + 1, a93 + 1, a94 + 1, a95 + 1, a96 + 1, a97 + 1, a98 + 1, a99 + 1, a100 + 1
+a101, a102, a103, a104, a105, a106, a107, a108, a109, a110 = a101 + 1, a102 + 1, a103 + 1, a104 + 1, a105 + 1, a106 + 1, a107 + 1, a108 + 1, a109 + 1, a110 + 1
+a111, a112, a113, a114, a115, a116, a117, a118, a119, a120 = a111 + 1, a112 + 1, a113 + 1, a114 + 1, a115 + 1, a116 + 1, a117 + 1, a118 + 1, a119 + 1, a120 + 1
+a121, a122, a123, a124, a125, a126, a127, a128, a129, a130 = a121 + 1, a122 + 1, a123 + 1, a124 + 1, a125 + 1, a126 + 1, a127 + 1, a128 + 1, a129 + 1, a130 + 1
+
+export function getFirst()
+    assert(first == 1)
+    return first
+end
+    )"));
+}
+
 TEST_CASE("ExportTypeOnlyNoReturnEmitsEmptyTable")
 {
     ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportedTypesParticipateInScc, true}};
@@ -13414,7 +14384,7 @@ end
 )"),
         R"(
 NEWTABLE R1 0 0
-NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K4 0 [class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)]
 SETTABLEKS R0 R1 K0 ['Point']
 GETIMPORT R2 7 [table.freeze]
 MOVE R3 R1
@@ -13443,11 +14413,11 @@ end
                ),
         R"(
 NEWTABLE R1 0 0
-NEWCLASS R0 no_base K8 0 [class Point (props: 2, methods: 3)]
+NEWCLASS R0 no_base K8 0 [class Point (public fields: 2, public methods: 3, private fields: 0, private methods: 0)]
 DUPCLOSURE R2 K3 ['getX']
-NEWCLASSMEMBER R0 R2 ['getX']
+NEWCLASSMEMBER R0 R2 [public] ['getX']
 DUPCLOSURE R2 K5 ['getY']
-NEWCLASSMEMBER R0 R2 ['getY']
+NEWCLASSMEMBER R0 R2 [public] ['getY']
 SETTABLEKS R0 R1 K0 ['Point']
 GETIMPORT R2 11 [table.freeze]
 MOVE R3 R1
@@ -13471,7 +14441,7 @@ local p = Point.new({x = 1, y = 2})
                ),
         R"(
 NEWTABLE R1 0 0
-NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K4 0 [class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)]
 GETTABLEKS R2 R0 K5 ['new']
 DUPTABLE R3 8
 CALL R2 1 1
@@ -13503,61 +14473,8 @@ RETURN R0 1
     );
 }
 
-TEST_CASE("VectorOptionsDoubleUnsupported")
-{
-    // Until flag is enabled, bytecode is the same for vectors of any precision
-    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, false};
-
-    std::string bytecode1, bytecode2;
-
-    {
-        Luau::BytecodeBuilder bcb;
-        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
-
-        Luau::CompileOptions opts;
-        opts.optimizationLevel = 2;
-        Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
-
-        bytecode1 = bcb.getBytecode();
-
-        CHECK_EQ(
-            "\n" + bcb.dumpFunction(0),
-            R"(
-K0: 1, 2.32830644e-10, 0
-LOADK R0 K0 [1, 2.32830644e-10, 0]
-RETURN R0 1
-)"
-        );
-    }
-
-    {
-        Luau::BytecodeBuilder bcb;
-        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
-
-        Luau::CompileOptions opts;
-        opts.optimizationLevel = 2;
-        opts.vectorPrecision = 1;
-        Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
-
-        bytecode2 = bcb.getBytecode();
-
-        CHECK_EQ(
-            "\n" + bcb.dumpFunction(0),
-            R"(
-K0: 1, 2.32830644e-10, 0
-LOADK R0 K0 [1, 2.32830644e-10, 0]
-RETURN R0 1
-)"
-        );
-    }
-
-    CHECK(bytecode1 == bytecode2);
-}
-
 TEST_CASE("VectorOptionsDouble")
 {
-    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
 
@@ -13594,8 +14511,8 @@ print(Cat)
 
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-NEWCLASS R0 no_base K3 1 [class Animal (props: 1, methods: 1)]
-NEWCLASS R1 R0 K6 0 [class Cat (props: 1, methods: 1)]
+NEWCLASS R0 no_base K3 1 [class Animal (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
+NEWCLASS R1 R0 K6 0 [class Cat (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
 GETGLOBAL R2 K7 ['print']
 MOVE R3 R1
 CALL R2 1 0
@@ -13644,12 +14561,12 @@ RETURN R1 1
     // Function 2: main chunk
     auto res2 = "\n" + compileFunction(source.c_str(), 2, 0, 0);
     CHECK(R"(
-NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
+NEWCLASS R0 no_base K4 1 [class Animal (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
 NEWCLOSURE R1 P0
-NEWCLASSMEMBER R0 R1 ['live']
-NEWCLASS R1 R0 K8 0 [class Cat (props: 1, methods: 2)]
+NEWCLASSMEMBER R0 R1 [public] ['live']
+NEWCLASS R1 R0 K8 0 [class Cat (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
 NEWCLOSURE R2 P1
-NEWCLASSMEMBER R1 R2 ['describe']
+NEWCLASSMEMBER R1 R2 [public] ['describe']
 GETGLOBAL R2 K9 ['print']
 MOVE R3 R1
 CALL R2 1 0
@@ -13679,9 +14596,9 @@ print(C)
 
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-NEWCLASS R0 no_base K3 1 [class A (props: 1, methods: 1)]
-NEWCLASS R1 R0 K6 1 [class B (props: 1, methods: 1)]
-NEWCLASS R2 R1 K9 0 [class C (props: 1, methods: 1)]
+NEWCLASS R0 no_base K3 1 [class A (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
+NEWCLASS R1 R0 K6 1 [class B (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
+NEWCLASS R2 R1 K9 0 [class C (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
 GETGLOBAL R3 K10 ['print']
 MOVE R4 R2
 CALL R3 1 0
@@ -13707,9 +14624,9 @@ export class Cat extends Animal
 end
 )"),
         R"(
-NEWCLASS R0 no_base K3 1 [class Animal (props: 1, methods: 1)]
+NEWCLASS R0 no_base K3 1 [class Animal (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
 NEWTABLE R2 0 0
-NEWCLASS R1 R0 K6 0 [class Cat (props: 1, methods: 1)]
+NEWCLASS R1 R0 K6 0 [class Cat (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
 SETTABLEKS R1 R2 K4 ['Cat']
 GETIMPORT R3 9 [table.freeze]
 MOVE R4 R2
@@ -13731,9 +14648,9 @@ class l0 extends _
 end
 )"),
         R"(
-NEWCLASS R0 no_base K2 0 [class _ (props: 0, methods: 1)]
+NEWCLASS R0 no_base K2 0 [class _ (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
 LOADNIL R2
-NEWCLASS R1 R2 K4 0 [class l0 (props: 0, methods: 1)]
+NEWCLASS R1 R2 K4 0 [class l0 (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
 RETURN R0 0
 )"
     );
@@ -13763,7 +14680,7 @@ K0: 'Point'
 K1: 'x'
 K2: 'y'
 K3: '__init'
-K4: class Point (props: 2, methods: 1)
+K4: class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)
   props:
     K1 ['x']
     K2 ['y']
@@ -13781,7 +14698,7 @@ slot 1: shape K9
 slot 2: shape K10
 slot 3: shape K11
 GETVARARGS R0 2
-NEWCLASS R2 no_base K4 0 [class Point (props: 2, methods: 1)]
+NEWCLASS R2 no_base K4 0 [class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)]
 MOVE R3 R2
 CONSTRUCT R4 R3 slot 0
 FINCONSTRUCT R4 L0

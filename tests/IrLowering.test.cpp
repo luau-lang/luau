@@ -28,7 +28,6 @@ LUAU_FASTFLAG(LuauCodegenIntegerCompare)
 LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauLoadRemapOptionalUserdata)
-LUAU_FASTFLAG(LuauCodegenConstPropMinOffset)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 #define ensureVectorSize3() \
@@ -5895,7 +5894,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesConstantRange")
 {
-    ScopedFastFlag luauCodegenConstPropMinOffset{FFlag::LuauCodegenConstPropMinOffset, true};
     ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
 
     CHECK_EQ(

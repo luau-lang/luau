@@ -1,0 +1,9 @@
+Block 0 (entry "Entry Block") -> [B1]:
+  local x-0 = 1
+  local iterations-0 = 0
+Block 1 (condition "while-loop condition") -> [B2, B3]:
+  iterations-1 = join(iterations-0, iterations-2)
+Block 2 (linear "while-loop body") -> [B1]:
+  local y-0 = x-0
+  iterations-2 = iterations-1 + 1
+Block 3 (linear "while-loop exit"):

@@ -1514,6 +1514,8 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_NEWCLASS:
             case LOP_NEWCLASSMEMBER:
             case LOP_FASTPCALL:
+            case LOP_GETPRIVATEFIELD:
+            case LOP_SETPRIVATEFIELD:
                 break;
             case LOP_CONSTRUCT:
             {

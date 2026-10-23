@@ -1,0 +1,9 @@
+Block 0 (entry "Entry Block") -> [B1, B2]:
+  local t-0 = 8
+Block 1 (linear "then branch") -> [B3]:
+  t-1 = 9
+Block 2 (linear "else branch") -> [B3]:
+  t-2 = "hello"
+Block 3 (linear "merge"):
+  t-3 = join(t-1, t-2)
+  local y-0 = t-3

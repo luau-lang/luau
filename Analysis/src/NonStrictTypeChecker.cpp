@@ -23,6 +23,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
+LUAU_FASTFLAGVARIABLE(LuauNonStrictCallTypePacks)
 LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -756,8 +757,24 @@ struct NonStrictTypeChecker
             }
             arguments.insert(arguments.end(), call->args.begin(), call->args.end());
 
+            size_t argumentCount = arguments.size();
+            bool hasVariadicTail = false;
+
+            if (FFlag::LuauNonStrictCallTypePacks && !arguments.empty())
+            {
+                AstExpr* last = arguments.back();
+                TypePackId* tp = module->astTypePacks.find(last);
+
+                if (tp && (last->is<AstExprCall>() || last->is<AstExprVarargs>()))
+                {
+                    auto [head, tail] = flatten(*tp);
+                    argumentCount = arguments.size() - 1 + head.size();
+                    hasVariadicTail = tail.has_value();
+                }
+            }
+
             std::vector<TypeId> argTypes;
-            argTypes.reserve(arguments.size());
+            argTypes.reserve(argumentCount);
 
             // Move all the types over from the argument typepack for `fn`
             TypePackIterator curr = begin(fn->argTypes);
@@ -770,7 +787,7 @@ struct NonStrictTypeChecker
             {
                 if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*argTail)))
                 {
-                    while (argTypes.size() < arguments.size())
+                    while (argTypes.size() < argumentCount)
                     {
                         argTypes.push_back(vtp->ty);
                     }
@@ -778,14 +795,14 @@ struct NonStrictTypeChecker
             }
 
             std::string functionName = getFunctionNameAsString(*call->func).value_or("");
-            if (arguments.size() > argTypes.size())
+            if (argumentCount > argTypes.size())
             {
                 // We are passing more arguments than we expect, so we should error
-                reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), arguments.size()}, call->location);
+                reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), argumentCount}, call->location);
                 return fresh;
             }
 
-            for (size_t i = 0; i < arguments.size(); i++)
+            for (size_t i = 0; i < arguments.size() && (!FFlag::LuauNonStrictCallTypePacks || i < argumentCount); i++)
             {
                 // For example, if the arg is "hi"
                 // The actual arg type is string
@@ -820,17 +837,17 @@ struct NonStrictTypeChecker
                     reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                 }
             }
-            if (arguments.size() < argTypes.size())
+            if (argumentCount < argTypes.size() && !hasVariadicTail)
             {
                 // We are passing fewer arguments than we expect
                 // so we need to ensure that the rest of the args are optional.
                 bool remainingArgsOptional = true;
-                for (size_t i = arguments.size(); i < argTypes.size(); i++)
+                for (size_t i = argumentCount; i < argTypes.size(); i++)
                     remainingArgsOptional = remainingArgsOptional && isOptional(argTypes[i]);
 
                 if (!remainingArgsOptional)
                 {
-                    reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), arguments.size()}, call->location);
+                    reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), argumentCount}, call->location);
                     return fresh;
                 }
             }
