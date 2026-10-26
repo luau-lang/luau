@@ -20,6 +20,8 @@ Note that reports submitted through GitHub are not eligible for bounty rewards o
 
 The areas listed in this section are explicitly out of scope.
 
+We reserve the right to tell you when a report should be opened as a regular issue and update this list with new cases.
+
 ### Custom bytecode provided to `luau_load`
 
 The runtime assumes that bytecode is produced by Luau compiler and is not designed to consume arbitrary input.
