@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
@@ -8,6 +9,7 @@ LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
+LUAU_FASTFLAG(DebugLuauBufferCompare)
 
 namespace Luau
 {
@@ -397,7 +399,7 @@ declare buffer: {
     readstring: @checked (b: buffer, offset: number, count: number) -> string,
     writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
     readbits: @checked (b: buffer, bitOffset: number, bitCount: number) -> number,
-    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> ()
+    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),
 }
 
 )BUILTIN_SRC";
@@ -511,6 +513,16 @@ std::string getBuiltinDefinitionSource()
         result += kBuiltinDefinitionBufferSrc;
     else
         result += kBuiltinDefinitionBufferSrc_NOINTEGER;
+
+    if (FFlag::DebugLuauBufferCompare)
+    {
+        const std::string anchor = "writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),\n";
+        const std::string field = "    compare: @checked (b1: buffer, offset1: number, b2: buffer, offset2: number?, count: number?) -> number,\n";
+
+        size_t pos = result.find(anchor);
+        if (pos != std::string::npos)
+            result.insert(pos + anchor.size(), field);
+    }
 
     result += kBuiltinDefinitionVectorSrc;
 
