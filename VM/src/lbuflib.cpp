@@ -396,9 +396,7 @@ static int buffer_compare(lua_State* L)
     int result = memcmp((char*)buf1 + offset1, (char*)buf2 + offset2, count);
 
     if (result == 0 && l1offset != l2offset && lua_isnoneornil(L, 5))
-    {
         result = l1offset > l2offset ? 1 : -1;
-    }
 
     lua_pushnumber(L, double(result));
     return 1;
