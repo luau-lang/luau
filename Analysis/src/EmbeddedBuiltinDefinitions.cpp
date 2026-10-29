@@ -428,6 +428,24 @@ static constexpr const char* kBuiltinDefinitionBufferSrcSuffix = R"BUILTIN_SRC(
 
 )BUILTIN_SRC";
 
+static constexpr const char* kBuiltinDefinitionBufferSrcSuffixCompare = R"BUILTIN_SRC(
+    writei8: @checked (b: buffer, offset: number, value: number) -> (),
+    writeu8: @checked (b: buffer, offset: number, value: number) -> (),
+    writei16: @checked (b: buffer, offset: number, value: number) -> (),
+    writeu16: @checked (b: buffer, offset: number, value: number) -> (),
+    writei32: @checked (b: buffer, offset: number, value: number) -> (),
+    writeu32: @checked (b: buffer, offset: number, value: number) -> (),
+    writef32: @checked (b: buffer, offset: number, value: number) -> (),
+    writef64: @checked (b: buffer, offset: number, value: number) -> (),
+    readstring: @checked (b: buffer, offset: number, count: number) -> string,
+    writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
+    readbits: @checked (b: buffer, bitOffset: number, bitCount: number) -> number,
+    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),
+    compare: @checked (b1: buffer, offset1: number, b2: buffer, offset2: number?, count: number?) -> number,
+}
+
+)BUILTIN_SRC";
+
 static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
 
 -- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
@@ -491,17 +509,10 @@ std::string getBuiltinDefinitionSource()
         result += kBuiltinDefinitionBufferSrcPrefix;
         if (FFlag::DebugLuauBufferVectorLibrary)
             result += kBuiltinDefinitionBufferVectorSrc;
-        result += kBuiltinDefinitionBufferSrcSuffix;
-
         if (FFlag::DebugLuauBufferCompare)
-        {
-            const std::string anchor = "writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),\n";
-            const std::string field = "    compare: @checked (b1: buffer, offset1: number, b2: buffer, offset2: number?, count: number?) -> number,\n";
-
-            size_t pos = result.find(anchor);
-            if (pos != std::string::npos)
-                result.insert(pos + anchor.size(), field);
-        }
+            result += kBuiltinDefinitionBufferSrcSuffixCompare;
+        else
+            result += kBuiltinDefinitionBufferSrcSuffix;
 
         result += kBuiltinDefinitionVectorSrc;
 
