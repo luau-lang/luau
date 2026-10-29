@@ -3,12 +3,14 @@
 
 #include "lcommon.h"
 #include "lbuffer.h"
+#include <algorithm>
 
 #if defined(LUAU_BIG_ENDIAN)
 #include <endian.h>
 #endif
 
 LUAU_FASTFLAG(LuauIntegerLibrary)
+LUAU_FASTFLAGVARIABLE(DebugLuauBufferCompare)
 
 #include <string.h>
 
@@ -368,6 +370,38 @@ static int buffer_writebits(lua_State* L)
     return 0;
 }
 
+static int buffer_compare(lua_State* L)
+{
+    size_t len1 = 0;
+    void* buf1 = luaL_checkbuffer(L, 1, &len1);
+    int offset1 = luaL_checkinteger(L, 2);
+
+    size_t len2 = 0;
+    void* buf2 = luaL_checkbuffer(L, 3, &len2);
+    int offset2 = luaL_optinteger(L, 4, 0);
+
+    int l1offset = int(len1) - offset1;
+    int l2offset = int(len2) - offset2;
+    int count = luaL_optinteger(L, 5, std::min(l1offset, l2offset));
+
+    if (count < 0)
+        luaL_error(L, "buffer access out of bounds");
+
+    if (isoutofbounds(offset1, len1, unsigned(count)))
+        luaL_error(L, "buffer access out of bounds");
+
+    if (isoutofbounds(offset2, len2, unsigned(count)))
+        luaL_error(L, "buffer access out of bounds");
+
+    int result = memcmp((char*)buf1 + offset1, (char*)buf2 + offset2, count);
+
+    if (result == 0 && l1offset != l2offset && lua_isnoneornil(L, 5))
+        result = l1offset > l2offset ? 1 : -1;
+
+    lua_pushnumber(L, double(result));
+    return 1;
+}
+
 static const luaL_Reg bufferlib[] = {
     {"create", buffer_create},
     {"fromstring", buffer_fromstring},
@@ -436,6 +470,12 @@ int luaopen_buffer(lua_State* L)
         luaL_register(L, LUA_BUFFERLIBNAME, bufferlib);
     else
         luaL_register(L, LUA_BUFFERLIBNAME, bufferlib_NOINTEGER);
+
+    if (FFlag::DebugLuauBufferCompare)
+    {
+        lua_pushcfunction(L, buffer_compare, "compare");
+        lua_setfield(L, -2, "compare");
+    }
 
     return 1;
 }
