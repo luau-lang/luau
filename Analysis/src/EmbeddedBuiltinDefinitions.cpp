@@ -52,7 +52,7 @@ declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...
 declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., ...: A...): (boolean, R1...)
 
 -- `select` has a magic function attached to provide more detailed type information
-declare function select<A...>(i: string | number, ...: A...): ...any
+declare function select<A...>(i: number | "#", ...: A...): ...any
 
 @checked declare function newproxy(mt: boolean?): any
 
@@ -101,7 +101,7 @@ declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...
 declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., ...: A...): (boolean, R1...)
 
 -- `select` has a magic function attached to provide more detailed type information
-declare function select<A...>(i: string | number, ...: A...): ...any
+declare function select<A...>(i: number | "#", ...: A...): ...any
 
 -- FIXME: This type is not entirely correct - `loadstring` returns a function or
 -- (nil, string).
