@@ -10,6 +10,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauSingletonLiteralsInTypeAssertions)
 
 using namespace Luau;
 
@@ -435,6 +436,42 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_cast")
 
     CHECK_EQ("Cannot cast 'number' into 'string' because the types are unrelated", toString(result.errors[0]));
     CHECK_EQ("string", toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_singleton_literal_cast")
+{
+    ScopedFastFlag sff{FFlag::LuauSingletonLiteralsInTypeAssertions, true};
+
+    CheckResult result = check(R"(
+        local a = "as i scream" :: "your name"
+        local b = true :: false
+        local c = ("up") :: "down" | "left"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    CHECK_EQ("Cannot cast '\"as i scream\"' into '\"your name\"' because the types are unrelated", toString(result.errors[0]));
+    CHECK_EQ("Cannot cast 'true' into 'false' because the types are unrelated", toString(result.errors[1]));
+    CHECK_EQ("Cannot cast '\"up\"' into '\"down\" | \"left\"' because the types are unrelated", toString(result.errors[2]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "as_expr_allows_related_singleton_literal_cast")
+{
+    ScopedFastFlag sff{FFlag::LuauSingletonLiteralsInTypeAssertions, true};
+
+    CheckResult result = check(R"(
+        type Direction = "up" | "down"
+        local a = "up" :: Direction
+        local b = "up" :: string
+        local c = true :: boolean
+        local d = "up" :: unknown
+        local e = "up" :: any
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireType("b")));
+    CHECK_EQ("boolean", toString(requireType("c")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_annotations_inside_function_bodies")
