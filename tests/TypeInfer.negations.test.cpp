@@ -180,7 +180,6 @@ TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntaxParsing, true},
         {FFlag::LuauTypeNegationSyntaxSupport, true},
-        {FFlag::LuauFixSuperNegationTypePaths, true},
     };
 
     CheckResult result = check(R"(
