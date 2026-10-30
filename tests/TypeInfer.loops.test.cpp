@@ -17,7 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAGVARIABLE(LuauIterableConstraintUnionIndexers)
+LUAU_FASTFLAG(LuauIterableConstraintUnionIndexers)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 

@@ -3181,7 +3181,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     // Irksome: I don't think we have any way to guarantee that this table
     // type never has a metatable.
 
-    if (auto iteratorTable = get<TableType>(iteratorTy))
+    if (auto iteratorTable = get<TableType>(iteratorTy); iteratorTable && !FFlag::LuauIterableConstraintUnionIndexers)
     {
         /*
          * We try not to dispatch IterableConstraints over free tables because
@@ -3287,18 +3287,15 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         unpack(builtinTypes->unknownType);
     else if (FFlag::LuauIterableConstraintUnionIndexers)
     {
-        if (std::shared_ptr<const NormalizedType> iteratorNorm = normalizer->normalize(iteratorTy); iteratorNorm->hasTables())
+        if (std::shared_ptr<const NormalizedType> iteratorNorm = normalizer->normalize(iteratorTy); iteratorNorm && iteratorNorm->hasTables())
         {
             // We default to being somewhat permissive. As long as the type has a table somewhere inside of it, we try and infer from there.
             UnionBuilder indexBuilder(arena, builtinTypes);
             UnionBuilder valueBuilder(arena, builtinTypes);
             std::vector<TypeId> expectedVariables;
 
-            const auto unionIndexer = [&](TypeId ty)
+            const auto unionIndexer = [&](const TableType* ttv)
             {
-                const TableType* ttv = get<TableType>(ty);
-                LUAU_ASSERT(ttv);
-
                 if (ttv->indexer)
                 {
                     indexBuilder.add(ttv->indexer->indexType);
@@ -3306,8 +3303,22 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
                 }
             };
 
-            for (TypeId table : iteratorNorm->tables)
-                unionIndexer(table);
+            for (TypeId tableTy : iteratorNorm->tables)
+            {
+                const TableType* ttv = get<TableType>(tableTy);
+                LUAU_ASSERT(ttv);
+
+                /*
+                * We try not to dispatch IterableConstraints over free tables because
+                * it's possible that there are other constraints on the table that will
+                * clarify what we should do.
+                *
+                * We should eventually introduce a type function to talk about iteration.
+                */
+                if (ttv->state == TableState::Free)
+                    return block(iteratorTy, constraint);
+                unionIndexer(ttv);
+            }
 
             if (indexBuilder.size() > 0)
             {
