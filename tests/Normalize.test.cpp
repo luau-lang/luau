@@ -842,8 +842,7 @@ TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "write_only_property_is_satisf
 {
     getBuiltins();
     TypeId propertyTable = arena.addType(TableType{{{"x", Property::writeonly(builtinTypes->numberType)}}, std::nullopt, {}, TableState::Sealed});
-    TypeId indexerTable =
-        arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
+    TypeId indexerTable = arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
     TypeId intersection = arena.addType(IntersectionType{{propertyTable, indexerTable}});
 
     std::shared_ptr<const NormalizedType> normalized = normalize(intersection);
@@ -873,8 +872,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "split_read_write_property_must_satisfy_both
     TypeId propertyTable =
         arena.addType(TableType{{{"x", Property::rw(builtinTypes->numberType, builtinTypes->stringType)}}, std::nullopt, {}, TableState::Sealed});
     // {[string]: number}
-    TypeId indexerTable =
-        arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
+    TypeId indexerTable = arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
     TypeId intersection = arena.addType(IntersectionType{{propertyTable, indexerTable}});
 
     std::shared_ptr<const NormalizedType> normalized = normalize(intersection);
@@ -914,9 +912,7 @@ TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "string_indexer_intersections_
 TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "overlapping_inexact_indexers_are_uninhabited_due_to_variance")
 {
     // Capturing this intersection exactly would require a split indexer { read [string]: string, write [string]: string | boolean | number }
-    CHECK(
-        "{ }" ==
-        toString(normal("{ [string | boolean]: string | boolean, ... } & { [string | number]: string | number, ... }")));
+    CHECK("{ }" == toString(normal("{ [string | boolean]: string | boolean, ... } & { [string | number]: string | number, ... }")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
@@ -990,8 +986,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
             return Cyclic
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 

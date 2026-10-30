@@ -15,8 +15,8 @@ LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
-LUAU_FASTFLAG(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
+LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauRefineNotNilWaitsForBlockedTarget)
 
 using namespace Luau;
@@ -369,8 +369,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -516,7 +514,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_unknown_refined_to_table_reports_mi
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag fix{FFlag::LuauCannotAddIndexerToTablePrimitive, true};
 
     CheckResult result = check(R"(
         local empty: {} = {}
@@ -627,8 +624,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_to_undefined_method_is_not_a_refinement
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     auto unknownProp = get<UnknownProperty>(result.errors[0]);
@@ -659,8 +654,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
             end
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -842,8 +835,6 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -929,8 +920,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
             end
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1083,8 +1072,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_narrowed_into_nothingness")
             return t.x + 1
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1246,8 +1233,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "merge_should_be_fully_agnostic_of_hashmap_or
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({6, 28})));
@@ -1279,8 +1264,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "is_truthy_constraint_ifelse_expression")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({2, 29})));
@@ -1294,8 +1277,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invert_is_truthy_constraint_ifelse_expressio
             return if not v then tostring(v) else v
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1318,8 +1299,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_comparison_ifelse_expression")
             return if typeof(v) == "number" then v else returnOne(v)
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1529,8 +1508,6 @@ TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1581,8 +1558,6 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersect
             end
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1819,8 +1794,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "isa_type_refinement_must_be_know
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1907,8 +1880,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_doesnt_leak_to_elseif")
             end
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -2018,8 +1989,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "what_nonsensical_condition")
             end
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -2281,8 +2250,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // Function calls are treated as (potentially) `nil`, the same as table
@@ -2371,8 +2338,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(unknown) -> (~nil, unknown)", toString(requireType("f")));
@@ -2425,8 +2390,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -2441,8 +2404,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "check_refinement_to_primitive_and_compare")
             return type(word) == "string" and word > "luau"
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(unknown) -> boolean", toString(requireType("comesAfterLuau")));
@@ -2460,8 +2421,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
                 and math.floor(k) == k -- no float keys
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -2491,8 +2450,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "mutate_prop_of_some_refined_symb
             end
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -3033,8 +2990,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_by_no_refine_should_always_reduce")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -3106,8 +3061,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
         end
     )");
 
-    ignoreMissingAnnotations(results);
-
     LUAU_REQUIRE_NO_ERRORS(results);
 
     CHECK_EQ("(Config & { read KeyboardEnabled: false? }) | (Config & { read MouseEnabled: false? })", toString(requireTypeAtPosition({6, 24})));
@@ -3133,8 +3086,6 @@ TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
             return isCharacter
         end
     )");
-
-    ignoreMissingAnnotations(results);
     LUAU_REQUIRE_NO_ERRORS(results);
 }
 
@@ -3307,8 +3258,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_should_not_refine_despite_typeof
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'table' does not have key 'bar'", toString(result.errors[0]));
 }
@@ -3357,9 +3306,7 @@ TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application"
             if time > toolAnimTime then
             end
         end
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_any_and_unknown_should_still_be_any")
@@ -3377,9 +3324,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_any_and_unknown_should_still_be_any")
                     and __type["$$typeof"]
             end
         end
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181100_fast_track_refinement_against_unknown")
@@ -3524,8 +3469,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_f
 
         table.sort(keys, sorter)
     )");
-
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -3642,6 +3585,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_statement_annotation_with_typeof_is_visited")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true},
+        {FFlag::LuauExperimentalIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local x = 1
+        if local y: typeof(x) = 2 then
+            local s = y
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_expression_annotation_with_typeof_is_visited")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true},
+        {FFlag::LuauExperimentalIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local x = 1
+        local r = if local b: typeof(x) = 1 then b else 0
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_const_narrows_to_truthy")

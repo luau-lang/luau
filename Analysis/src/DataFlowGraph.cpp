@@ -393,7 +393,7 @@ ControlFlow DataFlowGraphBuilder::visitBlockWithoutChildScope(AstStatBlock* b)
     // DefIds for them.
     if (FFlag::DebugLuauUserDefinedClasses)
     {
-        for (AstStat* stat: b->body)
+        for (AstStat* stat : b->body)
         {
             if (auto d = stat->as<AstStatClass>())
             {
@@ -472,6 +472,9 @@ ControlFlow DataFlowGraphBuilder::visit(AstStat* s)
 ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
 {
     visitExpr(i->condition);
+
+    if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal && i->conditionLocal->annotation)
+        visitType(i->conditionLocal->annotation);
 
     DfgScope* thenScope = makeChildScope();
     DfgScope* elseScope = makeChildScope();
@@ -1220,6 +1223,9 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIfElse* i)
 
     if (FFlag::LuauExperimentalIfLocalAnalysis && i->conditionLocal)
     {
+        if (i->conditionLocal->annotation)
+            visitType(i->conditionLocal->annotation);
+
         DfgScope* thenScope = makeChildScope();
         {
             PushScope ps{scopeStack, thenScope};

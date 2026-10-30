@@ -54,7 +54,10 @@ LUAU_FASTFLAG(LuauSplitIceHandler)
 #define DOES_NOT_PASS_WITH_EXACT_TABLES() \
     ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauExactTableTypes, FFlag::DebugLuauRunFailingExactTableTests}; \
     ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauParseExactTables, FFlag::DebugLuauRunFailingExactTableTests}; \
-    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauForceExactTables, FFlag::DebugLuauRunFailingExactTableTests}
+    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__) \
+    { \
+        FFlag::DebugLuauForceExactTables, FFlag::DebugLuauRunFailingExactTableTests \
+    }
 
 // If CALLGRIND is on, then disable the timeout (doctest treats a timeout of 0 as disabled).
 #ifdef CALLGRIND
@@ -236,11 +239,6 @@ struct Fixture
     // limit how much address space we should use before we blow up.  We
     // use this to test the stack guard itself.
     void limitStackSize(size_t size);
-
-    // Edits the result, pruning any warnings about missing annotations.  This
-    // is useful for tests that are specifically about how we infer unannotated
-    // symbols.
-    void ignoreMissingAnnotations(CheckResult& result);
 
 private:
     bool hasDumpedErrors = false;

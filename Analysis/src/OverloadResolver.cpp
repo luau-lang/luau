@@ -13,7 +13,6 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 
 namespace Luau
@@ -446,12 +445,8 @@ void OverloadResolver::reportErrors(
             FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks ? truncatePathAtUnionOrIntersection(superPathTail) : superPathTail;
         Path truncatedSubPathTail =
             FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks ? truncatePathAtUnionOrIntersection(reason.subPath) : reason.subPath;
-        std::optional<TypeOrPack> failedSub = (FFlag::LuauNewTypePathErrorMessages)
-                                                  ? traverse(argPack, truncatedSuperPathTail, builtinTypes, arena, &subMetadata)
-                                                  : traverse_DEPRECATED(argPack, truncatedSuperPathTail, builtinTypes, arena);
-        std::optional<TypeOrPack> failedSuper = (FFlag::LuauNewTypePathErrorMessages)
-                                                    ? traverse(fnTy, truncatedSubPathTail, builtinTypes, arena, &superMetadata)
-                                                    : traverse_DEPRECATED(fnTy, truncatedSubPathTail, builtinTypes, arena);
+        std::optional<TypeOrPack> failedSub = traverse(argPack, truncatedSuperPathTail, builtinTypes, arena, &subMetadata);
+        std::optional<TypeOrPack> failedSuper = traverse(fnTy, truncatedSubPathTail, builtinTypes, arena, &superMetadata);
 
         maybeEmplaceError(&errors, argLocation, moduleName, &reason, failedSuper, failedSub);
         return;
@@ -718,20 +713,32 @@ void OverloadResolver::maybeEmplaceError(
             // intentionally fallthrough here since we couldn't prove this was error-suppressing
             [[fallthrough]];
         case ErrorSuppression::DoNotSuppress:
+        {
             // TODO extract location from the SubtypingResult path and argExprs
+            TypeMismatch::Context context = TypeMismatch::CovariantContext;
             switch (reason->variance)
             {
             case SubtypingVariance::Covariant:
             case SubtypingVariance::Contravariant:
-                errors->emplace_back(argLocation, moduleName, TypeMismatch{*wantedType, *givenType, TypeMismatch::CovariantContext});
+                context = TypeMismatch::CovariantContext;
                 break;
             case SubtypingVariance::Invariant:
-                errors->emplace_back(argLocation, moduleName, TypeMismatch{*wantedType, *givenType, TypeMismatch::InvariantContext});
+                context = TypeMismatch::InvariantContext;
                 break;
             default:
                 LUAU_ASSERT(0);
                 break;
             }
+
+            if (reason->isPropertyModifierViolation)
+            {
+                std::string reasonStr = explainPropertyModifierViolation(reason->subPath);
+                errors->emplace_back(argLocation, moduleName, TypeMismatch{*wantedType, *givenType, std::move(reasonStr), context});
+            }
+            else
+                errors->emplace_back(argLocation, moduleName, TypeMismatch{*wantedType, *givenType, context});
+            break;
+        }
         }
     }
 }

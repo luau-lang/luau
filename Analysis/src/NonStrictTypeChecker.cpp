@@ -23,7 +23,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauNonStrictCallTypePacks)
 LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -525,14 +525,74 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatClass* declClass)
     {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
         for (auto prop : declClass->members)
         {
-            if (auto property = get_if<AstClassProperty>(&prop))
-                visit(property->ty);
-            else if (auto method = get_if<AstClassMethod>(&prop))
-                visit(method->function);
-            else
-                LUAU_ASSERT(!"Unknown class field");
+            Luau::visit(
+                overloaded{
+                    [&](const AstClassProperty& classProp)
+                    {
+                        visit(classProp.ty);
+                    },
+                    [&](const AstClassMethod& method)
+                    {
+                        visit(method.function);
+                    }
+                },
+                prop
+            );
+        }
+
+        if (declClass->super)
+        {
+            // Subtlety: The extends clause names an expression, so the type of this
+            // expression will be the class object, not the instance type that we're
+            // inheriting from.
+            const ExternType* superInstanceEtv = getClassInstanceType(lookupType(declClass->super));
+            if (!superInstanceEtv)
+                return {};
+
+            for (auto prop : declClass->members)
+            {
+                if (auto property = get_if<AstClassProperty>(&prop))
+                {
+                    Name propName = Name{property->name.value};
+                    // Slightly inefficient: we walk the inheritance chain for each property
+                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    {
+                        if (curr->props.count(propName) != 0)
+                        {
+                            reportError(
+                                IllegalClassPropertyOverride{propName, Name{declClass->name->name.value}, Name{curr->name}}, property->nameLocation
+                            );
+                            break;
+                        }
+                    }
+                }
+                else if (auto method = get_if<AstClassMethod>(&prop);
+                         method && (method->functionName == "__eq" || method->functionName == "__lt" || method->functionName == "__le"))
+                {
+                    Name methodName = Name{method->functionName.value};
+                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    {
+                        if (curr->metatable)
+                        {
+                            if (const TableType* mt = get<TableType>(follow(*curr->metatable)))
+                            {
+                                if (mt->props.count(methodName) != 0)
+                                {
+                                    reportError(
+                                        IncompatibleClassMethodOverride{methodName, Name{declClass->name->name.value}, Name{curr->name}},
+                                        method->nameLocation
+                                    );
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         return {};
@@ -666,8 +726,7 @@ struct NonStrictTypeChecker
     NonStrictContext visit(AstExprCall* call)
     {
         visit(call->func, ValueContext::RValue);
-        if (FFlag::LuauStrictVisitInstantiatedType)
-            visitTypeArguments(call->typeArguments);
+        visitTypeArguments(call->typeArguments);
         for (auto arg : call->args)
             visit(arg, ValueContext::RValue);
 
@@ -698,8 +757,24 @@ struct NonStrictTypeChecker
             }
             arguments.insert(arguments.end(), call->args.begin(), call->args.end());
 
+            size_t argumentCount = arguments.size();
+            bool hasVariadicTail = false;
+
+            if (FFlag::LuauNonStrictCallTypePacks && !arguments.empty())
+            {
+                AstExpr* last = arguments.back();
+                TypePackId* tp = module->astTypePacks.find(last);
+
+                if (tp && (last->is<AstExprCall>() || last->is<AstExprVarargs>()))
+                {
+                    auto [head, tail] = flatten(*tp);
+                    argumentCount = arguments.size() - 1 + head.size();
+                    hasVariadicTail = tail.has_value();
+                }
+            }
+
             std::vector<TypeId> argTypes;
-            argTypes.reserve(arguments.size());
+            argTypes.reserve(argumentCount);
 
             // Move all the types over from the argument typepack for `fn`
             TypePackIterator curr = begin(fn->argTypes);
@@ -712,7 +787,7 @@ struct NonStrictTypeChecker
             {
                 if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*argTail)))
                 {
-                    while (argTypes.size() < arguments.size())
+                    while (argTypes.size() < argumentCount)
                     {
                         argTypes.push_back(vtp->ty);
                     }
@@ -720,14 +795,14 @@ struct NonStrictTypeChecker
             }
 
             std::string functionName = getFunctionNameAsString(*call->func).value_or("");
-            if (arguments.size() > argTypes.size())
+            if (argumentCount > argTypes.size())
             {
                 // We are passing more arguments than we expect, so we should error
-                reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), arguments.size()}, call->location);
+                reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), argumentCount}, call->location);
                 return fresh;
             }
 
-            for (size_t i = 0; i < arguments.size(); i++)
+            for (size_t i = 0; i < arguments.size() && (!FFlag::LuauNonStrictCallTypePacks || i < argumentCount); i++)
             {
                 // For example, if the arg is "hi"
                 // The actual arg type is string
@@ -762,17 +837,17 @@ struct NonStrictTypeChecker
                     reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                 }
             }
-            if (arguments.size() < argTypes.size())
+            if (argumentCount < argTypes.size() && !hasVariadicTail)
             {
                 // We are passing fewer arguments than we expect
                 // so we need to ensure that the rest of the args are optional.
                 bool remainingArgsOptional = true;
-                for (size_t i = arguments.size(); i < argTypes.size(); i++)
+                for (size_t i = argumentCount; i < argTypes.size(); i++)
                     remainingArgsOptional = remainingArgsOptional && isOptional(argTypes[i]);
 
                 if (!remainingArgsOptional)
                 {
-                    reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), arguments.size()}, call->location);
+                    reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), argumentCount}, call->location);
                     return fresh;
                 }
             }
@@ -886,21 +961,7 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprInstantiate* instantiate)
     {
-        if (FFlag::LuauStrictVisitInstantiatedType)
-            visitTypeArguments(instantiate->typeArguments);
-        else
-        {
-            for (const AstTypeOrPack& typeArgument : instantiate->typeArguments)
-            {
-                if (typeArgument.type)
-                    visit(typeArgument.type);
-                else
-                {
-                    LUAU_ASSERT(typeArgument.typePack);
-                    visit(typeArgument.typePack);
-                }
-            }
-        };
+        visitTypeArguments(instantiate->typeArguments);
 
         return visit(instantiate->expr, ValueContext::RValue);
     }
@@ -960,15 +1021,12 @@ struct NonStrictTypeChecker
 
         if (alias.has_value())
         {
-            if (FFlag::LuauStrictVisitInstantiatedType)
-            {
-                // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
-                // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
-                // As a result, we can't use `scope->lookupType` to check for the existence of the type, because it will find
-                // the parameter incorrectly, and thus accept a self-referece as a default value.
-                if (!ty->prefix && module->astTypeReferenceLookupFailures.contains(ty))
-                    return reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
-            }
+            // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+            // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+            // As a result, we can't use `scope->lookupType` to check for the existence of the type, because it will find
+            // the parameter incorrectly, and thus accept a self-referece as a default value.
+            if (!ty->prefix && module->astTypeReferenceLookupFailures.contains(ty))
+                return reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
 
             size_t typesRequired = alias->typeParams.size();
             size_t packsRequired = alias->typePackParams.size();
@@ -1172,15 +1230,12 @@ struct NonStrictTypeChecker
 
         if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
         {
-            if (FFlag::LuauStrictVisitInstantiatedType)
-            {
-                // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
-                // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
-                // As a result, we can't use `scope->lookupPack` to check for the existence of the type pack, because it will find
-                // the parameter incorrectly, and thus accept a self-referece as a default value.
-                if (module->astTypePackReferenceLookupFailures.contains(tp))
-                    return reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-            }
+            // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+            // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+            // As a result, we can't use `scope->lookupPack` to check for the existence of the type pack, because it will find
+            // the parameter incorrectly, and thus accept a self-referece as a default value.
+            if (module->astTypePackReferenceLookupFailures.contains(tp))
+                return reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
 
             return;
         }

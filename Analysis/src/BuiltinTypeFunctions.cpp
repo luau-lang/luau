@@ -24,7 +24,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauRefineNotNilWaitsForBlockedTarget)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
@@ -1899,35 +1898,21 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
     // everything is validated, we need only construct our big union of singletons now!
     std::vector<TypeId> singletons;
 
-    if (FFlag::LuauKeyofLexicographicOrdering)
+    // but first, we'll sort it to keep the union at the end in lexicographic ordering
+    std::vector<std::string_view> sortedKeys;
+    sortedKeys.reserve(keys.size());
+
+    for (const auto& key : keys)
     {
-        // but first, we'll sort it to keep the union at the end in lexicographic ordering
-        std::vector<std::string_view> sortedKeys;
-        sortedKeys.reserve(keys.size());
-
-        for (const auto& key : keys)
-        {
-            if (key)
-                sortedKeys.emplace_back(*key);
-        }
-
-
-        std::stable_sort(sortedKeys.begin(), sortedKeys.end());
-        singletons.reserve(sortedKeys.size());
-
-        for (const auto& key : sortedKeys)
-            singletons.push_back(ctx->arena->addType(SingletonType{StringSingleton{std::string{key.data(), key.size()}}}));
+        if (key)
+            sortedKeys.emplace_back(*key);
     }
-    else
-    {
-        singletons.reserve(keys.size());
 
-        for (const auto& key : keys)
-        {
-            if (key)
-                singletons.push_back(ctx->arena->addType(SingletonType{StringSingleton{*key}}));
-        }
-    }
+    std::stable_sort(sortedKeys.begin(), sortedKeys.end());
+    singletons.reserve(sortedKeys.size());
+
+    for (const auto& key : sortedKeys)
+        singletons.push_back(ctx->arena->addType(SingletonType{StringSingleton{std::string{key.data(), key.size()}}}));
 
     // If there's only one entry, we don't need a UnionType.
     // We can take straight take it from the first entry

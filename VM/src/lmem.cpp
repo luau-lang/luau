@@ -355,6 +355,8 @@ static void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)
             *pageset = page->listnext;
     }
 
+    ASAN_UNPOISON_MEMORY_REGION(page, page->pageSize);
+
     // so long
     pagealloc<path, type>(g, page, page->pageSize, 0);
 }
@@ -654,8 +656,9 @@ GCObject* luaM_newgcocaged_(lua_State* L, size_t nsize, uint8_t memcat, int tt, 
     }
     else
     {
-        lua_Page* page =
-            newpage<AllocationPath::BufferFrealloc, LUA_TBUFFER, false>(L, &g->allgcopages_cage, offsetof(lua_Page, data) + int(nsize), int(nsize), 1);
+        lua_Page* page = newpage<AllocationPath::BufferFrealloc, LUA_TBUFFER, false>(
+            L, &g->allgcopages_cage, offsetof(lua_Page, data) + int(nsize), int(nsize), 1
+        );
 
         block = &page->data;
         ASAN_UNPOISON_MEMORY_REGION(block, page->blockSize);

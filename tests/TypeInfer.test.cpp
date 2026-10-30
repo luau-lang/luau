@@ -27,9 +27,7 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
 
 using namespace Luau;
 
@@ -135,7 +133,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
         f("foo")
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -225,7 +223,7 @@ TEST_CASE_FIXTURE(Fixture, "statements_are_topologically_sorted")
         end
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
@@ -269,7 +267,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "weird_case")
         local d = math.deg(f())
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -295,7 +293,7 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_does_not_recurse_forever_if_asked_to_tr
         end
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -347,7 +345,7 @@ TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowi
         end
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -382,7 +380,7 @@ TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
         return x4
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
     ModulePtr module = getMainModule();
@@ -882,7 +880,7 @@ local function f()
 end
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -920,7 +918,7 @@ local function f(a: (number, number) -> number) return a(1, 3) end
 f(((function(a, b) return a + b end)))
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -984,7 +982,7 @@ local function times<T>(n: any, f: () -> T)
 end
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1123,7 +1121,7 @@ local b = getIt()
 local c = a or b
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1420,7 +1418,7 @@ function f(x, c)                   -- x : X
 end
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1609,7 +1607,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lti_must_record_contributing_locations")
         end
     )");
 
-    ignoreMissingAnnotations(result);
+
 
     // We inspect the actual errors in other tests; this test verifies that we
     // actually recorded breadcrumbs for a.
@@ -1809,7 +1807,7 @@ TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
             return b:upper()
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_CHECK_NO_ERRORS(result);
 }
 
@@ -1895,7 +1893,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_ret")
             return getmetatable(x)
         end
     )");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(any) -> any", toString(requireType("spooky")));
@@ -1972,7 +1969,7 @@ TEST_CASE_FIXTURE(Fixture, "concat_string_with_string_union")
             return x .. y
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -2687,8 +2684,6 @@ TEST_CASE_FIXTURE(Fixture, "nested_functions_can_depend_on_outer_generics")
         local out = funcTest(1) -- Doesn't report type mismatch error anymore
     )");
 
-    ignoreMissingAnnotations(result);
-
     CHECK("(nil) -> nil" == toString(requireType("funcTest")));
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -3045,7 +3040,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_inference_with_optional_param_does_not_lea
 
         createElement(MyComponent, { x = 1 })
     )");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -3054,8 +3048,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table"
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     // When a component's props are an intersection of table types with optional
     // fields, passing a table with only a subset of those fields should work.
@@ -3075,7 +3067,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table"
 
         local _x = createElement(Image, { tag = "test" })
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -3084,8 +3076,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     // When a component has a recursive optional field (like React's children),
     // widening the table literal should not cause the bounds check to fail.
@@ -3101,13 +3091,13 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
         end
         local _x = createElement(View, { tag = "hello" })
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_1")
 {
-    ScopedFastFlag _ {FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
         class _ end
@@ -3135,8 +3125,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_generic_binding_ice")
 {
-    ScopedFastFlag _{FFlag::LuauDoNotIceForBindingGeneric, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         local l0: any
         l32 = l0.new {
@@ -3147,9 +3135,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_generic_binding_ice")
             _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
             n0 = if _ then _,
             _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
-            _ = if _ then _, 
+            _ = if _ then _,
             n0 = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
-            n0 = if _ then _, 
+            n0 = if _ then _,
             _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),)
         }
     )"));

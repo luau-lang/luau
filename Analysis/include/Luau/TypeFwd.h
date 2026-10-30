@@ -3,8 +3,8 @@
 
 #include "Luau/Variant.h"
 
-#include <cstdint>
 #include <functional>
+#include <stdint.h>
 #include <string>
 
 namespace Luau

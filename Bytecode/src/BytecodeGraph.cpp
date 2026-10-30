@@ -7,6 +7,7 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCostModel)
+LUAU_FASTFLAGVARIABLE(LuauInlinerNamecallSelfFromMove)
 LUAU_FASTFLAG(LuauCompileRefactorFeedback)
 
 namespace Luau
@@ -176,8 +177,11 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
             BytecodeBuilder::ClassShape shape;
             shape.className = readVarInt(data, offset);
 
-            uint32_t numProps = readVarInt(data, offset);
-            uint32_t numMethods = readVarInt(data, offset);
+            shape.numPrivateInstanceProps = read<uint8_t>(data, offset);
+            shape.numPrivateStaticProps = read<uint8_t>(data, offset);
+
+            uint32_t numProps = readVarInt(data, offset) - shape.numPrivateInstanceProps;
+            uint32_t numMethods = readVarInt(data, offset) - shape.numPrivateStaticProps;
 
             shape.propertyNames.reserve(numProps);
             shape.methodNames.reserve(numMethods);

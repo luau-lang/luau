@@ -42,16 +42,14 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(DebugLuauExactTableTypes)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
-LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalAnalysis)
+LUAU_FLAGVERSION(LuauExperimentalIfLocalAnalysis, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAGVARIABLE(LuauUnconditionallyVisitTypeAliasParams)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntaxSupport)
@@ -1021,16 +1019,8 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                 quantifiedTypeParams.push_back(genericTy);
             }
 
-            if (FFlag::LuauTypeFunctionStructuredErrors)
-            {
-                if (std::optional<TypeFunctionError> error = typeFunctionRuntime->registerFunction(function))
-                    reportError(function->location, BuiltInTypeFunctionError{*error});
-            }
-            else
-            {
-                if (std::optional<std::string> error = typeFunctionRuntime->registerFunction_DEPRECATED(function))
-                    reportError(function->location, GenericError{*error});
-            }
+            if (std::optional<TypeFunctionError> error = typeFunctionRuntime->registerFunction(function))
+                reportError(function->location, BuiltInTypeFunctionError{*error});
 
             UserDefinedFunctionData udtfData;
 
@@ -1238,7 +1228,6 @@ void ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* cl
     // Objects are ExternTypes, where the metatable field represents the metamethods associated with the instance.
     // Class: ExternType { props, parent: top class type, metatable: constructor }
     // Object: ExternType { props, parent: top object type for now, metatable: instance metamethods }
-    // TODO: we should add a direct reference to the `class` on the `object` type (probably useful for classof)
     TableType::Props staticProps;
     ExternType::Props props;
     TableType::Props instanceMetatableProps;
@@ -1304,9 +1293,7 @@ void ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* cl
     TypeId instanceMetatable = arena->addType(TableType{instanceMetatableProps, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
 
     TypeId classInstanceTy = arena->addType(
-        ExternType{
-            declName, std::move(props), builtinTypes->objectType, instanceMetatable, Tags{}, nullptr, module->name, classDecl->location
-        }
+        ExternType{declName, std::move(props), builtinTypes->objectType, instanceMetatable, Tags{}, nullptr, module->name, classDecl->location}
     );
 
     // If the class does not define an explicit constructor, then we know the type of the default constructor at this point.
@@ -1318,9 +1305,8 @@ void ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* cl
     }
 
     LUAU_ASSERT(constructorTy);
-    TypeId classMetatable = arena->addType(
-        TableType{{{"__call", Property::readonly(constructorTy)}}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed}
-    );
+    TypeId classMetatable =
+        arena->addType(TableType{{{"__call", Property::readonly(constructorTy)}}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
 
     {
         ExternType* classObject = getMutable<ExternType>(classObjectTy);
@@ -2902,7 +2888,7 @@ InferencePack ConstraintGenerator::checkPack(
 
     if (AstExprCall* call = expr->as<AstExprCall>())
     {
-        if (FFlag::LuauBidirectionalInferenceSetMetatable && !expectedTypes.empty() && matchSetMetatable(*call))
+        if (!expectedTypes.empty() && matchSetMetatable(*call))
             result = checkPack(scope, call, expectedTypes.front());
         else
             result = checkPack(scope, call);
@@ -3003,13 +2989,10 @@ InferencePack ConstraintGenerator::checkExprCall(
 
     std::vector<std::optional<TypeId>> expectedTypesForCall = getExpectedCallTypesForFunctionOverloads(fnType);
 
-    if (FFlag::LuauBidirectionalInferenceSetMetatable)
+    if (matchSetMetatable(*call) && expectedType)
     {
-        if (matchSetMetatable(*call) && expectedType)
-        {
-            if (const MetatableType* expectedMetatable = get<MetatableType>(follow(*expectedType)))
-                expectedTypesForCall = {expectedMetatable->table, expectedMetatable->metatable};
-        }
+        if (const MetatableType* expectedMetatable = get<MetatableType>(follow(*expectedType)))
+            expectedTypesForCall = {expectedMetatable->table, expectedMetatable->metatable};
     }
 
     module->astOriginalCallTypes[call->func] = fnType;
@@ -3040,7 +3023,7 @@ InferencePack ConstraintGenerator::checkExprCall(
     // never be able to `check` its arguments, so we just claim that
     // lambdas within `setmetatable` should be let-generalized.
     bool generalize = FFlag::LuauTraverseScopeToFunction ? matchSetMetatable(*call) : false;
-    if (FFlag::LuauBidirectionalInferenceSetMetatable && matchSetMetatable(*call))
+    if (matchSetMetatable(*call))
     {
         if (expectedType)
             generalize = false;
@@ -3187,26 +3170,23 @@ InferencePack ConstraintGenerator::checkExprCall(
                 resultTy = arena->addType(MetatableType{target, mt});
         }
 
-        if (FFlag::LuauBidirectionalInferenceSetMetatable)
+        module->astTypes[call] = resultTy;
+
+        if (expectedType)
         {
-            module->astTypes[call] = resultTy;
+            NotNull<Constraint> ptc = addConstraint(
+                scope,
+                call->location,
+                PushTypeConstraint{
+                    /* expectedType */ *expectedType,
+                    /* targetType */ resultTy,
+                    /* astTypes */ NotNull{&module->astTypes},
+                    /* astExpectedTypes */ NotNull{&module->astExpectedTypes},
+                    /* expr */ NotNull{call},
+                }
+            );
 
-            if (expectedType)
-            {
-                NotNull<Constraint> ptc = addConstraint(
-                    scope,
-                    call->location,
-                    PushTypeConstraint{
-                        /* expectedType */ *expectedType,
-                        /* targetType */ resultTy,
-                        /* astTypes */ NotNull{&module->astTypes},
-                        /* astExpectedTypes */ NotNull{&module->astExpectedTypes},
-                        /* expr */ NotNull{call},
-                    }
-                );
-
-                addAllAsReverseDependencies(argBeginCheckpoint, argEndCheckpoint, this, ptc);
-            }
+            addAllAsReverseDependencies(argBeginCheckpoint, argEndCheckpoint, this, ptc);
         }
 
         if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
@@ -3341,14 +3321,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
     else if (expr->is<AstExprVarargs>())
         result = flattenPack(scope, expr->location, checkPack(scope, expr));
     else if (auto call = expr->as<AstExprCall>())
-    {
-        if (FFlag::LuauBidirectionalInferenceSetMetatable)
-            result = flattenPack(
-                scope, expr->location, checkPack(scope, call, matchSetMetatable(*call) ? expectedType : std::nullopt)
-            ); // TODO: needs predicates too
-        else
-            result = flattenPack(scope, expr->location, checkPack(scope, call)); // TODO: needs predicates too
-    }
+        result = flattenPack(
+            scope, expr->location, checkPack(scope, call, matchSetMetatable(*call) ? expectedType : std::nullopt)
+        ); // TODO: needs predicates too
     else if (auto a = expr->as<AstExprFunction>())
         result = check(scope, a, expectedType, generalize);
     else if (auto indexName = expr->as<AstExprIndexName>())
@@ -3539,7 +3514,7 @@ Inference ConstraintGenerator::checkIndexName(
     {
         result = arena->addType(BlockedType{});
 
-        auto c = addConstraint(scope, indexee->location, HasPropConstraint{result, obj, index, ValueContext::RValue, inConditional(typeContext)});
+        auto c = addConstraint(scope, indexee->location, HasPropConstraint{result, obj, index, inConditional(typeContext)});
         getMutable<BlockedType>(result)->setOwner(c);
         propIndexPairsSeen[{obj, index}] = result;
     }
@@ -4780,8 +4755,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
         {
             // We failed to look up the alias at all. The type checker will
             // report the lookup failure when it visits the type later.
-            if (FFlag::LuauStrictVisitInstantiatedType)
-                module->astTypeReferenceLookupFailures.insert(ty);
+            module->astTypeReferenceLookupFailures.insert(ty);
             result = builtinTypes->errorType;
             if (replaceErrorWithFresh)
                 result = freshType(scope, Polarity::Mixed);
@@ -4857,8 +4831,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
         else
         {
             // The type checker will report the lookup failure when it visits the type later.
-            if (FFlag::LuauStrictVisitInstantiatedType)
-                module->astTypeReferenceLookupFailures.insert(ty);
+            module->astTypeReferenceLookupFailures.insert(ty);
             result = builtinTypes->errorType;
             if (replaceErrorWithFresh)
                 result = freshType(scope, Polarity::Mixed);
@@ -5197,10 +5170,7 @@ TypePackId ConstraintGenerator::resolveTypePack_(const ScopePtr& scope, AstTypeP
         else
         {
             // The type checker will report the lookup failure when it visits the type pack later.
-            if (FFlag::LuauStrictVisitInstantiatedType)
-                module->astTypePackReferenceLookupFailures.insert(tp);
-            else
-                reportError(tp->location, UnknownSymbol{gen->genericName.value, UnknownSymbol::Context::Type});
+            module->astTypePackReferenceLookupFailures.insert(tp);
             result = builtinTypes->errorTypePack;
         }
     }

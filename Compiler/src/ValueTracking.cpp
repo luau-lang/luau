@@ -50,6 +50,7 @@ struct ValueVisitor : AstVisitor
                 Variable& variable = variables[lv->local];
 
                 variable.written = true;
+                LUAU_ASSERT(!variable.lastUsed || lv->location.end >= variable.lastUsed->location.end);
                 variable.lastUsed = lv;
 
                 if (lv->upvalue || lv->local->isExported)
@@ -77,6 +78,7 @@ struct ValueVisitor : AstVisitor
         {
             Variable& variable = variables[node->local];
 
+            LUAU_ASSERT(!variable.lastUsed || node->location.end >= variable.lastUsed->location.end);
             variable.lastUsed = node;
 
             if (node->upvalue || node->local->isExported)

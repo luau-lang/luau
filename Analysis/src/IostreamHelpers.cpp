@@ -32,11 +32,15 @@ static std::ostream& operator<<(std::ostream& stream, InvalidClassExtension::Con
 {
     switch (ctx)
     {
-        case InvalidClassExtension::ClassIsNotOpen: return stream << "ClassIsNotOpen";
-        case InvalidClassExtension::NotAClass: return stream << "NotAClass";
-        default:
-            LUAU_ASSERT(0);
-            return stream << "???";
+    case InvalidClassExtension::ClassIsNotOpen:
+        return stream << "ClassIsNotOpen";
+    case InvalidClassExtension::NotAClass:
+        return stream << "NotAClass";
+    case InvalidClassExtension::BaseIsClassInstance:
+        return stream << "BaseIsClassInstance";
+    default:
+        LUAU_ASSERT(0);
+        return stream << "???";
     }
 }
 
@@ -320,8 +324,6 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "AmbiguousFunctionCall { " << toString(err.function) << ", " << toString(err.arguments) << " }";
     else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
         stream << "UninitializedFieldAccess { " << (err.fieldName ? *err.fieldName : "self") << " }";
-    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
-        stream << "TypeAnnotationRequired { " << toString(err.inferredTy) << " }";
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
         stream << "ConstructorsShouldNotReturnAnything {}";
     else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
@@ -342,6 +344,9 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "InvalidExtension { ctx = " << err.context << ", ty = " << toString(err.baseClass) << " }";
     else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
         stream << "IncompatibleClassMethodOverride { method = " << err.method << ", className = " << err.className
+               << ", superName = " << err.superName << " }";
+    else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
+        stream << "IllegalClassPropertyOverride { property = " << err.property << ", className = " << err.className
                << ", superName = " << err.superName << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

@@ -13,6 +13,7 @@ LUAU_FASTFLAG(LuauCodegenExitSyncUpdate)
 LUAU_FASTFLAG(DebugCodegenLimitRegs)
 LUAU_FASTFLAGVARIABLE(LuauCodegenX64IntSpillRestore)
 LUAU_FASTFLAG(LuauCodegenScopedSpillKeepLazy)
+LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 namespace Luau
 {
@@ -292,7 +293,7 @@ void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
 
     SmallVector<uint32_t, 8> argumentsToRestore;
 
-    if (FFlag::LuauCodegenExitSyncUpdate)
+    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
     {
         if (const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx))
             syncInfo = function.vmExitInfo.find(*guardInstIdx);
@@ -352,7 +353,7 @@ void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
             spills.push_back(spill);
 
             // If the restore VM register will be clobbered by a different store in this block, restore it immediately
-            if (FFlag::LuauCodegenExitSyncUpdate && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
+            if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
             {
                 uint8_t vmReg = vmRegOp(arg.restoreLocation.op);
 
@@ -382,7 +383,7 @@ void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
         }
     }
 
-    if (FFlag::LuauCodegenExitSyncUpdate)
+    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
     {
         for (uint32_t instIdx : argumentsToRestore)
             restore(function.instructions[instIdx], /*intoOriginalLocation*/ false);
@@ -688,6 +689,7 @@ OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, ValueRestoreLoca
     case IrValueKind::None:
     case IrValueKind::Float:
     case IrValueKind::Count:
+        break;
     case IrValueKind::Int64:
         return restoreLocation.op.kind == IrOpKind::VmReg ? luauRegValueInt64(vmRegOp(op)) : luauConstantValue(vmConstOp(op));
     case IrValueKind::Tag:

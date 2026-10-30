@@ -14,8 +14,6 @@
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
-LUAU_FASTFLAG(LuauBackedgeHeapCheck)
-LUAU_FASTFLAG(LuauFastpcallInterrupt)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 namespace Luau
@@ -155,10 +153,7 @@ void translateInstJump(IrBuilder& build, const Instruction* pc, int pcpos)
 void translateInstJumpBack(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
-
-    if (FFlag::LuauBackedgeHeapCheck)
-        build.inst(IrCmd::CHECK_GC);
-
+    build.inst(IrCmd::CHECK_GC);
     build.inst(IrCmd::JUMP, build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc)));
 }
 
@@ -408,10 +403,7 @@ void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos,
 void translateInstJumpX(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
-
-    if (FFlag::LuauBackedgeHeapCheck)
-        build.inst(IrCmd::CHECK_GC);
-
+    build.inst(IrCmd::CHECK_GC);
     build.inst(IrCmd::JUMP, build.blockAtInst(pcpos + 1 + LUAU_INSN_E(*pc)));
 }
 
@@ -1285,8 +1277,7 @@ std::optional<IrOp> translateFastPcall(IrBuilder& build, const Instruction* pc, 
 
     IrOp fallback = build.fallbackBlock(pcpos);
 
-    if (FFlag::LuauFastpcallInterrupt)
-        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+    build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
     build.checkSafeEnv(pcpos + getOpLength(opcode));
@@ -1423,8 +1414,7 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
     if (repeatJumpTarget != loopInfo.startpc)
         build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
 
-    if (FFlag::LuauBackedgeHeapCheck)
-        build.inst(IrCmd::CHECK_GC);
+    build.inst(IrCmd::CHECK_GC);
 
     IrOp stepK = loopInfo.step;
 
@@ -1532,9 +1522,7 @@ void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pc
     IrOp hasElem = build.block(IrBlockKind::Internal);
 
     build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
-
-    if (FFlag::LuauBackedgeHeapCheck)
-        build.inst(IrCmd::CHECK_GC);
+    build.inst(IrCmd::CHECK_GC);
 
     // fast-path: builtin table iteration
     IrOp tagA = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));

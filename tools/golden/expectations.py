@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import difflib
 import os
 import shlex
 import stat
@@ -12,24 +11,13 @@ from contextlib import suppress
 from pathlib import Path
 
 from .models import COMMANDS, ConfigResult, GoldenTest, UpdateMode
+from .text import unified_diff
 
 
 def _captured_output(command: str, text: str) -> str:
     if not text:
         return f"captured {command}.output: <empty>"
     return f"captured {command}.output:\n---\n{text}\n---"
-
-
-def _unified_diff(expected_path: Path, expected: str, actual: str) -> str:
-    diff = "".join(
-        difflib.unified_diff(
-            expected.splitlines(keepends=True),
-            actual.splitlines(keepends=True),
-            fromfile=str(expected_path),
-            tofile="captured output",
-        )
-    )
-    return diff or f"expected {expected!r}, captured {actual!r}"
 
 
 def _will_update(
@@ -55,6 +43,8 @@ def validate_configuration(
     config: str,
     result: ConfigResult,
     update: UpdateMode | None,
+    *,
+    color: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     for command, command_result in result.commands.items():
@@ -97,7 +87,7 @@ def validate_configuration(
             path, expected = exact
             if expected != actual:
                 message = f"{test.test_id} [{config}] exact output mismatch for {command}.output:\n"
-                message += _unified_diff(path, expected, actual)
+                message += unified_diff(path, expected, actual, color=color)
                 errors.append(message)
 
     return errors

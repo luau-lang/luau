@@ -19,7 +19,6 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
@@ -2149,7 +2148,6 @@ return {a = a, b = b}
     )";
 
     CheckResult result = getFrontend().check("Module/A");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(
@@ -2185,7 +2183,6 @@ return {a = a, b = b}
     )";
 
     CheckResult result = getFrontend().check("Module/A");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(
@@ -5416,7 +5413,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         \@deprecated
         function foo()
@@ -5434,7 +5430,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_local_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         \@deprecated
         local function foo()
@@ -5452,8 +5447,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_local_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_anonymous_function")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauCheckTypeForDeprecated, true}};
-
     check(R"(
         local foo = \@deprecated function()
         end
@@ -5470,7 +5463,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_anonymous_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function_in_table")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         local t = {}
 
@@ -5490,8 +5482,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function_in_table")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_global_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         @deprecated
         declare function foo(): ()
@@ -5510,8 +5500,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_global_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_extern_member_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         declare extern type MyClass with
             @deprecated
@@ -5533,8 +5521,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_extern_member_function"
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_overloaded_extern_member_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         declare extern type MyClass with
             @deprecated
@@ -5558,8 +5544,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_overloaded_extern_membe
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_not_deprecated_on_overloaded_extern_member_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
-
     loadDefinition(R"(
         declare extern type MyClass with
             function foo(self, val: string): ()

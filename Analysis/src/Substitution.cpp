@@ -10,6 +10,7 @@
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
+LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 namespace Luau
 {
@@ -284,6 +285,11 @@ void Tarjan::visitChildren(TypeId ty, int index)
     else if (const NegationType* ntv = get<NegationType>(ty))
     {
         visitChild(ntv->ty);
+    }
+    else if (const ErrorType* err = get<ErrorType>(ty); FFlag::LuauReduceTypeFunctionToSyntheticError && err)
+    {
+        LUAU_ASSERT(ty->persistent || err->synthetic);
+        visitChild(err->synthetic);
     }
 }
 
@@ -885,6 +891,11 @@ void Substitution::replaceChildren(TypeId ty)
     else if (NegationType* ntv = getMutable<NegationType>(ty))
     {
         ntv->ty = replace(ntv->ty);
+    }
+    else if (ErrorType* err = getMutable<ErrorType>(ty); FFlag::LuauReduceTypeFunctionToSyntheticError && err)
+    {
+        LUAU_ASSERT(ty->persistent || err->synthetic);
+        err->synthetic = replace(err->synthetic);
     }
 }
 

@@ -6,7 +6,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -74,8 +73,6 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_correct")
         f<<number | string>>(1, "a")
         )");
 
-        ignoreMissingAnnotations(result);
-
         LUAU_REQUIRE_NO_ERRORS(result);
     }
 }
@@ -92,8 +89,6 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
 
         f<<number | boolean>>(1, "a")
         )");
-
-        ignoreMissingAnnotations(result);
 
         if (!FFlag::DebugLuauForceOldSolver)
         {
@@ -523,8 +518,6 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
         local baz, quxx = bar<<string>>()
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("string", toString(requireType("baz")));
     CHECK_EQ("number", toString(requireType("quxx")));
@@ -532,8 +525,6 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_type_in_explicit_type_instantiation")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         local function f<T>() end
         f<<Typo>>()
@@ -545,8 +536,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_in_explicit_type_instantiation")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_type_pack_in_explicit_type_instantiation")
 {
-    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
-
     CheckResult result = check(R"(
         local function f<T...>() end
         f<<(Typo)>>()

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from . import cli, execution, suite
+from . import cli, execution, suite, text
 from .cli import create_argument_parser, main
 from .directives import directives_from_file, parse_directives
 from .discovery import (
@@ -43,6 +44,7 @@ from .models import (
     UpdateMode,
 )
 from .suite import run_suite
+from .text import diff_color_enabled, unified_diff
 
 
 class _IntegrationArgs(argparse.Namespace):
@@ -568,6 +570,130 @@ class ProcessTests(unittest.TestCase):
             self.assertEqual("--fflags=DebugLuauSecond=false", argv[-3])
             self.assertEqual(f"--fflags={test_fflags}", argv[-2])
             self.assertEqual("case.luau", argv[-1])
+
+
+class DiffTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.colors = mock.Mock(
+            Fore=mock.Mock(RED="\x1b[31m", GREEN="\x1b[32m"),
+            Style=mock.Mock(RESET_ALL="\x1b[0m"),
+        )
+        patcher = mock.patch.object(text, "colorama", self.colors)
+        _ = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_terminal_color_policy(self) -> None:
+        for is_terminal, environ, enabled in (
+            (True, {}, True),
+            (False, {}, False),
+            (True, {"NO_COLOR": "1"}, False),
+            (True, {"NO_COLOR": ""}, False),
+            (True, {"NO_COLOR": "0", "FORCE_COLOR": "1"}, False),
+            (True, {"TERM": "dumb"}, False),
+        ):
+            with self.subTest(is_terminal=is_terminal, environ=environ):
+                self.colors.just_fix_windows_console.reset_mock()
+                stream = io.StringIO()
+                with mock.patch.object(stream, "isatty", return_value=is_terminal):
+                    self.assertEqual(enabled, diff_color_enabled(stream, environ))
+                self.assertEqual(int(enabled), self.colors.just_fix_windows_console.call_count)
+
+    def test_missing_colorama_falls_back_to_plain_diff(self) -> None:
+        with mock.patch.object(text, "colorama", None):
+            stream = io.StringIO()
+            with mock.patch.object(stream, "isatty", return_value=True):
+                self.assertFalse(diff_color_enabled(stream, {}))
+            self.assertEqual(
+                unified_diff(Path("expected"), "old\n", "new\n"),
+                unified_diff(Path("expected"), "old\n", "new\n", color=True),
+            )
+
+    def test_replacement_highlights_only_changed_characters(self) -> None:
+        diff = unified_diff(Path("expected"), "value: cat!\n", "value: cot?\n", color=True)
+
+        self.assertIn("\x1b[31m--- expected\x1b[0m\n", diff)
+        self.assertIn("\x1b[32m+++ captured output\x1b[0m\n", diff)
+        self.assertIn("@@ -1 +1 @@\n", diff)
+        self.assertIn("\x1b[38;5;16m\x1b[48;5;224m-value: c\x1b[48;5;217ma\x1b[48;5;224mt", diff)
+        self.assertIn("\x1b[38;5;16m\x1b[48;5;194m+value: c\x1b[48;5;157mo\x1b[48;5;194mt", diff)
+        self.assertIn("\x1b[48;5;217m!\x1b[48;5;224m\x1b[0m\n", diff)
+        self.assertIn("\x1b[48;5;157m?\x1b[48;5;194m\x1b[0m\n", diff)
+
+    def test_insertions_and_deletions_keep_line_colors(self) -> None:
+        for expected, actual, line in (
+            ("", "added\n", "\x1b[38;5;16m\x1b[48;5;194m+added\x1b[0m\n"),
+            ("removed\n", "", "\x1b[38;5;16m\x1b[48;5;224m-removed\x1b[0m\n"),
+        ):
+            with self.subTest(expected=expected, actual=actual):
+                self.assertIn(line, unified_diff(Path("expected"), expected, actual, color=True))
+
+    def test_color_preserves_unified_diff_text(self) -> None:
+        context = "".join(f"context {index}\n" for index in range(10))
+        for expected, actual in (
+            ("same\n", "same\n"),
+            ("", "added\n"),
+            ("removed\n", ""),
+            ("no newline", "no new line"),
+            ("trailing\n", "trailing"),
+            ("--prefix\nold\n", "++prefix\nnew\nextra\n"),
+            ("old\nextra\n", "new\n"),
+            ("x y\n", "x  y\n"),
+            ("café\n", "cafe\n"),
+            ("before\n" + context + "after\n", "BEFORE\n" + context + "AFTER\n"),
+        ):
+            with self.subTest(expected=expected, actual=actual):
+                plain = unified_diff(Path("expected"), expected, actual)
+                colored = unified_diff(Path("expected"), expected, actual, color=True)
+                self.assertEqual(plain, re.sub(r"\x1b\[[0-9;]*m", "", colored))
+
+    def test_long_lines_skip_character_matching(self) -> None:
+        expected = "x" * (text.MAX_HIGHLIGHT_LINE_LENGTH + 1) + "\n"
+        actual = "y" + expected
+        diff = unified_diff(Path("expected"), expected, actual, color=True)
+
+        self.assertIn("\x1b[38;5;16m\x1b[48;5;224m-" + expected.removesuffix("\n") + "\x1b[0m\n", diff)
+        self.assertIn("\x1b[38;5;16m\x1b[48;5;194m+" + actual.removesuffix("\n") + "\x1b[0m\n", diff)
+        self.assertNotIn("\x1b[48;5;217m", diff)
+        self.assertNotIn("\x1b[48;5;157m", diff)
+
+    def test_cli_colors_stderr_and_keeps_dump_files_plain(self) -> None:
+        for is_terminal, environ, enabled in (
+            (True, {}, True),
+            (False, {}, False),
+            (True, {"NO_COLOR": "1"}, False),
+            (True, {"NO_COLOR": ""}, False),
+        ):
+            with self.subTest(is_terminal=is_terminal, environ=environ), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                test = _test_case(root)
+                for config in CONFIGURATIONS:
+                    _write(test.exact_path(config, "strict"), "value: old\n")
+                errors = io.StringIO()
+                output = io.StringIO()
+                with (
+                    mock.patch.object(errors, "isatty", return_value=is_terminal),
+                    mock.patch.object(output, "isatty", return_value=not is_terminal),
+                    mock.patch.object(
+                        cli, "resolve_executables", return_value=Executables(Path("luau"), Path("luau-analyze"))
+                    ),
+                    mock.patch.object(
+                        suite, "execute_configuration", return_value=_result(strict_output="value: new\n")
+                    ),
+                    redirect_stdout(output),
+                    redirect_stderr(errors),
+                ):
+                    code = main(["--dump", "--jobs=1"], source_root=root, test_root=root, cwd=root, environ=environ)
+
+                self.assertEqual(1, code)
+                self.assertEqual(enabled, "\x1b[31m" in errors.getvalue())
+                self.assertEqual(enabled, "\x1b[32m" in errors.getvalue())
+                self.assertEqual(enabled, "\x1b[48;5;224m" in errors.getvalue())
+                self.assertEqual(enabled, "\x1b[48;5;194m" in errors.getvalue())
+                self.assertNotIn("\x1b[", output.getvalue())
+                for config in CONFIGURATIONS:
+                    self.assertIn(f"[{config}] exact output mismatch", errors.getvalue())
+                    self.assertEqual("value: new\n", test.actual_path(config, "strict").read_text(encoding="utf-8"))
+                    self.assertEqual("value: old\n", test.exact_path(config, "strict").read_text(encoding="utf-8"))
 
 
 class ValidationAndUpdateTests(unittest.TestCase):

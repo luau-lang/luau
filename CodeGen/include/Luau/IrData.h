@@ -1427,10 +1427,11 @@ struct BytecodeTypeInfo
 
 struct ValueRestoreLocation
 {
-    IrOp op;             // Operand representing the location (Rn/Kn)
-    IrValueKind kind;    // The kind of value at the restore location
-    IrCmd conversionCmd; // Type conversion instruction that was used to store the value at the restore location
-    bool lazy;           // This location comes from a DSE hint and is emitted on demand (see StoreLocationHint)
+    IrOp op;                                  // Operand representing the location (Rn/Kn)
+    IrValueKind kind;                         // The kind of value at the restore location
+    IrCmd conversionCmd;                      // Type conversion instruction that was used to store the value at the restore location
+    bool lazy;                                // This location comes from a DSE hint and is emitted on demand (see StoreLocationHint)
+    uint32_t sourceInstIdx = kInvalidInstIdx; // Instruction that is the source of the conversion
 };
 
 struct StoreLocationHint
