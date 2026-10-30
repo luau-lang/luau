@@ -1,0 +1,14 @@
+Block 0 (entry "Entry Block") -> [B1]:
+  local x-0 = <expr>
+  local t-0 = <expr>
+Block 1 (condition "for-in-loop condition") -> [B2, B3]:
+  x-1 = join(x-0, x-2)
+Block 2 (linear "for-in-loop exit"):
+  local w-0 = <expr>
+Block 3 (linear "for-in-loop body") -> [B4, B5]:
+  local k-0 = <expr>
+  local v-0 = <expr>
+Block 4 (linear "then block") -> [B2]:
+Block 5 (linear "else block") -> [B6]:
+Block 6 (linear "merge") -> [B1]:
+  x-2 = <expr>

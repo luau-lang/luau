@@ -177,6 +177,8 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
             if (req->countersActive())
                 nativeOptions.recordCounters = true;
 
+            nativeOptions.runtimeFeedback = true;
+
             Luau::CodeGen::compile(ML, -1, nativeOptions);
         }
 

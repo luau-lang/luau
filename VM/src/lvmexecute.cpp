@@ -21,6 +21,7 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
 LUAU_FASTFLAG(LuauFastpcall)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
 
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
@@ -233,6 +234,15 @@ static LUAU_NOINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
 
     LUAU_ASSERT(ci->top <= L->stack_last);
     LUAU_ASSERT(ttisfunction(ci->func));
+}
+
+// Batch addition of loop execution counter increments
+static void luau_addexeccount(Proto* p, double count)
+{
+    // Leaving room for regular counter hits to not overflow too fast
+    uint32_t space = UINT32_MAX / 4 - p->execcount;
+
+    p->execcount += count < double(space) ? uint32_t(count) : space;
 }
 
 template<bool SingleStep>
@@ -1090,6 +1100,9 @@ reentry:
                 {
                     Proto* p = ccl->l.p;
 
+                    if (FFlag::LuauRuntimeFeedback)
+                        p->execcount++;
+
                     // fill unused parameters with nil
                     StkId argi = L->top;
                     StkId argend = L->base + p->numparams;
@@ -1192,6 +1205,9 @@ reentry:
                 if (!ccl->isC)
                 {
                     Proto* p = ccl->l.p;
+
+                    if (FFlag::LuauRuntimeFeedback)
+                        p->execcount++;
 
                     if (feedback_slot != LUAU_INSN_FBSLOT_SEALED)
                     {
@@ -2527,7 +2543,18 @@ reentry:
                 double idx = nvalue(ra + 2);
 
                 // Note: make sure the loop condition is exactly the same between this and LOP_FORNLOOP so that we handle NaN/etc. consistently
-                pc += (step > 0 ? idx <= limit : limit <= idx) ? 0 : LUAU_INSN_D(insn);
+                if (FFlag::LuauRuntimeFeedback)
+                {
+                    if (step > 0 ? idx <= limit : limit <= idx)
+                        luau_addexeccount(L->ci->p, (limit - idx) / step + 1);
+                    else
+                        pc += LUAU_INSN_D(insn);
+                }
+                else
+                {
+                    pc += (step > 0 ? idx <= limit : limit <= idx) ? 0 : LUAU_INSN_D(insn);
+                }
+
                 VM_ASSERT_PC(pc);
                 VM_NEXT();
             }
@@ -2613,6 +2640,9 @@ reentry:
                         }
                         else if (ttistable(ra))
                         {
+                            if (FFlag::LuauRuntimeFeedback)
+                                luau_addexeccount(L->ci->p, hvalue(ra)->sizearray + sizenode(hvalue(ra)));
+
                             // set up registers for builtin iteration
                             setobj2s(L, ra + 1, ra);
                             setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2664,6 +2694,9 @@ reentry:
                         }
                         else if (ttistable(ra))
                         {
+                            if (FFlag::LuauRuntimeFeedback)
+                                luau_addexeccount(L->ci->p, hvalue(ra)->sizearray + sizenode(hvalue(ra)));
+
                             // set up registers for builtin iteration
                             setobj2s(L, ra + 1, ra);
                             setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2759,6 +2792,9 @@ reentry:
                 }
                 else
                 {
+                    if (FFlag::LuauRuntimeFeedback)
+                        L->ci->p->execcount++;
+
                     // note: it's safe to push arguments past top for complicated reasons (see top of the file)
                     setobj2s(L, ra + 3 + 2, ra + 2);
                     setobj2s(L, ra + 3 + 1, ra + 1);
@@ -2796,6 +2832,9 @@ reentry:
                 // fast-path: ipairs/inext
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
                 {
+                    if (FFlag::LuauRuntimeFeedback)
+                        luau_addexeccount(L->ci->p, hvalue(ra + 1)->sizearray);
+
                     setnilvalue(ra);
                     // ra+1 is already the table
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2819,6 +2858,9 @@ reentry:
                 // fast-path: pairs/next
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
                 {
+                    if (FFlag::LuauRuntimeFeedback)
+                        luau_addexeccount(L->ci->p, hvalue(ra + 1)->sizearray + sizenode(hvalue(ra + 1)));
+
                     setnilvalue(ra);
                     // ra+1 is already the table
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2979,6 +3021,9 @@ reentry:
                 VM_INTERRUPT();
                 VM_CHECK_GC(L);
                 VM_CASE_INSTRUCTION insn = *pc++;
+
+                if (FFlag::LuauRuntimeFeedback)
+                    L->ci->p->execcount++;
 
                 pc += LUAU_INSN_D(insn);
                 VM_ASSERT_PC(pc);
@@ -4011,6 +4056,9 @@ int luau_precall(lua_State* L, StkId func, int nresults)
     if (!ccl->isC)
     {
         Proto* p = ccl->l.p;
+
+        if (FFlag::LuauRuntimeFeedback)
+            p->execcount++;
 
         // fill unused parameters with nil
         StkId argi = L->top;

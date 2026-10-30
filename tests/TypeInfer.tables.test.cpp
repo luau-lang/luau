@@ -28,11 +28,11 @@ LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAG(LuauRelateIndexersTypo)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauInferReadOnlyIndexers)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauNonreentrantLookupTableProp)
 
 namespace
 {
@@ -4845,7 +4845,11 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_indexers_is_read_only")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_and_read_write_indexer_allows_writes")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{
+        FFlag::LuauNonreentrantLookupTableProp, true
+    }; // We now (correctly) note that you can always write nil to an indexer through an intersection.
 
     // {read [K]: V} & {[K]: W} normalizes to {[K]: V & W} — read-write with intersection value.
     // Write access comes from the read-write side; write type is the conservative intersection.
@@ -4864,7 +4868,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_and_read_write_indexer_all
 
     auto tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK("number" == toString(tm->wantedType));
+    CHECK("number?" == toString(tm->wantedType));
     CHECK("string" == toString(tm->givenType));
 }
 
@@ -6872,8 +6876,6 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local t = {
             {1, 2, 3},
@@ -6887,8 +6889,6 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_2")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local t = {
             {1, 2, 3},
@@ -6901,8 +6901,6 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_2")
 TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_3")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local v: number?
@@ -6925,8 +6923,6 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_4")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local v: number?
         local s: string?
@@ -6942,8 +6938,6 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_4")
 TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_5")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local v: number?

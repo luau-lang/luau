@@ -291,6 +291,9 @@ struct CostVisitor : AstVisitor
     {
         Cost condition = model(node->condition);
 
+        if (node->conditionLocal && condition.constant != 0)
+            vars[node->conditionLocal] = condition.constant;
+
         loop(node->body, condition);
         return false;
     }
