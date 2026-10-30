@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAGVARIABLE(LuauIterableConstraintUnionIndexers)
 
 namespace Luau
 {
@@ -3180,7 +3181,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     // Irksome: I don't think we have any way to guarantee that this table
     // type never has a metatable.
 
-    if (auto iteratorTable = get<TableType>(iteratorTy))
+    if (auto iteratorTable = get<TableType>(iteratorTy); iteratorTable && !FFlag::LuauIterableConstraintUnionIndexers)
     {
         /*
          * We try not to dispatch IterableConstraints over free tables because
@@ -3284,6 +3285,76 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     }
     else if (auto primitiveTy = get<PrimitiveType>(iteratorTy); primitiveTy && primitiveTy->type == PrimitiveType::Type::Table)
         unpack(builtinTypes->unknownType);
+    else if (FFlag::LuauIterableConstraintUnionIndexers)
+    {
+        if (std::shared_ptr<const NormalizedType> iteratorNorm = normalizer->normalize(iteratorTy); iteratorNorm && iteratorNorm->hasTables())
+        {
+            // We default to being somewhat permissive. As long as the type has a table somewhere inside of it, we try and infer from there.
+            UnionBuilder indexBuilder(arena, builtinTypes);
+            UnionBuilder valueBuilder(arena, builtinTypes);
+            std::vector<TypeId> expectedVariables;
+
+            for (TypeId tableTy : iteratorNorm->tables)
+            {
+                if (get<PrimitiveType>(tableTy))
+                {
+                    indexBuilder.add(builtinTypes->unknownType);
+                    valueBuilder.add(builtinTypes->unknownType);
+                }
+                else
+                {
+                    const TableType* ttv = get<TableType>(tableTy);
+                    LUAU_ASSERT(ttv);
+
+                    /*
+                    * We try not to dispatch IterableConstraints over free tables because
+                    * it's possible that there are other constraints on the table that will
+                    * clarify what we should do.
+                    *
+                    * We should eventually introduce a type function to talk about iteration.
+                    */
+                    if (ttv->state == TableState::Free)
+                        return block(iteratorTy, constraint);
+
+                    if (ttv->indexer)
+                    {
+                        indexBuilder.add(ttv->indexer->indexType);
+                        valueBuilder.add(ttv->indexer->indexResultType);
+                    }
+                }
+            }
+
+            if (indexBuilder.size() > 0)
+            {
+                TypeId index = indexBuilder.build();
+                TypeId value =
+                    arena->addTypeFunction(builtinTypes->typeFunctions->refineFunc, {valueBuilder.build(), builtinTypes->notNilType});
+
+                if (FFlag::LuauCyclicRequireTypeInference)
+                    pushConstraint(constraint->scope, constraint->location, ReduceConstraint{value}, constraint->moduleName);
+                else
+                    DEPRECATED_pushConstraint(constraint->scope, constraint->location, ReduceConstraint{value});
+
+                expectedVariables = {index, value};
+
+                while (c.variables.size() >= expectedVariables.size())
+                    expectedVariables.push_back(builtinTypes->errorType);
+
+                for (size_t i = 0; i < c.variables.size(); ++i)
+                {
+                    LUAU_ASSERT(c.variables[i] != expectedVariables[i]);
+
+                    unify(constraint, c.variables[i], expectedVariables[i]);
+
+                    bind(constraint, c.variables[i], expectedVariables[i]);
+                }
+            }
+            else
+                unpack(builtinTypes->errorType);
+        }
+        else
+            unpack(builtinTypes->errorType);
+    }
     else
     {
         unpack(builtinTypes->errorType);
