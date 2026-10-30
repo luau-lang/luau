@@ -20,6 +20,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
+LUAU_FASTFLAGVARIABLE(LuauCodegenUpdateSafeEnvList)
 
 namespace Luau
 {
@@ -63,6 +64,8 @@ int getOpLength(LuauOpcode op)
     case LOP_CMPPROTO:
     case LOP_NEWCLASS:
     case LOP_CONSTRUCT:
+    case LOP_GETPRIVATEFIELD:
+    case LOP_SETPRIVATEFIELD:
         return 2;
 
     default:

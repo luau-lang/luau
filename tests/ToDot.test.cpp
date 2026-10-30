@@ -139,8 +139,6 @@ TEST_CASE_FIXTURE(Fixture, "function")
 local function f(a, ...: string) return a end
 )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<T>(T, ...string) -> T", toString(requireType("f")));

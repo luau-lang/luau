@@ -1,9 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Config.h"
+#include "Luau/ControlFlowGraph.h"
+#include "Luau/DumpCFG.h"
 #include "Luau/Frontend.h"
 #include "Luau/LuauConfig.h"
 #include "Luau/ModuleResolver.h"
+#include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
@@ -34,6 +37,7 @@
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
+LUAU_FASTFLAG(DebugLuauAnalyzeDumpsCFG)
 
 enum class ReportFormat
 {
@@ -127,6 +131,42 @@ static bool reportModuleResult(Luau::Frontend& frontend, const Luau::ModuleName&
     }
 
     return cr->errors.empty() && cr->lintResult.errors.empty();
+}
+
+static int dumpControlFlowGraphs(const std::vector<std::string>& paths)
+{
+    int failed = 0;
+
+    for (const std::string& path : paths)
+    {
+        std::optional<std::string> source = readFile(path);
+        if (!source)
+        {
+            fprintf(stderr, "Error opening %s\n", path.c_str());
+            ++failed;
+            continue;
+        }
+
+        Luau::Allocator allocator;
+        Luau::AstNameTable names{allocator};
+        Luau::ParseOptions options;
+        options.allowDeclarationSyntax = true;
+        Luau::ParseResult parseResult = Luau::Parser::parse(source->data(), source->size(), names, allocator, options);
+
+        if (!parseResult.errors.empty())
+        {
+            for (const Luau::ParseError& error : parseResult.errors)
+                report(ReportFormat::Default, path.c_str(), error.getLocation(), "SyntaxError", error.getMessage().c_str());
+            ++failed;
+            continue;
+        }
+
+        Luau::CFG::CFGAllocator cfgAllocator;
+        auto cfg = Luau::CFG::CFGBuilder::makeCFG(Luau::NotNull{&cfgAllocator}, parseResult.root);
+        printf("%s", Luau::dumpCFG(*cfg).c_str());
+    }
+
+    return failed > 0 ? 1 : 0;
 }
 
 static void displayHelp(const char* argv0)
@@ -413,7 +453,6 @@ int main(int argc, char** argv)
     int threadCount = 0;
     std::string basePath = "";
     Luau::SolverMode solverMode = Luau::SolverMode::New;
-
     for (int i = 1; i < argc; ++i)
     {
         if (argv[i][0] != '-')
@@ -493,6 +532,9 @@ int main(int argc, char** argv)
 #endif
 
     std::vector<std::string> files = getSourceFiles(argc, argv);
+
+    if (FFlag::DebugLuauAnalyzeDumpsCFG)
+        return dumpControlFlowGraphs(files);
 
     for (const std::string& path : files)
         frontend.queueModuleCheck(path);

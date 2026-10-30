@@ -1032,18 +1032,6 @@ struct ErrorConverter
             return "Access to 'self' before all of its fields have been initialized";
     }
 
-    std::string operator()(const TypeAnnotationRequired& err) const
-    {
-        ToStringOptions opts;
-        opts.functionTypeArguments = true;
-        opts.ignoreSyntheticName = true;
-        auto tos = toStringDetailed(err.inferredTy, opts);
-        if (!tos.invalid && !tos.truncated && !tos.error)
-            return "Type annotation required here.  Consider " + tos.name;
-        else
-            return "Type annotation required here.  Unable to infer the type of this function.";
-    }
-
     std::string operator()(const ConstructorsShouldNotReturnAnything&) const
     {
         return "Class constructors should not return anything.";
@@ -1569,11 +1557,6 @@ bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
     return function == rhs.function && arguments == rhs.arguments;
 }
 
-bool TypeAnnotationRequired::operator==(const TypeAnnotationRequired& rhs) const
-{
-    return inferredTy == rhs.inferredTy;
-}
-
 bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) const
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
@@ -1841,10 +1824,6 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
     {
-    }
-    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
-    {
-        e.inferredTy = clone(e.inferredTy);
     }
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
     {

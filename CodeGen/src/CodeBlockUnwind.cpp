@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdlib.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenIntelMacUnwind)
+
 #if defined(_WIN32) && defined(CODEGEN_TARGET_X64)
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -36,6 +38,7 @@
 extern "C" void __register_frame(const void*) REGISTER_FRAME_WEAK;
 extern "C" void __deregister_frame(const void*) REGISTER_FRAME_WEAK;
 
+// TODO: wrap under defined(__linux__) after removal of FFlag::LuauCodegenIntelMacUnwind
 extern "C" void __unw_add_dynamic_fde() __attribute__((weak));
 #endif
 
@@ -84,12 +87,27 @@ static int findDynamicUnwindSections(uintptr_t addr, unw_dynamic_unwind_sections
 #if (defined(__linux__) || defined(__APPLE__)) && (defined(CODEGEN_TARGET_X64) || defined(CODEGEN_TARGET_A64))
 static void visitFdeEntries(char* pos, void (*cb)(const void*))
 {
-    // When using glibc++ unwinder, we need to call __register_frame/__deregister_frame on the entire .eh_frame data
-    // When using libc++ unwinder (libunwind), each FDE has to be handled separately
-    // libc++ unwinder is the macOS unwinder, but on Linux the unwinder depends on the library the executable is linked with
-    // __unw_add_dynamic_fde is specific to libc++ unwinder, as such we determine the library based on its existence
-    if (__unw_add_dynamic_fde == nullptr)
-        return cb(pos);
+    if (FFlag::LuauCodegenIntelMacUnwind)
+    {
+        // When using glibc++ unwinder, we need to call __register_frame/__deregister_frame on the entire .eh_frame data
+        // When using libc++ unwinder (libunwind), each FDE has to be handled separately
+        // On Linux the unwinder depends on the library the executable is linked with
+        // __unw_add_dynamic_fde is specific to libc++ unwinder, as such we determine the library based on its existence
+        // On macOS, libc++ unwinder is the official one, but older version did not expose __unw_add_dynamic_fde for detection
+#if defined(__linux__)
+        if (__unw_add_dynamic_fde == nullptr)
+            return cb(pos);
+#endif
+    }
+    else
+    {
+        // When using glibc++ unwinder, we need to call __register_frame/__deregister_frame on the entire .eh_frame data
+        // When using libc++ unwinder (libunwind), each FDE has to be handled separately
+        // libc++ unwinder is the macOS unwinder, but on Linux the unwinder depends on the library the executable is linked with
+        // __unw_add_dynamic_fde is specific to libc++ unwinder, as such we determine the library based on its existence
+        if (__unw_add_dynamic_fde == nullptr)
+            return cb(pos);
+    }
 
     for (;;)
     {

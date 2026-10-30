@@ -10,7 +10,7 @@
 
 #include "lobject.h"
 
-// TODO: optimization can be improved by knowing which registers are live in at each VM exit
+LUAU_FASTFLAGVARIABLE(LuauCodegenDseTrackTagInvalidation)
 
 namespace Luau
 {
@@ -86,6 +86,7 @@ struct StoreRegInfo
 
     // Knowing the last stored tag can help safely remove additional unused partial stores
     uint8_t knownTag = kUnknownTag;
+    uint32_t tagSourceInstIdx = ~0u; // Load location of the known tag
 };
 
 struct RemoveDeadStoreState
@@ -149,6 +150,7 @@ struct RemoveDeadStoreState
 
         function.recordStoreLocationHint(storeInstIdx, {dest, value.index, kind});
     }
+
     void killTagStore(StoreRegInfo& regInfo)
     {
         if (regInfo.tagInstIdx != ~0u)
@@ -236,6 +238,7 @@ struct RemoveDeadStoreState
 
         // Opaque register definition removes the knowledge of the actual tag value
         regInfo.knownTag = kUnknownTag;
+        regInfo.tagSourceInstIdx = ~0u;
 
         // New value defined, before MARK_DEAD is used again, it might be used in a VM exit
         regInfo.ignoreAtExit = false;
@@ -695,6 +698,7 @@ static bool tryReplaceTagWithFullStore(
         regInfo.tvalueInstIdx = instIndex;
         regInfo.maybeGco = isGCO(tag);
         regInfo.knownTag = tag;
+        regInfo.tagSourceInstIdx = ~0u;
         state.hasGcoToClear |= regInfo.maybeGco;
         return true;
     }
@@ -721,6 +725,7 @@ static bool tryReplaceTagWithFullStore(
             regInfo.tvalueInstIdx = instIndex;
             regInfo.maybeGco = isGCO(tag);
             regInfo.knownTag = tag;
+            regInfo.tagSourceInstIdx = ~0u;
             state.hasGcoToClear |= regInfo.maybeGco;
             return true;
         }
@@ -741,6 +746,7 @@ static bool tryReplaceTagWithFullStore(
             regInfo.tvalueInstIdx = instIndex;
             regInfo.maybeGco = isGCO(tag);
             regInfo.knownTag = tag;
+            regInfo.tagSourceInstIdx = ~0u;
             state.hasGcoToClear |= regInfo.maybeGco;
             return true;
         }
@@ -934,6 +940,17 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
     switch (inst.cmd)
     {
+    case IrCmd::LOAD_TAG:
+        visitVmRegDefsUses(state, function, inst);
+
+        if (FFlag::LuauCodegenDseTrackTagInvalidation)
+        {
+            // Associate this LOAD_TAG with a source or the register tag
+            // Duplicate LOAD_TAG instructions would be replaced by previous optimization passes, so generally we have one source active
+            if (OP_A(inst).kind == IrOpKind::VmReg && !function.cfg.captured.regs.test(vmRegOp(OP_A(inst))))
+                state.info[vmRegOp(OP_A(inst))].tagSourceInstIdx = index;
+        }
+        break;
     case IrCmd::STORE_TAG:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
@@ -963,6 +980,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             regInfo.maybeGco = isGCO(tag);
             regInfo.knownTag = tag;
+            regInfo.tagSourceInstIdx = ~0u;
             state.hasGcoToClear |= regInfo.maybeGco;
         }
         break;
@@ -1092,6 +1110,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             regInfo.tvalueInstIdx = index;
 
             regInfo.knownTag = tryGetOperandTag(function, OP_B(inst)).value_or(kUnknownTag);
+            regInfo.tagSourceInstIdx = ~0u;
             regInfo.maybeGco = regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag);
 
             state.hasGcoToClear |= regInfo.maybeGco;
@@ -1118,6 +1137,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             regInfo.tvalueInstIdx = index;
             regInfo.maybeGco = isGCO(function.tagOp(OP_B(inst)));
             regInfo.knownTag = function.tagOp(OP_B(inst));
+            regInfo.tagSourceInstIdx = ~0u;
             state.hasGcoToClear |= regInfo.maybeGco;
         }
         break;
@@ -1133,7 +1153,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            regInfo.knownTag = function.tagOp(OP_B(inst));
+            // Check that the LOAD_TAG instruction is still an active source of the tag in this register
+            if (!FFlag::LuauCodegenDseTrackTagInvalidation || regInfo.tagSourceInstIdx == function.getInstIndex(*load))
+                regInfo.knownTag = function.tagOp(OP_B(inst));
         }
         break;
     case IrCmd::TRY_NUM_TO_INDEX:

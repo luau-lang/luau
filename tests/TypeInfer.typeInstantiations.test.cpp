@@ -73,8 +73,6 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_correct")
         f<<number | string>>(1, "a")
         )");
 
-        ignoreMissingAnnotations(result);
-
         LUAU_REQUIRE_NO_ERRORS(result);
     }
 }
@@ -91,8 +89,6 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
 
         f<<number | boolean>>(1, "a")
         )");
-
-        ignoreMissingAnnotations(result);
 
         if (!FFlag::DebugLuauForceOldSolver)
         {
@@ -521,8 +517,6 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
 
         local baz, quxx = bar<<string>>()
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("string", toString(requireType("baz")));
