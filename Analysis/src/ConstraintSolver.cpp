@@ -3294,15 +3294,6 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
             UnionBuilder valueBuilder(arena, builtinTypes);
             std::vector<TypeId> expectedVariables;
 
-            const auto unionIndexer = [&](const TableType* ttv)
-            {
-                if (ttv->indexer)
-                {
-                    indexBuilder.add(ttv->indexer->indexType);
-                    valueBuilder.add(ttv->indexer->indexResultType);
-                }
-            };
-
             for (TypeId tableTy : iteratorNorm->tables)
             {
                 if (get<PrimitiveType>(tableTy))
@@ -3324,7 +3315,12 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
                     */
                     if (ttv->state == TableState::Free)
                         return block(iteratorTy, constraint);
-                    unionIndexer(ttv);
+
+                    if (ttv->indexer)
+                    {
+                        indexBuilder.add(ttv->indexer->indexType);
+                        valueBuilder.add(ttv->indexer->indexResultType);
+                    }
                 }
             }
 
