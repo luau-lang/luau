@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAGVARIABLE(LuauIterableConstraintUnionIndexers)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1648,6 +1649,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
     REQUIRE(err);
     CHECK_EQ("number", toString(err->wantedType));
     CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalized_iteration_over_union_of_tables_unions_indexers_for_loop_variables")
+{
+    ScopedFastFlag unionIndexers{FFlag::LuauIterableConstraintUnionIndexers, true};
+
+    CheckResult result = check(R"(
+        local function f(a: { [vector]: string }?, b: { [boolean]: number })
+            local t = a or b
+            for k, v in t do
+                print(k, v)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    CHECK_EQ("boolean | vector", toString(requireType("k")));
+    CHECK_EQ("number | string", toString(requireType("v")));
 }
 
 TEST_SUITE_END();

@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAGVARIABLE(LuauIterableConstraintUnionIndexers)
 
 namespace Luau
 {
@@ -3284,6 +3285,61 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     }
     else if (auto primitiveTy = get<PrimitiveType>(iteratorTy); primitiveTy && primitiveTy->type == PrimitiveType::Type::Table)
         unpack(builtinTypes->unknownType);
+    else if (FFlag::LuauIterableConstraintUnionIndexers)
+    {
+        if (std::shared_ptr<const NormalizedType> iteratorNorm = normalizer->normalize(iteratorTy); iteratorNorm->hasTables())
+        {
+            // We default to being somewhat permissive. As long as the type has a table somewhere inside of it, we try and infer from there.
+            UnionBuilder indexBuilder(arena, builtinTypes);
+            UnionBuilder valueBuilder(arena, builtinTypes);
+            std::vector<TypeId> expectedVariables;
+
+            const auto unionIndexer = [&](TypeId ty)
+            {
+                const TableType* ttv = get<TableType>(ty);
+                LUAU_ASSERT(ttv);
+
+                if (ttv->indexer)
+                {
+                    indexBuilder.add(ttv->indexer->indexType);
+                    valueBuilder.add(ttv->indexer->indexResultType);
+                }
+            };
+
+            for (TypeId table : iteratorNorm->tables)
+                unionIndexer(table);
+
+            if (indexBuilder.size() > 0)
+            {
+                TypeId index = indexBuilder.build();
+                TypeId value =
+                    arena->addTypeFunction(builtinTypes->typeFunctions->refineFunc, {valueBuilder.build(), builtinTypes->notNilType});
+
+                if (FFlag::LuauCyclicRequireTypeInference)
+                    pushConstraint(constraint->scope, constraint->location, ReduceConstraint{value}, constraint->moduleName);
+                else
+                    DEPRECATED_pushConstraint(constraint->scope, constraint->location, ReduceConstraint{value});
+
+                expectedVariables = {index, value};
+
+                while (c.variables.size() >= expectedVariables.size())
+                    expectedVariables.push_back(builtinTypes->errorType);
+
+                for (size_t i = 0; i < c.variables.size(); ++i)
+                {
+                    LUAU_ASSERT(c.variables[i] != expectedVariables[i]);
+
+                    unify(constraint, c.variables[i], expectedVariables[i]);
+
+                    bind(constraint, c.variables[i], expectedVariables[i]);
+                }
+            }
+            else
+                unpack(builtinTypes->errorType);
+        }
+        else
+            unpack(builtinTypes->errorType);
+    }
     else
     {
         unpack(builtinTypes->errorType);
