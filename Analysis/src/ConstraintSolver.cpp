@@ -3305,19 +3305,27 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
             for (TypeId tableTy : iteratorNorm->tables)
             {
-                const TableType* ttv = get<TableType>(tableTy);
-                LUAU_ASSERT(ttv);
+                if (get<PrimitiveType>(tableTy))
+                {
+                    indexBuilder.add(builtinTypes->unknownType);
+                    valueBuilder.add(builtinTypes->unknownType);
+                }
+                else
+                {
+                    const TableType* ttv = get<TableType>(tableTy);
+                    LUAU_ASSERT(ttv);
 
-                /*
-                * We try not to dispatch IterableConstraints over free tables because
-                * it's possible that there are other constraints on the table that will
-                * clarify what we should do.
-                *
-                * We should eventually introduce a type function to talk about iteration.
-                */
-                if (ttv->state == TableState::Free)
-                    return block(iteratorTy, constraint);
-                unionIndexer(ttv);
+                    /*
+                    * We try not to dispatch IterableConstraints over free tables because
+                    * it's possible that there are other constraints on the table that will
+                    * clarify what we should do.
+                    *
+                    * We should eventually introduce a type function to talk about iteration.
+                    */
+                    if (ttv->state == TableState::Free)
+                        return block(iteratorTy, constraint);
+                    unionIndexer(ttv);
+                }
             }
 
             if (indexBuilder.size() > 0)

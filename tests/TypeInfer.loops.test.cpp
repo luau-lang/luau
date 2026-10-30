@@ -1653,20 +1653,41 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalized_iteration_over_union_of_tables_unions_indexers_for_loop_variables")
 {
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag unionIndexers{FFlag::LuauIterableConstraintUnionIndexers, true};
 
     CheckResult result = check(R"(
         local function f(a: { [vector]: string }?, b: { [boolean]: number })
             local t = a or b
             for k, v in t do
-                print(k, v)
+                return k, v
             end
+
+            error(`Unreachable.`)
         end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
-    CHECK_EQ("boolean | vector", toString(requireType("k")));
-    CHECK_EQ("number | string", toString(requireType("v")));
+    CHECK_EQ("({ [vector]: string }?, { [boolean]: number }) -> (boolean | vector, number | string)", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalized_iteration_over_union_of_tables_unions_indexers_for_loop_variables_reported")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag unionIndexers{FFlag::LuauIterableConstraintUnionIndexers, true};
+
+    CheckResult result = check(R"(
+        local function f(t: { string }?)
+            for k, v in t or {} do
+                return k, v
+            end
+
+            error(`Unreachable.`)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    CHECK_EQ("({string}?) -> (number, string)", toString(requireType("f")));
 }
 
 TEST_SUITE_END();
