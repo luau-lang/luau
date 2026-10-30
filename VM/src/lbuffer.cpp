@@ -11,7 +11,7 @@ LUAU_FASTFLAG(LuauBufferCage)
 Buffer* luaB_newbuffer(lua_State* L, size_t s)
 {
     if (s > MAX_BUFFER_SIZE)
-        luaM_toobig(L);
+        luaM_toobig(L, "buffer too big", MAX_BUFFER_SIZE);
 
     global_State* g = L->global;
     Buffer* b = (FFlag::LuauBufferCage && g->cagealloc) ? luaM_newgcocaged(L, Buffer, sizebuffer(s), L->activememcat, LUA_TBUFFER)
