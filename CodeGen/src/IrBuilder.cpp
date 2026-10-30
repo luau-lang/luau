@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
 LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
+LUAU_FASTFLAG(LuauCodegenMarkUsed)
 
 namespace Luau
 {
@@ -239,6 +240,13 @@ void IrBuilder::buildFunctionIr(Proto* proto)
 
     // Now that all has been generated, compute use counts
     updateUseCounts(function);
+
+    if (FFlag::LuauCodegenCmpAnySideEffecting)
+    {
+        // Check that no instructions with a result have been generated without a use
+        for (IrInst& inst : function.instructions)
+            CODEGEN_ASSERT(inst.useCount != 0 || !hasResult(inst.cmd));
+    }
 }
 
 void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
@@ -815,7 +823,8 @@ void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTermin
             IrInst clone = function.instructions[index];
 
             // Skip pseudo instructions to make clone more compact, but validate that they have no users
-            if (isPseudo(clone.cmd))
+            // Also keep instructions marking register liveness
+            if (isPseudo(clone.cmd) && (!FFlag::LuauCodegenMarkUsed || (clone.cmd != IrCmd::MARK_DEAD && clone.cmd != IrCmd::MARK_USED)))
             {
                 CODEGEN_ASSERT(clone.useCount == 0);
                 continue;

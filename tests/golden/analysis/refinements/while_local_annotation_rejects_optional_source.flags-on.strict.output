@@ -1,0 +1,2 @@
+./analysis/refinements/while_local_annotation_rejects_optional_source.luau(5,29): TypeError: Expected this to be 'string', but got 'string?'; 
+`nil` is not a subtype of `string`

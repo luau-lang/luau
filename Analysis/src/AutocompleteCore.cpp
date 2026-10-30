@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -2294,6 +2295,12 @@ AutocompleteResult autocomplete_(
     }
     else if (AstStatIf* statIf = node->as<AstStatIf>(); FFlag::LuauExperimentalIfLocalSyntax && statIf && statIf->conditionLocal &&
                                                         statIf->conditionEqualsLocation && position >= statIf->conditionEqualsLocation->end)
+    {
+        return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
+    }
+    else if (AstStatWhile* statWhile = node->as<AstStatWhile>();
+             FFlag::DebugLuauWhileLocalSyntax && statWhile && statWhile->conditionLocal && statWhile->conditionEqualsLocation &&
+             position >= statWhile->conditionEqualsLocation->end && (!statWhile->hasDo || position < statWhile->doLocation.begin))
     {
         return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     }

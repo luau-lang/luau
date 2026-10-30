@@ -1,0 +1,6 @@
+./analysis/refinements/while_local_table_annotation_mismatch.luau(4,32): TypeError: Expected this to be
+	'(false | { y: number })?'
+but got
+	'false | { y: string }'; 
+`{ y: string }` is not a subtype of `(false | { y: number })?`
+./analysis/refinements/while_local_table_annotation_mismatch.luau(4,59): TypeError: Expected this to be '{ y: number }', but got 'nil'

@@ -311,6 +311,37 @@ end
 
 assert(pcall(fuzzfail30) == false)
 
+local function cmpanyeffects()
+    local function f3() C6[nil] = 1 end
+    local v10 = setmetatable({}, { __eq = f3 })
+    for _ = 0, 4 do local b = buffer.create(60) end
+    local v14 = v10 == v10
+end
+
+assert(pcall(cmpanyeffects) == false)
+
+local function fuzzfail31()
+  for _, v in {} do end
+  bit32.bnot(1e308)
+  bit32.arshift(1e308, 1e308)
+end
+
+assert(pcall(fuzzfail31) == true)
+
+local function fuzzfail32()
+    if type(table) == "table" then
+        for _, v1 in table do end
+    end
+    local v4 = 10
+    v4 = v4 .. 2
+    local v7 = buffer.create(13)
+    local v10 = buffer.create(50)
+    buffer.writef32(v10, 0, -1.4967669563608148e+308)
+    buffer.writeu16(v7, 0, v4)
+end
+
+assert(pcall(fuzzfail32) == true)
+
 local function arraySizeInv1()
   local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
 

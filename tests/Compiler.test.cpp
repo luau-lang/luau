@@ -40,7 +40,9 @@ LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
+LUAU_FASTFLAG(LuauCompileTableBuiltinsCreateClear)
 LUAU_FASTFLAG(LuauCompileReuseLowersLimit)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
 
 using namespace Luau;
 
@@ -14070,6 +14072,56 @@ RETURN R0 1
     );
 }
 
+TEST_CASE("TableFastcall")
+{
+    ScopedFastFlag luauTableBuiltins{FFlag::LuauCompileTableBuiltinsCreateClear, true};
+
+    // table.create with 1 arg
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+return table.create(42)
+)"),
+        R"(
+LOADN R1 42
+FASTCALL1 133 R1 L0
+GETIMPORT R0 2 [table.create]
+CALL R0 1 -1
+L0: RETURN R0 -1
+)"
+    );
+
+    // table.create with 2 args
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+return table.create(10, 0)
+)"),
+        R"(
+LOADN R1 10
+FASTCALL2K 133 R1 K0 L0 [0]
+LOADK R2 K0 [0]
+GETIMPORT R0 3 [table.create]
+CALL R0 2 -1
+L0: RETURN R0 -1
+)"
+    );
+
+    // table.clear with 1 arg
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = {}
+table.clear(t)
+)"),
+        R"(
+NEWTABLE R0 0 0
+FASTCALL1 134 R0 L0
+MOVE R2 R0
+GETIMPORT R1 2 [table.clear]
+CALL R1 1 0
+L0: RETURN R0 0
+)"
+    );
+}
+
 TEST_CASE("BufferIntegerFastcall")
 {
     ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
@@ -15213,6 +15265,70 @@ CAPTURE VAL R1
 RETURN R0 1
 L0: LOADNIL R0
 RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("WhileLocal")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            while local x = getValue() do
+                print(x)
+            end
+        )"),
+        R"(
+L0: GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L1
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+JUMPBACK L0
+L1: RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("WhileLocalConstantFalse")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+
+    // A constant-false condition means the body never runs, so nothing is emitted for the loop.
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            while local x = false do
+                print(x)
+            end
+        )"),
+        R"(
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("WhileConst")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+
+    // `while const` should be identical to `while local`
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            while const x = getValue() do
+                print(x)
+            end
+        )"),
+        R"(
+L0: GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L1
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+JUMPBACK L0
+L1: RETURN R0 0
 )"
     );
 }

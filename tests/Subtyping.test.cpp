@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauSubtypingSkipUnreadReasoning)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
 using namespace Luau;
 
@@ -2255,6 +2256,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 {
+    ScopedFastFlag _{FFlag::LuauOneBitAssumedConstraintTracking, true};
+
     TypeId argTy = arena.freshType(getBuiltins(), moduleScope.get());
     FreeType* freeArg = getMutable<FreeType>(argTy);
     REQUIRE(freeArg);
@@ -2263,7 +2266,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 
     SubtypingResult result = isSubtype(getBuiltins()->stringType, argTy);
     CHECK(result.isSubtype);
-    REQUIRE(1 == result.assumedConstraints.size());
+    CHECK(result.assumingConstraints);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_pack_should_suppress_errors_during_overload_resolution")

@@ -1,0 +1,2 @@
+./syntax/while-local/error_multiple_bindings.luau:3: Expected '=' after variable name in 'while local', got ','; only a single binding is allowed
+stacktrace:
