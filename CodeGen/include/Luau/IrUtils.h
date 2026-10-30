@@ -8,6 +8,7 @@
 #include <optional>
 
 LUAU_FASTFLAG(LuauCodegenUpdateSafeEnvList)
+LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 
 namespace Luau
 {
@@ -127,6 +128,9 @@ inline bool isPseudo(IrCmd cmd)
 inline bool hasSideEffects(IrCmd cmd)
 {
     if (cmd == IrCmd::INVOKE_FASTCALL)
+        return true;
+
+    if (FFlag::LuauCodegenCmpAnySideEffecting && cmd == IrCmd::CMP_ANY)
         return true;
 
     if (isPseudo(cmd))

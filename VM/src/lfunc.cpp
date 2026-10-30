@@ -27,6 +27,8 @@ Proto* luaF_newproto(lua_State* L)
 
     f->execdata = NULL;
     f->exectarget = 0;
+    f->execcount = 0;
+    f->execflags = 0;
 
     f->lineinfo = NULL;
     f->abslineinfo = NULL;

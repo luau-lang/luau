@@ -2335,18 +2335,17 @@ ModulePtr check(
 
     std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
 
-    CFG::CFGAllocator cfgAllocator;
-    std::unique_ptr<CFG::ControlFlowGraph> cfg;
-    std::unique_ptr<CFG::TypeStateMap> state;
-    if (FFlag::DebugLuauCFG && mode != Mode::Definition)
+    CFGAllocator cfgAllocator;
+    std::unique_ptr<ControlFlowGraph> cfg;
+    std::unique_ptr<TypeStateMap> state;
+    if (FFlag::DebugLuauCFG)
     {
-        cfg = CFG::CFGBuilder::makeCFG(NotNull{&cfgAllocator}, sourceModule.root);
+        cfg = CFGBuilder::makeCFG(NotNull{&cfgAllocator}, sourceModule.root);
         if (FFlag::DebugLuauLogCFG)
             printf("%s", dumpCFG(*cfg).c_str());
         if (FFlag::DebugLuauDumpCFGJson)
             printf("%s\n", dumpCFGJson(*cfg).c_str());
-        state =
-            std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state = std::make_unique<TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
         state->computeTypes();
     }
 

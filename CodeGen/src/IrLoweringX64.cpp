@@ -16,7 +16,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenExitSyncUpdate)
 LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 namespace Luau
@@ -3734,6 +3733,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     regs.currInstIdx = kInvalidInstIdx;
 
     regs.freeLastUseRegs(inst, index);
+
+    // Free register if there is no user of the result
+    if (FFlag::LuauCodegenCmpAnySideEffecting && inst.lastUse == 0 && hasResult(inst.cmd))
+    {
+        regs.freeReg(inst.regX64);
+        inst.regX64 = noreg;
+    }
 }
 
 void IrLoweringX64::startBlock(const IrBlock& curr)
@@ -3830,7 +3836,7 @@ bool IrLoweringX64::hasError() const
     if (regs.maxUsedSlot > kSpillSlots)
         return true;
 
-    if (FFlag::LuauCodegenExitSyncUpdate && regs.error)
+    if (regs.error)
         return true;
 
     return false;

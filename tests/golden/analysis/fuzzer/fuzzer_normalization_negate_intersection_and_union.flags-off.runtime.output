@@ -1,0 +1,3 @@
+./analysis/fuzzer/fuzzer_normalization_negate_intersection_and_union.luau:2: attempt to index nil with nil
+stacktrace:
+./analysis/fuzzer/fuzzer_normalization_negate_intersection_and_union.luau:2

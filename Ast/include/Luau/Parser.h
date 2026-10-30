@@ -137,6 +137,10 @@ private:
     // while exp do block end
     AstStat* parseWhile();
 
+    // while `local' binding `=' exp do block end -- parses an entire `while local`.
+    // `start` is the location of the already-consumed `while` keyword; the current lexeme is `local`.
+    AstStat* parseWhileLocalCondition(const Location& start);
+
     // repeat block until exp
     AstStat* parseRepeat();
 

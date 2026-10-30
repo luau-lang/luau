@@ -1,0 +1,9 @@
+Block 0 (entry "Entry Block") -> [B1]:
+  local x-0 = <expr>
+Block 1 (condition "for-loop condition") -> [B2, B3]:
+  x-1 = join(x-0, x-2)
+Block 2 (linear "for-loop exit"):
+  local y-0 = <expr>
+Block 3 (linear "for-loop body") -> [B1]:
+  local i-0 = <expr>
+  x-2 = <expr>

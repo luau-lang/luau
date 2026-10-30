@@ -1,0 +1,1 @@
+./analysis/fuzzer/fuzzer_normalization_negate_intersection_and_union.luau(2,86): TypeError: Unknown global 'integer'; consider assigning to it first

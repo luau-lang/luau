@@ -26,7 +26,6 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
-LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
@@ -4615,8 +4614,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_direct")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local Func = function(x, y)
             return x * y
@@ -4632,8 +4629,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_direct")
 TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_direct_one_level")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local tbl = {
@@ -4651,8 +4646,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_direct_one_level")
 
 TEST_CASE_FIXTURE(Fixture, "let_generalization_return_not_generalized")
 {
-    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
-
     CheckResult result = check(R"(
         local f = function()
             return function(x) return x end
@@ -4670,8 +4663,6 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_return_not_generalized")
 TEST_CASE_FIXTURE(Fixture, "let_generalization_forin_iterator")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
 
     CheckResult result = check(R"(
         local makeIter = function(arr)
@@ -4694,8 +4685,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_assign_statement")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local Func
         Func = function(x, y)
@@ -4711,8 +4700,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_assign_statement")
 
 TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
 {
-    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local a, b = function(x) return x end, function(y) return y end
         local r1 = a(42)

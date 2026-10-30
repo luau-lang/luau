@@ -11,6 +11,7 @@
 #include "lobject.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseTrackTagInvalidation)
+LUAU_FASTFLAG(LuauCodegenMarkUsed)
 
 namespace Luau
 {
@@ -513,6 +514,16 @@ struct RemoveDeadStoreState
             if (!function.cfg.captured.regs.test(i))
                 regInfo.ignoreAtExit = true;
         }
+    }
+
+    void markUsedAtExit(int start, int count)
+    {
+        CODEGEN_ASSERT(count != 0);
+
+        int e = count == -1 ? maxReg : start + count - 1;
+
+        for (int i = start; i <= e; i++)
+            info[i].ignoreAtExit = false;
     }
 
     // Common instruction visitor handling
@@ -1275,6 +1286,16 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
     case IrCmd::MARK_DEAD:
         state.markUnusedAtExit(vmRegOp(OP_A(inst)), function.intOp(OP_B(inst)));
+        break;
+    case IrCmd::MARK_USED:
+        if (FFlag::LuauCodegenMarkUsed)
+        {
+            state.markUsedAtExit(vmRegOp(OP_A(inst)), function.intOp(OP_B(inst)));
+        }
+        else
+        {
+            visitVmRegDefsUses(state, function, inst);
+        }
         break;
 
     default:

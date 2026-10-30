@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
 
 namespace Luau
 {
@@ -694,10 +695,36 @@ AstStatWhile::AstStatWhile(const Location& location, AstExpr* condition, AstStat
 {
 }
 
+AstStatWhile::AstStatWhile(
+    const Location& location,
+    AstExpr* condition,
+    AstStatBlock* body,
+    bool hasDo,
+    const Location& doLocation,
+    AstLocal* conditionLocal,
+    bool conditionIsConst,
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
+)
+    : AstStat(ClassIndex(), location)
+    , condition(condition)
+    , body(body)
+    , hasDo(hasDo)
+    , doLocation(doLocation)
+    , conditionLocal(conditionLocal)
+    , conditionIsConst(conditionIsConst)
+    , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
+{
+}
+
 void AstStatWhile::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
+        if (FFlag::DebugLuauWhileLocalSyntax && conditionLocal && conditionLocal->annotation)
+            conditionLocal->annotation->visit(visitor);
+
         condition->visit(visitor);
         body->visit(visitor);
     }

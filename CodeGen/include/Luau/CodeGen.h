@@ -127,6 +127,11 @@ using UserdataRemapperCallback = uint8_t(void* context, const char* name, size_t
 
 void setUserdataRemapper(lua_State* L, void* context, UserdataRemapperCallback cb);
 
+// Enables automatic runtime function recompilation with the specified compilation options
+// When promoteVmFunctions is enabled, recompilation also applies to functions running in the VM
+// 'userdataTypes' in options has to survive until all VMs using target CodeGenContext are closed
+void enableRuntimeCompilation(lua_State* L, const CompilationOptions& options, bool promoteVmFunctions);
+
 using ModuleId = std::array<uint8_t, 16>;
 
 // Builds target function and all inner functions

@@ -1,0 +1,1 @@
+./analysis/tables/write_to_intersection_of_tables.luau(9,10): TypeError: Expected this to be 'number', but got 'nil'
