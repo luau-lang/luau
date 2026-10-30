@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauTypeCheckGeneralizedIterationSoundness)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1648,6 +1649,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
     REQUIRE(err);
     CHECK_EQ("number", toString(err->wantedType));
     CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "report_error_when_iterator_has_non_tables")
+{
+    ScopedFastFlag generalizedIterationSoundness{FFlag::LuauTypeCheckGeneralizedIterationSoundness, true};
+
+    CheckResult result = check(R"(
+        local function f(x: boolean | number | { string })
+            for k, v in x do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<CannotCallNonFunction>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_report_error_when_iterator_has_non_tables_and_is_error_surpressing")
+{
+    ScopedFastFlag generalizedIterationSoundness{FFlag::LuauTypeCheckGeneralizedIterationSoundness, true};
+
+    CheckResult result = check(R"(
+        local function f(x: boolean | {} | any)
+            for k, v in x do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_SUITE_END();

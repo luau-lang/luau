@@ -48,6 +48,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckGeneralizedIterationSoundness)
 
 namespace Luau
 {
@@ -1226,6 +1227,12 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     }
     else if (iteratorNorm && iteratorNorm->hasTables())
     {
+        if (FFlag::LuauTypeCheckGeneralizedIterationSoundness)
+        {
+            if (!iteratorNorm->shouldSuppressErrors() && !subtyping->isSubtype(iteratorTy, builtinTypes->tableType, scope).isSubtype)
+                reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
+        }
+
         // Ok. All tables can be iterated.
     }
     else if (!iteratorNorm || !iteratorNorm->shouldSuppressErrors())
