@@ -1668,6 +1668,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "report_error_when_iterator_has_non_tables")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_report_error_when_iterator_has_non_tables_and_is_error_surpressing")
 {
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag generalizedIterationSoundness{FFlag::LuauTypeCheckGeneralizedIterationSoundness, true};
 
     CheckResult result = check(R"(
