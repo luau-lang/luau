@@ -2148,7 +2148,6 @@ return {a = a, b = b}
     )";
 
     CheckResult result = getFrontend().check("Module/A");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(
@@ -2184,7 +2183,6 @@ return {a = a, b = b}
     )";
 
     CheckResult result = getFrontend().check("Module/A");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(

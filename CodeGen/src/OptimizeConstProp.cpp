@@ -28,9 +28,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNoZeroScale)
 LUAU_FLAGVERSION(LuauCodegenPropagateFallbackTags, 2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenNoLinearFastpcall)
-LUAU_FASTFLAGVARIABLE(LuauCodegenConstPropMinOffset)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLimitVersions)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLimitVersionsExtra)
 
 namespace Luau
@@ -184,7 +181,7 @@ struct ConstPropState
                 info->tag = tag;
                 info->version++;
 
-                if (FFlag::LuauCodegenLimitVersions && info->version == kRegisterVersionLimit)
+                if (info->version == kRegisterVersionLimit)
                     reachedLimits = true;
             }
         }
@@ -209,7 +206,7 @@ struct ConstPropState
                 info->value = value;
                 info->version++;
 
-                if (FFlag::LuauCodegenLimitVersions && info->version == kRegisterVersionLimit)
+                if (info->version == kRegisterVersionLimit)
                     reachedLimits = true;
             }
         }
@@ -229,7 +226,7 @@ struct ConstPropState
 
         reg.version++;
 
-        if (FFlag::LuauCodegenLimitVersions && reg.version == kRegisterVersionLimit)
+        if (reg.version == kRegisterVersionLimit)
             reachedLimits = true;
     }
 
@@ -1584,6 +1581,11 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_TABLE_INSERT:
         state.invalidateHeap();
         return; // table.insert does not modify result registers.
+    case LBF_TABLE_CLEAR:
+        state.invalidateHeap();
+        return; // table.clear does not modify result registers.
+    case LBF_TABLE_CREATE:
+        break;
     case LBF_RAWSET:
         state.invalidateHeap();
         break;
@@ -2379,8 +2381,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (bufferOffset)
         {
             // Negative offsets and offsets overflowing signed integer will jump to fallback, no need to keep the check
-            if (*bufferOffset < 0 || (FFlag::LuauCodegenConstPropMinOffset && *bufferOffset + minOffset < 0) ||
-                unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
+            if (*bufferOffset < 0 || *bufferOffset + minOffset < 0 || unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
             {
                 replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}});
                 break;
@@ -2971,12 +2972,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::NUM_TO_INT64:
     {
         IrInst* src = function.asInstOp(OP_A(inst));
-
-        if (src && src->cmd == IrCmd::INT64_TO_NUM)
-        {
-            substitute(function, inst, OP_A(src));
-            break;
-        }
 
         if (src && src->cmd == IrCmd::ADD_NUM)
         {
@@ -3658,7 +3653,7 @@ static bool includeBlockInLinearPath(IrFunction& function, const IrBlock& block)
             return false;
 
         // Same rule applies to fast pcall path as it acts as a call
-        if (FFlag::LuauCodegenNoLinearFastpcall && inst.cmd == IrCmd::INVOKE_FASTPCALL)
+        if (inst.cmd == IrCmd::INVOKE_FASTPCALL)
             return false;
     }
 

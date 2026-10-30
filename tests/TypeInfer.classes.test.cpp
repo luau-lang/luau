@@ -532,7 +532,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
             return f.bar
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(Foo) -> number | string", toString(requireType("getbar")));
@@ -555,7 +555,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
             return Foo(tbl)
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("({ bar: number }) -> Foo", toString(requireType("ofnumbertbl")));
@@ -1105,37 +1105,6 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_
     CHECK(13 == result.errors[0].location.begin.line);
 }
 
-TEST_CASE_FIXTURE(ClassesFixture, "class_methods_should_be_annotated_except_for_self")
-{
-    CheckResult result = check(R"(
-        class Foo
-            public x: number
-
-            function __init(self, x)
-                self.x = x
-            end
-
-            function double(this)
-                return Foo(this.x * 2)
-            end
-
-            function double2(self): Foo
-                return Foo(self.x * 2)
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    CHECK_ERROR_IS(result.errors.at(0), TypeAnnotationRequired);
-    // We can't figure out the multiplication
-    CHECK_ERROR_IS(result.errors.at(1), UninhabitedTypeFunction);
-    CHECK_ERROR_IS(result.errors.at(2), TypeAnnotationRequired);
-
-    CHECK(4 == result.errors.at(0).location.begin.line);
-    CHECK(9 == result.errors.at(1).location.begin.line);
-    CHECK(8 == result.errors.at(2).location.begin.line);
-}
-
 TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_duplicate_class_definition")
 {
     CheckResult result = check(R"(
@@ -1215,7 +1184,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_self_referential_class_definition")
 {
     CheckResult result = check(R"(
         class l0
-            public _:typeof(l0)
+            public l1:typeof(l0)
         end
     )");
 
@@ -1253,7 +1222,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "prop_with_typeof_reassigned_class")
 class Animal end
 Animal = nil
 class l0
-public _:typeof(Animal)
+public l1:typeof(Animal)
 end
 )"
     );

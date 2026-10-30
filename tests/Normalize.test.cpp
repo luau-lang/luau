@@ -987,8 +987,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId ty = requireType("Cyclic");

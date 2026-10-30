@@ -18,8 +18,6 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenNoZeroScale)
-LUAU_FASTFLAG(LuauCodegenNoLinearFastpcall)
-LUAU_FASTFLAG(LuauCodegenLimitVersions)
 LUAU_FASTFLAG(LuauCodegenLimitVersionsExtra)
 
 using namespace Luau::CodeGen;
@@ -2533,7 +2531,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
 
     build.beginBlock(block);
 
-    // NUM_TO_INT64(INT64_TO_NUM(x)) => x
+    // NUM_TO_INT64(INT64_TO_NUM(x)) != x
     IrOp intVal = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
     IrOp dblVal = build.inst(IrCmd::INT64_TO_NUM, intVal);
     IrOp backToInt = build.inst(IrCmd::NUM_TO_INT64, dblVal);
@@ -2547,7 +2545,9 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    %0 = LOAD_INT64 R0
-   STORE_INT64 R1, %0
+   %1 = INT64_TO_NUM %0
+   %2 = NUM_TO_INT64 %1
+   STORE_INT64 R1, %2
    RETURN 0u
 
 )");
@@ -4727,8 +4727,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NoLinearExtractionForChainWithPcall")
 {
-    ScopedFastFlag luauCodegenNoLinearFastpcall{FFlag::LuauCodegenNoLinearFastpcall, true};
-
     IrOp block1 = build.block(IrBlockKind::Internal);
     IrOp fallback1 = build.fallbackBlock(0u);
     IrOp block2 = build.block(IrBlockKind::Internal);
@@ -7009,7 +7007,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VersionLimitChecks")
 {
-    ScopedFastFlag luauCodegenLimitVersions{FFlag::LuauCodegenLimitVersions, true};
     ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
     ScopedFastFlag luauCodegenLimitVersionsExtra{FFlag::LuauCodegenLimitVersionsExtra, true};
 

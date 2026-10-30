@@ -355,6 +355,8 @@ static void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)
             *pageset = page->listnext;
     }
 
+    ASAN_UNPOISON_MEMORY_REGION(page, page->pageSize);
+
     // so long
     pagealloc<path, type>(g, page, page->pageSize, 0);
 }

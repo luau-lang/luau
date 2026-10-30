@@ -619,13 +619,6 @@ struct UninitializedFieldAccess
     bool operator==(const UninitializedFieldAccess& rhs) const;
 };
 
-struct TypeAnnotationRequired
-{
-    TypeId inferredTy;
-
-    bool operator==(const TypeAnnotationRequired& rhs) const;
-};
-
 struct ConstructorsShouldNotReturnAnything
 {
     bool operator==(const ConstructorsShouldNotReturnAnything&) const
@@ -740,7 +733,6 @@ using TypeErrorData = Variant<
     TypeInstantiationCountMismatch,
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
-    TypeAnnotationRequired,
     ConstructorsShouldNotReturnAnything,
     CyclicClassInheritance,
     InvalidClassExtension,

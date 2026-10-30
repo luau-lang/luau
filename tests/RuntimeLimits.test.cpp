@@ -503,7 +503,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
             print(scale.Do.Re.Mi)
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("<T>({ read Do: { read Re: { read Mi: T } } }) -> ()", toString(requireType("get")));
 }

@@ -559,6 +559,10 @@ private:
     std::vector<Function> functionStack;
     size_t typeFunctionDepth = 0;
 
+    // True while parsing the body of a class method, which is the only context where `._x` / `:_x` denotes a private member access. Set exclusively
+    // by parseClassStat.
+    bool inClassMethodBody = false;
+
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
     DenseHashSet<AstName> classesWithinModule;

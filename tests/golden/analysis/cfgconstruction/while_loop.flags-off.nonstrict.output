@@ -1,0 +1,10 @@
+Block 0 (entry "Entry Block") -> [B1]:
+  local x-0 = nil
+Block 1 (condition "while-loop condition") -> [B2, B3]:
+  x-1 = join(x-0, x-3)
+Block 2 (linear "while-loop body") -> [B1]:
+  x-2 = refine(x-1 falsy)
+  x-3 = 5
+Block 3 (linear "while-loop exit"):
+  x-4 = refine(x-1 truthy)
+  local y-0 = x-4

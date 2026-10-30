@@ -311,4 +311,5 @@ def main(
         args.jobs,
         args.dump,
         fflags=args.fflags,
+        environ=actual_environ,
     )

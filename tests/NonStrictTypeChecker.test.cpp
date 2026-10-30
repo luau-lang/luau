@@ -787,8 +787,6 @@ function passThrough(module)
 end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(0, result);
     // We should still warn about dynamic requires in strict mode
     result = check(Mode::Strict, R"(
@@ -796,8 +794,6 @@ function passThrough(module)
     require(module)
 end
 )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const UnknownRequire* req = get<UnknownRequire>(result.errors[0]);

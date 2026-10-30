@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
 
+#include "Luau/Bytecode.h"
 #include "Luau/BytecodeUtils.h"
 #include "Luau/SmallVector.h"
 #include "Luau/StringUtils.h"
@@ -18,8 +19,6 @@ LUAU_FASTFLAGVARIABLE(LuauCompileRefactorFeedback)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
 LUAU_FASTFLAGVARIABLE(LuauCompileCallFbRemap)
 LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
-LUAU_FASTFLAGVARIABLE(LuauCompileEmitVectorDouble)
-LUAU_FLAGVERSION(LuauCompileEmitVectorDouble, 2)
 LUAU_FASTFLAGVARIABLE(LuauCompileFastpcall)
 LUAU_FLAGVERSION(LuauCompileFastpcall, 2)
 
@@ -836,8 +835,7 @@ void BytecodeBuilder::finalize()
 
     for (const Function& func : functions)
     {
-        if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::LuauCompileFastpcall || FFlag::DebugLuauUserDefinedClasses)
-            writeVarInt(bytecode, func.data.size());
+        writeVarInt(bytecode, func.data.size());
         bytecode += func.data;
     }
 
@@ -938,22 +936,11 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             break;
 
         case Constant::Type_Vectord:
-            if (FFlag::LuauCompileEmitVectorDouble)
-            {
-                writeByte(ss, LBC_CONSTANT_VECTORD);
-                writeDouble(ss, c.valueVectord[0]);
-                writeDouble(ss, c.valueVectord[1]);
-                writeDouble(ss, c.valueVectord[2]);
-                writeDouble(ss, c.valueVectord[3]);
-            }
-            else
-            {
-                writeByte(ss, LBC_CONSTANT_VECTOR);
-                writeFloat(ss, float(c.valueVectord[0]));
-                writeFloat(ss, float(c.valueVectord[1]));
-                writeFloat(ss, float(c.valueVectord[2]));
-                writeFloat(ss, float(c.valueVectord[3]));
-            }
+            writeByte(ss, LBC_CONSTANT_VECTORD);
+            writeDouble(ss, c.valueVectord[0]);
+            writeDouble(ss, c.valueVectord[1]);
+            writeDouble(ss, c.valueVectord[2]);
+            writeDouble(ss, c.valueVectord[3]);
             break;
 
         case Constant::Type_String:
@@ -1091,13 +1078,12 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             }
         }
     }
-    else if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::LuauCompileFastpcall || FFlag::DebugLuauUserDefinedClasses)
+    else
     {
         writeVarInt(ss, 0); // Empty feedback vector
     }
 
-    if ((FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::LuauCompileFastpcall || FFlag::DebugLuauUserDefinedClasses) &&
-        (flags & LPF_INLINABLE) != 0)
+    if ((flags & LPF_INLINABLE) != 0)
     {
         writeVarInt(ss, cost);
     }
@@ -1106,8 +1092,10 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
 void BytecodeBuilder::writeClassShape(std::string& ss, const ClassShape& cs) const
 {
     writeVarInt(ss, cs.className);
-    writeVarInt(ss, cs.propertyNames.size());
-    writeVarInt(ss, cs.methodNames.size());
+    writeByte(ss, cs.numPrivateInstanceProps);
+    writeByte(ss, cs.numPrivateStaticProps);
+    writeVarInt(ss, cs.propertyNames.size() + cs.numPrivateInstanceProps);
+    writeVarInt(ss, cs.methodNames.size() + cs.numPrivateStaticProps);
     for (const auto propName : cs.propertyNames)
         writeVarInt(ss, propName);
     for (const auto methodName : cs.methodNames)
@@ -1517,13 +1505,6 @@ uint8_t BytecodeBuilder::getVersion()
 
     if (FFlag::LuauCompileFastpcall)
         return 14;
-    if (FFlag::LuauCompileEmitVectorDouble)
-        return 13;
-    if (FFlag::LuauBytecodeCostModel)
-        return 12;
-
-    if (FFlag::LuauEmitCallFeedback)
-        return 11;
 
     return LBC_VERSION_TARGET;
 }
@@ -1968,11 +1949,16 @@ void BytecodeBuilder::validateInstructions() const
             break;
 
         case LOP_NEWCLASSMEMBER:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
             VREG(LUAU_INSN_A(insn));
-            LUAU_ASSERT(LUAU_INSN_B(insn) == 0);
+            LuauClassMemberVisibility visibility = LuauClassMemberVisibility(LUAU_INSN_B(insn));
+            LUAU_ASSERT(visibility == LuauClassMemberVisibility::LCMV_PUBLIC || visibility == LuauClassMemberVisibility::LCMV_PRIVATE);
             VREG(LUAU_INSN_C(insn));
-            VCONST(insns[i + 1], String);
-            break;
+            if (visibility == LuauClassMemberVisibility::LCMV_PUBLIC)
+                VCONST(insns[i + 1], String);
+        }
+        break;
 
         case LOP_GETUDATAKS:
         case LOP_SETUDATAKS:
@@ -2021,6 +2007,30 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VJUMP(LUAU_INSN_C(insn));
             LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            break;
+
+        case LOP_GETPRIVATEFIELD:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            VREG(LUAU_INSN_A(insn));
+            VREG(LUAU_INSN_B(insn));
+            VUPVAL(LUAU_INSN_C(insn));
+            uint32_t reserved = insns[i + 1] >> 10;
+            LUAU_ASSERT(reserved == 0);
+            if (LUAU_INSN_AUX_NAMECALL(insns[i + 1]))
+            {
+                VREG(LUAU_INSN_A(insn) + 1);
+                LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALLFB || LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            }
+        }
+        break;
+
+        case LOP_SETPRIVATEFIELD:
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            VREG(LUAU_INSN_A(insn));
+            VREG(LUAU_INSN_B(insn));
+            VUPVAL(LUAU_INSN_C(insn));
+            LUAU_ASSERT(insns[i + 1] >> 8 == 0);
             break;
 
         default:
@@ -2381,31 +2391,13 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
             formatAppend(result, "%.9g, %.9g, %.9g, %.9g", data.valueVectorf[0], data.valueVectorf[1], data.valueVectorf[2], data.valueVectorf[3]);
         break;
     case Constant::Type_Vectord:
-        if (FFlag::LuauCompileEmitVectorDouble)
-        {
-            // 3-vectors is the most common configuration, so truncate to three components if possible
-            if (data.valueVectord[3] == 0.0)
-                formatAppend(result, "%.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2]);
-            else
-                formatAppend(
-                    result, "%.17g, %.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2], data.valueVectord[3]
-                );
-        }
+        // 3-vectors is the most common configuration, so truncate to three components if possible
+        if (data.valueVectord[3] == 0.0)
+            formatAppend(result, "%.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2]);
         else
-        {
-            // 3-vectors is the most common configuration, so truncate to three components if possible
-            if (data.valueVectord[3] == 0.0f)
-                formatAppend(result, "%.9g, %.9g, %.9g", float(data.valueVectord[0]), float(data.valueVectord[1]), float(data.valueVectord[2]));
-            else
-                formatAppend(
-                    result,
-                    "%.9g, %.9g, %.9g, %.9g",
-                    float(data.valueVectord[0]),
-                    float(data.valueVectord[1]),
-                    float(data.valueVectord[2]),
-                    float(data.valueVectord[3])
-                );
-        }
+            formatAppend(
+                result, "%.17g, %.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2], data.valueVectord[3]
+            );
         break;
     case Constant::Type_String:
     {
@@ -2556,7 +2548,16 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
         // This should always be printable, in fact this should always be a
         // valid Luau identifier!
         LUAU_ASSERT(printableStringConstant(str.data, str.length));
-        formatAppend(result, "class %.*s (props: %zu, methods: %zu)", int(str.length), str.data, cs.propertyNames.size(), cs.methodNames.size());
+        formatAppend(
+            result,
+            "class %.*s (public fields: %zu, public methods: %zu, private fields: %u, private methods: %u)",
+            int(str.length),
+            str.data,
+            cs.propertyNames.size(),
+            cs.methodNames.size(),
+            cs.numPrivateInstanceProps,
+            cs.numPrivateStaticProps
+        );
 
         if (detailed)
         {
@@ -3013,9 +3014,17 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_NEWCLASSMEMBER:
-        formatAppend(result, "NEWCLASSMEMBER R%d R%d [", LUAU_INSN_A(insn), LUAU_INSN_C(insn));
-        dumpConstant(result, *code, false);
-        result.append("]\n");
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        if (LuauClassMemberVisibility(LUAU_INSN_B(insn)) == LuauClassMemberVisibility::LCMV_PRIVATE)
+            formatAppend(result, "NEWCLASSMEMBER R%d R%d %d [private]\n", LUAU_INSN_A(insn), LUAU_INSN_C(insn), LUAU_INSN_AUX_A(*code));
+        else
+        {
+            formatAppend(result, "NEWCLASSMEMBER R%d R%d [public] [", LUAU_INSN_A(insn), LUAU_INSN_C(insn));
+            dumpConstant(result, *code, false);
+            result.append("]\n");
+        }
+
         code++;
         break;
 
@@ -3028,6 +3037,8 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_NEWCLASS:
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
         if (LUAU_INSN_B(insn) == 0xff)
             formatAppend(result, "NEWCLASS R%d no_base K%d %d [", LUAU_INSN_A(insn), *code, LUAU_INSN_C(insn));
         else
@@ -3045,6 +3056,22 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_FINCONSTRUCT:
         formatAppend(result, "FINCONSTRUCT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        break;
+
+    case LOP_GETPRIVATEFIELD:
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        formatAppend(result, "GETPRIVATEFIELD R%d R%d U%d %d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn), LUAU_INSN_AUX_A(*code));
+        formatAppend(result, "%s]%s\n", LUAU_INSN_AUX_STATIC(*code) ? "static" : "instance", LUAU_INSN_AUX_NAMECALL(*code) ? " [namecall]" : "");
+        code++;
+        break;
+
+    case LOP_SETPRIVATEFIELD:
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        formatAppend(result, "SETPRIVATEFIELD R%d R%d U%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn), LUAU_INSN_AUX_A(*code));
+
+        code++;
         break;
 
     default:
