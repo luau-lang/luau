@@ -13,12 +13,238 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+
 using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauIterateOverUnionOfTables)
+LUAU_FASTFLAG(LuauRelateIndexersTypo)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_over_union_of_tables_types")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIterateOverUnionOfTables, true};
+    std::string tableType;
+    std::string keyType = "number";
+    std::string valueType = "number | string";
+
+    SUBCASE("arrays")
+    {
+        tableType = "{string} | {number}";
+    }
+    SUBCASE("dictionaries")
+    {
+        tableType = "{[string]: number} | {[string]: boolean}";
+        keyType = "string";
+        valueType = "boolean | number";
+    }
+    SUBCASE("different keys")
+    {
+        tableType = "{[string]: number} | {string}";
+        keyType = "number | string";
+    }
+    SUBCASE("identical tables")
+    {
+        tableType = "{number} | {number}";
+        valueType = "number";
+    }
+    SUBCASE("single table")
+    {
+        tableType = "{number}";
+        valueType = "number";
+    }
+    SUBCASE("optional values")
+    {
+        tableType = "{string?} | {number?}";
+    }
+    SUBCASE("nested union")
+    {
+        tableType = "({string} | {number}) | {boolean}";
+        valueType = "boolean | number | string";
+    }
+
+    CheckResult result = check("local function f(t: " + tableType + R"()
+    for k, v in t do
+        local key = k
+        local value = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(keyType, toString(requireTypeAtPosition({2, 20})));
+    CHECK_EQ(valueType, toString(requireTypeAtPosition({3, 22})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_over_union_of_tables_from_or")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIterateOverUnionOfTables, true};
+    // Keep the union intact when simplifying `a or b`.
+    ScopedFastFlag relateIndexers{FFlag::LuauRelateIndexersTypo, true};
+    CheckResult result = check(R"(
+        local function f(a: {string}?, b: {number})
+            local t = a or b
+            for k, v in t do
+                local key = k
+                local value = v
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireTypeAtPosition({4, 28})));
+    CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 30})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_over_union_of_tables_reports_type_mismatch")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIterateOverUnionOfTables, true};
+    std::string variable;
+    SUBCASE("key")
+    {
+        variable = "k";
+    }
+    SUBCASE("value")
+    {
+        variable = "v";
+    }
+    CheckResult result = check(R"(
+        local function f(t: {string} | {number})
+            for k, v in t do
+                local x: boolean = )" + variable + R"(
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_over_union_of_tables_variable_count")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIterateOverUnionOfTables, true};
+    std::string variables;
+    std::string expression;
+    std::string expectedType;
+    SUBCASE("key only")
+    {
+        variables = "k";
+        expression = "k";
+        expectedType = "number";
+    }
+    SUBCASE("extra variable")
+    {
+        variables = "k, v, extra";
+        expression = "extra";
+        expectedType = "*error-type*";
+    }
+    CheckResult result = check("local function f(t: {string} | {number})\n    for " + variables + R"( in t do
+        local value = )" + expression + R"(
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(expectedType, toString(requireTypeAtPosition({2, 22})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_over_union_of_tables_unsupported_option")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    std::string source;
+    SUBCASE("function")
+    {
+        source = R"(
+            local function f(t: {number} | (() -> ()))
+                for k, v in t do
+                    print(k, v)
+                end
+            end
+        )";
+    }
+    SUBCASE("metatable with iter")
+    {
+        source = R"(
+            local mt = {__iter = function(self): () -> (number, string)
+                return function() return 1, "value" end
+            end}
+            type Iterable = typeof(setmetatable({}, mt))
+            local function f(t: {number} | Iterable)
+                for k, v in t do
+                    print(k, v)
+                end
+            end
+        )";
+    }
+    SUBCASE("table without indexer")
+    {
+        source = R"(
+            local function f(t: {number} | {name: string})
+                for k, v in t do
+                    print(k, v)
+                end
+            end
+        )";
+    }
+
+    // Unsupported options retain the existing diagnostics rather than partially
+    // binding the variables from only the supported members of the union.
+    ScopedFastFlag sff{FFlag::LuauIterateOverUnionOfTables, false};
+    CheckResult before = check(source);
+    std::vector<std::string> diagnostics;
+    for (const TypeError& error : before.errors)
+        diagnostics.push_back(toString(error));
+
+    size_t keyOffset = source.find("print(k, v)") + 6;
+    unsigned line = unsigned(std::count(source.begin(), source.begin() + keyOffset, '\n'));
+    unsigned column = unsigned(keyOffset - source.rfind('\n', keyOffset) - 1);
+    std::string keyType = toString(requireTypeAtPosition({line, column}));
+    std::string valueType = toString(requireTypeAtPosition({line, column + 3}));
+
+    ScopedFastFlag enabled{FFlag::LuauIterateOverUnionOfTables, true};
+    CheckResult after = check(source);
+    REQUIRE_EQ(diagnostics.size(), after.errors.size());
+    for (size_t i = 0; i < diagnostics.size(); ++i)
+        CHECK_EQ(diagnostics[i], toString(after.errors[i]));
+    CHECK_EQ(keyType, toString(requireTypeAtPosition({line, column})));
+    CHECK_EQ(valueType, toString(requireTypeAtPosition({line, column + 3})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_over_union_of_tables_flag_disabled")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIterateOverUnionOfTables, false};
+    CheckResult result = check(R"(
+        local function f(t: {string} | {number})
+            for k, v in t do
+                local x: boolean = k
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 35})));
+}
+
 
 TEST_CASE_FIXTURE(Fixture, "for_loop")
 {

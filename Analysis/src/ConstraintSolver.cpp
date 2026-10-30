@@ -44,6 +44,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
+LUAU_FASTFLAGVARIABLE(LuauIterateOverUnionOfTables)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
@@ -3284,6 +3285,49 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     }
     else if (auto primitiveTy = get<PrimitiveType>(iteratorTy); primitiveTy && primitiveTy->type == PrimitiveType::Type::Table)
         unpack(builtinTypes->unknownType);
+    else if (auto unionTy = get<UnionType>(iteratorTy); FFlag::LuauIterateOverUnionOfTables && unionTy)
+    {
+        // Validate every option before binding any loop variables. Unsupported
+        // unions retain the existing error-recovery behavior.
+        for (TypeId option : unionTy)
+        {
+            if (isBlocked(option))
+                return block(option, constraint);
+
+            const TableType* table = get<TableType>(follow(option));
+            if (table && table->state == TableState::Free && !force)
+                return block(option, constraint);
+
+            if (!table || !table->indexer)
+            {
+                unpack(builtinTypes->errorType);
+                return true;
+            }
+        }
+
+        TypeId keyTy = builtinTypes->neverType;
+        TypeId valueTy = builtinTypes->neverType;
+        for (TypeId option : unionTy)
+        {
+            const TableType* table = get<TableType>(follow(option));
+            keyTy = simplifyUnion(constraint->scope, constraint->location, keyTy, table->indexer->indexType);
+            valueTy = simplifyUnion(constraint->scope, constraint->location, valueTy, table->indexer->indexResultType);
+        }
+
+        // As for a single table, iteration only yields non-nil values.
+        valueTy = arena->addTypeFunction(builtinTypes->typeFunctions->refineFunc, {valueTy, builtinTypes->notNilType});
+        if (FFlag::LuauCyclicRequireTypeInference)
+            pushConstraint(constraint->scope, constraint->location, ReduceConstraint{valueTy}, constraint->moduleName);
+        else
+            DEPRECATED_pushConstraint(constraint->scope, constraint->location, ReduceConstraint{valueTy});
+
+        for (size_t i = 0; i < c.variables.size(); ++i)
+        {
+            TypeId expectedTy = i == 0 ? keyTy : i == 1 ? valueTy : builtinTypes->errorType;
+            unify(constraint, c.variables[i], expectedTy);
+            bind(constraint, c.variables[i], expectedTy);
+        }
+    }
     else
     {
         unpack(builtinTypes->errorType);
