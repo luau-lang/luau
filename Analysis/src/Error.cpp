@@ -1089,15 +1089,6 @@ struct ErrorConverter
 
     std::string operator()(const NotIterable& e) const
     {
-        if (const UnionType* utv = get<UnionType>(e.ty); e.hasTables && utv)
-        {
-            for (TypeId opt : utv->options)
-            {
-                if (const PrimitiveType* ptv = get<PrimitiveType>(opt); (!ptv || ptv->type != PrimitiveType::Table) && !get<TableType>(opt))
-                    return "`" + toString(opt) + "` in `" + toString(e.ty) + "` is not iterable";
-            }
-        }
-
         return "`" + toString(e.ty) + "` is not iterable";
     }
 };

@@ -17,7 +17,6 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauTypeCheckGeneralizedIterationSoundness)
 LUAU_FASTFLAG(LuauTypeCheckUseNotIterable)
 
 TEST_SUITE_BEGIN("TypeInferLoops");

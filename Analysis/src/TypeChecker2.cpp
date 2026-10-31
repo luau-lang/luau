@@ -1242,7 +1242,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             if (!iteratorNorm->shouldSuppressErrors() && !iteratorNorm->isSubtypeOfTable())
             {
                 if (FFlag::LuauTypeCheckUseNotIterable)
-                    reportError(NotIterable{iteratorTy, /* hasTables */ true}, forInStatement->values.data[0]->location);
+                    reportError(NotIterable{iteratorTy}, forInStatement->values.data[0]->location);
                 else
                     reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
             }
@@ -1253,7 +1253,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     else if (!iteratorNorm || !iteratorNorm->shouldSuppressErrors())
     {
         if (FFlag::LuauTypeCheckUseNotIterable)
-            reportError(NotIterable{iteratorTy, /* hasTables */ false}, forInStatement->values.data[0]->location);
+            reportError(NotIterable{iteratorTy}, forInStatement->values.data[0]->location);
         else
             reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
     }

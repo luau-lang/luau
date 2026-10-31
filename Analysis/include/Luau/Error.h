@@ -670,7 +670,6 @@ struct IllegalClassPropertyOverride
 struct NotIterable
 {
     TypeId ty;
-    bool hasTables = false;
 
     bool operator==(const NotIterable& rhs) const;
 };
