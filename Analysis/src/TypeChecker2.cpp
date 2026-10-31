@@ -1238,7 +1238,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     {
         if (FFlag::LuauTypeCheckGeneralizedIterationSoundness)
         {
-            if (!iteratorNorm->shouldSuppressErrors() && !subtyping->isSubtype(iteratorTy, builtinTypes->tableType, scope).isSubtype)
+            if (!iteratorNorm->shouldSuppressErrors() && !iteratorNorm->isSubtypeOfTable())
                 reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
         }
 

@@ -268,6 +268,9 @@ struct NormalizedType
     /// Returns true if the type is a subtype of boolean(it could be a singleton). Behaves like Type::isBoolean()
     bool isSubtypeOfBooleans() const;
 
+    /// Returns true if the type is a subtype of `table`.
+    bool isSubtypeOfTable() const;
+
     /// Returns true if this type should result in error suppressing behavior.
     bool shouldSuppressErrors() const;
 
