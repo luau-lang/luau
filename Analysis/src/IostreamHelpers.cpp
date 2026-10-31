@@ -348,6 +348,8 @@ static void errorToString(std::ostream& stream, const T& err)
     else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
         stream << "IllegalClassPropertyOverride { property = " << err.property << ", className = " << err.className
                << ", superName = " << err.superName << " }";
+    else if constexpr (std::is_same_v<T, NotIterable>)
+        stream << "NotIterable { " << toString(err.ty) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

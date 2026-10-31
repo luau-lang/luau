@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauTypeCheckUseNotIterable)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -230,6 +231,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_with_an_iterator_of_type_any")
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
 {
+    ScopedFastFlag useNotIterable(FFlag::LuauTypeCheckUseNotIterable, true);
+
     CheckResult result = check(R"(
         local foo = "bar"
         for i, v in foo do
@@ -238,7 +241,10 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
+    if (FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
+    else
+        CHECK_EQ("`string` is not iterable", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
