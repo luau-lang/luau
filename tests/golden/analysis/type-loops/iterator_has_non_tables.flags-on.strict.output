@@ -1,0 +1,1 @@
+./analysis/type-loops/iterator_has_non_tables.luau(2,17): TypeError: `boolean` in `boolean | number | {string}` is not iterable
