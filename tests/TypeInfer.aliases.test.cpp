@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
-LUAU_FASTFLAG(LuauBlockingTypeAliasExpansion)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1462,8 +1461,6 @@ type Pack4 = Pack4a | Pack4b | Pack4c | Pack4d | Pack4e
 TEST_CASE_FIXTURE(BuiltinsFixture, "blocked_type_alias_do_not_leak_generic_arguments")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag luauBlockingTypeAliasExpansion{FFlag::LuauBlockingTypeAliasExpansion, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
 type Alias<Generic> = typeof(getmetatable(... :: Generic))

@@ -51,6 +51,7 @@ constexpr int MaxTraversalLimit = 50;
 
 static bool codegen = false;
 static bool codegenCold = false;
+static bool codegenLazy = false;
 static bool jitInliner = false;
 static int program_argc = 0;
 char** program_argv = nullptr;
@@ -187,7 +188,7 @@ void* createCliRequireContext(lua_State* L)
         coverageActive,
         []()
         {
-            return codegen;
+            return codegen && !codegenLazy;
         },
         coverageTrack,
         countersActive,
@@ -620,7 +621,12 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
             if (countersActive())
                 nativeOptions.recordCounters = true;
 
-            Luau::CodeGen::compile(L, -1, nativeOptions);
+            nativeOptions.runtimeFeedback = true;
+
+            Luau::CodeGen::enableRuntimeCompilation(L, nativeOptions, codegenLazy);
+
+            if (!codegenLazy)
+                Luau::CodeGen::compile(L, -1, nativeOptions);
         }
 
         if (coverageActive())
@@ -681,6 +687,7 @@ static void displayHelp(const char* argv0)
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
     printf("  --codegen: execute code using native code generation\n");
     printf("  --codegen-cold: execute code using native code generation, including any functions deemed not profitable to natively compile\n");
+    printf("  --codegen-lazy: execute code in the VM and compile hot functions to native automatically\n");
     printf("  --codegen-perf: execute code using native code generation and profile using perf (only on Linux)\n");
     printf("  --program-args,-a: declare start of arguments to be passed to the Luau program\n");
     printf("  --fflags=<flags>: comma-separated list of fast flags to enable/disable (--fflags=true,false,LuauFlag1=true,LuauFlag2=false).\n");
@@ -755,6 +762,11 @@ int replMain(int argc, char** argv)
         {
             codegen = true;
             codegenCold = true;
+        }
+        else if (strcmp(argv[i], "--codegen-lazy") == 0)
+        {
+            codegen = true;
+            codegenLazy = true;
         }
         else if (strcmp(argv[i], "--codegen-perf") == 0)
         {

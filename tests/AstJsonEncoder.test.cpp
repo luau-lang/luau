@@ -15,6 +15,8 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
 
 struct JsonEncoderFixture
 {
@@ -406,6 +408,42 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile")
 
     std::string_view expected =
         R"({"type":"AstStatWhile","location":"0,0 - 0,17","condition":{"type":"AstExprConstantBool","location":"0,6 - 0,10","value":true},"body":{"type":"AstStatBlock","location":"0,13 - 0,14","hasEnd":true,"body":[]},"hasDo":true})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("while local x = y do end");
+
+    std::string_view expected =
+        R"({"type":"AstStatWhile","location":"0,0 - 0,24","condition":{"type":"AstExprGlobal","location":"0,16 - 0,17","global":"y"},"body":{"type":"AstStatBlock","location":"0,20 - 0,21","hasEnd":true,"body":[]},"hasDo":true,"conditionLocal":{"luauType":null,"name":"x","isConst":false,"type":"AstLocal","location":"0,12 - 0,13"}})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local_type")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("while local x: number = y do end");
+
+    std::string_view expected =
+        R"({"type":"AstStatWhile","location":"0,0 - 0,32","condition":{"type":"AstExprGlobal","location":"0,24 - 0,25","global":"y"},"body":{"type":"AstStatBlock","location":"0,28 - 0,29","hasEnd":true,"body":[]},"hasDo":true,"conditionLocal":{"luauType":{"type":"AstTypeReference","location":"0,15 - 0,21","name":"number","nameLocation":"0,15 - 0,21","parameters":[]},"name":"x","isConst":false,"type":"AstLocal","location":"0,12 - 0,13"}})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("while const x = y do end");
+
+    std::string_view expected =
+        R"({"type":"AstStatWhile","location":"0,0 - 0,24","condition":{"type":"AstExprGlobal","location":"0,16 - 0,17","global":"y"},"body":{"type":"AstStatBlock","location":"0,20 - 0,21","hasEnd":true,"body":[]},"hasDo":true,"conditionLocal":{"luauType":null,"name":"x","isConst":true,"type":"AstLocal","location":"0,12 - 0,13"}})";
 
     CHECK(toJson(statement) == expected);
 }

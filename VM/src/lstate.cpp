@@ -98,9 +98,16 @@ static void close_state(lua_State* L)
         LUAU_ASSERT(g->freepages[i] == NULL);
         LUAU_ASSERT(g->freegcopages[i] == NULL);
         LUAU_ASSERT(g->freegcopages_cage[i] == NULL);
+
+        for (int set = 0; set < TAGGED_PAGESET_SIZE; set++)
+            LUAU_ASSERT(g->taggedpageset[set].freepages[i] == NULL);
     }
     LUAU_ASSERT(g->allgcopages == NULL);
     LUAU_ASSERT(g->allgcopages_cage == NULL);
+
+    for (int set = 0; set < TAGGED_PAGESET_SIZE; set++)
+        LUAU_ASSERT(g->taggedpageset[set].allpages == NULL);
+
     LUAU_ASSERT(g->totalbytes == sizeof(LG));
     LUAU_ASSERT(g->memcatbytes[0] == sizeof(LG));
     for (int i = 1; i < LUA_MEMORY_CATEGORIES; i++)

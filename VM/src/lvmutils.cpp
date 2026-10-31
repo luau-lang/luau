@@ -19,6 +19,7 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauPromoteProto)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
 
 const TValue* luaV_tonumber(const TValue* obj, TValue* n)
 {
@@ -64,6 +65,9 @@ static LUAU_FORCEINLINE void callTMluau(lua_State* L, StkId top, Closure* ccl, i
 
     ptrdiff_t funcoffset = savestack(L, top);
     Proto* p = getproto(ccl);
+
+    if (FFlag::LuauRuntimeFeedback)
+        p->execcount++;
 
     CallInfo* ci = incr_ci(L);
     ci->func = top;

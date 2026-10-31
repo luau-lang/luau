@@ -14,57 +14,110 @@
 
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
 namespace Luau
 {
 
 SelectedOverload OverloadResolution::getUnambiguousOverload() const
 {
-    if (ok.size() == 1 && potentialOverloads.size() == 0)
+    if (FFlag::LuauOneBitAssumedConstraintTracking)
     {
-        // Unambiguously: there is exactly one overload that matches
-        // without dispatching any more constraints.
-        return {
-            ok.front(),
-            {},
-            false,
-        };
-    }
-
-    if (ok.size() == 0 && potentialOverloads.size() == 1)
-    {
-        // Unambiguously: there are _no_ overloads that match without
-        // dispatching constraints, but there's exactly one that does
-        // match without dispatching constraints.
-        return {potentialOverloads.front().first, potentialOverloads.front().second, false};
-    }
-
-    if (ok.size() > 1)
-    {
-        // FIXME CLI-180645: We should try to infer a union of return
-        // types here so that we get better autocomplete / type
-        // inference for the rest of the function.
-        return {std::nullopt, {}, false};
-    }
-
-    if (potentialOverloads.size() + ok.size() > 1)
-    {
-        // This is a first case of "ambiguous" overloads: we have at least
-        // one overload that matches without constraints, and one that matches
-        // with extra constraints.
-        //
-        // This is the one spot where we return `true`, which callers may use
-        // to determine whether they should emit an error or try again later.
-        if (ok.empty())
-            return {potentialOverloads.front().first, potentialOverloads.front().second, true};
-        else
+        if (ok.size() == 1 && potentialOverloads.size() == 0)
         {
-            LUAU_ASSERT(ok.size() == 1);
-            return {ok.front(), {}, true};
+            // Unambiguously: there is exactly one overload that matches
+            // without dispatching any more constraints.
+            return {
+                ok.front(),
+                {},
+                false,
+            };
         }
-    }
 
-    LUAU_ASSERT(potentialOverloads.size() + ok.size() == 0);
+        if (ok.size() == 0 && potentialOverloads.size() == 1)
+        {
+            // Unambiguously: there are _no_ overloads that match without
+            // dispatching constraints, but there's exactly one that does
+            // match without dispatching constraints.
+            return {potentialOverloads.front(), {}, false};
+        }
+
+        if (ok.size() > 1)
+        {
+            // FIXME CLI-180645: We should try to infer a union of return
+            // types here so that we get better autocomplete / type
+            // inference for the rest of the function.
+            return {std::nullopt, {}, false};
+        }
+
+        if (potentialOverloads.size() + ok.size() > 1)
+        {
+            // This is a first case of "ambiguous" overloads: we have at least
+            // one overload that matches without constraints, and one that matches
+            // with extra constraints.
+            //
+            // This is the one spot where we return `true`, which callers may use
+            // to determine whether they should emit an error or try again later.
+            if (ok.empty())
+                return {potentialOverloads.front(), {}, true};
+            else
+            {
+                LUAU_ASSERT(ok.size() == 1);
+                return {ok.front(), {}, true};
+            }
+        }
+
+        LUAU_ASSERT(potentialOverloads.size() + ok.size() == 0);
+    }
+    else
+    {
+
+        if (ok.size() == 1 && potentialOverloads_DEPRECATED.size() == 0)
+        {
+            // Unambiguously: there is exactly one overload that matches
+            // without dispatching any more constraints.
+            return {
+                ok.front(),
+                {},
+                false,
+            };
+        }
+
+        if (ok.size() == 0 && potentialOverloads_DEPRECATED.size() == 1)
+        {
+            // Unambiguously: there are _no_ overloads that match without
+            // dispatching constraints, but there's exactly one that does
+            // match without dispatching constraints.
+            return {potentialOverloads_DEPRECATED.front().first, potentialOverloads_DEPRECATED.front().second, false};
+        }
+
+        if (ok.size() > 1)
+        {
+            // FIXME CLI-180645: We should try to infer a union of return
+            // types here so that we get better autocomplete / type
+            // inference for the rest of the function.
+            return {std::nullopt, {}, false};
+        }
+
+        if (potentialOverloads_DEPRECATED.size() + ok.size() > 1)
+        {
+            // This is a first case of "ambiguous" overloads: we have at least
+            // one overload that matches without constraints, and one that matches
+            // with extra constraints.
+            //
+            // This is the one spot where we return `true`, which callers may use
+            // to determine whether they should emit an error or try again later.
+            if (ok.empty())
+                return {potentialOverloads_DEPRECATED.front().first, potentialOverloads_DEPRECATED.front().second, true};
+            else
+            {
+                LUAU_ASSERT(ok.size() == 1);
+                return {ok.front(), {}, true};
+            }
+        }
+
+        LUAU_ASSERT(potentialOverloads_DEPRECATED.size() + ok.size() == 0);
+    }
 
     // In this case, no overloads are valid. Let's try to pick the one that
     // will cause us to report the most legible errors.
@@ -179,7 +232,6 @@ OverloadResolution OverloadResolver::resolveOverload(
     TypeId ty,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet<TypeId>> uniqueTypes,
     bool useFreeTypeBounds
 )
 {
@@ -190,10 +242,10 @@ OverloadResolution OverloadResolver::resolveOverload(
     if (auto it = get<IntersectionType>(ty))
     {
         for (TypeId component : it)
-            testFunctionOrUnion(result, component, argsPack, fnLocation, uniqueTypes);
+            testFunctionOrUnion(result, component, argsPack, fnLocation);
     }
     else
-        testFunctionOrUnion(result, ty, argsPack, fnLocation, uniqueTypes);
+        testFunctionOrUnion(result, ty, argsPack, fnLocation);
 
     return result;
 }
@@ -495,8 +547,7 @@ void OverloadResolver::testFunction(
     OverloadResolution& result,
     TypeId fnTy,
     TypePackId argsPack,
-    Location fnLocation,
-    NotNull<DenseHashSet<TypeId>> uniqueTypes
+    Location fnLocation
 )
 {
     fnTy = follow(fnTy);
@@ -504,15 +555,29 @@ void OverloadResolver::testFunction(
     // TODO: This seems like the wrong spot to do this check.
     if (is<FreeType, BlockedType, PendingExpansionType>(fnTy))
     {
-        std::vector<ConstraintV> constraints; // TODO.  Luckily, these constraints are not yet used.
-        result.potentialOverloads.emplace_back(fnTy, std::move(constraints));
+        if (FFlag::LuauOneBitAssumedConstraintTracking)
+        {
+            result.potentialOverloads.emplace_back(fnTy);
+        }
+        else
+        {
+            std::vector<ConstraintV> constraints; // TODO.  Luckily, these constraints are not yet used.
+            result.potentialOverloads_DEPRECATED.emplace_back(fnTy, std::move(constraints));
+        }
         return;
     }
 
     if (auto tfit = get<TypeFunctionInstanceType>(fnTy); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
     {
-        std::vector<ConstraintV> constraints; // TODO.  Luckily, these constraints are not yet used.
-        result.potentialOverloads.emplace_back(fnTy, std::move(constraints));
+        if (FFlag::LuauOneBitAssumedConstraintTracking)
+        {
+            result.potentialOverloads.emplace_back(fnTy);
+        }
+        else
+        {
+            std::vector<ConstraintV> constraints; // TODO.  Luckily, these constraints are not yet used.
+            result.potentialOverloads_DEPRECATED.emplace_back(fnTy, std::move(constraints));
+        }
         return;
     }
 
@@ -553,10 +618,20 @@ void OverloadResolver::testFunction(
 
     if (r.isSubtype)
     {
-        if (r.assumedConstraints.empty())
-            result.ok.emplace_back(fnTy);
+        if (FFlag::LuauOneBitAssumedConstraintTracking)
+        {
+            if (!r.assumingConstraints)
+                result.ok.emplace_back(fnTy);
+            else
+                result.potentialOverloads.emplace_back(fnTy);
+        }
         else
-            result.potentialOverloads.emplace_back(fnTy, std::move(r.assumedConstraints));
+        {
+            if (r.assumedConstraints_DEPRECATED.empty())
+                result.ok.emplace_back(fnTy);
+            else
+                result.potentialOverloads_DEPRECATED.emplace_back(fnTy, std::move(r.assumedConstraints_DEPRECATED));
+        }
     }
     else
     {
@@ -573,10 +648,20 @@ void OverloadResolver::testFunction(
             // optional arguments.  If the only reason subtyping
             // failed is because optional arguments were not provided,
             // then this overload is actually okay.
-            if (r.assumedConstraints.empty())
-                result.ok.emplace_back(fnTy);
+            if (FFlag::LuauOneBitAssumedConstraintTracking)
+            {
+                if (!r.assumingConstraints)
+                    result.ok.emplace_back(fnTy);
+                else
+                    result.potentialOverloads.emplace_back(fnTy);
+            }
             else
-                result.potentialOverloads.emplace_back(fnTy, std::move(r.assumedConstraints));
+            {
+                if (r.assumedConstraints_DEPRECATED.empty())
+                    result.ok.emplace_back(fnTy);
+                else
+                    result.potentialOverloads_DEPRECATED.emplace_back(fnTy, std::move(r.assumedConstraints_DEPRECATED));
+            }
         }
         else
             result.incompatibleOverloads.emplace_back(fnTy, std::move(r.reasoning));
@@ -587,8 +672,7 @@ void OverloadResolver::testFunctionOrUnion(
     OverloadResolution& result,
     TypeId fnTy,
     TypePackId argsPack,
-    Location fnLocation,
-    NotNull<DenseHashSet<TypeId>> uniqueTypes
+    Location fnLocation
 )
 {
     LUAU_ASSERT(fnTy == follow(fnTy));
@@ -602,30 +686,46 @@ void OverloadResolver::testFunctionOrUnion(
         for (TypeId t : ut)
         {
             ++count;
-            testFunctionOrCallMetamethod(innerResult, t, argsPack, fnLocation, uniqueTypes);
+            testFunctionOrCallMetamethod(innerResult, t, argsPack, fnLocation);
         }
 
-        if (count == innerResult.ok.size())
+        if (FFlag::LuauOneBitAssumedConstraintTracking)
         {
-            result.ok.emplace_back(fnTy);
-        }
-        else if (count == innerResult.ok.size() + innerResult.potentialOverloads.size())
-        {
-            std::vector<ConstraintV> allConstraints;
-            for (const auto& [_t, constraints] : innerResult.potentialOverloads)
-                allConstraints.insert(allConstraints.end(), constraints.begin(), constraints.end());
-
-            result.potentialOverloads.emplace_back(fnTy, std::move(allConstraints));
+            if (count == innerResult.ok.size())
+                result.ok.emplace_back(fnTy);
+            else if (count == innerResult.ok.size() + innerResult.potentialOverloads.size())
+                result.potentialOverloads.emplace_back(fnTy);
+            else
+            {
+                // FIXME CLI-234745: We should probably report something better here, but it's
+                // important for type checking that we include this.
+                result.incompatibleOverloads.emplace_back(fnTy, ErrorVec{{fnLocation, CannotCallNonFunction{fnTy}}});
+            }
         }
         else
         {
-            // FIXME: We should probably report something better here, but it's
-            // important for type checking that we include this.
-            result.incompatibleOverloads.emplace_back(fnTy, ErrorVec{{fnLocation, CannotCallNonFunction{fnTy}}});
+            if (count == innerResult.ok.size())
+            {
+                result.ok.emplace_back(fnTy);
+            }
+            else if (count == innerResult.ok.size() + innerResult.potentialOverloads_DEPRECATED.size())
+            {
+                std::vector<ConstraintV> allConstraints;
+                for (const auto& [_t, constraints] : innerResult.potentialOverloads_DEPRECATED)
+                    allConstraints.insert(allConstraints.end(), constraints.begin(), constraints.end());
+
+                result.potentialOverloads_DEPRECATED.emplace_back(fnTy, std::move(allConstraints));
+            }
+            else
+            {
+                // FIXME CLI-234745: We should probably report something better here, but it's
+                // important for type checking that we include this.
+                result.incompatibleOverloads.emplace_back(fnTy, ErrorVec{{fnLocation, CannotCallNonFunction{fnTy}}});
+            }
         }
     }
     else
-        testFunctionOrCallMetamethod(result, fnTy, argsPack, fnLocation, uniqueTypes);
+        testFunctionOrCallMetamethod(result, fnTy, argsPack, fnLocation);
 }
 
 /*
@@ -641,8 +741,7 @@ void OverloadResolver::testFunctionOrCallMetamethod(
     OverloadResolution& result,
     TypeId fnTy,
     TypePackId argsPack,
-    Location fnLocation,
-    NotNull<DenseHashSet<TypeId>> uniqueTypes
+    Location fnLocation
 )
 {
     fnTy = follow(fnTy);
@@ -666,7 +765,7 @@ void OverloadResolver::testFunctionOrCallMetamethod(
                 if (fn && !isArityCompatible(argsPack, fn->argTypes, builtinTypes))
                     result.arityMismatches.emplace_back(component);
                 else
-                    testFunction(result, component, argsPack, fnLocation, uniqueTypes);
+                    testFunction(result, component, argsPack, fnLocation);
             }
             return;
         }
@@ -675,7 +774,7 @@ void OverloadResolver::testFunctionOrCallMetamethod(
     }
 
     // Handle non-metamethods and metamethods which aren't overloaded.
-    testFunction(result, fnTy, argsPack, fnLocation, uniqueTypes);
+    testFunction(result, fnTy, argsPack, fnLocation);
 }
 
 void OverloadResolver::maybeEmplaceError(
