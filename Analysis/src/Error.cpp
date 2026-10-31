@@ -1086,6 +1086,20 @@ struct ErrorConverter
     {
         return "Illegal override of property '" + e.property + "' on class '" + e.className + "' inherited from superclass '" + e.superName + "'";
     }
+
+    std::string operator()(const NotIterable& e) const
+    {
+        if (const UnionType* utv = get<UnionType>(e.ty); e.hasTables && utv)
+        {
+            for (TypeId opt : utv->options)
+            {
+                if (const PrimitiveType* ptv = get<PrimitiveType>(opt); (!ptv || ptv->type != PrimitiveType::Table) && !get<TableType>(opt))
+                    return "`" + toString(opt) + "` in `" + toString(e.ty) + "` is not iterable";
+            }
+        }
+
+        return "`" + toString(e.ty) + "` is not iterable";
+    }
 };
 
 struct InvalidNameChecker
@@ -1336,6 +1350,11 @@ bool IncompatibleClassMethodOverride::operator==(const IncompatibleClassMethodOv
 bool IllegalClassPropertyOverride::operator==(const IllegalClassPropertyOverride& rhs) const
 {
     return property == rhs.property && className == rhs.className && superName == rhs.superName;
+}
+
+bool NotIterable::operator==(const NotIterable& rhs) const
+{
+    return ty == rhs.ty;
 }
 
 int TypeError::code() const
@@ -1840,6 +1859,10 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
     {
+    }
+    else if constexpr (std::is_same_v<T, NotIterable>)
+    {
+        e.ty = clone(e.ty);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

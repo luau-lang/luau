@@ -50,6 +50,7 @@ LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckGeneralizedIterationSoundness)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckUseNotIterable)
 
 namespace Luau
 {
@@ -1239,14 +1240,22 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
         if (FFlag::LuauTypeCheckGeneralizedIterationSoundness)
         {
             if (!iteratorNorm->shouldSuppressErrors() && !iteratorNorm->isSubtypeOfTable())
-                reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
+            {
+                if (FFlag::LuauTypeCheckUseNotIterable)
+                    reportError(NotIterable{iteratorTy, /* hasTables */ true}, forInStatement->values.data[0]->location);
+                else
+                    reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
+            }
         }
 
         // Ok. All tables can be iterated.
     }
     else if (!iteratorNorm || !iteratorNorm->shouldSuppressErrors())
     {
-        reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
+        if (FFlag::LuauTypeCheckUseNotIterable)
+            reportError(NotIterable{iteratorTy, /* hasTables */ false}, forInStatement->values.data[0]->location);
+        else
+            reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
     }
 }
 
