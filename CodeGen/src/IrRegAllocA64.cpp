@@ -11,9 +11,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenExitSyncUpdate)
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
-LUAU_FASTFLAGVARIABLE(LuauCodegenScopedSpillKeepLazy)
 LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
 LUAU_FASTFLAGVARIABLE(LuauCodegenA64ReloadLargeConstOffset)
 LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
@@ -401,7 +399,7 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
 
     SmallVector<uint32_t, 8> argumentsToRestore;
 
-    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
+    if (!FFlag::LuauCodegenImprovedExitSync)
     {
         if (const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx))
             syncInfo = function.vmExitInfo.find(*guardInstIdx);
@@ -445,7 +443,7 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
             spills.push_back({arg.instIdx, arg.originalReg, arg.slot});
 
             // If the restore VM register will be clobbered by a store in this block, restore it immediately
-            if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
+            if (!FFlag::LuauCodegenImprovedExitSync && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
             {
                 uint8_t vmReg = vmRegOp(arg.restoreLocation.op);
 
@@ -475,7 +473,7 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
         }
     }
 
-    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
+    if (!FFlag::LuauCodegenImprovedExitSync)
     {
         for (uint32_t instIdx : argumentsToRestore)
             restoreReg(function.instructions[instIdx]);
@@ -711,7 +709,7 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx, bool
             if (loc.kind != IrValueKind::Tvalue)
                 build.str(wzr, mem(rBase, storeReg * sizeof(TValue) + offsetof(TValue, tt)));
 
-            if (!FFlag::LuauCodegenScopedSpillKeepLazy || !keepLazyLocations)
+            if (!keepLazyLocations)
                 function.materializeRestoreLocation(targetInstIdx);
         }
 

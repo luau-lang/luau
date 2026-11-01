@@ -129,6 +129,9 @@ struct CompilationOptions
 
     bool recordCounters = false;
 
+    // Compile with runtime counters which will guide further recompilation of native code
+    bool runtimeFeedback = false;
+
     // When true, random NOP sleds are inserted between blocks to
     // make intra-function gadget offsets unpredictable.
     bool nopPadding = false;

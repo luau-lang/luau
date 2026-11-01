@@ -9,10 +9,7 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauCodegenExitSyncUpdate)
 LUAU_FASTFLAG(DebugCodegenLimitRegs)
-LUAU_FASTFLAGVARIABLE(LuauCodegenX64IntSpillRestore)
-LUAU_FASTFLAG(LuauCodegenScopedSpillKeepLazy)
 LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 namespace Luau
@@ -96,8 +93,7 @@ RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
         return takeReg(reg, instIdx);
     }
 
-    if (FFlag::LuauCodegenExitSyncUpdate)
-        error = true;
+    error = true;
 
     CODEGEN_ASSERT(!"Out of registers to allocate");
     return noreg;
@@ -293,7 +289,7 @@ void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
 
     SmallVector<uint32_t, 8> argumentsToRestore;
 
-    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
+    if (!FFlag::LuauCodegenImprovedExitSync)
     {
         if (const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx))
             syncInfo = function.vmExitInfo.find(*guardInstIdx);
@@ -353,7 +349,7 @@ void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
             spills.push_back(spill);
 
             // If the restore VM register will be clobbered by a different store in this block, restore it immediately
-            if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
+            if (!FFlag::LuauCodegenImprovedExitSync && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
             {
                 uint8_t vmReg = vmRegOp(arg.restoreLocation.op);
 
@@ -383,7 +379,7 @@ void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
         }
     }
 
-    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
+    if (!FFlag::LuauCodegenImprovedExitSync)
     {
         for (uint32_t instIdx : argumentsToRestore)
             restore(function.instructions[instIdx], /*intoOriginalLocation*/ false);
@@ -469,7 +465,7 @@ void IrRegAllocX64::preserve(IrInst& inst)
             if (spill.valueKind != IrValueKind::Tvalue)
                 build.mov(luauRegTag(storeReg), 0);
 
-            if (!FFlag::LuauCodegenScopedSpillKeepLazy || !keepLazyLocations)
+            if (!keepLazyLocations)
                 function.materializeRestoreLocation(spill.instIdx);
         }
 
@@ -552,8 +548,7 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
             {
                 build.vmovsd(reg, restoreAddr);
             }
-            else if (spill.valueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double &&
-                     (!FFlag::LuauCodegenX64IntSpillRestore || spill.stackSlot == kNoStackSlot))
+            else if (spill.valueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double && spill.stackSlot == kNoStackSlot)
             {
                 // Handle restore of an int/uint value from a location storing a double number
                 if (restoreLocation.conversionCmd == IrCmd::INT_TO_NUM)
@@ -816,11 +811,8 @@ RegisterX64 ScopedRegX64::release()
 ScopedSpills::ScopedSpills(IrRegAllocX64& owner)
     : owner(owner)
 {
-    if (FFlag::LuauCodegenScopedSpillKeepLazy)
-    {
-        CODEGEN_ASSERT(!owner.keepLazyLocations);
-        owner.keepLazyLocations = true;
-    }
+    CODEGEN_ASSERT(!owner.keepLazyLocations);
+    owner.keepLazyLocations = true;
 
     startSpillId = owner.nextSpillId;
 }
@@ -851,11 +843,8 @@ ScopedSpills::~ScopedSpills()
         }
     }
 
-    if (FFlag::LuauCodegenScopedSpillKeepLazy)
-    {
-        CODEGEN_ASSERT(owner.keepLazyLocations);
-        owner.keepLazyLocations = false;
-    }
+    CODEGEN_ASSERT(owner.keepLazyLocations);
+    owner.keepLazyLocations = false;
 }
 
 } // namespace X64

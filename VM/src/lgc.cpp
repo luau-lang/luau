@@ -19,10 +19,12 @@
 #include <cstddef>
 
 LUAU_FASTFLAGVARIABLE(LuauGcTraceUdata)
-LUAU_FLAGVERSION(LuauGcTraceUdata, 4)
+LUAU_FLAGVERSION(LuauGcTraceUdata, 5)
 LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, false)
+LUAU_FASTFLAGVARIABLE(LuauRuntimeFeedback)
+LUAU_FASTFLAG(LuauBufferSweep)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -419,6 +421,12 @@ static void traverseproto(global_State* g, Proto* f)
 
     if (f->deoptimized)
         markobject(g, f->deoptimized);
+
+    if (FFlag::LuauRuntimeFeedback && g->ecb.examinefunction)
+    {
+        if ((f->execflags & PEF_EXECLOCKED) == 0)
+            g->ecb.examinefunction(g->mainthread, f);
+    }
 }
 
 static void traverseclosure(global_State* g, Closure* cl)
@@ -812,6 +820,21 @@ static void freeobj(lua_State* L, GCObject* o, lua_Page* page)
     }
 }
 
+template<int Type>
+static void freeobjtagged(lua_State* L, GCObject* o, lua_Page* page);
+
+template<>
+void freeobjtagged<LUA_TBUFFER>(lua_State* L, GCObject* o, lua_Page* page)
+{
+    luaB_freebuffer(L, gco2buf(o), page);
+}
+
+template<>
+void freeobjtagged<-1>(lua_State* L, GCObject* o, lua_Page* page)
+{
+    freeobj(L, o, page);
+}
+
 static void stringresizeprotected(lua_State* L, int newsize)
 {
     struct CallContext
@@ -1056,11 +1079,9 @@ static size_t atomic(lua_State* L)
     // fixed-point algorithm for embedder references
     if (FFlag::LuauGcTraceUdata && g->embeddergc)
     {
-        g->embeddergc(g->mainthread, embeddermarkref);
-        while (g->gray)
+        while (g->embeddergc(g->mainthread, embeddermarkref) != 0)
         {
             work += propagateall(g);
-            g->embeddergc(g->mainthread, embeddermarkref);
         }
     }
 
@@ -1088,12 +1109,22 @@ static size_t atomic(lua_State* L)
     g->currentwhite = cast_byte(otherwhite(g));
     g->sweepgcopage = g->allgcopages;
     g->sweepgcopage_cage = g->allgcopages_cage;
+
+    if (FFlag::LuauBufferSweep)
+    {
+        g->sweeppageset = 0;
+
+        for (int i = 0; i < TAGGED_PAGESET_SIZE; i++)
+            g->taggedpageset[i].sweeppage = g->taggedpageset[i].allpages;
+    }
+
     g->gcstate = GCSsweep;
 
     return work;
 }
 
 // a version of generic luaM_visitpage specialized for the main sweep stage
+template<int Type = -1>
 static int sweepgcopage(lua_State* L, lua_Page* page)
 {
     char* start;
@@ -1129,7 +1160,18 @@ static int sweepgcopage(lua_State* L, lua_Page* page)
         else
         {
             LUAU_ASSERT(isdead(g, gco));
-            freeobj(L, gco, page);
+
+            if (FFlag::LuauBufferSweep)
+            {
+                if (Type == -1)
+                    freeobj(L, gco, page);
+                else
+                    freeobjtagged<Type>(L, gco, page);
+            }
+            else
+            {
+                freeobj(L, gco, page);
+            }
 
             // if the last block was removed, page would be removed as well
             if (--busyBlocks == 0)
@@ -1138,6 +1180,34 @@ static int sweepgcopage(lua_State* L, lua_Page* page)
     }
 
     return int(end - start) / blockSize;
+}
+
+static size_t sweeppageset(lua_State* L, lua_Page*& pageset, size_t cost, size_t limit, int type)
+{
+    while (pageset && cost < limit)
+    {
+        lua_Page* next = luaM_getnextpage(pageset); // page sweep might destroy the page
+
+        int steps = 0;
+
+        switch (type)
+        {
+        case -1:
+            steps = sweepgcopage<-1>(L, pageset);
+            break;
+        case LUA_TBUFFER:
+            steps = sweepgcopage<LUA_TBUFFER>(L, pageset);
+            break;
+        default:
+            LUAU_ASSERT(!"unexpected sweep pageset type");
+            break;
+        }
+
+        pageset = next;
+        cost += static_cast<size_t>(steps * GC_SWEEPPAGESTEPCOST);
+    }
+
+    return cost;
 }
 
 static size_t gcstep(lua_State* L, size_t limit)
@@ -1208,36 +1278,75 @@ static size_t gcstep(lua_State* L, size_t limit)
     }
     case GCSsweep:
     {
-        while (g->sweepgcopage && cost < limit)
+        if (FFlag::LuauBufferSweep)
         {
-            lua_Page* next = luaM_getnextpage(g->sweepgcopage); // page sweep might destroy the page
+            bool done = false;
 
-            int steps = sweepgcopage(L, g->sweepgcopage);
+            while (cost < limit && !done)
+            {
+                if (g->sweepgcopage)
+                    cost = sweeppageset(L, g->sweepgcopage, cost, limit, -1);
+                else if (g->sweepgcopage_cage)
+                    cost = sweeppageset(L, g->sweepgcopage_cage, cost, limit, -1);
+                else if (g->sweeppageset < TAGGED_PAGESET_SIZE && g->taggedpageset[g->sweeppageset].sweeppage)
+                    cost = sweeppageset(L, g->taggedpageset[g->sweeppageset].sweeppage, cost, limit, g->sweeppageset + TAGGED_PAGESET_BASE);
+                else if (g->sweeppageset < TAGGED_PAGESET_SIZE)
+                    g->sweeppageset++;
+                else
+                    done = true;
+            }
 
-            g->sweepgcopage = next;
-            cost += static_cast<size_t>(steps * GC_SWEEPPAGESTEPCOST);
+            // nothing more to sweep?
+            if (done)
+            {
+                // don't forget to visit main thread, it's the only object not allocated in GCO pages
+                LUAU_ASSERT(!isdead(g, obj2gco(g->mainthread)));
+                makewhite(g, obj2gco(g->mainthread)); // make it white (for next cycle)
+
+                shrinkbuffers(L);
+
+                g->gcstate = GCSpause; // end collection
+
+                if (FFlag::LuauRuntimeFeedback && g->ecb.commitfunctions)
+                    g->ecb.commitfunctions(g->mainthread);
+            }
         }
-
-        while (g->sweepgcopage_cage && cost < limit)
+        else
         {
-            lua_Page* next = luaM_getnextpage(g->sweepgcopage_cage); // page sweep might destroy the page
+            while (g->sweepgcopage && cost < limit)
+            {
+                lua_Page* next = luaM_getnextpage(g->sweepgcopage); // page sweep might destroy the page
 
-            int steps = sweepgcopage(L, g->sweepgcopage_cage);
+                int steps = sweepgcopage(L, g->sweepgcopage);
 
-            g->sweepgcopage_cage = next;
-            cost += static_cast<size_t>(steps * GC_SWEEPPAGESTEPCOST);
-        }
+                g->sweepgcopage = next;
+                cost += static_cast<size_t>(steps * GC_SWEEPPAGESTEPCOST);
+            }
 
-        // nothing more to sweep?
-        if (g->sweepgcopage == NULL && g->sweepgcopage_cage == NULL)
-        {
-            // don't forget to visit main thread, it's the only object not allocated in GCO pages
-            LUAU_ASSERT(!isdead(g, obj2gco(g->mainthread)));
-            makewhite(g, obj2gco(g->mainthread)); // make it white (for next cycle)
+            while (g->sweepgcopage_cage && cost < limit)
+            {
+                lua_Page* next = luaM_getnextpage(g->sweepgcopage_cage); // page sweep might destroy the page
 
-            shrinkbuffers(L);
+                int steps = sweepgcopage(L, g->sweepgcopage_cage);
 
-            g->gcstate = GCSpause; // end collection
+                g->sweepgcopage_cage = next;
+                cost += static_cast<size_t>(steps * GC_SWEEPPAGESTEPCOST);
+            }
+
+            // nothing more to sweep?
+            if (g->sweepgcopage == NULL && g->sweepgcopage_cage == NULL)
+            {
+                // don't forget to visit main thread, it's the only object not allocated in GCO pages
+                LUAU_ASSERT(!isdead(g, obj2gco(g->mainthread)));
+                makewhite(g, obj2gco(g->mainthread)); // make it white (for next cycle)
+
+                shrinkbuffers(L);
+
+                g->gcstate = GCSpause; // end collection
+
+                if (FFlag::LuauRuntimeFeedback && g->ecb.commitfunctions)
+                    g->ecb.commitfunctions(g->mainthread);
+            }
         }
         break;
     }
@@ -1396,6 +1505,15 @@ void luaC_fullgc(lua_State* L)
         // reset sweep marks to sweep all elements (returning them to white)
         g->sweepgcopage = g->allgcopages;
         g->sweepgcopage_cage = g->allgcopages_cage;
+
+        if (FFlag::LuauBufferSweep)
+        {
+            g->sweeppageset = 0;
+
+            for (int i = 0; i < TAGGED_PAGESET_SIZE; i++)
+                g->taggedpageset[i].sweeppage = g->taggedpageset[i].allpages;
+        }
+
         // reset other collector lists
         g->gray = NULL;
         g->grayagain = NULL;

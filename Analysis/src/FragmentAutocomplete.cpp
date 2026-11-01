@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACLocalAutocompleteFix)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteIfSlurpsCond)
 LUAU_FASTFLAG(LuauSplitIceHandler)
+LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -544,6 +545,17 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
             {
                 localStack.push_back(ifStat->conditionLocal);
                 localMap[ifStat->conditionLocal->name] = ifStat->conditionLocal;
+            }
+        }
+
+        // Add the `while local` binding to the local map if the cursor is in the body of the `AstStatWhile`
+        if (FFlag::DebugLuauWhileLocalAnalysis)
+        {
+            if (auto whileStat = node->as<AstStatWhile>();
+                whileStat && whileStat->conditionLocal && whileStat->body->location.containsClosed(cursorPos))
+            {
+                localStack.push_back(whileStat->conditionLocal);
+                localMap[whileStat->conditionLocal->name] = whileStat->conditionLocal;
             }
         }
     }

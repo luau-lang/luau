@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
@@ -1504,7 +1505,9 @@ struct IrFunction
 
     LoweringStats* stats = nullptr;
 
-    bool recordCounters = false; // Taken from CompilationOptions for easy access
+    // Taken from CompilationOptions for easy access
+    bool recordCounters = false;
+    bool recordFeedback = false;
 
     uint64_t jitRngState = 0; // PCG32 state for NOP padding; seeded per-function in lowerFunction
 

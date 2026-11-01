@@ -350,6 +350,17 @@ public:
     Position annotationColonPosition;
 };
 
+class CstStatWhile : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstStatWhile)
+
+    explicit CstStatWhile(Position annotationColonPosition);
+
+    // Colon before the `while local` binding's type annotation
+    Position annotationColonPosition;
+};
+
 class CstStatAssign : public CstNode
 {
 public:

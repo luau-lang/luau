@@ -118,6 +118,7 @@ struct SubtypingResult
     bool normalizationTooComplex = false;
     bool isCacheable = true;
     bool isErrorSuppressing = false;
+    bool assumingConstraints = false;
     ErrorVec errors;
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
@@ -126,7 +127,7 @@ struct SubtypingResult
     // If this subtype result required testing free types, we might be making
     // assumptions about what the free type eventually resolves to.  If so,
     // those assumptions are recorded here.
-    std::vector<ConstraintV> assumedConstraints;
+    std::vector<ConstraintV> assumedConstraints_DEPRECATED;
 
     /// If any generic bounds were invalid, report them here
     std::vector<GenericBoundsMismatch> genericBoundsMismatches;
@@ -309,7 +310,6 @@ private:
         SubtypingEnvironment& env,
         const TableType* subTable,
         const TableType* superTable,
-        bool forceCovariantTest,
         NotNull<Scope> scope
     );
 
@@ -351,7 +351,6 @@ private:
         const Property& subProperty,
         const Property& superProperty,
         const std::string& name,
-        bool forceCovariantTest,
         NotNull<Scope> scope
     );
 
