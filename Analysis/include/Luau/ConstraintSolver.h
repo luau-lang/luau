@@ -209,6 +209,18 @@ private:
     template<typename T, typename... Args>
     void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
 
+    std::optional<std::pair<TypeId, bool>> lookupTablePropHelper(
+        NotNull<const Constraint> constraint,
+        TypeId subjectType,
+        const std::string& propName,
+        ValueContext context,
+        TypeIds& blockedTypes,
+        DenseHashMap<TypeId, std::optional<std::pair<TypeId, bool>>>& cache,
+        bool inConditional,
+        bool suppressSimplification
+    );
+
+
 public:
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If
      * tryDispatch() returns false, the constraint remains in the unsolved set
@@ -256,7 +268,7 @@ public:
     // for a, ... in next_function, t, ... do
     bool tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint);
 
-    TablePropLookupResult lookupTableProp(
+    TablePropLookupResult lookupTableProp_DEPRECATED(
         NotNull<const Constraint> constraint,
         TypeId subjectType,
         const std::string& propName,
@@ -265,7 +277,7 @@ public:
         bool suppressSimplification = false
     );
 
-    TablePropLookupResult lookupTableProp(
+    TablePropLookupResult lookupTableProp_DEPRECATED(
         NotNull<const Constraint> constraint,
         TypeId subjectType,
         const std::string& propName,
@@ -273,6 +285,15 @@ public:
         bool inConditional,
         bool suppressSimplification,
         DenseHashSet<TypeId>& seen
+    );
+
+    TablePropLookupResult lookupTableProp(
+        NotNull<const Constraint> constraint,
+        TypeId subjectType,
+        const std::string& propName,
+        ValueContext context,
+        bool inConditional,
+        bool suppressSimplification
     );
 
     /**

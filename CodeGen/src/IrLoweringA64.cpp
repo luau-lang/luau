@@ -3907,6 +3907,13 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     regs.freeLastUseRegs(inst, index);
     regs.freeTempRegs();
+
+    // Free register if there is no user of the result
+    if (FFlag::LuauCodegenCmpAnySideEffecting && inst.lastUse == 0 && hasResult(inst.cmd))
+    {
+        regs.freeReg(inst.regA64);
+        inst.regA64 = noreg;
+    }
 }
 
 void IrLoweringA64::startBlock(const IrBlock& curr)

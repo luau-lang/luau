@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauParseExactTables)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
+LUAU_FASTFLAGVARIABLE(DebugLuauWhileLocalSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -717,6 +718,15 @@ AstStat* Parser::parseWhile()
 
     nextLexeme(); // while
 
+    if (FFlag::DebugLuauWhileLocalSyntax)
+    {
+        if (lexer.current().type == Lexeme::ReservedLocal)
+            return parseWhileLocalCondition(start);
+
+        if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const" && lexer.lookahead().type == Lexeme::Name)
+            return parseWhileLocalCondition(start);
+    }
+
     AstExpr* cond = parseExpr();
 
     Lexeme matchDo = lexer.current();
@@ -734,6 +744,59 @@ AstStat* Parser::parseWhile()
     body->hasEnd = hasEnd;
 
     return allocator.alloc<AstStatWhile>(Location(start, end), cond, body, hasDo, matchDo.location);
+}
+
+// while (`local' | `const') binding `=' exp do block end
+//
+// LUAU_NOINLINE keeps the `while local`/`while const` locals off parseWhile's frame since this variant is rarely taken.
+// `start` is the location of the already-consumed `while` keyword; the current lexeme is the `local`/`const` keyword.
+LUAU_NOINLINE AstStat* Parser::parseWhileLocalCondition(const Location& start)
+{
+    LUAU_ASSERT(FFlag::DebugLuauWhileLocalSyntax);
+
+    bool condIsConst = (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const");
+    std::optional<Location> condKeywordLocation = lexer.current().location;
+    nextLexeme(); // consume 'local' or 'const'
+
+    Binding binding = parseBinding(condIsConst);
+
+    if (lexer.current().type == ',')
+        report(lexer.current().location, "Expected '=' after variable name in 'while local', got ','; only a single binding is allowed");
+
+    std::optional<Location> equalsPosition;
+    if (lexer.current().type == '=')
+        equalsPosition = lexer.current().location;
+    expectAndConsume('=', "while local declaration");
+
+    // The binding is not visible in its own condition expression; it is re-evaluated each iteration.
+    AstExpr* cond = parseExpr();
+
+    Lexeme matchDo = lexer.current();
+    bool hasDo = expectAndConsume(Lexeme::ReservedDo, "while loop");
+
+    // Push the binding so it is in scope for the loop body only, then restore after the body.
+    unsigned int localsBegin = saveLocals();
+    AstLocal* condLocal = pushLocal(binding);
+
+    functionStack.back().loopDepth++;
+
+    AstStatBlock* body = parseBlock();
+
+    functionStack.back().loopDepth--;
+
+    restoreLocals(localsBegin);
+
+    Location end = lexer.current().location;
+
+    bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
+    body->hasEnd = hasEnd;
+
+    AstStatWhile* node = allocator.alloc<AstStatWhile>(
+        Location{start, end}, cond, body, hasDo, matchDo.location, condLocal, condIsConst, condKeywordLocation, equalsPosition
+    );
+    if (options.storeCstData)
+        cstNodeMap[node] = allocator.alloc<CstStatWhile>(binding.annotation ? binding.colonPosition : Position::missing());
+    return node;
 }
 
 // repeat block until exp
@@ -1797,9 +1860,21 @@ AstStat* Parser::parseTypeFunction(const Location& start, bool exported, Positio
     size_t oldTypeFunctionDepth = typeFunctionDepth;
     typeFunctionDepth = functionStack.size();
 
+    bool oldInClassMethodBody = false;
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        oldInClassMethodBody = inClassMethodBody;
+        // We don't support capturing classes outside the type function for private field accesses
+        // Classes defined inside the type function are ok though
+        inClassMethodBody = false;
+    }
+
     AstExprFunction* body = parseFunctionBody(/* hasself */ false, matchFn, fnName->name, nullptr, AstArray<AstAttr*>({nullptr, 0})).first;
 
     typeFunctionDepth = oldTypeFunctionDepth;
+
+    if (FFlag::DebugLuauUserDefinedClasses)
+        inClassMethodBody = oldInClassMethodBody;
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
 

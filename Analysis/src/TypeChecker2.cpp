@@ -41,13 +41,14 @@ LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
-LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauDontUseInnermostScope)
 LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
+LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -754,6 +755,14 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
 void TypeChecker2::visit(AstStatWhile* whileStatement)
 {
     visit(whileStatement->condition, ValueContext::RValue);
+
+    if (FFlag::DebugLuauWhileLocalAnalysis && whileStatement->conditionLocal && whileStatement->conditionLocal->annotation)
+    {
+        TypeId annotationType = lookupAnnotation(whileStatement->conditionLocal->annotation);
+        testPotentialLiteralIsSubtype(whileStatement->condition, annotationType);
+        visit(whileStatement->conditionLocal->annotation);
+    }
+
     visit(whileStatement->body);
 }
 
@@ -2197,14 +2206,20 @@ void TypeChecker2::visitCall(AstExprCall* call)
         limits,
         call->location,
     };
-    DenseHashSet<TypeId> uniqueTypes;
-    findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
     TypePackId argsPack = module->internalTypes->addTypePack(args);
-    const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
+    const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, false);
 
-    if (!result2.potentialOverloads.empty())
-        reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+    if (FFlag::LuauOneBitAssumedConstraintTracking)
+    {
+        if (!result2.potentialOverloads.empty())
+            reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+    }
+    else
+    {
+        if (!result2.potentialOverloads_DEPRECATED.empty())
+            reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+    }
 
     /*
      * If one overload matches, stop.  Nothing to report.
@@ -2327,22 +2342,11 @@ void TypeChecker2::visitCall(AstExprCall* call)
     if (!result2.nonFunctions.empty())
     {
         auto norm = normalizer.normalize(fnTy);
-        if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations)
-        {
-            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
-                reportError(NormalizationTooComplex{}, call->func->location);
-            // At this point norm is non-null and inhabited.
-            else if (!norm->shouldSuppressErrors())
-                reportError(CannotCallNonFunction{fnTy}, call->func->location);
-        }
-        else
-        {
-            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
-                reportError(NormalizationTooComplex{}, call->func->location);
-            // At this point norm is non-null and inhabited.
-            if (!norm->shouldSuppressErrors())
-                reportError(CannotCallNonFunction{fnTy}, call->func->location);
-        }
+        if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
+            reportError(NormalizationTooComplex{}, call->func->location);
+        // At this point norm is non-null and inhabited.
+        else if (!norm->shouldSuppressErrors())
+            reportError(CannotCallNonFunction{fnTy}, call->func->location);
         return;
     }
 }
@@ -2795,7 +2799,7 @@ static bool isOkToCompare(
     if (NormalizationResult::False != typesHaveIntersection)
         return true;
 
-    if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations && (!normLeft || !normRight))
+    if (!normLeft || !normRight)
         return true;
 
     // We allow anything to be compared to nil.

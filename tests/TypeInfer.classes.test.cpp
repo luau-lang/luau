@@ -1418,4 +1418,17 @@ TEST_CASE_FIXTURE(ClassesFixture, "writes_to_unknown_class_instance_properties_a
     CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
 }
 
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_oct_20")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        class C
+            function m()
+                type function t(x)
+                    return x._hello
+                end
+            end
+        end
+    )"));
+}
+
 TEST_SUITE_END();

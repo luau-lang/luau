@@ -6,6 +6,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
 
 using namespace Luau;
 
@@ -249,6 +250,45 @@ end
 
     CHECK_EQ(4, Luau::Compile::computeCost(model, args1, 1));
     CHECK_EQ(1, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("WhileLocal")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+
+    uint64_t model = modelFunction(R"(
+function test(a)
+    while local b = a * a * a do
+        return b * b
+    end
+    return 0
+end
+)");
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(9, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(0, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("WhileConst")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+
+    // `while const` should be identical to `while local`
+    uint64_t model = modelFunction(R"(
+function test(a)
+    while const b = a * a * a do
+        return b * b
+    end
+    return 0
+end
+)");
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(9, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(0, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_SUITE_END();
