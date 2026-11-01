@@ -26,6 +26,8 @@ LUAU_FASTFLAG(DebugLuauParseExactTables)
 
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -7103,6 +7105,213 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_nested_in_true_branch")
     REQUIRE(inner->conditionLocal != nullptr);
     CHECK(inner->conditionLocal->name == "y");
     CHECK(inner->conditionLocal != outer->conditionLocal);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_local")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        while local x = getValue() do
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatWhile* whileStat = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat != nullptr);
+    CHECK(whileStat->conditionLocal != nullptr);
+    CHECK(whileStat->conditionLocal->name == "x");
+    CHECK(whileStat->condition != nullptr);
+    CHECK(whileStat->hasDo);
+    CHECK_FALSE(whileStat->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_const")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        while const x = getValue() do
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatWhile* whileStat = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat != nullptr);
+    CHECK(whileStat->conditionLocal != nullptr);
+    CHECK(whileStat->conditionLocal->name == "x");
+    CHECK(whileStat->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_const_with_annotation")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        while const x: number = getValue() do
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatWhile* whileStat = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat != nullptr);
+    REQUIRE(whileStat->conditionLocal != nullptr);
+    CHECK(whileStat->conditionLocal->annotation != nullptr);
+    CHECK(whileStat->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_const_compat")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    // `const` not followed by a binding name is a plain condition expression (the global `const`),
+    // not a `while const` binding, keeping `const` usable as an ordinary identifier
+    AstStatBlock* block = parse(R"(
+        while const do
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatWhile* whileStat = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat != nullptr);
+    CHECK(whileStat->conditionLocal == nullptr);
+    CHECK_FALSE(whileStat->conditionIsConst);
+    CHECK(whileStat->condition->as<AstExprGlobal>() != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_local_with_annotation")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        while local x: number = getValue() do
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatWhile* whileStat = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat != nullptr);
+    REQUIRE(whileStat->conditionLocal != nullptr);
+    CHECK(whileStat->conditionLocal->annotation != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_local_binding_visible_in_body")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        while local x = getValue() do
+            print(x)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    AstStatWhile* whileStat = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat != nullptr);
+    REQUIRE(whileStat->conditionLocal != nullptr);
+
+    // the `x` referenced inside the body resolves to the condition binding
+    AstStatExpr* stmt = whileStat->body->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stmt != nullptr);
+    AstExprCall* call = stmt->expr->as<AstExprCall>();
+    REQUIRE(call != nullptr);
+    REQUIRE(call->args.size == 1);
+    AstExprLocal* arg = call->args.data[0]->as<AstExprLocal>();
+    REQUIRE(arg != nullptr);
+    CHECK(arg->local == whileStat->conditionLocal);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_local_binding_not_visible_in_condition")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    // `x` in the condition is the outer global, not the loop binding, since the binding is pushed
+    // only after the condition is parsed
+    AstStatBlock* block = parse(R"(
+        while local x = x do
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    AstStatWhile* whileStat = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat != nullptr);
+    REQUIRE(whileStat->conditionLocal != nullptr);
+    CHECK(whileStat->condition->as<AstExprGlobal>() != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_local_nested")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        while local x = a() do
+            while local y = b() do
+                print(x, y)
+            end
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    AstStatWhile* outer = block->body.data[0]->as<AstStatWhile>();
+    REQUIRE(outer != nullptr);
+    REQUIRE(outer->conditionLocal != nullptr);
+    CHECK(outer->conditionLocal->name == "x");
+
+    AstStatWhile* inner = outer->body->body.data[0]->as<AstStatWhile>();
+    REQUIRE(inner != nullptr);
+    REQUIRE(inner->conditionLocal != nullptr);
+    CHECK(inner->conditionLocal->name == "y");
+    CHECK(inner->conditionLocal != outer->conditionLocal);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_local_cst_annotation_colon_position")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    ParseResult result = parseEx("while local x: number = y do end", parseOptions);
+    REQUIRE(result.root);
+    REQUIRE_EQ(1, result.root->body.size);
+
+    auto whileStat = result.root->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat);
+    auto baseCstNode = result.cstNodeMap.find(whileStat);
+    REQUIRE(baseCstNode);
+    auto cstNode = (*baseCstNode)->as<CstStatWhile>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->annotationColonPosition, Position{0, 13});
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_while_const_cst_annotation_colon_position")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    // `const` and `local` are both 5 chars, so the annotation colon lands at the same column as while-local.
+    ParseResult result = parseEx("while const x: number = y do end", parseOptions);
+    REQUIRE(result.root);
+    REQUIRE_EQ(1, result.root->body.size);
+
+    auto whileStat = result.root->body.data[0]->as<AstStatWhile>();
+    REQUIRE(whileStat);
+    auto baseCstNode = result.cstNodeMap.find(whileStat);
+    REQUIRE(baseCstNode);
+    auto cstNode = (*baseCstNode)->as<CstStatWhile>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->annotationColonPosition, Position{0, 13});
 }
 
 TEST_SUITE_END();

@@ -373,6 +373,12 @@ struct FeedbackVectorSlot
     };
 };
 
+enum ProtoExecFlag
+{
+    PEF_EXECLOCKED = 1 << 0,  // function will no longer be examined by custom execution
+    PEF_DEBUGLOCKED = 1 << 1, // bytecode can have breakpoints in it
+};
+
 /*
 ** Function Prototypes
 */
@@ -394,6 +400,9 @@ typedef struct Proto
 
     void* execdata;
     uintptr_t exectarget;
+
+    uint32_t execcount;
+    uint8_t execflags;
 
     uint8_t* lineinfo;      // for each instruction, line number as a delta from baseline
     int* abslineinfo;       // baseline line info, one entry for each 1<<linegaplog2 instructions; allocated after lineinfo

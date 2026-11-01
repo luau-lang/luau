@@ -13,9 +13,22 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAG(LuauPromoteProto)
+LUAU_FASTFLAGVARIABLE(LuauSkipDebugLocked)
 LUAU_FASTFLAGVARIABLE(LuauIsNotLua)
 
 static const char* getfuncname(Closure* cl);
+
+static Proto* getlatestproto(Proto* p)
+{
+    if (FFlag::LuauPromoteProto)
+    {
+        while (p->optimized)
+            p = p->optimized;
+    }
+
+    return p;
+}
 
 static int currentpc(lua_State* L, CallInfo* ci)
 {
@@ -411,6 +424,9 @@ void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
             p->code[i] |= op;
             LUAU_ASSERT(LUAU_INSN_OP(p->code[i]) == op);
 
+            if (FFlag::LuauSkipDebugLocked && enable)
+                p->execflags |= PEF_DEBUGLOCKED;
+
             // currently we don't restore native code when breakpoint is disabled.
             // this will be addressed in the future.
             if (enable && p->execdata && ondisable)
@@ -425,7 +441,7 @@ void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
 
     for (int i = 0; i < p->sizep; ++i)
     {
-        luaG_breakpoint(L, p->p[i], line, enable);
+        luaG_breakpoint(L, FFlag::LuauSkipDebugLocked ? getlatestproto(p->p[i]) : p->p[i], line, enable);
     }
 }
 
@@ -522,7 +538,7 @@ static int getnextline(Proto* p, int line)
 
     for (int i = 0; i < p->sizep; ++i)
     {
-        int candidate = getnextline(p->p[i], line);
+        int candidate = getnextline(FFlag::LuauSkipDebugLocked ? getlatestproto(p->p[i]) : p->p[i], line);
 
         if (candidate == line)
             return line;
@@ -539,7 +555,7 @@ int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
     const TValue* func = luaA_toobject(L, funcindex);
     api_check(L, ttisfunction(func) && !clvalue(func)->isC);
 
-    Proto* p = clvalue(func)->l.p;
+    Proto* p = FFlag::LuauSkipDebugLocked ? getlatestproto(clvalue(func)->l.p) : clvalue(func)->l.p;
 
     // set the breakpoint to the next closest line with valid instructions
     int target = getnextline(p, line);
@@ -601,6 +617,8 @@ void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage ca
 
 static void getcounters(lua_State* L, Proto* p, void* context, lua_CounterFunction functionvisit, lua_CounterValue countervisit)
 {
+    p = getlatestproto(p);
+
     if (p->execdata != nullptr && L->global->ecb.getcounterdata != nullptr)
     {
         size_t count = 0;

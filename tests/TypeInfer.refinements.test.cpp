@@ -18,6 +18,8 @@ LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauRefineNotNilWaitsForBlockedTarget)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
 
 using namespace Luau;
 
@@ -924,7 +926,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("unknown & vector", toString(requireTypeAtPosition({3, 28})));
+    {
+        if (FFlag::DebugLuauCFG)
+        {
+            CHECK_EQ("vector", toString(requireTypeAtPosition({3, 28})));
+        }
+        else
+        {
+            CHECK_EQ("unknown & vector", toString(requireTypeAtPosition({3, 28})));
+        }
+    }
     else
         CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
 }
@@ -4004,6 +4015,47 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_not_nil_waits_for_blocked_target")
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("string", toString(requireTypeAtPosition({10, 22})));
     CHECK_EQ("string", toString(requireTypeAtPosition({13, 22})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_narrows_to_truthy_both_solvers")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauWhileLocalSyntax, true},
+        {FFlag::DebugLuauWhileLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            while local x = v do
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // The binding narrows from `number?` to `number` inside the loop body under both solvers.
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_const_narrows_to_truthy")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauWhileLocalSyntax, true},
+        {FFlag::DebugLuauWhileLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            while const x = v do
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
 }
 
 TEST_SUITE_END();

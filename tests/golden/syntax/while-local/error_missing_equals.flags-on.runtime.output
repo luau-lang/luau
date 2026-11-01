@@ -1,0 +1,2 @@
+./syntax/while-local/error_missing_equals.luau:3: Expected '=' when parsing while local declaration, got 'do'
+stacktrace:
