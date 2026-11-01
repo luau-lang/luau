@@ -22,8 +22,8 @@ LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizeFunctionIntersections)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 namespace Luau
 {
@@ -1849,7 +1849,7 @@ NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, N
 
     std::shared_ptr<const NormalizedType> normal = normalize(toNegate);
 
-    if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations && !normal)
+    if (!normal)
         return NormalizationResult::False;
 
     negated = negateNormal(*normal);
@@ -1857,6 +1857,26 @@ NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, N
     if (!negated)
         return NormalizationResult::False;
     intersectNormals(intersect, *negated);
+    return NormalizationResult::True;
+}
+
+NormalizationResult Normalizer::unionNormalWithNegationTy(NormalizedType& here, TypeId there)
+{
+    consumeFuel();
+
+    std::optional<NormalizedType> negated;
+
+    std::shared_ptr<const NormalizedType> normal = normalize(there);
+
+    if (!normal)
+        return NormalizationResult::False;
+
+    negated = negateNormal(*normal);
+
+    if (!negated)
+        return NormalizationResult::False;
+
+    unionNormals(here, *negated);
     return NormalizationResult::True;
 }
 
@@ -4020,10 +4040,24 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             here.tyvars = std::move(tyvars);
             return intersectNormalWithTy(here, nt->ty, seenTablePropPairs, seenSetTypes);
         }
+        else if (auto itv = get<IntersectionType>(t); FFlag::LuauDecomposeIntersectionOfFreeType && itv)
+        {
+            // ~(A & B & C) => ~A | ~B | ~C
+            NormalizedType thereNorm{builtinTypes};
+            for (auto part : itv)
+            {
+                if (auto res = unionNormalWithNegationTy(thereNorm, part); shouldEarlyExit(res))
+                    return res;
+            }
+
+            if (auto res = intersectNormals(here, thereNorm); shouldEarlyExit(res))
+                return res;
+        }
         else
         {
-            // TODO negated unions, intersections, table, and function.
-            // Report a TypeError for other types.
+            // TODO(CLI-234319): The rest of the types here (explicit tables
+            // and functions) are not negateable, so we probably should claim
+            // normalizing them fails.
             LUAU_ASSERT(!"Unimplemented");
         }
     }

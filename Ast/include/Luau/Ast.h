@@ -808,6 +808,18 @@ public:
 
     AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation);
 
+    AstStatWhile(
+        const Location& location,
+        AstExpr* condition,
+        AstStatBlock* body,
+        bool hasDo,
+        const Location& doLocation,
+        AstLocal* conditionLocal,
+        bool conditionIsConst,
+        const std::optional<Location>& conditionKeywordLocation,
+        const std::optional<Location>& conditionEqualsLocation
+    );
+
     void visit(AstVisitor* visitor) override;
 
     AstExpr* condition;
@@ -815,6 +827,14 @@ public:
 
     bool hasDo = false;
     Location doLocation;
+
+    // Active for `while local` and `while const`; conditionLocal is bound to `condition` and re-evaluated each iteration in scope for `body` only
+    AstLocal* conditionLocal = nullptr;
+    bool conditionIsConst = false;
+    std::optional<Location> conditionKeywordLocation;
+
+    // Location of the `=` in a `while local`/`while const` binding
+    std::optional<Location> conditionEqualsLocation;
 };
 
 class AstStatRepeat : public AstStat

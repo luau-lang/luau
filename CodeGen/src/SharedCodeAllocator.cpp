@@ -8,6 +8,8 @@
 #include <string_view>
 #include <utility>
 
+LUAU_FASTFLAG(LuauRuntimeFeedback)
+
 namespace Luau
 {
 namespace CodeGen
@@ -61,12 +63,16 @@ NativeModule::NativeModule(
         header.entryOffsetOrAddress = codeAllocationData.codeStart + reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
     }
 
-    std::sort(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdLess{});
+    // Anonymous 'modules' can have function sets in compilation order (from multiple source files)
+    if (!FFlag::LuauRuntimeFeedback || moduleId)
+    {
+        std::sort(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdLess{});
 
-    // We should not have two NativeProtos for the same bytecode id:
-    CODEGEN_ASSERT(
-        std::adjacent_find(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdEqual{}) == this->nativeProtos.end()
-    );
+        // We should not have two NativeProtos for the same bytecode id:
+        CODEGEN_ASSERT(
+            std::adjacent_find(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdEqual{}) == this->nativeProtos.end()
+        );
+    }
 }
 
 NativeModule::~NativeModule() noexcept

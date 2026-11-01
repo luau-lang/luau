@@ -17,8 +17,7 @@ LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
-LUAU_FASTFLAG(LuauCodegenNoZeroScale)
-LUAU_FASTFLAG(LuauCodegenLimitVersionsExtra)
+LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 
 using namespace Luau::CodeGen;
 
@@ -5739,8 +5738,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthCheckIntVsDouble")
 {
-    ScopedFastFlag luauCodegenNoZeroScale{FFlag::LuauCodegenNoZeroScale, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -7008,7 +7005,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrBuilderFixture, "VersionLimitChecks")
 {
     ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-    ScopedFastFlag luauCodegenLimitVersionsExtra{FFlag::LuauCodegenLimitVersionsExtra, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp unrelated = build.block(IrBlockKind::Internal);
@@ -8401,6 +8397,33 @@ bb_3:
 ; predecessors: bb_1
 ; in regs: R1
    RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseCmpAnySideEffects")
+{
+    ScopedFastFlag luauCodegenCmpAnySideEffecting{FFlag::LuauCodegenCmpAnySideEffecting, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp result = build.inst(IrCmd::CMP_ANY, build.vmReg(0), build.vmReg(0), build.cond(IrCondition::Equal));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), result);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0
+   %0 = CMP_ANY R0, R0, eq
+   RETURN R0, 0i
 
 )");
 }

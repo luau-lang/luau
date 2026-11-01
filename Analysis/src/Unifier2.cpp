@@ -26,7 +26,9 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAGVARIABLE(LuauInferReadOnlyIndexers)
+LUAU_FASTFLAGVARIABLE(LuauEarlyExitUnifierInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauDecomposeIntersectionOfFreeType)
+LUAU_FLAGVERSION(LuauDecomposeIntersectionOfFreeType, 2)
 
 namespace Luau
 {
@@ -543,6 +545,12 @@ template TypePackId Unifier2::instantiateWithBoundTypes(TypePackId ty);
 template<typename TID>
 TID Unifier2::instantiateWithBoundTypes(TID ty)
 {
+    // If `genericSubstitutions` and `genericPackSubstitutions` are both empty,
+    // then we don't need to do any instantiation for `ty`, we can return it
+    // immediately.
+    if (FFlag::LuauEarlyExitUnifierInstantiation && genericSubstitutions.empty() && genericPackSubstitutions.empty())
+        return ty;
+
     Replacer r{arena, NotNull{&genericSubstitutions}, NotNull{&genericPackSubstitutions}};
     if (auto newTy = r.substitute(ty))
         return *newTy;

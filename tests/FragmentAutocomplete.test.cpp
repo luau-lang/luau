@@ -30,6 +30,8 @@ LUAU_FASTFLAG(LuauAutocompleteIfSlurpsCond)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -6010,6 +6012,152 @@ function tbl.a@1
         {
             REQUIRE(fragment.result);
             CHECK(fragment.result->acResults.entryMap.count("abs"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "while_local_optional_binding_member_completion_in_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local myTest = getTester() do
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local myTest = getTester() do
+        myTest.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("name"));
+            CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "while_local_optional_binding_is_in_scope_in_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local myTest = getTester() do
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local myTest = getTester() do
+        @1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("myTest"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "nested_while_local_bindings_are_both_in_scope")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local outer = getTester() do
+        while local inner = getTester() do
+
+        end
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local outer = getTester() do
+        while local inner = getTester() do
+            @1
+        end
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("outer"));
+            CHECK(fragment.result->acResults.entryMap.count("inner"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "while_local_binding_is_not_in_scope_after_while_statement")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local myTest = getTester() do
+    end
+
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    while local myTest = getTester() do
+    end
+    @1
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "myTest");
         }
     );
 }

@@ -21,6 +21,7 @@
 
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAGVARIABLE(LuauCodegenUpdateSafeEnvList)
+LUAU_FASTFLAGVARIABLE(LuauCodegenCmpAnySideEffecting)
 
 namespace Luau
 {
@@ -461,7 +462,7 @@ static void removeInstUse(IrFunction& function, uint32_t instIdx)
     CODEGEN_ASSERT(inst.useCount);
     inst.useCount--;
 
-    if (inst.useCount == 0)
+    if (inst.useCount == 0 && (!FFlag::LuauCodegenCmpAnySideEffecting || !hasSideEffects(inst.cmd)))
         kill(function, inst);
 }
 

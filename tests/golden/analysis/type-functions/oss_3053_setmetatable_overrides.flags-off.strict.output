@@ -1,0 +1,11 @@
+./analysis/type-functions/oss_3053_setmetatable_overrides.luau(4,16): TypeError: Type function instance setmetatable<object2 & {  }, object2> is uninhabited
+./analysis/type-functions/oss_3053_setmetatable_overrides.luau(9,16): TypeError: Type function instance setmetatable<object2 & {  }, object2> is uninhabited
+./analysis/type-functions/oss_3053_setmetatable_overrides.luau(16,26): TypeError: Type function instance setmetatable<object2 & {  }, object2> is uninhabited
+_luau_print (15, 13): getmetatable<setmetatable<object2 & {  }, object2>>
+
+_luau_print (16, 13): object1
+
+_luau_print (17, 13): object0
+
+_luau_print (18, 13): nil
+

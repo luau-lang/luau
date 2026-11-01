@@ -90,7 +90,11 @@ struct OverloadResolution
     std::vector<TypeId> nonFunctions;
 
     // Overloads that could match, but require that other constraints also be satisfied.
-    std::vector<std::pair<TypeId, std::vector<ConstraintV>>> potentialOverloads;
+    std::vector<TypeId> potentialOverloads;
+
+    // Overloads that could match, but require that other constraints also be satisfied.
+    // Clip with LuauOneBitAssumedConstraintTracking
+    std::vector<std::pair<TypeId, std::vector<ConstraintV>>> potentialOverloads_DEPRECATED;
 
     // Overloads that have the correct arity, but do not work.
     std::vector<std::pair<TypeId, IncompatibilityReason>> incompatibleOverloads;
@@ -138,7 +142,6 @@ struct OverloadResolver
         TypeId fnTy,
         TypePackId args,
         Location fnLocation,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes,
         bool useFreeTypeBounds
     );
 
@@ -157,18 +160,16 @@ private:
         OverloadResolution& result,
         TypeId fnTy,
         TypePackId argsPack,
-        Location fnLocation,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes
+        Location fnLocation
     );
 
-    void testFunction(OverloadResolution& result, TypeId fnTy, TypePackId argsPack, Location fnLocation, NotNull<DenseHashSet<TypeId>> uniqueTypes);
+    void testFunction(OverloadResolution& result, TypeId fnTy, TypePackId argsPack, Location fnLocation);
 
     void testFunctionOrCallMetamethod(
         OverloadResolution& result,
         TypeId fnTy,
         TypePackId argsPack,
-        Location fnLocation,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes
+        Location fnLocation
     );
 
     void maybeEmplaceError(

@@ -392,6 +392,8 @@ private:
     void subtractSingleton(NormalizedType& here, TypeId ty);
     NormalizationResult intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect);
 
+    NormalizationResult unionNormalWithNegationTy(NormalizedType& here, TypeId there);
+
     // ------- Normalizing intersections
     TypeId intersectionOfTops(TypeId here, TypeId there);
     TypeId intersectionOfBools(TypeId here, TypeId there);
