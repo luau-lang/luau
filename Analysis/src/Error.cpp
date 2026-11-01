@@ -748,6 +748,14 @@ struct ErrorConverter
                        "'";
         }
 
+        if ("negate" == tfit->function->name)
+        {
+            if (tfit->typeArguments.size() != 1)
+                return "Internal error: An instance of the internal 'negate' type function was ill-formed, and thus invalid";
+
+            return "`" + Luau::toString(tfit->typeArguments[0]) + "` is not possible to negate";
+        }
+
         if (kUnreachableTypeFunctions.count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +

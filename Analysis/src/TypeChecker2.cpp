@@ -49,6 +49,7 @@ LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
+LUAU_FASTFLAG(LuauTypeNegationSyntaxSupport)
 
 namespace Luau
 {
@@ -3348,6 +3349,8 @@ void TypeChecker2::visit(AstType* ty)
         return visit(t);
     else if (auto t = ty->as<AstTypeGroup>())
         return visit(t->type);
+    else if (auto t = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSyntaxSupport && t)
+        visit(t->inner);
 }
 
 void TypeChecker2::visit(AstTypeReference* ty)
@@ -3521,6 +3524,11 @@ void TypeChecker2::visit(AstTypeFunction* ty)
 void TypeChecker2::visit(AstTypeTypeof* ty)
 {
     visit(ty->expr, ValueContext::RValue);
+}
+
+void TypeChecker2::visit(AstTypeNegation* ty)
+{
+    visit(ty->inner);
 }
 
 void TypeChecker2::visit(AstTypeUnion* ty)
