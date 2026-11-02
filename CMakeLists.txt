@@ -198,22 +198,20 @@ target_compile_options(isocline PRIVATE ${LUAU_OPTIONS} ${ISOCLINE_OPTIONS})
 if(LUAU_EXTERN_C)
     # enable extern "C" for VM (lua.h, lualib.h) and Compiler (luacode.h) to make Luau friendlier to use from non-C++ languages
     # note that we enable LUA_USE_LONGJMP=1 as well; otherwise functions like luaL_error will throw C++ exceptions, which can't be done from extern "C" functions
-    target_compile_definitions(Luau.VM PUBLIC LUA_USE_LONGJMP=1)
+    target_compile_definitions(Luau.VM PUBLIC LUA_USE_LONGJMP=1 LUAU_EXTERN_C=1)
 
     if(LUAU_BUILD_SHARED)
+        target_compile_definitions(Luau.VM PUBLIC LUAU_VM_SHARED=1 PRIVATE LUAU_VM_BUILD=1)
         if(MSVC)
-            target_compile_definitions(Luau.VM PUBLIC "LUA_API=extern \"C\" __declspec(dllexport)")
             target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\" __declspec(dllexport)")
             target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\" __declspec(dllexport)")
         else()
             # GCC/Clang
-            target_compile_definitions(Luau.VM PUBLIC "LUA_API=extern \"C\" __attribute__((visibility(\"default\")))")
             target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\" __attribute__((visibility(\"default\")))")
             target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\" __attribute__((visibility(\"default\")))")
         endif()
     else()
         # For static builds (or if not exporting) just use extern "C"
-        target_compile_definitions(Luau.VM PUBLIC "LUA_API=extern \"C\"")
         target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\"")
         target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\"")
     endif()

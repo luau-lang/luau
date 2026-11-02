@@ -45,9 +45,35 @@
 #define LUA_NORETURN __attribute__((__noreturn__))
 #endif
 
-// Can be used to reconfigure visibility/exports for public APIs
+// define LUA_API to override public api linkage and visibility
 #ifndef LUA_API
-#define LUA_API extern
+// use c linkage in c++ when requested
+// c declarations use plain extern
+#if defined(LUAU_EXTERN_C) && LUAU_EXTERN_C && defined(__cplusplus)
+#define LUA_API_LINKAGE extern "C"
+#else
+#define LUA_API_LINKAGE extern
+#endif
+
+// LUAU_VM_SHARED is shared with consumers
+// LUAU_VM_BUILD is only set when building the vm
+#if defined(LUAU_VM_SHARED) && LUAU_VM_SHARED
+#if defined(_WIN32)
+#if defined(LUAU_VM_BUILD) && LUAU_VM_BUILD
+#define LUA_API_VISIBILITY __declspec(dllexport)
+#else
+#define LUA_API_VISIBILITY __declspec(dllimport)
+#endif
+#elif defined(__GNUC__)
+#define LUA_API_VISIBILITY __attribute__((visibility("default")))
+#else
+#define LUA_API_VISIBILITY
+#endif
+#else
+#define LUA_API_VISIBILITY
+#endif
+
+#define LUA_API LUA_API_LINKAGE LUA_API_VISIBILITY
 #endif
 
 #define LUALIB_API LUA_API
