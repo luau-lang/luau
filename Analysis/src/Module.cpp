@@ -14,11 +14,10 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAGVARIABLE(LuauExportAnnotationBinding)
-LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
+LUAU_FASTFLAGVARIABLE(LuauReduceTypeFunctionToSyntheticError)
 
 namespace Luau
 {
@@ -214,20 +213,26 @@ struct ClonePublicInterface : Substitution
             {
                 genericty->scope = nullptr;
             }
-            else if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+            else
             {
                 if (auto tfit = get<TypeFunctionInstanceType>(ty))
                 {
+                    // CLI-230871: Trying to use a synthetic error type here
+                    // causes a use-after-free.
                     if (tfit->state == TypeFunctionInstanceState::Stuck)
-                        result = arena->addType(ErrorType{ty});
-                    else if (FFlag::LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
+                    {
+                        if (FFlag::LuauReduceTypeFunctionToSyntheticError)
+                            result = builtinTypes->errorType;
+                        else
+                            result = arena->addType(ErrorType{ty});
+                    }
+                    else
                     {
                         auto resultTfit = getMutable<TypeFunctionInstanceType>(result);
                         LUAU_ASSERT(resultTfit);
                         resultTfit->state = tfit->state;
                     }
                 }
-
             }
         }
 
@@ -505,11 +510,7 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
                 if (!classStat->exported)
                     continue;
 
-                TypeId ty = builtinTypes->errorType;
-                if (auto found = moduleScope->lookup(Symbol{classStat->name->name}))
-                    ty = follow(*found);
-
-                props[classStat->name->name.value] = Property::readonly(ty);
+                props[classStat->name->name.value] = Property::readonly(lookupExportedBindingType(classStat->name));
                 props[classStat->name->name.value].location = classStat->name->location;
             }
         }

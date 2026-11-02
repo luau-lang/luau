@@ -4,7 +4,6 @@
 #include "Luau/BytecodeBuilder.h"
 
 LUAU_FASTFLAG(LuauIntegerFastcalls)
-LUAU_FASTFLAGVARIABLE(LuauCompileRecursiveAliases)
 
 namespace Luau
 {
@@ -61,22 +60,15 @@ static LuauBytecodeType getType(
         {
             if (seenAliases.contains((*alias)->name))
             {
-                if (!FFlag::LuauCompileRecursiveAliases)
-                    seenAliases.clear();
-
                 return LBC_TYPE_ANY;
-            }
-            else if (FFlag::LuauCompileRecursiveAliases)
-            {
-                seenAliases.insert(ref->name);
-                LuauBytecodeType type = getType((*alias)->type, (*alias)->generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
-                seenAliases.erase(ref->name);
-                return type;
             }
             else
             {
                 seenAliases.insert(ref->name);
-                return getType((*alias)->type, (*alias)->generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
+                LuauBytecodeType type =
+                    getType((*alias)->type, (*alias)->generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
+                seenAliases.erase(ref->name);
+                return type;
             }
         }
 
@@ -769,6 +761,8 @@ struct TypeMapVisitor : AstVisitor
             case LBF_RAWGET:
             case LBF_TABLE_INSERT:
             case LBF_TABLE_UNPACK:
+            case LBF_TABLE_CREATE:
+            case LBF_TABLE_CLEAR:
             case LBF_SELECT_VARARG:
             case LBF_GETMETATABLE:
             case LBF_SETMETATABLE:

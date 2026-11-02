@@ -15,8 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
-LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -209,8 +208,6 @@ TEST_CASE_FIXTURE(Fixture, "add_function_at_work")
         local c = add("foo", 1)
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "add<number, string>");
@@ -292,8 +289,6 @@ TEST_CASE_FIXTURE(Fixture, "internal_functions_raise_errors")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
         toString(result.errors[0]) ==
@@ -319,8 +314,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_be_shadowed")
             return a + b
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -902,8 +895,6 @@ local function Use(Mode)
 end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1065,8 +1056,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_metatable_should_not_crash_index")
 
         type IndexFromT = index<typeof(t), "p">
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ("Type 't' does not have key 'p'", toString(result.errors[0]));
@@ -2081,7 +2070,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
         local t: any = {}
         local _b = access<<"Member1">>(t, "Member1")
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireType("_b")));
@@ -2111,10 +2100,9 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_cyclic_add")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_type")
 {
-    if (FFlag::DebugLuauForceOldSolver)
-        return;
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
+    ScopedFastFlag _{FFlag::LuauReduceTypeFunctionToSyntheticError, true};
 
     fileResolver.source["game/A"] = R"(
         local function get(x: string, y: unknown)
@@ -2125,27 +2113,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
-    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_ERROR_COUNT(3, aResult);
 
     CheckResult bResult = check(R"(
         local Test = require(game.A);
         local x = Test.get("hello", "world")
     )");
-    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
-    if (FFlag::LuauCloneTypeFunctionFromForeignArena)
-        CHECK(toString(requireType("x")) == "*error-type<concat<string, unknown>>*");
-    else
-        CHECK(toString(requireType("x")) == "*error-type*");
+    CHECK(toString(requireType("x")) == "*error-type*");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_negation_of_nontestable_type_doesnt_crash_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
 
     CheckResult result = check(R"(
         type function tf()
@@ -2164,8 +2145,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
-
     CheckResult result = check(R"(
         type function mknot()
             return types.negationof(types.unionof(types.newfunction(), types.number))
@@ -2183,8 +2162,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt_crash_3")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
 
     CheckResult result = check(R"(
         type function tf()

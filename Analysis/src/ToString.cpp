@@ -217,9 +217,7 @@ struct StringifierState
         if (!n.empty())
             return n;
 
-        const bool isForGeneric = FFlag::LuauBetterInferredGenericNames
-            ? nullptr != get<GenericType>(follow(ty))
-            : false;
+        const bool isForGeneric = FFlag::LuauBetterInferredGenericNames ? nullptr != get<GenericType>(follow(ty)) : false;
 
         for (int count = 0; count < 256; ++count)
         {
@@ -244,10 +242,7 @@ struct StringifierState
         if (!n.empty())
             return n;
 
-        const bool isForGeneric =
-            FFlag::LuauBetterInferredGenericNames
-            ? nullptr != get<GenericTypePack>(follow(ty))
-            : false;
+        const bool isForGeneric = FFlag::LuauBetterInferredGenericNames ? nullptr != get<GenericTypePack>(follow(ty)) : false;
 
         for (int count = 0; count < 256; ++count)
         {
@@ -2113,7 +2108,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {
-            std::string s = tos(c.resultType) + " ~ hasProp " + tos(c.subjectType) + ", \"" + c.prop + "\" ctx=" + std::to_string(int(c.context));
+            std::string s = tos(c.resultType) + " ~ hasProp " + tos(c.subjectType) + ", \"" + c.prop + "\" ";
             if (c.inConditional)
                 s += " (inConditional)";
             return s;

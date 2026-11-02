@@ -57,7 +57,7 @@
 // Version 14: Adds FASTPCALL. Currently supported.
 
 // WIP Versions: Used for in-progress features that might require multiple changes to bytecode. Since these versions are higher than the non-WIP versions, they are responsible for maintaining compatibility with them. For example, tests exercising WIP bytecode versions may need to enable flags for unreleased but non-WIP bytecode versions.
-// Version 100: Adds NEWCLASS for use with Luau Classes. Future class-related bytecode changes should go in this version before release. Experimental.
+// Version 100: Adds NEWCLASS, CONSTRUCT, FINCONSTRUCT, GETPRIVATEFIELD, and SETPRIVATEFIELD for use with Luau Classes. Future class-related bytecode changes should go in this version before release. Experimental.
 
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
@@ -439,10 +439,10 @@ enum LuauOpcode
     LOP_NAMECALLUDATA,
 
     // NEWCLASSMEMBER: register this method on a class object.
-    // A: target register of class
-    // B: reserved
+    // A: source register of class
+    // B: member visibility, see LuauClassMemberVisibility
     // C: initial value of this member. currently must be a function.
-    // AUX: The name of this member as a constant string
+    // AUX: If method is public, the name of this member as a constant string. If private, the bottom 8 bits contain the private method index, and the upper 24 bits are reserved.
     LOP_NEWCLASSMEMBER,
 
     // CALLFB: call specified function with collecting runtime stats in a feedback slot
@@ -464,12 +464,46 @@ enum LuauOpcode
     // C: jump offset to get to following CALL
     LOP_FASTPCALL,
 
+
+    // The following instructions appear only in experimental bytecode versions and are subject to change
+
     // NEWCLASS: reify a class object
     // A: target register of class
     // B: source register of superclass, or 0xFF if no superclass
     // C: bottom bit is 1 if the class is open, else 0; upper 7 bits are reserved
     // AUX: constant table index of unreified class object
     LOP_NEWCLASS,
+
+    // CONSTRUCT: duplicate table to ra using the constant table template specified in the feedback slot. if rb is a class with default constructor and duplicated table matches shape required by the class, creates an object using class's default constructor
+    // A: target register
+    // B: register that is likely to hold a class
+    // C: reserved
+    // AUX: feedback slot id
+    LOP_CONSTRUCT,
+
+    // FINCONSTRUCT: checks if object construction initiated by a preceding CONSTRUCT succeeded and either finishes result placement or fallbacks to a CALL instruction
+    // Note that FINCONSTRUCT will read the actual call arguments, such as argument/result registers and counts, from the CALL instruction
+    // A: source register
+    // B: reserved
+    // C: jump offset to get to following CALL
+    LOP_FINCONSTRUCT,
+
+    // GETPRIVATEFIELD: retrieve the value of a private field from a class instance or its class
+    // A: target register of field value
+    // B: source register with class instance or class object
+    // C: upvalue index with expected class of instance or class object
+    // AUX: bottom 8 bits contain private field offset. 
+    //      bit 9 is 1 if the field is static, else 0; 
+    //      bit 10 is 1 if retrieval is for a namecall, else 0; 
+    //      remaining 22 bits are reserved
+    LOP_GETPRIVATEFIELD,
+
+    // SETPRIVATEFIELD: set the value of a private field on a class instance
+    // A: source register of field value
+    // B: source register with class instance
+    // C: upvalue index with expected class of instance
+    // AUX: bottom 8 bits contain private field offset. remaining 24 bits are reserved
+    LOP_SETPRIVATEFIELD,
 
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
@@ -512,6 +546,11 @@ enum LuauOpcode
 #define LUAU_INSN_AUX_KV16(aux) ((aux) & 0xffffu)
 #define LUAU_INSN_AUX_SLOT(aux) ((aux) >> 16)
 
+// Auxiliary NAMECALL, STATIC: 1-bit flags indicating if field is static or access is for namecall
+// Used in LOP_GETPRIVATEFIELD
+#define LUAU_INSN_AUX_STATIC(aux) (((aux) >> 8) & 0x1u)
+#define LUAU_INSN_AUX_NAMECALL(aux) (((aux) >> 9) & 0x1u)
+
 #define LUAU_INSN_FBSLOT_SEALED 0xFFFFFFFF
 
 // Bytecode tags, used internally for bytecode encoded as a string
@@ -520,7 +559,7 @@ enum LuauBytecodeTag
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
     LBC_VERSION_MAX = 14,
-    LBC_VERSION_TARGET = 9,
+    LBC_VERSION_TARGET = 13,
     LBC_VERSION_CLASSES = 100,
     // Type encoding version
     LBC_TYPE_VERSION_MIN = 1,
@@ -558,6 +597,8 @@ enum LuauBytecodeType
     LBC_TYPE_VECTOR,
     LBC_TYPE_BUFFER,
     LBC_TYPE_INTEGER,
+    LBC_TYPE_CLASS,
+    LBC_TYPE_OBJECT,
 
     LBC_TYPE_ANY = 15,
 
@@ -755,6 +796,10 @@ enum LuauBuiltinFunction
     // buffer.readinteger / buffer.writeinteger (int64_t)
     LBF_BUFFER_READINTEGER,
     LBF_BUFFER_WRITEINTEGER,
+
+    // table.create / table.clear
+    LBF_TABLE_CREATE,
+    LBF_TABLE_CLEAR,
 };
 
 // Capture type, used in LOP_CAPTURE
@@ -763,6 +808,14 @@ enum LuauCaptureType
     LCT_VAL = 0,
     LCT_REF,
     LCT_UPVAL,
+};
+
+// Class member visibility, used in LOP_NEWCLASSMEMBER
+// Encoded in the bottom bit of B; the upper 7 bits are reserved and must be 0
+enum LuauClassMemberVisibility 
+{
+    LCMV_PUBLIC = 0,
+    LCMV_PRIVATE = 1,
 };
 
 // Proto flag bitmask, stored in Proto::flags
@@ -782,5 +835,8 @@ enum LuauProtoFlag
 
 enum LuauFeedbackType
 {
-    LFT_CALLTARGET = 0
+    LFT_CALLTARGET = 0,
+
+    // The following enumerations appear only in experimental bytecode versions and are subject to change
+    LFT_CONSTRUCT = 1,
 };

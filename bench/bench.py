@@ -1,4 +1,5 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 import argparse
 import os
@@ -30,6 +31,12 @@ except ModuleNotFoundError:
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 defaultVm = 'luau.exe' if os.name == "nt" else './luau'
 
+METRIC_LABELS = {
+    'time': ('Time', 'ms'),
+    'cycles': ('Cycles', 'Mcyc'),
+    'instructions': ('Instructions', 'Minstr'),
+}
+
 argumentParser = argparse.ArgumentParser(description='Benchmark Lua script execution with an option to compare different VMs')
 
 argumentParser.add_argument('--vm', dest='vm',default=defaultVm,help='Lua executable to test (' + defaultVm + ' by default)')
@@ -41,6 +48,7 @@ argumentParser.add_argument('--extra-loops', action='store',type=int,default=0, 
 argumentParser.add_argument('--filename', action='store',type=str,default='bench', help='File name for graph and results file')
 argumentParser.add_argument('--callgrind', dest='callgrind',action='store_const',const=1,default=0,help='Use callgrind to run benchmarks')
 argumentParser.add_argument('--show-commands', dest='show_commands',action='store_const',const=1,default=0,help='Show the command line used to launch the VM and tests')
+argumentParser.add_argument('--metric', dest='metric', choices=list(METRIC_LABELS), default=None, help="Metric to benchmark, 'cycles' and 'instructions' are only supported on macOS")
 
 if matplotlib != None:
     argumentParser.add_argument('--absolute', dest='absolute',action='store_const',const=1,default=0,help='Display absolute values instead of relative (enabled by default when benchmarking a single VM)')
@@ -58,6 +66,28 @@ argumentParser.add_argument('--no-print-final-summary', action='store_false', de
 
 # Assume 2.5 IPC on a 4 GHz CPU; this is obviously incorrect but it allows us to display simulated instruction counts using regular time units
 CALLGRIND_INSN_PER_SEC = 2.5 * 4e9
+
+# Counter names as printed by macOS `/usr/bin/time -l`
+COUNTER_METRICS = {
+    'cycles': 'cycles elapsed',
+    'instructions': 'instructions retired',
+}
+
+# Increase runs for short benchmarks to reduce the relative impact of startup/setup noise, capped to limit the run count
+COUNTER_TARGET_MS = 500
+COUNTER_MIN_RUNS = 20
+COUNTER_MAX_RUNS = 100000
+
+valueMetric = 'time'
+
+def setMetric(metric):
+    global valueMetric
+    if metric not in METRIC_LABELS:
+        sys.exit('Unknown benchmark metric: ' + str(metric))
+    valueMetric = metric
+
+def formatValue(value):
+    return '{:8.3f}'.format(value) + METRIC_LABELS[valueMetric][1]
 
 def arrayRange(count):
     result = []
@@ -161,6 +191,90 @@ def getVmOutput(cmd):
                 pass
 
             return p.communicate()[0]
+
+def getLuauCliCounterArgs(vm, filepath, programArgs):
+    """Default counterArgsCallback for the Luau CLI.
+
+    Program args are only visible to top-level scripts, so bench_support.lua runs first and forwards them to the
+    module instance that the test file requires."""
+    return "{} {} -a {}".format(os.path.join(scriptdir, "bench_support.lua"), filepath, programArgs)
+
+def launchWithCounter(cmd):
+    """Run cmd under `/usr/bin/time -l`.
+
+    Returns (stdout, counter value) or None if the launch failed or the counter was not reported."""
+    fullCmd = "/usr/bin/time -l " + cmd
+    conditionallyShowCommand(fullCmd)
+
+    p = subprocess.run(fullCmd, shell=True, capture_output=True, text=True, cwd=scriptdir)
+
+    match = re.search(r"^\s*(\d+)\s+" + COUNTER_METRICS[valueMetric] + r"\s*$", p.stderr, re.MULTILINE)
+    if p.returncode != 0 or match is None:
+        return None
+
+    return p.stdout, int(match.group(1))
+
+# Keyed by (test file, benchmark index) so every VM uses the same run count for a benchmark
+counterRunsCache = {}
+
+def getCounterRuns(filepath, index, lowOutput):
+    """Returns the run count for a benchmark, scaled from the time of the single run in its low launch."""
+    key = (filepath, index)
+    if key not in counterRunsCache:
+        runs = COUNTER_MIN_RUNS
+        try:
+            runMs = float(lowOutput.split("||_||")[index].split("|><|")[2])
+            if runMs > 0:
+                runs = max(runs, min(COUNTER_MAX_RUNS, math.ceil(COUNTER_TARGET_MS / runMs)))
+        except (IndexError, ValueError):
+            pass
+        counterRunsCache[key] = runs
+
+    return counterRunsCache[key]
+
+def getCounterOutput(vm, cmd, filepath):
+    """Measures with process-wide CPU counters instead of the timings reported by bench_support.lua.
+
+    Counters cover the whole process, including startup and test setup. That fixed cost is removed by launching
+    each benchmark twice, with 1 and 1 + N runs, and dividing the difference by N (see getCounterRuns). Files with
+    several benchmarks launch once per benchmark, selected by index (see bench_support.lua).
+
+    Returns output in the same format as bench_support.lua, with one value per benchmark in millions of counter
+    events per run; runTest merges additional samples from --extra-loops."""
+    def launch(only, runs):
+        programArgs = "LUAU_BENCH_ONLY={} LUAU_BENCH_RUNS={}".format(only, runs)
+        return launchWithCounter(cmd + " " + counterArgsCallback(vm, filepath, programArgs))
+
+    # Selecting benchmark 0 skips every benchmark, which lists their names and warms the disk cache; a cold launch of a
+    # large VM can cost hundreds of millions of extra cycles and would skew the first sample.
+    warmup = launch(0, 0)
+    if warmup is None:
+        return ""
+
+    entries = [el.split("|><|") for el in warmup[0].split("||_||")[:-1]]
+    if any(len(el) > 2 for el in entries):
+        sys.exit("--metric {} requires a VM that passes LUAU_BENCH_ONLY and LUAU_BENCH_RUNS program args to bench_support.lua: {}".format(valueMetric, cmd))
+
+    names = [el[1] for el in entries]
+
+    output = ""
+    for index, name in enumerate(names):
+        low = launch(index + 1, 1)
+        if low is None:
+            return ""
+
+        runs = getCounterRuns(filepath, index, low[0])
+        high = launch(index + 1, 1 + runs)
+        if high is None:
+            return ""
+
+        value = (high[1] - low[1]) / runs / 1e6
+        if value <= 0:
+            print("{}: '{}' measured no work above per-launch noise with {} runs".format(colored(Color.YELLOW, 'WARNING'), name, runs))
+            return ""
+
+        output += "|><|" + name + "|><|" + str(value) + "||_||"
+    return output
 
 def getShortVmName(name):
     # Hope that the path to executable doesn't contain spaces
@@ -365,8 +479,8 @@ def analyzeResult(subdir, main, comparisons):
     if arguments.vmNext != None:
         resultPrinter.add_row({
             'Test': main.name,
-            'Min': '{:8.3f}ms'.format(main.min),
-            'Average': '{:8.3f}ms'.format(main.avg),
+            'Min': formatValue(main.min),
+            'Average': formatValue(main.avg),
             'StdDev%': '{:8.3f}%'.format(main.sampleConfidenceInterval / main.avg * 100),
             'Driver': main.shortVm,
             'Speedup': "",
@@ -376,8 +490,8 @@ def analyzeResult(subdir, main, comparisons):
     else:
         resultPrinter.add_row({
             'Test': main.name,
-            'Min': '{:8.3f}ms'.format(main.min),
-            'Average': '{:8.3f}ms'.format(main.avg),
+            'Min': formatValue(main.min),
+            'Average': formatValue(main.avg),
             'StdDev%': '{:8.3f}%'.format(main.sampleConfidenceInterval / main.avg * 100),
             'Driver': main.shortVm
         })
@@ -385,7 +499,7 @@ def analyzeResult(subdir, main, comparisons):
     if reporter != None:
         reporter.report_result(subdir, main.name, main.filename, "SUCCESS", main.min, main.avg, main.max, main.sampleConfidenceInterval, main.shortVm, main.vm)
 
-    print(colored(Color.GREEN, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + '{:8.3f}'.format(main.avg) + "ms +/- " +
+    print(colored(Color.GREEN, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + formatValue(main.avg) + " +/- " +
         '{:6.3f}'.format(main.sampleConfidenceInterval / main.avg * 100) + "% on " + main.shortVm)
 
     plotLabels.append(main.name)
@@ -473,8 +587,8 @@ def analyzeResult(subdir, main, comparisons):
 
         resultPrinter.add_row({
             'Test': main.name,
-            'Min': '{:8.3f}ms'.format(compare.min),
-            'Average': '{:8.3f}ms'.format(compare.avg),
+            'Min': formatValue(compare.min),
+            'Average': formatValue(compare.avg),
             'StdDev%': '{:8.3f}%'.format(compare.sampleConfidenceInterval / compare.avg * 100),
             'Driver': compare.shortVm,
             'Speedup': colored(speedupColor, '{:8.3f}%'.format(speedup * 100)),
@@ -482,7 +596,7 @@ def analyzeResult(subdir, main, comparisons):
             'P(T<=t)': '---' if pValue < 0 else '{:.0f}%'.format(pValue * 100)
         })
 
-        print(colored(Color.GREEN, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + '{:8.3f}'.format(compare.avg) + "ms +/- " +
+        print(colored(Color.GREEN, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + formatValue(compare.avg) + " +/- " +
             '{:6.3f}'.format(compare.sampleConfidenceInterval / compare.avg * 100) + "% on " + compare.shortVm +
             ' ({:+7.3f}%, '.format(speedup * 100) + verdict + ")")
 
@@ -506,13 +620,21 @@ def analyzeResult(subdir, main, comparisons):
         vmTotalImprovement[index] += math.log(main.avg / compare.avg)
         vmTotalResults[index] += 1
 
+def getTestOutput(vm, filepath):
+    cmd = substituteArguments(vm, getExtraArguments(filepath))
+
+    if valueMetric != 'time':
+        return getCounterOutput(vm, cmd, filepath)
+
+    return getVmOutput(cmd + " " + filepath)
+
 def runTest(subdir, filename, filepath):
     filepath = os.path.abspath(filepath)
 
     mainVm = os.path.abspath(arguments.vm)
 
     # Process output will contain the test name and execution times
-    mainOutput = getVmOutput(substituteArguments(mainVm, getExtraArguments(filepath)) + " " + filepath)
+    mainOutput = getTestOutput(mainVm, filepath)
     mainResultSet = extractResults(filename, mainVm, mainOutput, False)
 
     if len(mainResultSet) == 0:
@@ -533,7 +655,7 @@ def runTest(subdir, filename, filepath):
         for compareVm in arguments.vmNext:
             compareVm = os.path.abspath(compareVm)
 
-            compareOutput = getVmOutput(substituteArguments(compareVm, getExtraArguments(filepath)) + " " + filepath)
+            compareOutput = getTestOutput(compareVm, filepath)
             compareResultSet = extractResults(filename, compareVm, compareOutput, True)
 
             compareResultSets.append(compareResultSet)
@@ -541,7 +663,7 @@ def runTest(subdir, filename, filepath):
     if arguments.extra_loops > 0:
         # get more results
         for i in range(arguments.extra_loops):
-            extraMainOutput = getVmOutput(substituteArguments(mainVm, getExtraArguments(filepath)) + " " + filepath)
+            extraMainOutput = getTestOutput(mainVm, filepath)
             extraMainResultSet = extractResults(filename, mainVm, extraMainOutput, False)
 
             mergeResults(mainResultSet, extraMainResultSet)
@@ -551,7 +673,7 @@ def runTest(subdir, filename, filepath):
                 for compareVm in arguments.vmNext:
                     compareVm = os.path.abspath(compareVm)
 
-                    extraCompareOutput = getVmOutput(substituteArguments(compareVm, getExtraArguments(filepath)) + " " + filepath)
+                    extraCompareOutput = getTestOutput(compareVm, filepath)
                     extraCompareResultSet = extractResults(filename, compareVm, extraCompareOutput, True)
 
                     mergeResults(compareResultSets[i], extraCompareResultSet)
@@ -637,6 +759,13 @@ def graph():
 
     ind = arrayRange(len(plotLabels))
     width = 0.8 / len(plotValueLists)
+    valueLabel, valueUnit = METRIC_LABELS[valueMetric]
+    if arguments.absolute:
+        axisLabel = valueLabel + ' (' + valueUnit + ')'
+    elif arguments.speedup:
+        axisLabel = 'Speedup (%)'
+    else:
+        axisLabel = 'Relative ' + valueLabel.lower() + ' (%)'
 
     if arguments.graph_vertical:
         # Extend graph width when we have a lot of tests to draw
@@ -661,12 +790,7 @@ def graph():
             bar = plt.bar(arrayRangeOffset(len(plotLabels), i * width), plotValueLists[i], width, yerr=plotConfIntLists[i])
             plotBars.append(bar[0])
 
-        if arguments.absolute:
-            plt.ylabel('Time (ms)')
-        elif arguments.speedup:
-            plt.ylabel('Speedup (%)')
-        else:
-            plt.ylabel('Relative time (%)')
+        plt.ylabel(axisLabel)
 
         plt.title('Benchmark')
         plt.xticks(ind, plotLabels, rotation='vertical')
@@ -679,12 +803,7 @@ def graph():
             bar = plt.barh(arrayRangeOffset(len(plotLabels), i * width), plotValueLists[i], width, xerr=plotConfIntLists[i])
             plotBars.append(bar[0])
 
-        if arguments.absolute:
-            plt.xlabel('Time (ms)')
-        elif arguments.speedup:
-            plt.xlabel('Speedup (%)')
-        else:
-            plt.xlabel('Relative time (%)')
+        plt.xlabel(axisLabel)
 
         plt.title('Benchmark')
         plt.yticks(ind, plotLabels)
@@ -756,8 +875,8 @@ def addTotalsToTable():
 
         resultPrinter.add_row({
             'Test': 'Total',
-            'Min': '{:8.3f}ms'.format(vmTotalMin[index]),
-            'Average': '{:8.3f}ms'.format(vmTotalAverage[index]),
+            'Min': formatValue(vmTotalMin[index]),
+            'Average': formatValue(vmTotalAverage[index]),
             'StdDev%': "---",
             'Driver': getShortVmName(os.path.abspath(arguments.vm)),
             'Speedup': "",
@@ -772,8 +891,8 @@ def addTotalsToTable():
 
             resultPrinter.add_row({
                 'Test': 'Total',
-                'Min': '{:8.3f}ms'.format(vmTotalMin[index]),
-                'Average': '{:8.3f}ms'.format(vmTotalAverage[index]),
+                'Min': formatValue(vmTotalMin[index]),
+                'Average': formatValue(vmTotalAverage[index]),
                 'StdDev%': "---",
                 'Driver': getShortVmName(os.path.abspath(compareVm)),
                 'Speedup': colored(Color.RED if speedup < 0 else Color.GREEN if speedup > 0 else Color.YELLOW, '{:8.3f}%'.format(speedup)),
@@ -783,8 +902,8 @@ def addTotalsToTable():
     else:
         resultPrinter.add_row({
             'Test': 'Total',
-            'Min': '{:8.3f}ms'.format(vmTotalMin[0]),
-            'Average': '{:8.3f}ms'.format(vmTotalAverage[0]),
+            'Min': formatValue(vmTotalMin[0]),
+            'Average': formatValue(vmTotalAverage[0]),
             'StdDev%': "---",
             'Driver': getShortVmName(os.path.abspath(arguments.vm))
         })
@@ -819,8 +938,8 @@ def addGeomeanToTable():
     if arguments.vmNext != None:
         resultPrinter.add_row({
             'Test': 'Geomean',
-            'Min': '{:8.3f}ms'.format(mainGeomean.min),
-            'Average': '{:8.3f}ms'.format(mainGeomean.avg),
+            'Min': formatValue(mainGeomean.min),
+            'Average': formatValue(mainGeomean.avg),
             'StdDev%': '{:8.3f}%'.format(mainGeomean.sampleConfidenceInterval / mainGeomean.avg * 100),
             'Driver': mainGeomean.shortVm,
             'Speedup': "",
@@ -839,8 +958,8 @@ def addGeomeanToTable():
 
             resultPrinter.add_row({
                 'Test': 'Geomean',
-                'Min': '{:8.3f}ms'.format(compareGeomean.min),
-                'Average': '{:8.3f}ms'.format(compareGeomean.avg),
+                'Min': formatValue(compareGeomean.min),
+                'Average': formatValue(compareGeomean.avg),
                 'StdDev%': '{:8.3f}%'.format(compareGeomean.sampleConfidenceInterval / compareGeomean.avg * 100),
                 'Driver': compareGeomean.shortVm,
                 'Speedup': colored(Color.RED if speedup < 0 else Color.GREEN if speedup > 0 else Color.YELLOW, '{:8.3f}%'.format(speedup)),
@@ -850,8 +969,8 @@ def addGeomeanToTable():
     else:
         resultPrinter.add_row({
             'Test': 'Geomean',
-            'Min': '{:8.3f}ms'.format(mainGeomean.min),
-            'Average': '{:8.3f}ms'.format(mainGeomean.avg),
+            'Min': formatValue(mainGeomean.min),
+            'Average': formatValue(mainGeomean.avg),
             'StdDev%': '{:8.3f}%'.format(mainGeomean.sampleConfidenceInterval / mainGeomean.avg * 100),
             'Driver': mainGeomean.shortVm
         })
@@ -864,26 +983,30 @@ def writeResultsToFile():
             return json.JSONEncoder.default(self, obj)
 
     try:
-        with open(arguments.filename + ".json", "w") as allResultsFile:
-            allResultsFile.write(json.dumps(allResults, cls=TestResultEncoder))
+        with open(arguments.filename + ".json", "w", encoding="utf-8") as allResultsFile:
+            allResultsFile.write(json.dumps({'metric': valueMetric, 'results': allResults}, cls=TestResultEncoder))
     except:
         print("Failed to write results to a file")
 
-def run(args, argsubcb, reporter_factory=None):
-    global arguments, resultPrinter, reporter, argumentSubstituionCallback, allResults
+def run(args, argsubcb, reporter_factory=None, counterargscb=getLuauCliCounterArgs):
+    """counterargscb(vm, filepath, programArgs) returns the command line tail that runs filepath and passes programArgs
+    (LUAU_BENCH_ONLY=<n> LUAU_BENCH_RUNS=<n>) to bench_support.lua when measuring with CPU counters."""
+    global arguments, resultPrinter, reporter, argumentSubstituionCallback, counterArgsCallback, allResults
     arguments = args
     argumentSubstituionCallback = argsubcb
+    counterArgsCallback = counterargscb
+    expectedMetric = arguments.metric
+    setMetric(expectedMetric or 'time')
 
     if os.name == "nt" and arguments.callgrind:
         print(f"{colored(Color.RED, 'ERROR')}: --callgrind is not supported on Windows.  Please consider using this option on another OS, or Linux using WSL.")
         sys.exit(1)
 
-    if reporter_factory:
-        reporter = reporter_factory(arguments)
-    elif arguments.report_metrics or arguments.print_influx_debugging:
-        reporter = influxbench.InfluxReporter(arguments)
-    else:
-        reporter = None
+    if arguments.results is None and valueMetric != 'time':
+        if sys.platform != "darwin":
+            sys.exit("--metric {} is only supported on macOS".format(valueMetric))
+        if arguments.callgrind:
+            sys.exit("--metric {} can't be combined with --callgrind".format(valueMetric))
 
     if matplotlib == None:
         arguments.absolute = 0
@@ -896,8 +1019,16 @@ def run(args, argsubcb, reporter_factory=None):
         vmList = []
 
         for result in arguments.results:
-            with open(result) as resultsFile:
-                resultArray = json.load(resultsFile)
+            with open(result, encoding="utf-8") as resultsFile:
+                resultData = json.load(resultsFile)
+
+            # Legacy result arrays contain timings in milliseconds.
+            resultMetric = resultData['metric'] if isinstance(resultData, dict) else 'time'
+            resultArray = resultData['results'] if isinstance(resultData, dict) else resultData
+            if expectedMetric is not None and resultMetric != expectedMetric:
+                sys.exit("{}: metric '{}' does not match '{}'".format(result, resultMetric, expectedMetric))
+            setMetric(resultMetric)
+            expectedMetric = resultMetric
 
             for test in resultArray:
                 for i in range(len(test)):
@@ -957,6 +1088,15 @@ def run(args, argsubcb, reporter_factory=None):
                 arguments.vm = vmList[i]
             else:
                 arguments.vmNext.append(vmList[i])
+
+    if valueMetric != 'time' and (reporter_factory or arguments.report_metrics or arguments.print_influx_debugging):
+        sys.exit('Counter results cannot be sent to time-based metric reporters')
+    if reporter_factory:
+        reporter = reporter_factory(arguments)
+    elif arguments.report_metrics or arguments.print_influx_debugging:
+        reporter = influxbench.InfluxReporter(arguments)
+    else:
+        reporter = None
 
     plotLegend.append(getShortVmName(arguments.vm))
 
@@ -1055,5 +1195,11 @@ def run(args, argsubcb, reporter_factory=None):
 
 
 if __name__ == "__main__":
+    try:
+        import argcomplete
+        argcomplete.autocomplete(argumentParser)
+    except ImportError:
+        pass
+
     arguments = argumentParser.parse_args()
     run(arguments, None)

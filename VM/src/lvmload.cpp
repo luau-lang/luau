@@ -17,7 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauCostModel)
 LUAU_FASTFLAGVARIABLE(LuauLoadRemapOptionalUserdata)
 
@@ -632,13 +631,30 @@ static int loadsafe(
                 uint32_t cnid = readVarInt(data, size, offset);
                 TValue* classname = &p->k[cnid];
                 LUAU_ASSERT(ttisstring(classname));
+                uint8_t numPrivateFields = read<uint8_t>(data, size, offset);
+                uint8_t numPrivateMethods = read<uint8_t>(data, size, offset);
                 uint32_t numProperties = readVarInt(data, size, offset);
                 uint32_t numMethods = readVarInt(data, size, offset);
                 uint32_t numMembers = numMethods + numProperties;
-                TString** offsetToMember = luaM_newarray(L, numMembers, TString*, L->activememcat);
-                LuaTable* membersToOffset = luaH_new(L, 0, numMembers);
+                uint32_t membersWithoutPrivateMethods = numMembers - static_cast<uint32_t>(numPrivateMethods);
+                TString** offsetToMember = luaM_newarray(L, membersWithoutPrivateMethods, TString*, L->activememcat);
+                memset(offsetToMember, 0, membersWithoutPrivateMethods * sizeof(TString*));
+                LuaTable* membersToOffset = luaH_new(L, 0, membersWithoutPrivateMethods - static_cast<uint32_t>(numPrivateFields));
 
-                for (uint32_t idx = 0; idx < numMembers; idx++)
+                uint32_t idx = 0;
+                // Set public field names
+                for (; idx < numProperties - static_cast<uint32_t>(numPrivateFields); idx++)
+                {
+                    uint32_t mid = readVarInt(data, size, offset);
+                    TValue* memberName = &p->k[mid];
+                    LUAU_ASSERT(ttisstring(memberName));
+                    offsetToMember[idx] = tsvalue(memberName);
+                    TValue* val = luaH_setstr(L, membersToOffset, tsvalue(memberName));
+                    setnvalue(val, idx);
+                }
+
+                // Set public method names
+                for (idx = numProperties; idx < membersWithoutPrivateMethods; idx++)
                 {
                     uint32_t mid = readVarInt(data, size, offset);
                     TValue* memberName = &p->k[mid];
@@ -650,7 +666,9 @@ static int loadsafe(
 
                 membersToOffset->readonly = true;
 
-                LuauClass* lco = luaR_newclass(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, envt);
+                LuauClass* lco = luaR_newclass(
+                    L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, numPrivateFields, numPrivateMethods, envt
+                );
                 setclassvalue(L, &p->k[j], lco);
                 break;
             }
@@ -789,12 +807,26 @@ static int loadsafe(
             for (uint32_t j = 0; j < p->feedbackvecsize; j++)
             {
                 uint8_t slottype = read<uint8_t>(data, size, offset);
-                LUAU_ASSERT(slottype == LFT_CALLTARGET);
+
                 FeedbackVectorSlot& slot = p->feedbackvec[j];
                 slot.kind = static_cast<FeedbackVectorSlotKind>(slottype);
-                slot.call_target.pc = readVarInt(data, size, offset);
-                slot.call_target.proto = 0;
-                slot.call_target.hits = 0;
+
+                if (slottype == LFT_CALLTARGET)
+                {
+                    slot.call_target.pc = readVarInt(data, size, offset);
+                    slot.call_target.proto = 0;
+                    slot.call_target.hits = 0;
+                }
+                else if (slottype == LFT_CONSTRUCT)
+                {
+                    slot.construct.shape = readVarInt(data, size, offset);
+                    slot.construct.classid = 0;
+                    slot.construct.match = LCM_MISMATCH;
+                }
+                else
+                {
+                    LUAU_ASSERT(!"unknown feedback slot type");
+                }
             }
         }
 

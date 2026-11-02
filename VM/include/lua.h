@@ -276,10 +276,8 @@ LUA_API int lua_isyieldable(lua_State* L);
 LUA_API void* lua_getthreaddata(lua_State* L);
 LUA_API void lua_setthreaddata(lua_State* L, void* data);
 LUA_API int lua_costatus(lua_State* L, lua_State* co);
-
-// NOTE: experimental API, requires a Debug flag and is subject to breaking changes
 LUA_API int lua_hasfinalizers(lua_State* L);
-LUA_API void lua_pushfinalizerfunction(lua_State* L);
+LUA_API void lua_pushfinalizerfunction(lua_State* L, lua_State* co, int toclose);
 LUA_API void lua_addfinalizer(lua_State* L, lua_State* co, int idx);
 
 /*
@@ -388,7 +386,9 @@ LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 // 1. Cycle reset (markref == NULL): clear accumulated information about marked
 //      native objects.
 // 2. Mark phase (markref != NULL): embedder must call markref for each new ref
-//      that is reachable from a marked native object.
+//      that is reachable from a marked native object and return nonzero if it
+//      made any progress. The GC propagates marks and repeatedly calls again
+//      until the embedder returns zero.
 //
 // Together, these are used to implement a fixed-point reachability algorithm
 // across both heaps.
@@ -399,7 +399,7 @@ LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 typedef void (*lua_UserdataMark)(lua_State* L, void* ud);
 LUA_API void lua_setuserdatamark(lua_State* L, int tag, lua_UserdataMark markfn);
 typedef void (*lua_EmbedderMark)(lua_State* L, int ref);
-typedef void (*lua_EmbedderGc)(lua_State* L, lua_EmbedderMark markref);
+typedef int (*lua_EmbedderGc)(lua_State* L, lua_EmbedderMark markref);
 LUA_API void lua_setembeddergc(lua_State* L, lua_EmbedderGc fn);
 
 // APIs for interacting with embedder-managed weak references.

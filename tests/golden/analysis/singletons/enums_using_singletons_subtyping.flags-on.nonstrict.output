@@ -1,0 +1,1 @@
+./analysis/singletons/enums_using_singletons_subtyping.luau(5,7): LocalUnused: Variable 'c' is never used; prefix with '_' to silence

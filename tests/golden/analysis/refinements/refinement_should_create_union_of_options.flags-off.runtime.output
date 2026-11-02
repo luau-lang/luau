@@ -1,0 +1,5 @@
+./analysis/refinements/refinement_should_create_union_of_options.luau:7: invalid argument #1 to 'abs' (number expected, got boolean)
+stacktrace:
+[C] function abs
+./analysis/refinements/refinement_should_create_union_of_options.luau:7 function foobar
+./analysis/refinements/refinement_should_create_union_of_options.luau:13

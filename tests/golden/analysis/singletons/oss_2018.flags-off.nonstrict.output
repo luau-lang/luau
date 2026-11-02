@@ -1,0 +1,1 @@
+./analysis/singletons/oss_2018.luau(1,7): LocalUnused: Variable 'rule' is never used; prefix with '_' to silence

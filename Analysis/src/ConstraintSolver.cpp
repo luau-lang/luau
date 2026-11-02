@@ -41,18 +41,16 @@ LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
-LUAU_FASTFLAGVARIABLE(LuauCloneTypeFunctionFromForeignArena)
-LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArguments)
-LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
-LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAGVARIABLE(LuauNonreentrantLookupTableProp)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
 namespace Luau
 {
@@ -91,6 +89,7 @@ static void dump(ConstraintSolver* cs, ToStringOptions& opts);
     if (auto blocked = get<BlockedType>(ty))
     {
         const Constraint* owner = blocked->getOwner();
+
         LUAU_ASSERT(owner);
         return owner == constraint;
     }
@@ -304,22 +303,12 @@ struct InstantiationQueuer : IterativeTypeVisitor
 
     bool visit(TypeId ty, const PendingExpansionType& petv) override
     {
-        if (FFlag::LuauInstantiationCheckArgumentsDedup)
-        {
-            if (!solver->typeAliasesToExpand.contains(ty))
-            {
-                if (FFlag::LuauCyclicRequireTypeInference)
-                    solver->typeAliasesToExpand[ty] = solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
-                else
-                    solver->typeAliasesToExpand[ty] = solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
-            }
-        }
-        else
+        if (!solver->typeAliasesToExpand.contains(ty))
         {
             if (FFlag::LuauCyclicRequireTypeInference)
-                solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
+                solver->typeAliasesToExpand[ty] = solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
             else
-                solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
+                solver->typeAliasesToExpand[ty] = solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
         }
 
         return false;
@@ -948,12 +937,33 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
 
 bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Constraint> constraint)
 {
-    if (isBlocked(c.subType))
-        return block(c.subType, constraint);
-    else if (isBlocked(c.superType))
-        return block(c.superType, constraint);
+    if (FFlag::LuauDecomposeIntersectionOfFreeType)
+    {
+        auto subTy = follow(c.subType);
+        auto superTy = follow(c.superType);
 
-    unify(constraint, c.subType, c.superType);
+        // In either of these cases, the constraint is vacuous and it doesn't
+        // matter that the other type is blocked, so early return.
+        if (is<NeverType>(subTy) || is<UnknownType>(superTy))
+            return true;
+
+        if (isBlocked(subTy))
+            return block(subTy, constraint);
+
+        if (isBlocked(superTy))
+            return block(superTy, constraint);
+
+        unify(constraint, subTy, superTy);
+    }
+    else
+    {
+        if (isBlocked(c.subType))
+            return block(c.subType, constraint);
+        else if (isBlocked(c.superType))
+            return block(c.superType, constraint);
+
+        unify(constraint, c.subType, c.superType);
+    }
 
     return true;
 }
@@ -1087,7 +1097,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     if (FFlag::LuauForceLess)
-         force = false;
+        force = false;
 
     /*
      * for .. in loops can play out in a bunch of different ways depending on
@@ -1299,59 +1309,46 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     // If the type function itself is still blocked, we have to wait for it
     // Not using 'isBlocked' as this constraint has special handling of pending and TypeFunctionInstanceType
-    if (FFlag::LuauBlockingTypeAliasExpansion && get<BlockedType>(follow(tf->type)))
+    if (get<BlockedType>(follow(tf->type)))
         return block(tf->type, constraint);
 
     // Adding ReduceConstraint on type function for the constraint solver
-    if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+    if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(tf->type)))
     {
-        if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(tf->type)))
+        TypeId toReduce = follow(tf->type);
+
+        // If the type function instance belongs to a different arena (e.g. imported
+        // from another module), we must create a fresh copy in our arena so that
+        // the reducer can mutate it during reduction.
+        if (toReduce->owningArena != arena)
         {
-            TypeId toReduce = follow(tf->type);
-
-            // If the type function instance belongs to a different arena (e.g. imported
-            // from another module), we must create a fresh copy in our arena so that
-            // the reducer can mutate it during reduction.
-            if (toReduce->owningArena != arena)
-            {
-                toReduce = arena->addType(
-                    TypeFunctionInstanceType{
-                        tfit->function,
-                        tfit->typeArguments,
-                        tfit->packArguments,
-                        tfit->userFuncName,
-                        tfit->userFuncData,
-                    }
-                );
-
-                if (FFlag::LuauCyclicRequireTypeInference)
-                    pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
-                else
-                    DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
-
-                if (tf->typeParams.empty() && tf->typePackParams.empty())
-                {
-                    bindResult(toReduce);
-                    return true;
+            toReduce = arena->addType(
+                TypeFunctionInstanceType{
+                    tfit->function,
+                    tfit->typeArguments,
+                    tfit->packArguments,
+                    tfit->userFuncName,
+                    tfit->userFuncData,
                 }
-            }
+            );
+
+            if (FFlag::LuauCyclicRequireTypeInference)
+                pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
             else
+                DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
+
+            if (tf->typeParams.empty() && tf->typePackParams.empty())
             {
-                if (FFlag::LuauCyclicRequireTypeInference)
-                    pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
-                else
-                    DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
+                bindResult(toReduce);
+                return true;
             }
         }
-    }
-    else
-    {
-        if (get<TypeFunctionInstanceType>(follow(tf->type)))
+        else
         {
             if (FFlag::LuauCyclicRequireTypeInference)
-                pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type}, constraint->moduleName);
+                pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
             else
-                DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type});
+                DEPRECATED_pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce});
         }
     }
 
@@ -1479,13 +1476,10 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     queuer.run(target);
 
     // Instantiation arguments might contain pending expansion types as well
-    if (FFlag::LuauInstantiationCheckArguments)
-    {
-        for (TypeId arg : typeArguments)
-            queuer.run(arg);
-        for (TypePackId arg : packArguments)
-            queuer.run(arg);
-    }
+    for (TypeId arg : typeArguments)
+        queuer.run(arg);
+    for (TypePackId arg : packArguments)
+        queuer.run(arg);
 
     if (target->persistent || target->owningArena != arena)
     {
@@ -1672,15 +1666,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         constraint->location
     };
 
-    DenseHashSet<TypeId> uniqueTypes;
-    if (c.callSite)
-    {
-        if (FFlag::LuauCyclicRequireTypeInference)
-            findUniqueTypes(NotNull{&uniqueTypes}, c.callSite->args, NotNull{c.astTypes});
-        else
-            findUniqueTypes(NotNull{&uniqueTypes}, c.callSite->args, NotNull{&module->astTypes});
-    }
-
     TypeId overloadToUse = fn;
 
     // If the function we have is already a function type, then there's no
@@ -1691,12 +1676,13 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             fn,
             argsPack,
             c.callSite ? c.callSite->func->location : Location{},
-            NotNull{&uniqueTypes},
             /* useFreeTypeBounds */ true
         );
 
         // For now we never retry as it's prohibitively expensive.
-        auto [overload, _constraints, _shouldRetry] = res.getUnambiguousOverload();
+        auto [overload, constraints, _shouldRetry] = res.getUnambiguousOverload();
+
+        LUAU_ASSERT(!FFlag::LuauOneBitAssumedConstraintTracking || constraints.empty());
 
         if (overload)
         {
@@ -1996,8 +1982,13 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
         }
     }
 
+
     // It doesn't matter whether this type came from an indexer or not.
-    auto [blocked, result, _isIndex] = lookupTableProp(constraint, subjectType, c.prop, c.context, c.inConditional, c.suppressSimplification);
+    auto [blocked, result, _isIndex] =
+        FFlag::LuauNonreentrantLookupTableProp
+            ? lookupTableProp(constraint, subjectType, c.prop, ValueContext::RValue, c.inConditional, c.suppressSimplification)
+            : lookupTableProp_DEPRECATED(constraint, subjectType, c.prop, ValueContext::RValue, c.inConditional, c.suppressSimplification);
+
     if (!blocked.empty())
     {
         for (TypeId blocked : blocked)
@@ -2007,6 +1998,7 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     }
 
     bind(constraint, resultType, result.value_or(builtinTypes->anyType));
+
     return true;
 }
 
@@ -2063,8 +2055,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         }
 
         const TableState ubState = FFlag::DebugLuauExactTableTypes ? TableState::Sealed : TableState::Unsealed;
-        TypeId upperBound =
-            arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, ubState});
+        TypeId upperBound = arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, ubState});
 
         TypeId sr = follow(simplifyIntersection(constraint->scope, constraint->location, ft->upperBound, upperBound));
 
@@ -2365,11 +2356,16 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
         return true;
     }
 
+
     if (auto lhsFree = getMutable<FreeType>(lhsType))
     {
         auto lhsFreeUpperBound = follow(lhsFree->upperBound);
 
-        const auto [blocked, maybeTy, isIndex] = lookupTableProp(constraint, lhsType, propName, ValueContext::LValue);
+        const auto [blocked, maybeTy, isIndex] =
+            FFlag::LuauNonreentrantLookupTableProp
+                ? lookupTableProp(constraint, lhsType, propName, ValueContext::LValue, /* inConditional */ false, /* suppressSimplification */ false)
+                : lookupTableProp_DEPRECATED(constraint, lhsType, propName, ValueContext::LValue);
+
         if (!blocked.empty())
         {
             for (TypeId t : blocked)
@@ -2403,7 +2399,11 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
 
     // Handle the case that lhsType is a table that already has the property or
     // a matching indexer. This also handles unions and intersections.
-    const auto [blocked, maybeTy, isIndex] = lookupTableProp(constraint, lhsType, propName, ValueContext::LValue);
+    const auto [blocked, maybeTy, isIndex] =
+        FFlag::LuauNonreentrantLookupTableProp
+            ? lookupTableProp(constraint, lhsType, propName, ValueContext::LValue, /* inConditional */ false, /* suppressSimplification */ false)
+            : lookupTableProp_DEPRECATED(constraint, lhsType, propName, ValueContext::LValue);
+
     if (!blocked.empty())
     {
         for (TypeId t : blocked)
@@ -2705,7 +2705,6 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId ty = follow(c.ty);
-
     TypeFunctionContext context{NotNull{this}, constraint->scope, constraint, subtyping};
     FunctionGraphReductionResult result = reduceTypeFunctions(ty, constraint->location, NotNull{&context}, force);
 
@@ -3204,10 +3203,8 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         {
             std::vector<TypeId> expectedVariables;
             // Add an intersection ReduceConstraint for the indexer result type to denote it can't be nil
-            const TypeId intersectionWithNotNil = arena->addTypeFunction(
-                FFlag::LuauIterableConstraintMutatesIterator ? builtinTypes->typeFunctions->refineFunc : builtinTypes->typeFunctions->intersectFunc,
-                {iteratorTable->indexer->indexResultType, builtinTypes->notNilType}
-            );
+            const TypeId intersectionWithNotNil =
+                arena->addTypeFunction(builtinTypes->typeFunctions->refineFunc, {iteratorTable->indexer->indexResultType, builtinTypes->notNilType});
 
             if (FFlag::LuauCyclicRequireTypeInference)
                 pushConstraint(constraint->scope, constraint->location, ReduceConstraint{intersectionWithNotNil}, constraint->moduleName);
@@ -3353,7 +3350,7 @@ NotNull<const Constraint> ConstraintSolver::unpackAndAssign(
     return c;
 }
 
-TablePropLookupResult ConstraintSolver::lookupTableProp(
+TablePropLookupResult ConstraintSolver::lookupTableProp_DEPRECATED(
     NotNull<const Constraint> constraint,
     TypeId subjectType,
     const std::string& propName,
@@ -3362,11 +3359,12 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     bool suppressSimplification
 )
 {
+    LUAU_ASSERT(!FFlag::LuauNonreentrantLookupTableProp);
     DenseHashSet<TypeId> seen;
-    return lookupTableProp(constraint, subjectType, propName, context, inConditional, suppressSimplification, seen);
+    return lookupTableProp_DEPRECATED(constraint, subjectType, propName, context, inConditional, suppressSimplification, seen);
 }
 
-TablePropLookupResult ConstraintSolver::lookupTableProp(
+TablePropLookupResult ConstraintSolver::lookupTableProp_DEPRECATED(
     NotNull<const Constraint> constraint,
     TypeId subjectType,
     const std::string& propName,
@@ -3376,6 +3374,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     DenseHashSet<TypeId>& seen
 )
 {
+    LUAU_ASSERT(!FFlag::LuauNonreentrantLookupTableProp);
     if (seen.contains(subjectType))
         return {};
 
@@ -3468,11 +3467,11 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::LValue)
     {
         // TODO __newindex: CLI-199848
-        return lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
+        return lookupTableProp_DEPRECATED(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
     }
     else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::RValue)
     {
-        auto result = lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
+        auto result = lookupTableProp_DEPRECATED(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
         if (!result.blockedTypes.empty() || result.propType)
             return result;
 
@@ -3507,10 +3506,10 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
                 }
             }
             else
-                return lookupTableProp(constraint, indexType, propName, context, inConditional, suppressSimplification, seen);
+                return lookupTableProp_DEPRECATED(constraint, indexType, propName, context, inConditional, suppressSimplification, seen);
         }
         else if (get<MetatableType>(mtt))
-            return lookupTableProp(constraint, mtt, propName, context, inConditional, suppressSimplification, seen);
+            return lookupTableProp_DEPRECATED(constraint, mtt, propName, context, inConditional, suppressSimplification, seen);
     }
     else if (auto ct = get<ExternType>(subjectType))
     {
@@ -3549,7 +3548,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         if (indexProp->second.isWriteOnly())
             return {{}, builtinTypes->errorType};
 
-        return lookupTableProp(constraint, *indexProp->second.readTy, propName, context, inConditional, suppressSimplification, seen);
+        return lookupTableProp_DEPRECATED(constraint, *indexProp->second.readTy, propName, context, inConditional, suppressSimplification, seen);
     }
     else if (auto ft = get<FreeType>(subjectType))
     {
@@ -3557,7 +3556,8 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
 
         if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
         {
-            TablePropLookupResult res = lookupTableProp(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
+            TablePropLookupResult res =
+                lookupTableProp_DEPRECATED(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
             // Here, res.propType is empty if res is a sealed table or a primitive that lacks the property.
             // When this happens, we still want to add to the upper bound of the type.
             if (res.propType)
@@ -3596,7 +3596,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
 
         for (TypeId ty : utv)
         {
-            auto result = lookupTableProp(constraint, ty, propName, context, inConditional, suppressSimplification, seen);
+            auto result = lookupTableProp_DEPRECATED(constraint, ty, propName, context, inConditional, suppressSimplification, seen);
             blocked.insert(blocked.end(), result.blockedTypes.begin(), result.blockedTypes.end());
             if (result.propType)
                 options.insert(*result.propType);
@@ -3633,7 +3633,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
 
         for (TypeId ty : itv)
         {
-            auto result = lookupTableProp(constraint, ty, propName, context, inConditional, suppressSimplification, seen);
+            auto result = lookupTableProp_DEPRECATED(constraint, ty, propName, context, inConditional, suppressSimplification, seen);
             blocked.insert(blocked.end(), result.blockedTypes.begin(), result.blockedTypes.end());
             if (result.propType)
                 options.insert(*result.propType);
@@ -3665,6 +3665,409 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     }
 
     return {{}, std::nullopt};
+}
+
+TablePropLookupResult ConstraintSolver::lookupTableProp(
+    NotNull<const Constraint> constraint,
+    TypeId subjectType,
+    const std::string& propName,
+    ValueContext context,
+    bool inConditional,
+    bool suppressSimplification
+)
+{
+    LUAU_ASSERT(FFlag::LuauNonreentrantLookupTableProp);
+    DenseHashMap<TypeId, std::optional<std::pair<TypeId, bool>>> cache;
+    TypeIds blockedTypes;
+
+    if (auto result = lookupTablePropHelper(constraint, subjectType, propName, context, blockedTypes, cache, inConditional, suppressSimplification))
+    {
+        return {blockedTypes.take(), result->first, result->second};
+    }
+
+    return {blockedTypes.take(), std::nullopt, false};
+}
+
+
+std::optional<std::pair<TypeId, bool>> ConstraintSolver::lookupTablePropHelper(
+    NotNull<const Constraint> constraint,
+    TypeId subjectType,
+    const std::string& propName,
+    ValueContext context,
+    TypeIds& blockedTypes,
+    DenseHashMap<TypeId, std::optional<std::pair<TypeId, bool>>>& cache,
+    bool inConditional,
+    bool suppressSimplification
+)
+{
+    LUAU_ASSERT(FFlag::LuauNonreentrantLookupTableProp);
+
+    subjectType = follow(subjectType);
+
+    if (auto entry = cache.find(subjectType))
+        return *entry;
+
+    cache[subjectType] = std::nullopt;
+
+    auto aux = [&]() -> std::optional<std::pair<TypeId, bool>>
+    {
+        if (isBlocked(subjectType))
+        {
+            blockedTypes.insert(subjectType);
+            return std::nullopt;
+        }
+        else if (get<AnyType>(subjectType) || get<NeverType>(subjectType) || get<ErrorType>(subjectType))
+        {
+            return {{subjectType, false}};
+        }
+        else if (auto ttv = getMutable<TableType>(subjectType))
+        {
+            if (auto prop = ttv->props.find(propName); prop != ttv->props.end())
+            {
+                switch (context)
+                {
+                case ValueContext::RValue:
+                    if (auto rt = prop->second.readTy)
+                        return {{*rt, false}};
+                    break;
+                case ValueContext::LValue:
+                    if (auto wt = prop->second.writeTy)
+                        return {{*wt, false}};
+                    break;
+                }
+            }
+
+            if (ttv->indexer)
+            {
+                if (isBlocked(ttv->indexer->indexType))
+                {
+                    blockedTypes.insert(ttv->indexer->indexType);
+                    return std::nullopt;
+                }
+
+                // CLI-169235: This is silly but this needs to use the same
+                // logic as `index<_, _>`
+                TypeId fauxLiteral = arena->addType(SingletonType{StringSingleton{propName}});
+                if (fastIsSubtype(fauxLiteral, ttv->indexer->indexType))
+                    return {{ttv->indexer->indexResultType, true}};
+            }
+
+            if (ttv->state == TableState::Free)
+            {
+                TypeId result = freshType(arena, builtinTypes, ttv->scope, Polarity::Mixed);
+                trackInteriorFreeType(ttv->scope, result);
+                switch (context)
+                {
+                case ValueContext::RValue:
+                    ttv->props[propName].readTy = result;
+                    break;
+                case ValueContext::LValue:
+                    if (auto it = ttv->props.find(propName); it != ttv->props.end() && it->second.isReadOnly())
+                    {
+                        // We do infer read-only properties, but we do not infer
+                        // separate read and write types.
+                        //
+                        // If we encounter a case where a free table has a read-only
+                        // property that we subsequently sense a write to, we make
+                        // the judgement that the property is read-write and that
+                        // both the read and write types are the same.
+
+                        Property& prop = it->second;
+
+                        prop.writeTy = prop.readTy;
+                        return {{*prop.readTy, false}};
+                    }
+                    else
+                        ttv->props[propName] = Property::rw(result);
+
+                    break;
+                }
+                return {{result, false}};
+            }
+
+            // If we are in a conditional context, we treat the property as present
+            // and `unknown` because we may be _refining_ a table to include that
+            // property.
+            if (FFlag::DebugLuauExactTableTypes)
+            {
+                if (inConditional && ttv->state != TableState::Exact)
+                    return {{builtinTypes->unknownType, false}};
+            }
+            else
+            {
+                if (inConditional)
+                    return {{builtinTypes->unknownType, false}};
+            }
+        }
+        else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::LValue)
+        {
+            // TODO __newindex: CLI-199848
+            return lookupTablePropHelper(constraint, mt->table, propName, context, blockedTypes, cache, inConditional, suppressSimplification);
+        }
+        else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::RValue)
+        {
+            auto result = lookupTablePropHelper(constraint, mt->table, propName, context, blockedTypes, cache, inConditional, suppressSimplification);
+            if (result || !blockedTypes.empty())
+                return result;
+
+            TypeId mtt = follow(mt->metatable);
+
+            if (get<BlockedType>(mtt))
+            {
+                blockedTypes.insert(mtt);
+                return {};
+            }
+            else if (auto metatable = get<TableType>(mtt))
+            {
+                auto indexProp = metatable->props.find("__index");
+                if (indexProp == metatable->props.end())
+                    return result;
+
+                // TODO: __index can be an overloaded function.
+
+                // if the property is write-only, then surely we cannot read from it.
+                if (indexProp->second.isWriteOnly())
+                    return {{builtinTypes->errorType, false}};
+
+                TypeId indexType = follow(*indexProp->second.readTy);
+
+                if (auto ft = get<FunctionType>(indexType))
+                {
+                    TypePack rets = extendTypePack(*arena, builtinTypes, ft->retTypes, 1);
+                    if (1 == rets.head.size())
+                        return {{rets.head[0], false}};
+                    else
+                    {
+                        // This should probably be an error: We need the first result of the MT.__index method,
+                        // but it returns 0 values.  See CLI-68672
+                        return {{builtinTypes->nilType, false}};
+                    }
+                }
+                else
+                    return lookupTablePropHelper(
+                        constraint, indexType, propName, context, blockedTypes, cache, inConditional, suppressSimplification
+                    );
+            }
+            else if (get<MetatableType>(mtt))
+                return lookupTablePropHelper(constraint, mtt, propName, context, blockedTypes, cache, inConditional, suppressSimplification);
+        }
+        else if (auto ct = get<ExternType>(subjectType))
+        {
+            if (auto p = lookupExternTypeProp(ct, propName))
+            {
+                switch (context)
+                {
+                case ValueContext::RValue:
+                    if (p->readTy)
+                        return {{*p->readTy, false}};
+                    break;
+                case ValueContext::LValue:
+                    if (p->writeTy)
+                        return {{*p->writeTy, false}};
+                    break;
+                default:
+                    LUAU_UNREACHABLE();
+                }
+                return std::nullopt;
+            }
+
+            if (FFlag::DebugLuauUserDefinedClasses)
+            {
+                if (ct->metatable)
+                {
+                    if (const TableType* tt = get<TableType>(*ct->metatable))
+                    {
+                        // For user-defined classes, the instance metatable holds metamethods (e.g. __add)
+                        // directly in its props rather than under an __index table.
+                        if (auto prop = tt->props.find(propName); prop != tt->props.end())
+                        {
+                            switch (context)
+                            {
+                            case ValueContext::RValue:
+                                if (prop->second.readTy)
+                                    return {{*prop->second.readTy, false}};
+                                break;
+                            case ValueContext::LValue:
+                                if (prop->second.writeTy)
+                                    return {{*prop->second.writeTy, false}};
+                                break;
+                            default:
+                                LUAU_UNREACHABLE();
+                            }
+                            return std::nullopt;
+                        }
+                    }
+                }
+            }
+
+            if (ct->indexer)
+                return {{ct->indexer->indexResultType, true}};
+        }
+        else if (auto pt = get<PrimitiveType>(subjectType); pt && pt->metatable)
+        {
+            const TableType* metatable = get<TableType>(follow(*pt->metatable));
+            LUAU_ASSERT(metatable);
+
+            auto indexProp = metatable->props.find("__index");
+            if (indexProp == metatable->props.end())
+                return std::nullopt;
+
+            // if the property is write-only, then surely we cannot read from it.
+            if (indexProp->second.isWriteOnly())
+                return {{builtinTypes->errorType, false}};
+
+            return lookupTablePropHelper(
+                constraint, *indexProp->second.readTy, propName, context, blockedTypes, cache, inConditional, suppressSimplification
+            );
+        }
+        else if (auto ft = get<FreeType>(subjectType))
+        {
+            const TypeId upperBound = follow(ft->upperBound);
+
+            if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
+            {
+                // Here, res is empty if res is a sealed table or a primitive that lacks the property.
+                // When this happens, we still want to add to the upper bound of the type.
+                if (auto res =
+                        lookupTablePropHelper(constraint, upperBound, propName, context, blockedTypes, cache, inConditional, suppressSimplification))
+                    return res;
+            }
+
+            NotNull<Scope> scope{ft->scope};
+
+            const TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, scope});
+
+            trackInteriorFreeType(constraint->scope, newUpperBound);
+
+            TableType* tt = getMutable<TableType>(newUpperBound);
+            LUAU_ASSERT(tt);
+            TypeId propType = freshType(arena, builtinTypes, scope, Polarity::Mixed);
+            trackInteriorFreeType(scope, propType);
+
+            switch (context)
+            {
+            case ValueContext::RValue:
+                tt->props[propName] = Property::readonly(propType);
+                break;
+            case ValueContext::LValue:
+                tt->props[propName] = Property::rw(propType);
+                break;
+            }
+
+            unify(constraint, subjectType, newUpperBound);
+
+            return {{propType, false}};
+        }
+        else if (auto utv = get<UnionType>(subjectType))
+        {
+            std::set<TypeId> options;
+
+            if (context == ValueContext::LValue)
+            {
+                bool isIndex = true;
+
+                for (TypeId ty : utv)
+                {
+                    if (auto res =
+                            lookupTablePropHelper(constraint, ty, propName, context, blockedTypes, cache, inConditional, suppressSimplification))
+                    {
+                        options.insert(res->first);
+                        isIndex &= res->second;
+                    }
+                }
+
+
+                // If we're in an lvalue context, we need the common type here,
+                // so if there are more than one result types then we mint an
+                // intersection.
+
+                if (options.empty())
+                    return std::nullopt;
+                else if (options.size() == 1)
+                    return {{*begin(options), isIndex}};
+                else if (options.size() == 2 && !suppressSimplification)
+                {
+                    TypeId one = *begin(options);
+                    TypeId two = *(++begin(options));
+
+                    return {{simplifyIntersection(constraint->scope, constraint->location, one, two), isIndex}};
+                }
+                else
+                    return {{arena->addType(IntersectionType{std::vector<TypeId>(begin(options), end(options))}), isIndex}};
+            }
+            else
+            {
+                LUAU_ASSERT(context == ValueContext::RValue);
+                bool isIndex = false;
+
+                for (TypeId ty : utv)
+                {
+                    if (auto res =
+                            lookupTablePropHelper(constraint, ty, propName, context, blockedTypes, cache, inConditional, suppressSimplification))
+                    {
+                        options.insert(res->first);
+                        isIndex |= res->second;
+                    }
+                }
+
+                if (options.empty())
+                    return std::nullopt;
+                else if (options.size() == 1)
+                    return {{*begin(options), isIndex}};
+                else if (options.size() == 2 && !suppressSimplification)
+                {
+                    TypeId one = *begin(options);
+                    TypeId two = *(++begin(options));
+
+                    return {{simplifyUnion(constraint->scope, constraint->location, one, two), isIndex}};
+                }
+                else
+                    return {{arena->addType(UnionType{std::vector<TypeId>(begin(options), end(options))}), isIndex}};
+            }
+        }
+        else if (auto itv = get<IntersectionType>(subjectType))
+        {
+            std::set<TypeId> options;
+            bool isIndex = true;
+
+            for (TypeId ty : itv)
+            {
+                if (auto res = lookupTablePropHelper(constraint, ty, propName, context, blockedTypes, cache, inConditional, suppressSimplification))
+                {
+
+                    options.insert(res->first);
+                    isIndex &= res->second;
+                }
+            }
+
+            if (options.empty())
+                return std::nullopt;
+            else if (options.size() == 1)
+                return {{*begin(options), isIndex}};
+            else if (options.size() == 2 && !suppressSimplification)
+            {
+                TypeId one = *begin(options);
+                TypeId two = *(++begin(options));
+                return {{simplifyIntersection(constraint->scope, constraint->location, one, two), isIndex}};
+            }
+            else
+                return {{arena->addType(IntersectionType{std::vector<TypeId>(begin(options), end(options))}), isIndex}};
+        }
+        else if (auto pt = get<PrimitiveType>(subjectType))
+        {
+            // if we are in a conditional context, we treat the property as present
+            // and `unknown` because we may be _refining_ a table to include that
+            // property.
+            if (inConditional && pt->type == PrimitiveType::Table)
+                return {{builtinTypes->unknownType, false}};
+        }
+
+        return std::nullopt;
+    };
+
+    auto result = aux();
+    cache[subjectType] = result;
+    return result;
 }
 
 template<typename TID>

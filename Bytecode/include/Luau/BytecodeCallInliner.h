@@ -9,6 +9,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+LUAU_FASTFLAG(LuauInlinerNamecallSelfFromMove)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+
 namespace Luau
 {
 namespace Bytecode
@@ -135,6 +138,13 @@ struct CallInliner
         // But MOVE target already has a table at this point.
         namecall.setTable(move.op());
 
+        // NAMECALL is moved to the fallback call block, so its self projection doesn't dominate the inlined body, which reads self from the MOVE
+        if (FFlag::LuauInlinerNamecallSelfFromMove)
+        {
+            LUAU_ASSERT(!callParams.empty());
+            callParams[0] = move.op();
+        }
+
         BcGetTableKS getTableKS = BcGetTableKS<VmConst>::create(caller);
         getTableKS.setSource(move.op());
         getTableKS.setHint(namecall.Hint());
@@ -175,6 +185,9 @@ struct CallInliner
 
     uint32_t mapInstIndex(uint32_t index)
     {
+        if (index == kInvalidInstIdx)
+            return kInvalidInstIdx;
+
         return callerInstSizeBeforeInline + index;
     }
 
@@ -212,6 +225,8 @@ struct CallInliner
         {
             if (slot.kind == LFT_CALLTARGET)
                 slot.callTarget.inst = mapInstIndex(slot.callTarget.inst);
+            else if (slot.kind == LFT_CONSTRUCT)
+                slot.construct.shape = mapVmConstIndex(slot.construct.shape);
             else
                 LUAU_ASSERT(!"unknown feedback slot kind");
 
@@ -636,6 +651,12 @@ struct CallInliner
 
                 break;
             }
+            case LOP_CONSTRUCT:
+            {
+                BcConstruct<VmConst> construct = BcConstruct<VmConst>::from(caller, callerInst);
+                construct.setFbSlot(construct.FbSlot() + callerFeedbackSlotSizeBeforeInline);
+                break;
+            }
             default:
                 break;
             }
@@ -727,6 +748,17 @@ struct CallInliner
         // inlining of upvalues is not supported yet
         if (target.nups > 0)
             return false;
+
+        if (FFlag::DebugLuauUserDefinedClassesRuntime)
+        {
+            // inlining private field namecalls is not supported yet
+            if (BcOp callTarget = call.Target(); callTarget.kind == BcOpKind::Proj)
+            {
+                BcOp producer = caller.projOp(callTarget).op;
+                if (producer.kind == BcOpKind::Inst && caller.instOp(producer).op == LOP_GETPRIVATEFIELD)
+                    return false;
+            }
+        }
 
         caller.maxstacksize = newMaxStackSize;
 

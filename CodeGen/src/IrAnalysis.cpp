@@ -11,8 +11,6 @@
 #include <algorithm>
 #include <bitset>
 
-#include <stddef.h>
-
 namespace Luau
 {
 namespace CodeGen

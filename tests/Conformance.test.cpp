@@ -13,6 +13,7 @@
 #include "Luau/TypeInfer.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Frontend.h"
+#include "Luau/JitInliner.h"
 #include "Luau/Compiler.h"
 #include "Luau/CodeGen.h"
 #include "Luau/BytecodeSummary.h"
@@ -56,36 +57,35 @@ void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauBytecodeFold)
+LUAU_FASTFLAG(LuauBytecodeSlotAlloc)
+LUAU_FASTFLAG(LuauCodegenA64BitlrotateSelf)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCodegenMarkUsed)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauTableArrayAdjustCheck)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
+LUAU_FASTFLAG(LuauCodegenA64ReloadLargeConstOffset)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
-LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauGcTraceUdata)
-LUAU_FASTFLAG(LuauEnumMoreEdges)
-LUAU_DYNAMIC_FASTFLAG(LuauTableMoveTimeoutFix)
 LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
-LUAU_FASTFLAG(LuauFastpcallInterrupt)
+LUAU_FASTFLAG(LuauPcallErrorContinuationReentry)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
-LUAU_FASTFLAG(LuauVirtualBcBuilder)
-LUAU_FASTFLAG(LuauNewPointerEncode)
-LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 LUAU_FASTFLAG(LuauBufferCage)
-LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
-LUAU_FASTFLAG(DebugLuauCoroutineFinally)
-LUAU_FASTFLAG(DebugLuauCoroutineFinallyAnalysis)
+LUAU_FASTFLAG(LuauCoroutineFinally)
+LUAU_FASTFLAG(LuauCoroutineFinallyAnalysis)
+LUAU_FASTFLAG(LuauCodegenDseTrackTagInvalidation)
+LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauCompileCallFbRemap)
 LUAU_DYNAMIC_FASTFLAG(LuauTableRobustOom)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -127,6 +127,7 @@ static Luau::CodeGen::CompilationOptions defaultCodegenOptions()
 {
     Luau::CodeGen::CompilationOptions opts = {};
     opts.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+    opts.runtimeFeedback = true;
     return opts;
 }
 
@@ -191,12 +192,7 @@ static int lua_vector_cross(lua_State* L)
     const LUA_VECTOR_TYPE* a = luaL_checkvector(L, 1);
     const LUA_VECTOR_TYPE* b = luaL_checkvector(L, 2);
 
-#if LUA_VECTOR_SIZE == 4
-    lua_pushvector(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0], 0.0f);
-#else
-    lua_pushvector(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
-#endif
-
+    lua_pushvector3(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
     return 1;
 }
 
@@ -208,9 +204,9 @@ static int lua_vector_index(lua_State* L)
     if (strcmp(name, "Magnitude") == 0)
     {
 #if LUA_VECTOR_SIZE == 4
-        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]));
+        lua_pushnumber(L, sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3])));
 #else
-        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+        lua_pushnumber(L, sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])));
 #endif
         return 1;
     }
@@ -218,11 +214,11 @@ static int lua_vector_index(lua_State* L)
     if (strcmp(name, "Unit") == 0)
     {
 #if LUA_VECTOR_SIZE == 4
-        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+        float invSqrt = 1.0f / sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]));
 
         lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt, v[3] * invSqrt);
 #else
-        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        float invSqrt = 1.0f / sqrtf(float(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
 
         lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt);
 #endif
@@ -395,6 +391,8 @@ static StateRef runConformance(
 
     if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
     {
+        Luau::CodeGen::enableRuntimeCompilation(L, nativeOpts, /* promoteVmFunctions */ false);
+
         Luau::CodeGen::CompilationResult result = Luau::CodeGen::compile(L, -1, nativeOpts);
 
         CHECK(result.result == Luau::CodeGen::CodeGenCompilationResult::Success);
@@ -464,10 +462,11 @@ static StateRef runConformance(
         Luau::CodeGen::AssemblyOptions assemblyOptions;
         assemblyOptions.compilationOptions = nativeOpts;
 
-        assemblyOptions.includeAssembly = true;
-        assemblyOptions.includeIr = true;
-        assemblyOptions.includeOutlinedCode = true;
-        assemblyOptions.includeIrTypes = true;
+        assemblyOptions.outputBinary = true;
+        assemblyOptions.includeAssembly = false;
+        assemblyOptions.includeIr = false;
+        assemblyOptions.includeOutlinedCode = false;
+        assemblyOptions.includeIrTypes = false;
 
         Luau::CodeGen::LoweringStats stats;
         stats.functionStatsFlags = Luau::CodeGen::FunctionStatsFlags::FunctionStats_Enable;
@@ -541,11 +540,7 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 void setupVectorHelpers(lua_State* L)
 {
-#if LUA_VECTOR_SIZE == 4
-    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
-#else
-    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
-#endif
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
     luaL_newmetatable(L, "vector");
 
     lua_pushstring(L, "__index");
@@ -834,6 +829,25 @@ static int lua_vertex_namecall(lua_State* L)
     }
 
     luaL_error(L, "%s is not a valid method of vertex", luaL_checkstring(L, 1));
+}
+
+static uint8_t remapUserdataTypes(void* context, const char* str, size_t len)
+{
+    const char** types = (const char**)context;
+
+    uint8_t index = 0;
+
+    std::string_view sv{str, len};
+
+    for (; *types; ++types)
+    {
+        if (sv == *types)
+            return index;
+
+        index++;
+    }
+
+    return 0xff;
 }
 
 void setupUserdataHelpers(lua_State* L)
@@ -1406,8 +1420,6 @@ TEST_CASE("Sort")
 
 TEST_CASE("Move")
 {
-    ScopedFastFlag luauTableMoveTimeoutFix{DFFlag::LuauTableMoveTimeoutFix, true};
-    ScopedFastFlag luauTableArrayAdjustCheck{FFlag::LuauTableArrayAdjustCheck, true};
 
     runConformance("move.luau");
 }
@@ -1477,14 +1489,33 @@ TEST_CASE("JitInliner")
 {
     ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauBytecodeFold{FFlag::LuauBytecodeFold, true};
-    ScopedFastFlag luauVirtualBuilder{FFlag::LuauVirtualBcBuilder, true};
+    ScopedFastFlag luauBytecodeSlotAlloc{FFlag::LuauBytecodeSlotAlloc, true};
+    ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag debugLuauUserDefinedClassesRuntime{FFlag::DebugLuauUserDefinedClassesRuntime, true};
+    bool recordCounters = false;
+
+    SUBCASE("Default") {}
+    SUBCASE("RecordCounters")
+    {
+        recordCounters = true;
+    }
+
+    Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
+    nativeOpts.recordCounters = recordCounters;
+
+    void (*setup)(lua_State* L) = nullptr;
+
+    // if the tests weren't run with --jit-inliner, we still need to run the enable jit inliner function for this test
+    if (!jitInliner)
+        setup = luau_enable_jit_inliner;
 
     // Test it even when it is not enabled for all tests
     bool wasEnabled = jitInliner;
     jitInliner = true;
 
-    StateRef globalState = runConformance("jit_inliner.luau", nullptr, nullptr, nullptr, nullptr, /*skipCodegen=*/true);
+    StateRef globalState = runConformance("jit_inliner.luau", setup, nullptr, nullptr, nullptr, /*skipCodegen=*/false, &nativeOpts);
     jitInliner = wasEnabled;
+
 
     lua_State* L = globalState.get();
 
@@ -1515,6 +1546,56 @@ TEST_CASE("JitInliner")
         CHECK(strstr(luaL_checkstring(T, -1), "timeout") != nullptr);
 
         lua_pop(L, 1);
+    }
+
+    {
+        lua_State* T = lua_newthread(L);
+        lua_getglobal(T, "fuzzfail_stale_feedback_pc");
+
+        // the snippet needs more than the default 1000-instruction interrupt limit enabled above
+        lua_callbacks(T)->interrupt = nullptr;
+        int status = lua_resume(T, nullptr, 0);
+        CHECK(status == 0);
+
+        lua_pop(L, 1);
+    }
+
+    {
+        lua_getglobal(L, "counters_proto_promotion");
+        int status = lua_pcall(L, 0, 0, 0);
+        CHECK(status == LUA_OK);
+
+        if (recordCounters && codegen && luau_codegen_supported() == 1)
+        {
+            struct CounterStats
+            {
+                int functions = 0;
+                uint64_t hits = 0;
+            } stats;
+
+            lua_getglobal(L, "counters_proto_promotion");
+            lua_getcounters(
+                L,
+                -1,
+                &stats,
+                [](void* context, const char* function, int linedefined)
+                {
+                    CounterStats* stats = static_cast<CounterStats*>(context);
+
+                    stats->functions++;
+                },
+                [](void* context, int kind, int line, uint64_t hits)
+                {
+                    CounterStats* stats = static_cast<CounterStats*>(context);
+
+                    stats->hits += hits;
+                }
+            );
+            lua_pop(L, 1);
+
+            CHECK(stats.functions > 0);
+            CHECK(stats.hits > 0);
+        }
     }
 }
 
@@ -1562,6 +1643,8 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
+    ScopedFastFlag luauCodegenA64BitlrotateSelf{FFlag::LuauCodegenA64BitlrotateSelf, true};
+
     runConformance("bitwise.luau");
 }
 
@@ -1572,14 +1655,28 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
-    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+    ScopedFastFlag luauCoroutineFinally{FFlag::LuauCoroutineFinally, true};
 
     runConformance("coroutine.luau");
 }
 
+static int runFinalizers(lua_State* L, bool toclose)
+{
+    lua_State* co = lua_tothread(L, 1);
+    lua_State* NL = lua_newthread(L);
+    lua_pushfinalizerfunction(NL, co, toclose ? 1 : 0);
+
+    int status = lua_resume(NL, nullptr, 0);
+    int results = status == LUA_OK ? lua_gettop(NL) : 1;
+
+    lua_pushboolean(L, status == LUA_OK ? 1 : 0);
+    lua_xmove(NL, L, results);
+    return results + 1;
+}
+
 TEST_CASE("CoroutineHost")
 {
-    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+    ScopedFastFlag luauCoroutineFinally{FFlag::LuauCoroutineFinally, true};
 
     runConformance(
         "coroutinehost.luau",
@@ -1598,16 +1695,7 @@ TEST_CASE("CoroutineHost")
                         return 0;
 
                     if (lua_hasfinalizers(co))
-                    {
-                        lua_State* NL = lua_newthread(L);
-                        lua_pushfinalizerfunction(NL);
-                        lua_xpush(L, NL, 1);
-                        status = lua_resume(NL, nullptr, 1);
-                        int results = status == LUA_OK ? lua_gettop(NL) : 1;
-                        lua_pushboolean(L, status == LUA_OK);
-                        lua_xmove(NL, L, results);
-                        return results + 1;
-                    }
+                        return runFinalizers(L, /* toclose */ false);
 
                     // no need to handle 'co' results here, test cases here all use finalizers
                     return 0;
@@ -1617,6 +1705,26 @@ TEST_CASE("CoroutineHost")
                 nullptr
             );
             lua_setglobal(L, "hostresume");
+
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L) -> int
+                {
+                    luaL_checktype(L, 1, LUA_TTHREAD);
+                    lua_State* co = lua_tothread(L, 1);
+
+                    if (lua_hasfinalizers(co))
+                        return runFinalizers(L, true);
+
+                    lua_resetthread(co);
+                    lua_pushboolean(L, true);
+                    return 1;
+                },
+                "hostcancel",
+                0,
+                nullptr
+            );
+            lua_setglobal(L, "hostcancel");
         }
     );
 }
@@ -1907,6 +2015,7 @@ int pcallThenXCallContinuation(lua_State* L, int status)
 
 TEST_CASE("CYield")
 {
+    ScopedFastFlag luauPcallErrorContinuationReentry{FFlag::LuauPcallErrorContinuationReentry, true};
     runConformance(
         "cyield.luau",
         [](lua_State* L)
@@ -1948,7 +2057,6 @@ TEST_CASE("CYield")
 
 TEST_CASE("Vector")
 {
-    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
     ScopedFastFlag luauCompileNoFoldVectorEqW{FFlag::LuauCompileNoFoldVectorEqW, true};
 
     lua_CompileOptions copts = defaultOptions();
@@ -2007,8 +2115,6 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
-
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")
@@ -2117,7 +2223,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 TEST_CASE("Types")
 {
     ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
-    ScopedFastFlag DebugLuauCoroutineFinallyAnalysis{FFlag::DebugLuauCoroutineFinallyAnalysis, FFlag::DebugLuauCoroutineFinally};
+    ScopedFastFlag luauCoroutineFinallyAnalysis{FFlag::LuauCoroutineFinallyAnalysis, FFlag::LuauCoroutineFinally};
 
     runConformance(
         "types.luau",
@@ -2170,7 +2276,7 @@ bool findLocal(lua_State* L, int level, const char* name)
 
 TEST_CASE("Debugger")
 {
-    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+    ScopedFastFlag luauCoroutineFinally{FFlag::LuauCoroutineFinally, true};
 
     static int breakhits = 0;
     static lua_State* interruptedthread = nullptr;
@@ -3292,8 +3398,6 @@ TEST_CASE("ApiEncode")
         CHECK(a == b);
     }
 
-    ScopedFastFlag luauNewPointerEncode{FFlag::LuauNewPointerEncode, true};
-
     // A few exact value tests
     if (sizeof(void*) == 8)
     {
@@ -3412,8 +3516,14 @@ TEST_CASE("IfElseExpression")
 
 TEST_CASE("IfLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauCompileUndoEmitAdjust, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
     runConformance("iflocal.luau");
+}
+
+TEST_CASE("WhileLocal")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}};
+    runConformance("whilelocal.luau");
 }
 
 // Optionally returns debug info for the first Luau stack frame that is encountered on the callstack.
@@ -3638,7 +3748,6 @@ struct Heap
 
 TEST_CASE("GCDump")
 {
-    ScopedFastFlag luauEnumMoreEdges{FFlag::LuauEnumMoreEdges, true};
     ScopedFastFlag luauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
     ScopedFastFlag luauUserDefinedClassesRuntime{FFlag::DebugLuauUserDefinedClassesRuntime, true};
 
@@ -3695,8 +3804,22 @@ foo()
 
 class HeapClass
     public value
+    private _hidden
+
+    public function __init(self, val)
+        self.value = val
+        self._hidden = val
+    end
+
+    private function _tag(self)
+        return self._hidden
+    end
+
+    function tag(self)
+        return self:_tag()
+    end
 end
-local object = HeapClass { value = x }
+local object = HeapClass(x)
 
 return f, object
 )";
@@ -3748,11 +3871,14 @@ return f, object
                 if (tt == LUA_TUSERDATA)
                     CHECK(sv == "u42");
                 else if (tt == LUA_TPROTO)
-                    CHECK((sv == "proto unnamed:1 =GCDump" || sv == "proto foo:7 =GCDump" || sv == "proto f:4 =GCDump"));
+                    CHECK(
+                        (sv == "proto unnamed:1 =GCDump" || sv == "proto foo:7 =GCDump" || sv == "proto f:4 =GCDump" ||
+                         sv == "proto __init:17 =GCDump" || sv == "proto _tag:22 =GCDump" || sv == "proto tag:26 =GCDump")
+                    );
                 else if (tt == LUA_TFUNCTION)
                     CHECK(
-                        (sv == "test" || sv == "unnamed:1 =GCDump" || sv == "foo:7 =GCDump" || sv == "f:4 =GCDump" ||
-                         sv == "luaR_defaultcreateobject" || sv == "luaR_constructobject")
+                        (sv == "test" || sv == "unnamed:1 =GCDump" || sv == "foo:7 =GCDump" || sv == "f:4 =GCDump" || sv == "__init:17 =GCDump" ||
+                         sv == "_tag:22 =GCDump" || sv == "tag:26 =GCDump" || sv == "luaR_defaultcreateobject" || sv == "luaR_constructobject")
                     );
                 else if (tt == LUA_TTHREAD)
                     CHECK(sv == "thread at unnamed:1 =GCDump");
@@ -3803,8 +3929,6 @@ return f, object
 
 TEST_CASE("Interrupt")
 {
-    ScopedFastFlag luauFastpcallInterrupt{FFlag::LuauFastpcallInterrupt, true};
-
     lua_CompileOptions copts = defaultOptions();
     copts.optimizationLevel = 1; // disable loop unrolling to get fixed expected hit results
 
@@ -4093,6 +4217,7 @@ TEST_CASE("WeakRefSurvivesWhenMarked")
     struct State
     {
         int ref = LUA_REFNIL;
+        bool marked = false;
     };
     State state;
 
@@ -4107,10 +4232,24 @@ TEST_CASE("WeakRefSurvivesWhenMarked")
 
     lua_setembeddergc(
         L,
-        [](lua_State* L, lua_EmbedderMark markref)
+        [](lua_State* L, lua_EmbedderMark markref) -> int
         {
-            if (markref)
-                markref(L, static_cast<State*>(lua_getthreaddata(L))->ref);
+            State* s = static_cast<State*>(lua_getthreaddata(L));
+            if (!markref)
+            {
+                // cycle reset
+                s->marked = false;
+                return 0;
+            }
+            else
+            {
+                // mark phase
+                if (s->marked)
+                    return 0;
+                s->marked = true;
+                markref(L, s->ref);
+                return 1;
+            }
         }
     );
 
@@ -4136,8 +4275,13 @@ TEST_CASE("WeakRefCollectedWhenNotMarked")
     int ref = lua_weakref(L, -1);
     lua_pop(L, 1);
 
-    // An unsound embedder mark callback that fails to mark the embedder ref
-    lua_setembeddergc(L, [](lua_State*, lua_EmbedderMark) {});
+    lua_setembeddergc(
+        L,
+        [](lua_State*, lua_EmbedderMark) -> int
+        {
+            return 0;
+        }
+    );
 
     lua_gc(L, LUA_GCCOLLECT, 0);
     REQUIRE(lua_getweakref(L, ref) == LUA_TNIL);
@@ -4177,7 +4321,7 @@ TEST_CASE("WeakRefFullChain")
     // If the native object is marked, mark the ref that it logically owns
     lua_setembeddergc(
         L,
-        [](lua_State* L, lua_EmbedderMark markref)
+        [](lua_State* L, lua_EmbedderMark markref) -> int
         {
             State* s = static_cast<State*>(lua_getthreaddata(L));
             if (!markref)
@@ -4186,16 +4330,19 @@ TEST_CASE("WeakRefFullChain")
                 s->nativeObjectMarked = false;
                 s->marksRequested = 0;
                 s->marksPerformed = 0;
+                return 0;
             }
             else
             {
                 // mark requested
                 s->marksRequested++;
-                if (s->nativeObjectMarked)
+                if (s->nativeObjectMarked && s->marksPerformed == 0)
                 {
                     s->marksPerformed++;
                     markref(L, s->callbackRef);
+                    return 1;
                 }
+                return 0;
             }
         }
     );
@@ -4217,7 +4364,7 @@ TEST_CASE("WeakRefFullChain")
     CHECK(lua_topointer(L, -1) == tablePtr);
     lua_pop(L, 1);
     CHECK(state.marksRequested == 2);
-    CHECK(state.marksPerformed == 2);
+    CHECK(state.marksPerformed == 1);
 
     // Cycle 2: userdata unreachable -> ... -> table never marked and collected
     lua_unref(L, udRef);
@@ -4631,6 +4778,11 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
+    ScopedFastFlag luauCodegenMarkUsed{FFlag::LuauCodegenMarkUsed, true};
+    ScopedFastFlag reloadLargeConstOffset{FFlag::LuauCodegenA64ReloadLargeConstOffset, true};
+    ScopedFastFlag luauCodegenDseTrackTagInvalidation{FFlag::LuauCodegenDseTrackTagInvalidation, true};
+    ScopedFastFlag luauCodegenCmpAnySideEffecting{FFlag::LuauCodegenCmpAnySideEffecting, true};
+
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -4780,28 +4932,7 @@ TEST_CASE("NativeUserdata")
         "native_userdata.luau",
         [](lua_State* L)
         {
-            Luau::CodeGen::setUserdataRemapper(
-                L,
-                kUserdataRunTypes,
-                [](void* context, const char* str, size_t len) -> uint8_t
-                {
-                    const char** types = (const char**)context;
-
-                    uint8_t index = 0;
-
-                    std::string_view sv{str, len};
-
-                    for (; *types; ++types)
-                    {
-                        if (sv == *types)
-                            return index;
-
-                        index++;
-                    }
-
-                    return 0xff;
-                }
-            );
+            Luau::CodeGen::setUserdataRemapper(L, kUserdataRunTypes, remapUserdataTypes);
 
             setupVectorHelpers(L);
             setupUserdataHelpers(L);
@@ -4855,10 +4986,8 @@ TEST_CASE("Classes")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true},
-        {FFlag::LuauVirtualBcBuilder, true}
+        {FFlag::LuauBytecodeCostModel, true}
     };
 
     runConformance("classes.luau");
@@ -5129,76 +5258,6 @@ TEST_CASE("ExportEdgeCase")
 
     int status = lua_resume(L, nullptr, 0);
     REQUIRE(status == 0);
-}
-
-TEST_CASE("LargeModuleA64")
-{
-    std::string source;
-
-    for (int i = 0; i < 60; i++)
-    {
-        source += "function filler" + std::to_string(i) + "(x: number)\n";
-
-        for (int k = 1; k <= 2000; k++)
-            source += "    x = x + " + std::to_string(k) + "\n";
-
-        source += "    return x\nend\n";
-    }
-
-    // Constants are chosen in a way that cannot be lowered for fmov and will allocate in the data section
-    source += "function trigger(x: number)\n";
-    source += "    x = x + 0.1\n";
-    source += "    x = x + 0.3\n";
-    source += "    return x\n";
-    source += "end\n";
-
-    source += "return math.floor(trigger(1) * 100000)\n";
-
-    StateRef globalState(luaL_newstate(), lua_close);
-    lua_State* L = globalState.get();
-
-    if (luau_codegen_supported() != 0)
-        luau_codegen_create(L);
-
-    luaL_openlibs(L);
-
-    lua_CompileOptions opts = defaultOptions();
-    opts.optimizationLevel = 2;
-
-    size_t bytecodeSize = 0;
-    char* bytecode = luau_compile(source.data(), source.size(), &opts, &bytecodeSize);
-    int result = luau_load(L, "=LargeModuleA64", bytecode, bytecodeSize, 0);
-    free(bytecode);
-
-    REQUIRE(result == 0);
-
-    if (luau_codegen_supported() != 0)
-    {
-        Luau::CodeGen::AssemblyOptions assemblyOptions;
-        assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
-        assemblyOptions.includeAssembly = true;
-
-        Luau::CodeGen::LoweringStats stats;
-        stats.functionStatsFlags = Luau::CodeGen::FunctionStatsFlags::FunctionStats_Enable;
-
-        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::A64;
-        std::string a64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions, &stats);
-        CHECK(!a64.empty());
-
-        CHECK(stats.regAllocErrors == 0);
-        CHECK(stats.loweringErrors == 0);
-    }
-
-    if (codegen && luau_codegen_supported() != 0)
-    {
-        Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
-        Luau::CodeGen::compile(L, -1, nativeOptions);
-    }
-
-    int status = lua_resume(L, nullptr, 0);
-    REQUIRE(status == 0);
-
-    CHECK(lua_tonumber(L, -1) == 140000);
 }
 
 TEST_CASE("IrInstructionLimit")
@@ -5544,7 +5603,6 @@ TEST_CASE("ClassInheritanceRepeatedCallMemberOffsetCorruption")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
         {FFlag::LuauBytecodeCostModel, true},
     };
@@ -5600,6 +5658,56 @@ TEST_CASE("SandboxFreezesVectorMetatable")
 
     CHECK(lua_getmetatable(L, -1));
     CHECK(lua_getreadonly(L, -1));
+}
+
+TEST_CASE("JitInlinerLongJump")
+{
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag luauCompileCallFbRemap{FFlag::LuauCompileCallFbRemap, true};
+
+    std::string source;
+    source += "local function target(x) return x + 1 end\n";
+    source += "local function caller(c, n)\n";
+    source += "  if c then\n";
+
+    for (int i = 0; i < 40000; i++)
+        source += "    n = n + 1\n";
+
+    source += "  end\n";
+    source += "  local r = target(n)\n";
+    source += "  return r\n";
+    source += "end\n";
+    source += "local s = 0\n";
+    source += "for i = 1, 1000 do s = s + caller(false, i) end\n";
+    source += "return s\n";
+
+    bool wasEnabled = jitInliner;
+    jitInliner = true;
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    luau_enable_jit_inliner(L);
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    lua_CompileOptions copts = defaultOptions();
+    copts.optimizationLevel = 1;
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), &copts, &bytecodeSize);
+    int result = luau_load(L, "=JitInlinerLongJump", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    int status = lua_resume(L, nullptr, 0);
+    REQUIRE(status == 0);
+
+    CHECK(lua_tonumber(L, -1) == 501500);
+
+    jitInliner = wasEnabled;
 }
 
 TEST_SUITE_END();

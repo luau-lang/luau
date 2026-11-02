@@ -1,0 +1,3 @@
+./analysis/singletons/table_properties_singleton_strings.luau(11,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+./analysis/singletons/table_properties_singleton_strings.luau(12,7): LocalUnused: Variable 'b' is never used; prefix with '_' to silence
+./analysis/singletons/table_properties_singleton_strings.luau(13,7): LocalUnused: Variable 'c' is never used; prefix with '_' to silence

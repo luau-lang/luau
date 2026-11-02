@@ -7,6 +7,9 @@
 
 #include <optional>
 
+LUAU_FASTFLAG(LuauCodegenUpdateSafeEnvList)
+LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
+
 namespace Luau
 {
 namespace CodeGen
@@ -107,6 +110,8 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
     case IrCmd::FALLBACK_NAMECALL:
     case IrCmd::FALLBACK_FORGPREP:
         return true;
+    case IrCmd::INVOKE_FASTPCALL:
+        return FFlag::LuauCodegenUpdateSafeEnvList;
     default:
         break;
     }
@@ -123,6 +128,9 @@ inline bool isPseudo(IrCmd cmd)
 inline bool hasSideEffects(IrCmd cmd)
 {
     if (cmd == IrCmd::INVOKE_FASTCALL)
+        return true;
+
+    if (FFlag::LuauCodegenCmpAnySideEffecting && cmd == IrCmd::CMP_ANY)
         return true;
 
     if (isPseudo(cmd))

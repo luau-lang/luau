@@ -1,0 +1,1 @@
+./analysis/singletons/table_properties_singleton_strings_mismatch.luau(7,14): TypeError: Expected this to be 'string', but got 'number'

@@ -403,6 +403,11 @@ struct BcFeedbackSlot
         {
             uint32_t inst;
         } callTarget;
+
+        struct
+        {
+            uint32_t shape;
+        } construct;
     };
 };
 

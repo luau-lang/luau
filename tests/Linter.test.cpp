@@ -8,10 +8,9 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
-
-LUAU_FASTFLAG(LuauImproveDeprecatedLint)
 
 using namespace Luau;
 
@@ -544,6 +543,31 @@ return foo1
 )");
 
     REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "UnreachableCodeGroupedErrorCall")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    LintResult result = lint(R"(
+function ungrouped()
+    error("message")
+    print("unreachable")
+end
+
+function grouped()
+    (error)("message")
+    print("unreachable")
+end
+
+return ungrouped, grouped
+)");
+
+    REQUIRE(2 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].location.begin.line, 3);
+    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always errors)");
+    CHECK_EQ(result.warnings[1].location.begin.line, 8);
+    CHECK_EQ(result.warnings[1].text, "Unreachable code (previous statement always errors)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeErrorReturnNonSilentBranchy")
@@ -1890,7 +1914,6 @@ foo()
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTable")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
 
     LintResult result = lint(R"(
         local module = {}
@@ -1927,7 +1950,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTabl
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
 
     LintResult result = lint(R"(
         local module = {}
@@ -1965,7 +1987,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTabl
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnNestedCompositeFunctions")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauImproveDeprecatedLint, true};
 
     LintResult result = lint(R"(
         local deprecatedNumber = @deprecated function(value: number): number

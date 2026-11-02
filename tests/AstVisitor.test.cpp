@@ -6,6 +6,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
 
 using namespace Luau;
 
@@ -134,6 +135,46 @@ TEST_CASE_FIXTURE(Fixture, "IfLocalAnnotationVisit")
     CHECK(v[4]->is<AstExprGlobal>());
     CHECK(v[5]->is<AstStatBlock>());
     CHECK(v[6]->is<AstStatReturn>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "WhileLocalAnnotationVisit")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}};
+
+    AstStatBlock* block = parse(R"(
+        while local a: number = foo() do break end
+    )");
+
+    AstTypeVisitorTrackingWiths v;
+    block->visit(&v);
+
+    CHECK(v[0]->is<AstStatBlock>());
+    CHECK(v[1]->is<AstStatWhile>());
+    CHECK(v[2]->is<AstTypeReference>());
+    CHECK(v[3]->is<AstExprCall>());
+    CHECK(v[4]->is<AstExprGlobal>());
+    CHECK(v[5]->is<AstStatBlock>());
+    CHECK(v[6]->is<AstStatBreak>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "WhileConstAnnotationVisit")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}};
+
+    AstStatBlock* block = parse(R"(
+        while const a: number = foo() do break end
+    )");
+
+    AstTypeVisitorTrackingWiths v;
+    block->visit(&v);
+
+    CHECK(v[0]->is<AstStatBlock>());
+    CHECK(v[1]->is<AstStatWhile>());
+    CHECK(v[2]->is<AstTypeReference>());
+    CHECK(v[3]->is<AstExprCall>());
+    CHECK(v[4]->is<AstExprGlobal>());
+    CHECK(v[5]->is<AstStatBlock>());
+    CHECK(v[6]->is<AstStatBreak>());
 }
 
 TEST_SUITE_END();

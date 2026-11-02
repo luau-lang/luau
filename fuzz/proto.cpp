@@ -188,7 +188,7 @@ static void setupFrontend(Luau::Frontend& frontend)
     registerTypes(frontend, frontend.globalsForAutocomplete, true);
     Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
-    frontend.iceHandler.onInternalError = [](const char* error)
+    frontend.onInternalError = [](const char* error)
     {
         printf("ICE: %s\n", error);
         LUAU_ASSERT(!"ICE");

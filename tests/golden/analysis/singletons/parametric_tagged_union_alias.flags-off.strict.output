@@ -1,0 +1,2 @@
+./analysis/singletons/parametric_tagged_union_alias.luau(5,36): TypeError: Table type '{ result: string, success: false }' not compatible with type 'Err<number>' because the former is missing field 'error'
+./analysis/singletons/parametric_tagged_union_alias.luau(5,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence

@@ -4,6 +4,8 @@
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenImprovedExitSync)
+
 namespace Luau
 {
 namespace CodeGen
@@ -135,6 +137,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         break;
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
+    case IrCmd::CONSTRUCT:
     case IrCmd::GET_TABLE:
     case IrCmd::GET_CACHED_IMPORT:
         invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
@@ -284,7 +287,11 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
                 if (!function.cfg.captured.regs.test(reg) && vmRegDependent[reg] == kInvalidInstIdx)
                 {
                     IrCmd forwardCmd = inst.cmd == IrCmd::NUM_TO_UINT ? IrCmd::UINT_TO_NUM : IrCmd::INT_TO_NUM;
-                    function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd});
+
+                    if (FFlag::LuauCodegenImprovedExitSync)
+                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd, /* lazy */ false, OP_A(inst).index});
+                    else
+                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd});
 
                     vmRegDependent[reg] = instIdx;
 
@@ -336,7 +343,10 @@ void IrValueLocationTracking::recordRestoreOp(uint32_t instIdx, IrOp location)
 
             if (!captured)
             {
-                function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
+                if (FFlag::LuauCodegenImprovedExitSync)
+                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd, /* lazy */ false, instIdx});
+                else
+                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
 
                 if (logger && logger->options.includeRegSpills)
                     logger->formatAppendWithPrefix("  ; %%%u can be restored from R%d%s\n", depInstIdx, reg, getConversionCmdSuffix(inst.cmd));
@@ -452,6 +462,62 @@ void IrValueLocationTracking::invalidateRestoreVmRegs(int start, int count)
 
     for (int reg = start; reg <= end; reg++)
         invalidateRestoreOp(IrOp{IrOpKind::VmReg, uint8_t(reg)}, /*skipValueInvalidation*/ false);
+}
+
+void IrValueLocationTracking::setupExitSyncEntry(uint32_t blockIdx)
+{
+    // Reset value tracking for the sync block
+    vmRegValue.fill(kInvalidInstIdx);
+    vmRegDependent.fill(kInvalidInstIdx);
+
+    const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx);
+
+    if (!guardInstIdx)
+        return;
+
+    const VmExitSyncInfo* syncInfo = function.vmExitInfo.find(*guardInstIdx);
+
+    if (!syncInfo)
+        return;
+
+    for (IrOp op : syncInfo->argOps)
+    {
+        if (op.kind != IrOpKind::Inst)
+            continue;
+
+        IrInst& inst = function.instOp(op);
+        uint32_t instIdx = op.index;
+
+        if (!inst.needsReload)
+            continue;
+
+        ValueRestoreLocation location = function.findRestoreLocation(instIdx, /* limitToCurrentBlock */ false);
+
+        if (location.op.kind != IrOpKind::VmReg)
+            continue;
+
+        int reg = vmRegOp(location.op);
+
+        if (reg > maxReg)
+            maxReg = reg;
+
+        if (location.conversionCmd == IrCmd::NOP)
+        {
+            CODEGEN_ASSERT(vmRegValue[reg] == kInvalidInstIdx || vmRegValue[reg] == instIdx); // Unset or same
+            vmRegValue[reg] = instIdx;
+        }
+        else
+        {
+            CODEGEN_ASSERT(vmRegDependent[reg] == kInvalidInstIdx);
+            vmRegDependent[reg] = instIdx;
+
+            CODEGEN_ASSERT(vmRegValue[reg] == kInvalidInstIdx || vmRegValue[reg] == location.sourceInstIdx); // Unset or same
+            vmRegValue[reg] = location.sourceInstIdx;
+        }
+
+        if (logger && logger->options.includeRegSpills)
+            logger->formatAppendWithPrefix("  ; %%%u can be restored from R%d%s\n", instIdx, reg, getConversionCmdSuffix(location.conversionCmd));
+    }
 }
 
 } // namespace CodeGen

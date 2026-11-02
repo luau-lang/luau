@@ -1,0 +1,2 @@
+./analysis/singletons/string_singleton_subtype_multi_assignment.luau(2,7): LocalUnused: Variable 'b' is never used; prefix with '_' to silence
+./analysis/singletons/string_singleton_subtype_multi_assignment.luau(2,18): LocalUnused: Variable 'c' is never used; prefix with '_' to silence

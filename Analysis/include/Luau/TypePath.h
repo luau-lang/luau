@@ -279,17 +279,6 @@ TypePathRenderMetadata deriveRenderMetadata(
 /// Converts a Path into phrases that can be composed into an error message.
 RenderedTypePath renderTypePath(const TypePath::Path& path, const TypePathRenderMetadata& options = {});
 
-/// Converts a Path to a human readable string for error reporting.
-///
-/// Remove with FFlag::LuauNewTypePathErrorMessages
-std::string toStringHuman_DEPRECATED(const TypePath::Path& path);
-
-/// Remove with FFlag::LuauNewTypePathErrorMessages
-std::optional<TypeOrPack> traverse_DEPRECATED(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
-
-/// Remove with FFlag::LuauNewTypePathErrorMessages
-std::optional<TypeOrPack> traverse_DEPRECATED(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
-
 std::optional<TypeOrPack> traverse(
     TypePackId root,
     const Path& path,

@@ -17,8 +17,7 @@ LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
-LUAU_FASTFLAG(LuauCodegenNoLinearFastpcall)
-LUAU_FASTFLAG(LuauCodegenLimitVersions)
+LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 
 using namespace Luau::CodeGen;
 
@@ -2531,7 +2530,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
 
     build.beginBlock(block);
 
-    // NUM_TO_INT64(INT64_TO_NUM(x)) => x
+    // NUM_TO_INT64(INT64_TO_NUM(x)) != x
     IrOp intVal = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
     IrOp dblVal = build.inst(IrCmd::INT64_TO_NUM, intVal);
     IrOp backToInt = build.inst(IrCmd::NUM_TO_INT64, dblVal);
@@ -2545,7 +2544,9 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    %0 = LOAD_INT64 R0
-   STORE_INT64 R1, %0
+   %1 = INT64_TO_NUM %0
+   %2 = NUM_TO_INT64 %1
+   STORE_INT64 R1, %2
    RETURN 0u
 
 )");
@@ -4725,8 +4726,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NoLinearExtractionForChainWithPcall")
 {
-    ScopedFastFlag luauCodegenNoLinearFastpcall{FFlag::LuauCodegenNoLinearFastpcall, true};
-
     IrOp block1 = build.block(IrBlockKind::Internal);
     IrOp fallback1 = build.fallbackBlock(0u);
     IrOp block2 = build.block(IrBlockKind::Internal);
@@ -5730,6 +5729,55 @@ bb_0:
    STORE_DOUBLE R1, 1000000
    STORE_TAG R1, tnumber
    JUMP bb_fallback_1
+
+bb_fallback_1:
+   RETURN R0, 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthCheckIntVsDouble")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.fallbackBlock(0u);
+
+    build.beginBlock(block);
+    IrOp buffer = build.inst(IrCmd::LOAD_POINTER, build.vmReg(0));
+
+    IrOp x = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp x0 = build.inst(IrCmd::MUL_NUM, x, build.constDouble(0.0));
+    IrOp intX = build.inst(IrCmd::NUM_TO_INT, x0);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer, intX, build.constInt(0), build.constInt(1), x0, fallback);
+    build.inst(IrCmd::BUFFER_READU8, buffer, intX, build.constTag(tbuffer));
+
+    IrOp y = build.inst(IrCmd::MUL_NUM, x, build.constDouble(4.0));
+    IrOp y0 = build.inst(IrCmd::MUL_NUM, y, build.constDouble(0.0));
+    IrOp intY = build.inst(IrCmd::NUM_TO_INT, y0);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer, intY, build.constInt(0), build.constInt(1), y0, fallback);
+    build.inst(IrCmd::BUFFER_READU8, buffer, intY, build.constTag(tbuffer));
+
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constUint(1));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = LOAD_POINTER R0
+   %1 = LOAD_DOUBLE R1
+   %2 = MUL_NUM %1, 0
+   %3 = NUM_TO_INT %2
+   CHECK_BUFFER_LEN %0, %3, 0i, 1i, %2, bb_fallback_1
+   %5 = BUFFER_READU8 %0, %3, tbuffer
+   %6 = MUL_NUM %1, 4
+   %7 = MUL_NUM %6, 0
+   %8 = NUM_TO_INT %7
+   CHECK_BUFFER_LEN %0, %8, 0i, 1i, %7, bb_fallback_1
+   %10 = BUFFER_READU8 %0, %8, tbuffer
+   RETURN R2, 1u
 
 bb_fallback_1:
    RETURN R0, 1u
@@ -6954,25 +7002,84 @@ bb_0:
 )");
 }
 
-TEST_CASE_FIXTURE(IrBuilderFixture, "VersionLimitCheck")
+TEST_CASE_FIXTURE(IrBuilderFixture, "VersionLimitChecks")
 {
-    ScopedFastFlag luauCodegenLimitVersions{FFlag::LuauCodegenLimitVersions, true};
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
+    IrOp unrelated = build.block(IrBlockKind::Internal);
+    IrOp next = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.fallbackBlock(0u);
 
     build.beginBlock(entry);
+    build.inst(IrCmd::JUMP, next);
 
-    for (int i = 0; i < 150000; i++)
-    {
-        build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
-        build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
-        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(1.0));
-    }
+    build.beginBlock(unrelated);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
-    build.inst(IrCmd::RETURN, build.constUint(0));
+    // 'entry' will be glued to this block which reaches the limit
+    build.beginBlock(next);
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(5.0));
+    IrOp value = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1)); // Generates a SUBSTITUTE instruction
+
+    // Fallback entry is recorded with R3 as a number
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tnumber), fallback);
+
+    for (int i = 0; i < 175000; i++)
+        build.inst(IrCmd::STORE_SPLIT_TVALUE, build.vmReg(0), build.constTag(tnumber), build.constDouble(1.0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(1.0));
+
+    // Fallback is entered after the limit with R3 as a string
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tstring));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tnumber), fallback);
+
+    IrOp sum = build.inst(IrCmd::ADD_NUM, value, value); // SUBSTITUTE is used
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), sum);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(3)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build); // Checking for no assertions
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+
+    IrFunction& function = build.function;
+
+    // Check that blocks are correctly chained together despite the limit
+    IrBlock& entryBlock = function.blockOp(entry);
+    IrBlock& nextBlock = function.blockOp(next);
+
+    REQUIRE(entryBlock.expectedNextBlock == function.getBlockIndex(nextBlock));
+    CHECK(nextBlock.sortkey == entryBlock.sortkey);
+    CHECK(nextBlock.chainkey == entryBlock.chainkey + 1);
+
+    // Check that all substitutions have been applied
+    for (uint32_t index = nextBlock.start; index <= nextBlock.finish; index++)
+    {
+        for (IrOp op : function.instructions[index].ops)
+        {
+            if (op.kind == IrOpKind::Inst)
+                CHECK(function.instOp(op).cmd != IrCmd::SUBSTITUTE);
+        }
+    }
+
+    // Check that fallback entry tags do not come from a stale state
+    IrBlock& fallbackBlock = function.blockOp(fallback);
+    bool hasTagCheck = false;
+
+    for (uint32_t index = fallbackBlock.start; index <= fallbackBlock.finish; index++)
+    {
+        if (function.instructions[index].cmd == IrCmd::CHECK_TAG)
+            hasTagCheck = true;
+    }
+
+    CHECK(hasTagCheck);
 }
 
 TEST_SUITE_END();
@@ -8290,6 +8397,33 @@ bb_3:
 ; predecessors: bb_1
 ; in regs: R1
    RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseCmpAnySideEffects")
+{
+    ScopedFastFlag luauCodegenCmpAnySideEffecting{FFlag::LuauCodegenCmpAnySideEffecting, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp result = build.inst(IrCmd::CMP_ANY, build.vmReg(0), build.vmReg(0), build.cond(IrCondition::Equal));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), result);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0
+   %0 = CMP_ANY R0, R0, eq
+   RETURN R0, 0i
 
 )");
 }

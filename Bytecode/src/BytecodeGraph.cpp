@@ -7,7 +7,7 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCostModel)
-LUAU_FASTFLAG(LuauCallFeedback)
+LUAU_FASTFLAGVARIABLE(LuauInlinerNamecallSelfFromMove)
 LUAU_FASTFLAG(LuauCompileRefactorFeedback)
 
 namespace Luau
@@ -177,8 +177,11 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
             BytecodeBuilder::ClassShape shape;
             shape.className = readVarInt(data, offset);
 
-            uint32_t numProps = readVarInt(data, offset);
-            uint32_t numMethods = readVarInt(data, offset);
+            shape.numPrivateInstanceProps = read<uint8_t>(data, offset);
+            shape.numPrivateStaticProps = read<uint8_t>(data, offset);
+
+            uint32_t numProps = readVarInt(data, offset) - shape.numPrivateInstanceProps;
+            uint32_t numMethods = readVarInt(data, offset) - shape.numPrivateStaticProps;
 
             shape.propertyNames.reserve(numProps);
             shape.methodNames.reserve(numMethods);
@@ -262,29 +265,33 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
             fn.upvalueNames[i] = readString(strings, data, offset);
     }
 
-    if (FFlag::LuauCallFeedback)
+    uint32_t feedbackvecsize = readVarInt(data, offset);
+    fn.feedbackSlots.resize(feedbackvecsize);
+
+    for (uint32_t j = 0; j < feedbackvecsize; j++)
     {
-        uint32_t feedbackvecsize = readVarInt(data, offset);
-        fn.feedbackSlots.resize(feedbackvecsize);
+        uint8_t slottype = read<uint8_t>(data, offset);
 
-        for (uint32_t j = 0; j < feedbackvecsize; j++)
+        BcFeedbackSlot& slot = fn.feedbackSlots[j];
+        slot.kind = static_cast<LuauFeedbackType>(slottype);
+
+        if (slottype == LFT_CALLTARGET)
         {
-            uint8_t slottype = read<uint8_t>(data, offset);
-
-            BcFeedbackSlot& slot = fn.feedbackSlots[j];
-            slot.kind = static_cast<LuauFeedbackType>(slottype);
-
-            if (slottype == LFT_CALLTARGET)
-            {
-                uint32_t pc = readVarInt(data, offset);
-                LUAU_ASSERT(pc < uint32_t(codesize));
-                LUAU_ASSERT(LUAU_INSN_OP(code[pc]) == LOP_CALLFB);
-                slot.callTarget.inst = pc;
-            }
-            else
-            {
-                LUAU_ASSERT(!"unknown feedback slot kind");
-            }
+            uint32_t pc = readVarInt(data, offset);
+            LUAU_ASSERT(pc < uint32_t(codesize));
+            LUAU_ASSERT(LUAU_INSN_OP(code[pc]) == LOP_CALLFB);
+            slot.callTarget.inst = pc;
+        }
+        else if (slottype == LFT_CONSTRUCT)
+        {
+            uint32_t shape = readVarInt(data, offset);
+            LUAU_ASSERT(shape < fn.constants.size());
+            LUAU_ASSERT(fn.constants[shape].kind == BcVmConstKind::Table);
+            slot.construct.shape = shape;
+        }
+        else
+        {
+            LUAU_ASSERT(!"unknown feedback slot kind");
         }
     }
 
@@ -425,10 +432,15 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
             LUAU_ASSERT(slot.callTarget.inst < insnsPC.size());
             LUAU_ASSERT(insnsPC[slot.callTarget.inst] != ~0u);
 
-            if (FFlag::LuauCompileRefactorFeedback)
+            if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
                 slotId = bcb.addCallTargetSlot(insnsPC[slot.callTarget.inst]);
             else
                 slotId = bcb.addFbSlot_DEPRECATED(LFT_CALLTARGET, insnsPC[slot.callTarget.inst]);
+        }
+        else if (slot.kind == LFT_CONSTRUCT)
+        {
+            LUAU_ASSERT(slot.construct.shape < consts.size());
+            slotId = bcb.addConstructSlot(consts[slot.construct.shape]);
         }
         else
         {

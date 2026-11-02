@@ -542,11 +542,11 @@ struct RecursiveRestraintViolation
 // Error during subtyping when the inferred bounds of a generic type are incompatible
 struct GenericBoundsMismatch
 {
-    std::string_view genericName;
+    std::string genericName;
     std::vector<TypeId> lowerBounds;
     std::vector<TypeId> upperBounds;
 
-    GenericBoundsMismatch(std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
+    GenericBoundsMismatch(std::string genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
 
     bool operator==(const GenericBoundsMismatch& rhs) const;
 };
@@ -619,13 +619,6 @@ struct UninitializedFieldAccess
     bool operator==(const UninitializedFieldAccess& rhs) const;
 };
 
-struct TypeAnnotationRequired
-{
-    TypeId inferredTy;
-
-    bool operator==(const TypeAnnotationRequired& rhs) const;
-};
-
 struct ConstructorsShouldNotReturnAnything
 {
     bool operator==(const ConstructorsShouldNotReturnAnything&) const
@@ -663,6 +656,22 @@ struct IncompatibleClassMethodOverride
     Name superName;
 
     bool operator==(const IncompatibleClassMethodOverride& rhs) const;
+};
+
+struct IllegalClassPropertyOverride
+{
+    Name property;
+    Name className;
+    Name superName;
+
+    bool operator==(const IllegalClassPropertyOverride& rhs) const;
+};
+
+struct NotIterable
+{
+    TypeId ty;
+
+    bool operator==(const NotIterable& rhs) const;
 };
 
 using TypeErrorData = Variant<
@@ -731,11 +740,12 @@ using TypeErrorData = Variant<
     TypeInstantiationCountMismatch,
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
-    TypeAnnotationRequired,
     ConstructorsShouldNotReturnAnything,
     CyclicClassInheritance,
     InvalidClassExtension,
-    IncompatibleClassMethodOverride>;
+    IncompatibleClassMethodOverride,
+    IllegalClassPropertyOverride,
+    NotIterable>;
 
 struct TypeErrorSummary
 {

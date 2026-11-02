@@ -1,0 +1,1 @@
+./analysis/singletons/indexer_can_be_union_of_singletons.luau(8,1): TypeError: Cannot add property 'C' to table 'Test'

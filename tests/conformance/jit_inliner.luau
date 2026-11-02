@@ -106,6 +106,32 @@ do
     assert(caller(1) == 0)
 end
 
+class InlinedPoint
+    public x
+    public y
+end
+
+do
+    -- check that class construction shape feedback slots are adjusted correctly
+    local function makePoint(Class, x)
+        local result = Class { x = x, y = 42 }
+        return result
+    end
+
+    local function caller(x)
+        local marker = "caller constant"
+        local point = makePoint(InlinedPoint, x)
+        return marker, point
+    end
+
+    for i = 1, INLINING_THREASHOLD do
+        local marker, point = caller(i)
+        assert(marker == "caller constant")
+        assert(point.x == i)
+        assert(point.y == 42)
+    end
+end
+
 function fuzzfail_infinite1()
     local function foo(x)
         repeat
@@ -142,6 +168,48 @@ function fuzzfail_infinite3()
         end
     end
     _()
+end
+
+-- repeated inlining of a caller whose feedback vector held a stale call_target.pc, either from a sealed site or a block removed by constant folding,
+-- tripped an assert reading insnsPC[stale_pc] in buildGraphFromProto
+local stalePcCount = 0
+function fuzzfail_stale_feedback_pc()
+    do end
+    repeat
+        stalePcCount += 1
+        function _(l0:boolean,...)
+            function _():Part
+                return `{_}`
+            end
+            repeat
+                break
+            until _(_ { },`{_({_=_,})}{nil}{_ { }}`)
+            _ = _ { },_ { }
+        end
+    until stalePcCount > 35 or _()
+end
+
+-- test that native function counters refer to the correct Proto after promotion
+function counters_proto_promotion()
+    local function add(a, b) return a + b end
+
+    local P
+    P = function(t: {[string]: any}, depth: number)
+        local x = t.len -- entry guard exits to VM when t isn't a table
+        local s = 0
+        for i = 1, 100 do
+            s = add(s, i) -- interpreted frames record feedback, triggering inlining
+        end
+        if depth == 2 then
+            P("not a table", 1)
+        elseif depth == 1 then
+            P({}, 0) -- promotes the closure to the optimized proto
+        end
+        for i = 1, 3 do s += i end
+        return s
+    end
+
+    assert(P({}, 2) == 5056)
 end
 
 return 'OK'

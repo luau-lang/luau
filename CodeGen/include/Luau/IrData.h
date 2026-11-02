@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
@@ -607,6 +608,12 @@ enum class IrCmd : uint8_t
     // A: Rn (where to store the result)
     // B: Rn
     DO_LEN,
+
+    // Construct a class object or a table, if the constructor is a class and shape in the CONSTRUCT feedback slot matches it
+    // A: Rn (where to store the result)
+    // B: Rn (constructor)
+    // C: unsigned int (feedback slot id)
+    CONSTRUCT,
 
     // Lookup a value in TValue of any type using a key of any type
     // A: Rn (where to store the result)
@@ -1421,10 +1428,11 @@ struct BytecodeTypeInfo
 
 struct ValueRestoreLocation
 {
-    IrOp op;             // Operand representing the location (Rn/Kn)
-    IrValueKind kind;    // The kind of value at the restore location
-    IrCmd conversionCmd; // Type conversion instruction that was used to store the value at the restore location
-    bool lazy;           // This location comes from a DSE hint and is emitted on demand (see StoreLocationHint)
+    IrOp op;                                  // Operand representing the location (Rn/Kn)
+    IrValueKind kind;                         // The kind of value at the restore location
+    IrCmd conversionCmd;                      // Type conversion instruction that was used to store the value at the restore location
+    bool lazy;                                // This location comes from a DSE hint and is emitted on demand (see StoreLocationHint)
+    uint32_t sourceInstIdx = kInvalidInstIdx; // Instruction that is the source of the conversion
 };
 
 struct StoreLocationHint
@@ -1497,7 +1505,9 @@ struct IrFunction
 
     LoweringStats* stats = nullptr;
 
-    bool recordCounters = false; // Taken from CompilationOptions for easy access
+    // Taken from CompilationOptions for easy access
+    bool recordCounters = false;
+    bool recordFeedback = false;
 
     uint64_t jitRngState = 0; // PCG32 state for NOP padding; seeded per-function in lowerFunction
 

@@ -25,6 +25,7 @@
 #include <string_view>
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
@@ -1260,9 +1261,11 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
              {},
              {optionalString},
              {},
-             {arena->addType(TableType{{}, TableIndexer{numberType, stringType}, TypeLevel{},
-                FFlag::DebugLuauExactTableTypes ? TableState::Exact : TableState::Sealed
-             })},
+             {arena->addType(
+                 TableType{
+                     {}, TableIndexer{numberType, stringType}, TypeLevel{}, FFlag::DebugLuauExactTableTypes ? TableState::Exact : TableState::Sealed
+                 }
+             )},
              /* checked */ true
          )}},
         {"pack",
@@ -1982,7 +1985,8 @@ bool matchAssert(const AstExprCall& call)
     if (call.args.size < 1)
         return false;
 
-    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
+    const AstExpr* func = FFlag::LuauDoesCallErrorUnwrapsGroups ? unwrapGroup(call.func) : call.func;
+    const AstExprGlobal* funcAsGlobal = func->as<AstExprGlobal>();
     if (!funcAsGlobal || funcAsGlobal->name != "assert")
         return false;
 

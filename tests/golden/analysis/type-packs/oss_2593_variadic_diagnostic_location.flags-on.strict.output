@@ -1,0 +1,3 @@
+./analysis/type-packs/oss_2593_variadic_diagnostic_location.luau(8,9): TypeError: Expected this to be 'boolean', but got 'boolean?'
+./analysis/type-packs/oss_2593_variadic_diagnostic_location.luau(20,9): TypeError: Expected this to be 'boolean', but got 'boolean?'
+./analysis/type-packs/oss_2593_variadic_diagnostic_location.luau(20,9): TypeError: Expected this to be 'boolean', but got 'boolean?'

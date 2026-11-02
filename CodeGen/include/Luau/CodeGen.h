@@ -121,13 +121,16 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext);
 // Enable or disable native execution according to `enabled` argument
 void setNativeExecutionEnabled(lua_State* L, bool enabled);
 
-void disableNativeExecutionForFunction(lua_State* L, const int level) noexcept;
-
 // Given a name, this function must return the index of the type which matches the type array used all CompilationOptions and AssemblyOptions
 // If the type is unknown, 0xff has to be returned
 using UserdataRemapperCallback = uint8_t(void* context, const char* name, size_t nameLength);
 
 void setUserdataRemapper(lua_State* L, void* context, UserdataRemapperCallback cb);
+
+// Enables automatic runtime function recompilation with the specified compilation options
+// When promoteVmFunctions is enabled, recompilation also applies to functions running in the VM
+// 'userdataTypes' in options has to survive until all VMs using target CodeGenContext are closed
+void enableRuntimeCompilation(lua_State* L, const CompilationOptions& options, bool promoteVmFunctions);
 
 using ModuleId = std::array<uint8_t, 16>;
 

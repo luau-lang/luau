@@ -126,10 +126,20 @@ private:
     AstStat* parseIfLocalCondition(const Location& start);
 
     // Parse the trailing `{elseif exp then block} [else block] end` shared by `parseIf` and `parseIfLocalCondition`
-    AstStat* parseElseBody(const Location& start, const Lexeme& matchThen, AstStatBlock* thenbody, Location& end, std::optional<Location>& elseLocation);
+    AstStat* parseElseBody(
+        const Location& start,
+        const Lexeme& matchThen,
+        AstStatBlock* thenbody,
+        Location& end,
+        std::optional<Location>& elseLocation
+    );
 
     // while exp do block end
     AstStat* parseWhile();
+
+    // while `local' binding `=' exp do block end -- parses an entire `while local`.
+    // `start` is the location of the already-consumed `while` keyword; the current lexeme is `local`.
+    AstStat* parseWhileLocalCondition(const Location& start);
 
     // repeat block until exp
     AstStat* parseRepeat();
@@ -461,8 +471,6 @@ private:
         ...
     ) LUAU_PRINTF_ATTR(5, 6);
     AstExprError* reportExprError(const Location& location, const AstArray<AstExpr*>& expressions, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
-    AstStatClass* getMatchingClass(AstExpr* expr);
-    bool isExprLValue(AstExpr* expr);
     AstExprError* reportLValueError(AstExpr* expr);
     AstTypeError* reportTypeError(const Location& location, const AstArray<AstType*>& types, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
     // `parseErrorLocation` is associated with the parser error
@@ -555,9 +563,13 @@ private:
     std::vector<Function> functionStack;
     size_t typeFunctionDepth = 0;
 
+    // True while parsing the body of a class method, which is the only context where `._x` / `:_x` denotes a private member access. Set exclusively
+    // by parseClassStat.
+    bool inClassMethodBody = false;
+
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashMap<AstName, AstStatClass*> classesWithinModule;
+    DenseHashSet<AstName> classesWithinModule;
 
     std::vector<ParseError> parseErrors;
 

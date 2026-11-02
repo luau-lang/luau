@@ -16,8 +16,6 @@
 #include <ptrauth.h>
 #endif
 
-LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
-
 namespace Luau
 {
 namespace CodeGen
@@ -189,14 +187,6 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     build.ldr(x1, mem(x2, offsetof(CallInfo, p))); // ci->p aka proto
 
-    if (DFFlag::AddReturnExectargetCheck)
-    {
-        // Get new instruction location
-        static_assert(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + sizeof(Proto::execdata));
-        build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
-        build.cbz(x4, helpers.exitContinueVmClearNativeFlag);
-    }
-
     static_assert(offsetof(Proto, code) == offsetof(Proto, k) + sizeof(Proto::k));
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
@@ -206,12 +196,9 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.ldr(x2, mem(x2, offsetof(CallInfo, savedpc))); // cip->savedpc
     build.sub(x2, x2, rCode);
 
-    if (!DFFlag::AddReturnExectargetCheck)
-    {
-        // Get new instruction location and jump to it
-        static_assert(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + sizeof(Proto::execdata));
-        build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
-    }
+    // Get new instruction location and jump to it
+    static_assert(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + sizeof(Proto::execdata));
+    build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
     build.ldr(w2, mem(x3, x2));
     build.add(x4, x4, x2);
     build.br(x4);

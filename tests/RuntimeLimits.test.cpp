@@ -28,7 +28,7 @@ LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTINT(LuauNormalizerInitialFuel)
-LUAU_FASTFLAG(LuauIterativeTypeSearcher)
+LUAU_FASTFLAG(LuauIterativeTypeSearcher);
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -503,21 +503,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
             print(scale.Do.Re.Mi)
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("<T>({ read Do: { read Re: { read Mi: T } } }) -> ()", toString(requireType("get")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_subtyping" * doctest::timeout(LUAU_TIMEOUT))
 {
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastInt sfis[] = {
         {FInt::LuauSubtypingIterationLimit, 100},
         {FInt::LuauTypeInferIterationLimit, 100},
     };
 
-    CheckResult result = check(R"(
+    LUAU_REQUIRE_ERRORS(check(R"(
         local function l0<A...>()
             for l0=_,_ do
             end
@@ -527,9 +527,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
         end elseif _._G then if `` then {n0=_,} else "luauExprConstantSt" elseif _[_][l0] then function()
         end elseif _.n0 then if _[_] then if _ then _ else "aeld" elseif false then 0 else "lead"
         return _.n0
-    )");
-
-    LUAU_REQUIRE_ERROR(result, NormalizationTooComplex);
+    )"));
 }
 
 #if defined(_MSC_VER) || defined(__APPLE__)

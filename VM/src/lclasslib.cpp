@@ -1,4 +1,5 @@
 #include "lapi.h"
+#include "lclass.h"
 #include "lobject.h"
 #include "lua.h"
 #include "lualib.h"
@@ -24,16 +25,8 @@ static int class_isinstance(lua_State* L)
 
     const LuauClass* lclass = classvalue(cls);
 
-    for (LuauClass* objClass = objectvalue(obj)->lclass; objClass != NULL; objClass = objClass->super)
-    {
-        if (objClass == lclass)
-        {
-            lua_pushboolean(L, true);
-            return 1;
-        }
-    }
+    lua_pushboolean(L, luaR_isinstance(objectvalue(obj), lclass));
 
-    lua_pushboolean(L, false);
     return 1;
 }
 

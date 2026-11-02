@@ -1,0 +1,2 @@
+./analysis/singletons/cli_163481_any_indexer_pushes_type.luau(4,7): LocalUnused: Variable 't' is never used; prefix with '_' to silence
+./analysis/singletons/cli_163481_any_indexer_pushes_type.luau(6,7): LocalUnused: Variable 't2' is never used; prefix with '_' to silence

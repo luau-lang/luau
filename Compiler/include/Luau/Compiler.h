@@ -6,6 +6,8 @@
 #include "Luau/StringUtils.h"
 #include "Luau/Common.h"
 
+#include <exception>
+
 namespace Luau
 {
 class AstNameTable;

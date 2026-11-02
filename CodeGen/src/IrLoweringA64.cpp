@@ -13,8 +13,8 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenA64ForgLoopArray)
-
-LUAU_FASTFLAG(LuauCodegenConstPropMinOffset)
+LUAU_FASTFLAGVARIABLE(LuauCodegenA64BitlrotateSelf)
+LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 namespace Luau
 {
@@ -1424,7 +1424,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // We have reserved the result register, so we can free it now so it is not recorded in the spill sequence
         regs.freeReg(inst.regA64);
 
-        size_t spills = regs.spill(index);
+        size_t spills = regs.spill(index, {}, /* keepLazyLocations */ true);
 
         build.mov(x0, rState);
         build.add(x1, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
@@ -2274,6 +2274,17 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         emitUpdateBase(build);
         break;
+    case IrCmd::CONSTRUCT:
+        regs.spill(index);
+        build.mov(x0, rState);
+        build.add(x1, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
+        build.add(x2, rBase, uint16_t(vmRegOp(OP_B(inst)) * sizeof(TValue)));
+        build.mov(w3, uintOp(OP_C(inst)));
+        build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaR_tryconstructobject)));
+        build.blr(x4);
+
+        emitUpdateBase(build);
+        break;
     case IrCmd::GET_TABLE:
         regs.spill(index);
         build.mov(x0, rState);
@@ -2410,7 +2421,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             Label skip;
             checkObjectBarrierConditions(temp1, temp2, value, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst)), skip);
 
-            size_t spills = regs.spill(index, {temp1, value});
+            size_t spills = regs.spill(index, {temp1, value}, /* keepLazyLocations */ true);
 
             build.mov(x1, temp1);
             build.mov(x0, rState);
@@ -2707,8 +2718,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             ConditionA64 failCond = ConditionA64::UnsignedLess;
 
             // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-            if (offset < 0 || (FFlag::LuauCodegenConstPropMinOffset && offset + minOffset < 0) ||
-                unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
+            if (offset < 0 || offset + minOffset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
             {
                 build.b(target);
             }
@@ -2842,7 +2852,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.cmp(temp1, temp2);
         build.b(ConditionA64::UnsignedGreater, skip);
 
-        size_t spills = regs.spill(index);
+        size_t spills = regs.spill(index, {}, /* keepLazyLocations */ true);
 
         build.mov(x0, rState);
         build.mov(w1, 1);
@@ -2864,7 +2874,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         checkObjectBarrierConditions(regOp(OP_A(inst)), temp, noreg, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst)), skip);
 
         RegisterA64 reg = regOp(OP_A(inst)); // note: we need to call regOp before spill so that we don't do redundant reloads
-        size_t spills = regs.spill(index, {reg});
+        size_t spills = regs.spill(index, {reg}, /* keepLazyLocations */ true);
         build.mov(x1, reg);
         build.mov(x0, rState);
         build.ldr(x2, mem(rBase, vmRegOp(OP_B(inst)) * sizeof(TValue) + offsetof(TValue, value)));
@@ -2887,7 +2897,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.tbz(temp, BLACKBIT, skip);
 
         RegisterA64 reg = regOp(OP_A(inst)); // note: we need to call regOp before spill so that we don't do redundant reloads
-        size_t spills = regs.spill(index, {reg});
+        size_t spills = regs.spill(index, {reg}, /* keepLazyLocations */ true);
         build.mov(x1, reg);
         build.mov(x0, rState);
         build.add(x2, x1, uint16_t(offsetof(LuaTable, gclist)));
@@ -2909,7 +2919,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         RegisterA64 reg = regOp(OP_A(inst)); // note: we need to call regOp before spill so that we don't do redundant reloads
         AddressA64 addr = tempAddr(OP_B(inst), offsetof(TValue, value));
-        size_t spills = regs.spill(index, {reg});
+        size_t spills = regs.spill(index, {reg}, /* keepLazyLocations */ true);
         build.mov(x1, reg);
         build.mov(x0, rState);
         build.ldr(x2, addr);
@@ -2948,7 +2958,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.cmp(temp2, temp1);
         build.b(ConditionA64::UnsignedGreater, skip);
 
-        size_t spills = regs.spill(index, {temp2});
+        size_t spills = regs.spill(index, {temp2}, /* keepLazyLocations */ true);
         build.mov(x1, temp2);
         build.mov(x0, rState);
         build.ldr(x2, mem(rNativeContext, offsetof(NativeContext, luaF_close)));
@@ -3471,7 +3481,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::BITLROTATE_INT64:
     {
-        inst.regA64 = regs.allocReuse(KindA64::x, index, {OP_B(inst)}); // can't reuse A because it would be clobbered by neg
+        inst.regA64 = regs.allocReg(KindA64::x, index); // can't reuse A or B because either could be clobbered by neg
         RegisterA64 source = tempInt64(OP_A(inst));
         RegisterA64 amount = tempInt64(OP_B(inst));
         // left rotate = rotate by negative
@@ -3606,7 +3616,10 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         else
         {
-            inst.regA64 = regs.allocReuse(KindA64::w, index, {OP_B(inst)}); // can't reuse a because it would be clobbered by neg
+            if (FFlag::LuauCodegenA64BitlrotateSelf)
+                inst.regA64 = regs.allocReg(KindA64::w, index); // can't reuse A or B because either could be clobbered by neg
+            else
+                inst.regA64 = regs.allocReuse(KindA64::w, index, {OP_B(inst)}); // can't reuse a because it would be clobbered by neg
             RegisterA64 temp1 = tempUint(OP_A(inst));
             RegisterA64 temp2 = tempUint(OP_B(inst));
             build.neg(inst.regA64, temp2);
@@ -3894,6 +3907,13 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     regs.freeLastUseRegs(inst, index);
     regs.freeTempRegs();
+
+    // Free register if there is no user of the result
+    if (FFlag::LuauCodegenCmpAnySideEffecting && inst.lastUse == 0 && hasResult(inst.cmd))
+    {
+        regs.freeReg(inst.regA64);
+        inst.regA64 = noreg;
+    }
 }
 
 void IrLoweringA64::startBlock(const IrBlock& curr)
@@ -3904,7 +3924,20 @@ void IrLoweringA64::startBlock(const IrBlock& curr)
         );
 
     if (curr.kind == IrBlockKind::ExitSync)
-        regs.setupExitSyncEntry(function.getBlockIndex(curr));
+    {
+        if (FFlag::LuauCodegenImprovedExitSync)
+        {
+            uint32_t blockIdx = function.getBlockIndex(curr);
+            regs.setupExitSyncEntry(blockIdx);
+
+            // With register state restored, we can restore value location tracking
+            valueTracker.setupExitSyncEntry(blockIdx);
+        }
+        else
+        {
+            regs.setupExitSyncEntry(function.getBlockIndex(curr));
+        }
+    }
 }
 
 void IrLoweringA64::finishBlock(const IrBlock& curr, const IrBlock& next)
@@ -4062,7 +4095,8 @@ void IrLoweringA64::incrementCounterAt(size_t offset)
     RegisterA64 temp2 = regs.allocTemp(KindA64::x);
 
     // Get counter slot
-    build.ldr(temp1, mem(rClosure, offsetof(Closure, l.p)));
+    build.ldr(temp1, mem(rState, offsetof(lua_State, ci)));
+    build.ldr(temp1, mem(temp1, offsetof(CallInfo, p)));
     build.ldr(temp1, mem(temp1, offsetof(Proto, execdata)));
     emitAddOffset(build, temp2, temp1, (unsigned(function.proto->sizecode) + offset) * 4);
 

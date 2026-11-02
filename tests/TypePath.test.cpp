@@ -16,7 +16,6 @@ using namespace Luau;
 using namespace Luau::TypePath;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
 
 std::string renderTypePathPrefix(const Path& path)
@@ -613,22 +612,13 @@ TEST_CASE("human_property_then_metatable_portion")
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     // https://github.com/luau-lang/luau/issues/2544
-    if (FFlag::LuauNewTypePathErrorMessages)
-    {
-        CHECK(renderTypePathPrefix(PathBuilder().readProp("a").mt().build()) == "property `a` has metatable ");
-        CHECK(renderTypePathPrefix(PathBuilder().writeProp("a").mt().build()) == "property `a` accepts values with metatable ");
-    }
-    else
-    {
-        CHECK(toStringHuman_DEPRECATED(PathBuilder().readProp("a").mt().build()) == "accessing `a` has the metatable portion as ");
-        CHECK(toStringHuman_DEPRECATED(PathBuilder().writeProp("a").mt().build()) == "writing to `a` has the metatable portion as ");
-    }
+    CHECK(renderTypePathPrefix(PathBuilder().readProp("a").mt().build()) == "property `a` has metatable ");
+    CHECK(renderTypePathPrefix(PathBuilder().writeProp("a").mt().build()) == "property `a` accepts values with metatable ");
 }
 
 TEST_CASE("human_paths_through_properties")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     CHECK(renderTypePathPrefix(PathBuilder().readProp("a").readProp("b").build()) == "property `a.b` has type ");
     CHECK(
@@ -659,8 +649,6 @@ TEST_CASE("human_paths_through_properties")
 
 TEST_CASE_FIXTURE(TypePathFixture, "structured_human_paths")
 {
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
-
     RenderedTypePath readProperty = renderTypePath(PathBuilder().readProp("a").readProp("b").build());
     CHECK(readProperty.subject == "property `a.b`");
     CHECK(readProperty.prefix == "property `a.b` has type ");
@@ -703,8 +691,6 @@ TEST_CASE_FIXTURE(TypePathFixture, "structured_human_paths")
 
 TEST_CASE_FIXTURE(TypePathFixture, "render_options_handle_cyclic_return_packs")
 {
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
-
     const Path returnPath = PathBuilder().rets().index(0).build();
 
     TypePackId returnPack = arena.addTypePack({getBuiltins()->numberType});
@@ -720,7 +706,6 @@ TEST_CASE_FIXTURE(TypePathFixture, "render_options_handle_cyclic_return_packs")
 TEST_CASE("human_single_components")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     CHECK(renderTypePathPrefix(kEmpty).empty());
     CHECK(renderTypePathPrefix(Path(TypePath::Property::read("a"))) == "property `a` has type ");
@@ -747,7 +732,6 @@ TEST_CASE("human_single_components")
 TEST_CASE("human_paths_through_type_components")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     CHECK(renderTypePathPrefix(Path({Index{0, Index::Variant::Pack}, Index{1, Index::Variant::Union}})) == "the 1st type pack entry is ");
     CHECK(renderTypePathPrefix(Path({Index{0, Index::Variant::Union}, Index{1, Index::Variant::Intersection}})).empty());
@@ -804,7 +788,6 @@ TEST_CASE("human_paths_through_type_components")
 TEST_CASE("human_paths_through_function_packs")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
 
     // Error path from example in https://github.com/luau-lang/luau/issues/2528
     // Error path from example in https://github.com/luau-lang/luau/issues/2076
@@ -865,27 +848,21 @@ TEST_CASE("pack_slice")
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK(toString(PathBuilder().packSlice(1).build()) == "[1:]");
-    if (FFlag::LuauNewTypePathErrorMessages)
-    {
-        CHECK(renderTypePathPrefix(PathBuilder().packSlice(1).build()) == "the type pack from its 2nd entry onward is ");
-        CHECK(renderTypePathPrefix(PathBuilder().args().packSlice(1).build()) == "the parameters from the 2nd onward are ");
-        CHECK(renderTypePathPrefix(PathBuilder().mt().args().packSlice(1).build()) == "the metatable function's parameters from the 2nd onward are ");
-        CHECK(
-            renderTypePathPrefix(PathBuilder().readProp("callback").args().packSlice(1).build()) ==
-            "the parameters of property `callback` from the 2nd onward are "
-        );
-        CHECK(
-            renderTypePathPrefix(PathBuilder().writeProp("callback").rets().packSlice(1).build()) ==
-            "the return values of a function assigned to `callback` from the 2nd onward are "
-        );
-    }
-    else
-        CHECK(toStringHuman_DEPRECATED(PathBuilder().packSlice(1).build()) == "the portion of the type pack starting at index 1 to the end");
+    CHECK(renderTypePathPrefix(PathBuilder().packSlice(1).build()) == "the type pack from its 2nd entry onward is ");
+    CHECK(renderTypePathPrefix(PathBuilder().args().packSlice(1).build()) == "the parameters from the 2nd onward are ");
+    CHECK(renderTypePathPrefix(PathBuilder().mt().args().packSlice(1).build()) == "the metatable function's parameters from the 2nd onward are ");
+    CHECK(
+        renderTypePathPrefix(PathBuilder().readProp("callback").args().packSlice(1).build()) ==
+        "the parameters of property `callback` from the 2nd onward are "
+    );
+    CHECK(
+        renderTypePathPrefix(PathBuilder().writeProp("callback").rets().packSlice(1).build()) ==
+        "the return values of a function assigned to `callback` from the 2nd onward are "
+    );
 }
 
 TEST_CASE_FIXTURE(TypePathFixture, "human_reduction_and_mapped_pack_paths")
 {
-    ScopedFastFlag newTypePathErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
     TypePackId mappedPack = arena.addTypePack({getBuiltins()->numberType});
 
     CHECK(renderTypePathPrefix(Path(TypePath::Reduction{getBuiltins()->numberType})) == "the reduced type is ");

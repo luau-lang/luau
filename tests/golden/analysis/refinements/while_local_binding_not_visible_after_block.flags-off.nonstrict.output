@@ -1,0 +1,2 @@
+./analysis/refinements/while_local_binding_not_visible_after_block.luau(10,7): TypeError: Unknown global 'x'; consider assigning to it first
+./analysis/refinements/while_local_binding_not_visible_after_block.luau(4,13): LocalShadow: Variable 'x' shadows a global variable used at line 10

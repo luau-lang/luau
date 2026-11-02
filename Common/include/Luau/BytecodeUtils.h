@@ -42,6 +42,9 @@ inline int getOpLength(LuauOpcode op)
     case LOP_CALLFB:
     case LOP_CMPPROTO:
     case LOP_NEWCLASS:
+    case LOP_CONSTRUCT:
+    case LOP_GETPRIVATEFIELD:
+    case LOP_SETPRIVATEFIELD:
         return 2;
 
     default:
@@ -59,6 +62,7 @@ inline bool isFastCall(LuauOpcode op)
     case LOP_FASTCALL2K:
     case LOP_FASTCALL3:
     case LOP_FASTPCALL:
+    case LOP_FINCONSTRUCT:
         return true;
 
     default:

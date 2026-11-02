@@ -268,6 +268,9 @@ struct NormalizedType
     /// Returns true if the type is a subtype of boolean(it could be a singleton). Behaves like Type::isBoolean()
     bool isSubtypeOfBooleans() const;
 
+    /// Returns true if the type is a subtype of `table`.
+    bool isSubtypeOfTable() const;
+
     /// Returns true if this type should result in error suppressing behavior.
     bool shouldSuppressErrors() const;
 
@@ -392,6 +395,8 @@ private:
     void subtractSingleton(NormalizedType& here, TypeId ty);
     NormalizationResult intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect);
 
+    NormalizationResult unionNormalWithNegationTy(NormalizedType& here, TypeId there);
+
     // ------- Normalizing intersections
     TypeId intersectionOfTops(TypeId here, TypeId there);
     TypeId intersectionOfBools(TypeId here, TypeId there);
@@ -401,7 +406,12 @@ private:
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     bool hasStringIndexer(const TableType* tt);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet);
-    std::optional<TypeId> DEPRECATED_intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet);
+    std::optional<TypeId> DEPRECATED_intersectionOfTables(
+        TypeId here,
+        TypeId there,
+        SeenTablePropPairs& seenTablePropPairs,
+        DenseHashSet<TypeId>& seenSet
+    );
     void intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSetTypes);
     void intersectTables(TypeIds& heres, const TypeIds& theres);
     std::optional<TypeId> intersectionOfFunctions(TypeId here, TypeId there);

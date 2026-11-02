@@ -184,8 +184,8 @@ struct Frontend
 
         size_t dynamicConstraintsCreated = 0;
     };
+
     Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options = {});
-    Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
     void setLuauSolverMode(SolverMode mode);
     SolverMode getLuauSolverMode() const;
@@ -318,7 +318,10 @@ public:
 
     ConfigResolver* configResolver;
     FrontendOptions options;
-    InternalErrorReporter iceHandler;
+
+    std::function<void(const char*)> onInternalError;
+    InternalErrorReporter iceHandler_DEPRECATED; // TODO: remove with FFlagLuauSplitIceHandler
+
     std::function<void(const ModuleName& name, const ScopePtr& scope, bool forAutocomplete)> prepareModuleScope;
     std::function<void(const ModuleName& name, std::string log)> writeJsonLog = {};
 
