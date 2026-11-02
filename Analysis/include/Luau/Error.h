@@ -667,6 +667,13 @@ struct IllegalClassPropertyOverride
     bool operator==(const IllegalClassPropertyOverride& rhs) const;
 };
 
+struct NotIterable
+{
+    TypeId ty;
+
+    bool operator==(const NotIterable& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -737,7 +744,8 @@ using TypeErrorData = Variant<
     CyclicClassInheritance,
     InvalidClassExtension,
     IncompatibleClassMethodOverride,
-    IllegalClassPropertyOverride>;
+    IllegalClassPropertyOverride,
+    NotIterable>;
 
 struct TypeErrorSummary
 {
