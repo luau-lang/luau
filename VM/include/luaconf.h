@@ -55,21 +55,7 @@
 #define LUA_API_LINKAGE extern
 #endif
 
-// LUAU_VM_SHARED is shared with consumers
-// LUAU_VM_BUILD is only set when building the vm
-#if defined(LUAU_VM_SHARED) && LUAU_VM_SHARED
-#if defined(_WIN32)
-#if defined(LUAU_VM_BUILD) && LUAU_VM_BUILD
-#define LUA_API_VISIBILITY __declspec(dllexport)
-#else
-#define LUA_API_VISIBILITY __declspec(dllimport)
-#endif
-#elif defined(__GNUC__)
-#define LUA_API_VISIBILITY __attribute__((visibility("default")))
-#else
-#define LUA_API_VISIBILITY
-#endif
-#else
+#ifndef LUA_API_VISIBILITY
 #define LUA_API_VISIBILITY
 #endif
 
