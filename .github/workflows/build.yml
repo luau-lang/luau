@@ -20,7 +20,7 @@ jobs:
   unix:
     strategy:
       matrix:
-        os: [{name: ubuntu, version: ubuntu-latest}, {name: macos, version: macos-latest}, {name: macos-arm, version: macos-14}]
+        os: [{name: ubuntu, version: ubuntu-latest}, {name: macos, version: macos-latest}, {name: macos-arm, version: macos-15}]
         compiler:
           - name: Clang
             cc: clang
