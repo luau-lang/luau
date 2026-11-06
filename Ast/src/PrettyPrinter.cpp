@@ -15,6 +15,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
 
 namespace
 {
@@ -936,6 +937,20 @@ struct Printer
         else if (const auto& a = program.as<AstStatWhile>())
         {
             writer.keyword("while");
+            if (FFlag::DebugLuauWhileLocalSyntax && a->conditionLocal)
+            {
+                const auto cstNode = lookupCstNode<CstStatWhile>(a);
+
+                if (a->conditionKeywordLocation)
+                    advance(a->conditionKeywordLocation->begin);
+                writer.keyword(a->conditionIsConst ? "const" : "local");
+
+                visualize(*a->conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+                if (a->conditionEqualsLocation)
+                    advance(a->conditionEqualsLocation->begin);
+                writer.symbol("=");
+            }
             visualize(*a->condition);
             // TODO: what if 'hasDo = false'?
             advance(a->doLocation.begin);
@@ -1382,7 +1397,7 @@ struct Printer
                         [&](const AstClassProperty& prop)
                         {
                             writer.advance(prop.qualifierLocation.begin);
-                            writer.keyword("public");
+                            writer.keyword(prop.access == AstClassAccess::Private ? "private" : "public");
                             writer.advance(prop.nameLocation.begin);
                             writer.identifier(prop.name.value);
                             if (writeTypes && prop.ty)
@@ -1398,7 +1413,7 @@ struct Printer
                             if (method.qualifierLocation)
                             {
                                 writer.advance(method.qualifierLocation->begin);
-                                writer.keyword("public");
+                                writer.keyword(method.access == AstClassAccess::Private ? "private" : "public");
                             }
                             writer.advance(method.keywordLocation.begin);
                             writer.keyword("function");

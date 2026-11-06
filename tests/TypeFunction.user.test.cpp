@@ -11,10 +11,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
 LUAU_FASTFLAG(LuauUdtfReuseTypeUserdatas)
@@ -1667,7 +1665,6 @@ end
 local a = test()
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(toString(requireType("a")) == R"("hi")");
@@ -1921,7 +1918,6 @@ type test = typeof(m)
 local function ok(idx: pass<test>): test return idx end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -2114,7 +2110,6 @@ type test = typeof(m)
 local function ok(idx: pass<test>): <T, U>(T) -> (U) return idx end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -3185,7 +3180,6 @@ type function test(t: type) return t end
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_identity_preserves_parameter_names")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag serializeArgNames{FFlag::LuauTypeFunctionSerializeArgNames, true};
 
     CheckResult result = check(R"(
 type function identity(t)
@@ -3860,7 +3854,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_type_function_type_check")
 TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag fixTypeNameTypo{FFlag::LuauUdtfFixTypeNameTypo, true};
 
     CheckResult result = check(R"(
         type function foo()

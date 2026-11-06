@@ -78,6 +78,9 @@ typedef struct CallInfo
 #define LUA_CALLINFO_OPYIELD (1 << 3) // call frame has yielded on a non-call opcode and requires luau_finishop
 #define LUA_CALLINFO_PCALL (1 << 4)   // call frame was setup by a synthetic protected call and requires luau_pospcallsuccess
 
+#define TAGGED_PAGESET_BASE (LUA_TSTRING)
+#define TAGGED_PAGESET_SIZE (LUA_T_COUNT - TAGGED_PAGESET_BASE)
+
 #define curr_func(L) (clvalue(L->ci->func))
 #define ci_func(ci) (clvalue((ci)->func))
 #define f_isLua(ci) (!ci_func(ci)->isC)
@@ -171,6 +174,12 @@ struct lua_ExecutionCallbacks
         size_t* count
     ); // called to get the execution counter data and count {uint32_t, uint32_t, uint64_t}
     Proto* (*inlinefunction)(lua_State* L, Closure* caller, Closure* target, uint32_t pc); // called when inlining threshold is reached
+
+    // called when GC marks the function unless opted out with PEF_EXECLOCKED to examine if an action on a function will be needed later
+    void (*examinefunction)(lua_State* L, Proto* proto);
+    // called when GC cycle has been completed and the collector is paused
+    // functions previoulsy recorded by 'examinefunction' can be processed safely
+    void (*commitfunctions)(lua_State* L);
 };
 
 struct lua_UdataDirectAccessData
@@ -181,6 +190,13 @@ struct lua_UdataDirectAccessData
     lua_UserdataDirectAccess index;
     lua_UserdataDirectAccess newindex;
     lua_UserdataDirectNamecall namecall;
+};
+
+struct LuauPageset
+{
+    struct lua_Page* freepages[LUA_SIZECLASSES]; // cage GCO free pages, per size class
+    struct lua_Page* allpages;                   // all cage GCO pages (sweep target)
+    struct lua_Page* sweeppage;                  // sweep cursor
 };
 
 /*
@@ -244,6 +260,9 @@ typedef struct global_State
 
     // Set of userdata __index/__newindex/__namecall metamethods for a direct access
     lua_UdataDirectAccessData udatadirect[UTAG_INTERNAL_LIMIT];
+
+    LuauPageset taggedpageset[TAGGED_PAGESET_SIZE]; // Page sets which only hold allocations for a specific GCO type
+    int sweeppageset; // Which array is being swept
 
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 

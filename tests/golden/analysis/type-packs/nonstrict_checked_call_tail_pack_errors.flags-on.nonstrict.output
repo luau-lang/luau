@@ -1,0 +1,4 @@
+./analysis/type-packs/nonstrict_checked_call_tail_pack_errors.luau(18,1): TypeError: the function 'math.abs' will error at runtime if it is not called with 1 arguments, but we are calling it here with 3 arguments
+./analysis/type-packs/nonstrict_checked_call_tail_pack_errors.luau(15,1): TypeError: the function 'math.clamp' will error at runtime if it is not called with 3 arguments, but we are calling it here with 1 arguments
+./analysis/type-packs/nonstrict_checked_call_tail_pack_errors.luau(14,10): TypeError: the function 'math.abs' expects to get a number as its 1st argument, but is being given a nil
+./analysis/type-packs/nonstrict_checked_call_tail_pack_errors.luau(11,1): TypeError: the function 'math.abs' will error at runtime if it is not called with 1 arguments, but we are calling it here with 0 arguments

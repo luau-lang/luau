@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
-LUAU_FASTFLAG(LuauFastpcallInterrupt)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 namespace Luau
@@ -1278,8 +1277,7 @@ std::optional<IrOp> translateFastPcall(IrBuilder& build, const Instruction* pc, 
 
     IrOp fallback = build.fallbackBlock(pcpos);
 
-    if (FFlag::LuauFastpcallInterrupt)
-        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+    build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
     build.checkSafeEnv(pcpos + getOpLength(opcode));

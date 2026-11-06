@@ -29,8 +29,6 @@ LUAU_FASTINTVARIABLE(DebugLuauTypeFunctionRuntimeHeapLimit, 0)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 LUAU_FASTFLAGVARIABLE(LuauUdtfReuseTypeUserdatas)
 
@@ -512,7 +510,7 @@ std::optional<TypeFunctionError> checkResultForError(lua_State* L, const char* t
                 Location{}, RuntimeError{format("'%s' type function errored at runtime: %s", typeFunctionName, lua_tostring(L, -1))}
             };
 
-        const char* tname = FFlag::LuauUdtfFixTypeNameTypo ? luaL_typename(L, -1) : lua_typename(L, -1);
+        const char* tname = luaL_typename(L, -1);
         return TypeFunctionError{
             Location{}, RuntimeError{format("'%s' type function errored at runtime: raised an error of type %s", typeFunctionName, tname)}
         };
@@ -3331,8 +3329,7 @@ private:
 
         f2->argTypes = shallowClone(f1->argTypes);
         f2->retTypes = shallowClone(f1->retTypes);
-        if (FFlag::LuauTypeFunctionSerializeArgNames)
-            f2->argNames = f1->argNames;
+        f2->argNames = f1->argNames;
     }
 
     void cloneChildren(TypeFunctionExternType* c1, TypeFunctionExternType* c2)

@@ -20,6 +20,8 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
+LUAU_FASTFLAGVARIABLE(LuauCodegenUpdateSafeEnvList)
+LUAU_FASTFLAGVARIABLE(LuauCodegenCmpAnySideEffecting)
 
 namespace Luau
 {
@@ -63,6 +65,8 @@ int getOpLength(LuauOpcode op)
     case LOP_CMPPROTO:
     case LOP_NEWCLASS:
     case LOP_CONSTRUCT:
+    case LOP_GETPRIVATEFIELD:
+    case LOP_SETPRIVATEFIELD:
         return 2;
 
     default:
@@ -458,7 +462,7 @@ static void removeInstUse(IrFunction& function, uint32_t instIdx)
     CODEGEN_ASSERT(inst.useCount);
     inst.useCount--;
 
-    if (inst.useCount == 0)
+    if (inst.useCount == 0 && (!FFlag::LuauCodegenCmpAnySideEffecting || !hasSideEffects(inst.cmd)))
         kill(function, inst);
 }
 

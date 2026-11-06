@@ -232,7 +232,6 @@ TEST_CASE_FIXTURE(Fixture, "typepack_unification_should_trim_free_tails")
         end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("(number) -> boolean", toString(requireType("f")));
 }

@@ -113,8 +113,6 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     /* The inferred type of Cyclic is {get: () -> Cyclic}

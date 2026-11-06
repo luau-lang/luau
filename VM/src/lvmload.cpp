@@ -631,13 +631,30 @@ static int loadsafe(
                 uint32_t cnid = readVarInt(data, size, offset);
                 TValue* classname = &p->k[cnid];
                 LUAU_ASSERT(ttisstring(classname));
+                uint8_t numPrivateFields = read<uint8_t>(data, size, offset);
+                uint8_t numPrivateMethods = read<uint8_t>(data, size, offset);
                 uint32_t numProperties = readVarInt(data, size, offset);
                 uint32_t numMethods = readVarInt(data, size, offset);
                 uint32_t numMembers = numMethods + numProperties;
-                TString** offsetToMember = luaM_newarray(L, numMembers, TString*, L->activememcat);
-                LuaTable* membersToOffset = luaH_new(L, 0, numMembers);
+                uint32_t membersWithoutPrivateMethods = numMembers - static_cast<uint32_t>(numPrivateMethods);
+                TString** offsetToMember = luaM_newarray(L, membersWithoutPrivateMethods, TString*, L->activememcat);
+                memset(offsetToMember, 0, membersWithoutPrivateMethods * sizeof(TString*));
+                LuaTable* membersToOffset = luaH_new(L, 0, membersWithoutPrivateMethods - static_cast<uint32_t>(numPrivateFields));
 
-                for (uint32_t idx = 0; idx < numMembers; idx++)
+                uint32_t idx = 0;
+                // Set public field names
+                for (; idx < numProperties - static_cast<uint32_t>(numPrivateFields); idx++)
+                {
+                    uint32_t mid = readVarInt(data, size, offset);
+                    TValue* memberName = &p->k[mid];
+                    LUAU_ASSERT(ttisstring(memberName));
+                    offsetToMember[idx] = tsvalue(memberName);
+                    TValue* val = luaH_setstr(L, membersToOffset, tsvalue(memberName));
+                    setnvalue(val, idx);
+                }
+
+                // Set public method names
+                for (idx = numProperties; idx < membersWithoutPrivateMethods; idx++)
                 {
                     uint32_t mid = readVarInt(data, size, offset);
                     TValue* memberName = &p->k[mid];
@@ -649,7 +666,9 @@ static int loadsafe(
 
                 membersToOffset->readonly = true;
 
-                LuauClass* lco = luaR_newclass(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, envt);
+                LuauClass* lco = luaR_newclass(
+                    L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, numPrivateFields, numPrivateMethods, envt
+                );
                 setclassvalue(L, &p->k[j], lco);
                 break;
             }

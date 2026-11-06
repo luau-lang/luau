@@ -38,19 +38,19 @@ LUAU_FASTFLAGVARIABLE(LuauSkipUnusedTypeTraversals)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAGVARIABLE(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
-LUAU_FASTFLAGVARIABLE(LuauCannotAddIndexerToTablePrimitive)
-LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauDontUseInnermostScope)
 LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
+LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckGeneralizedIterationSoundness)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckUseNotIterable)
 
 namespace Luau
 {
@@ -757,6 +757,14 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
 void TypeChecker2::visit(AstStatWhile* whileStatement)
 {
     visit(whileStatement->condition, ValueContext::RValue);
+
+    if (FFlag::DebugLuauWhileLocalAnalysis && whileStatement->conditionLocal && whileStatement->conditionLocal->annotation)
+    {
+        TypeId annotationType = lookupAnnotation(whileStatement->conditionLocal->annotation);
+        testPotentialLiteralIsSubtype(whileStatement->condition, annotationType);
+        visit(whileStatement->conditionLocal->annotation);
+    }
+
     visit(whileStatement->body);
 }
 
@@ -1229,11 +1237,25 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     }
     else if (iteratorNorm && iteratorNorm->hasTables())
     {
+        if (FFlag::LuauTypeCheckGeneralizedIterationSoundness)
+        {
+            if (!iteratorNorm->shouldSuppressErrors() && !iteratorNorm->isSubtypeOfTable())
+            {
+                if (FFlag::LuauTypeCheckUseNotIterable)
+                    reportError(NotIterable{iteratorTy}, forInStatement->values.data[0]->location);
+                else
+                    reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
+            }
+        }
+
         // Ok. All tables can be iterated.
     }
     else if (!iteratorNorm || !iteratorNorm->shouldSuppressErrors())
     {
-        reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
+        if (FFlag::LuauTypeCheckUseNotIterable)
+            reportError(NotIterable{iteratorTy}, forInStatement->values.data[0]->location);
+        else
+            reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
     }
 }
 
@@ -1348,56 +1370,6 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
     testIsSubtype(*resultTy, varTy, stat->location);
 }
 
-void TypeChecker2::checkFunctionAnnotations(AstExprFunction* func, AnnotationCheckMode mode, Location nameLocation)
-{
-    TypeId ty = lookupType(func);
-    const FunctionType* ft = get<FunctionType>(ty);
-
-    bool missing = false;
-
-    if (ft)
-    {
-        TypePack args = extendTypePack(*module->internalTypes, builtinTypes, ft->argTypes, func->args.size);
-
-        for (size_t i = 0; i < func->args.size; ++i)
-        {
-            const AstLocal* arg = func->args.data[i];
-            if (i == 0 && arg->name == "self" && mode != AnnotationCheckMode::Function)
-            {
-                // Annotating the self parameter is already a syntax error.  We
-                // don't need to report anything here.
-            }
-            else if (!arg->annotation && i < args.head.size())
-                missing = true;
-        }
-
-        if (func->vararg && !func->varargAnnotation && args.tail.has_value())
-            missing = true;
-
-        if (mode == AnnotationCheckMode::Constructor && func->returnAnnotation)
-        {
-            reportError(ConstructorsShouldNotReturnAnything{}, func->returnAnnotation->location);
-        }
-        else if (!func->returnAnnotation)
-        {
-            auto [head, tail] = flatten(ft->retTypes);
-
-            if (!head.empty() || tail.has_value())
-                missing = true;
-        }
-    }
-
-    if (missing)
-    {
-        Location location = nameLocation;
-        if (func->argLocation)
-            location.extend(*func->argLocation);
-        if (func->returnAnnotation)
-            location.extend(func->returnAnnotation->location);
-        reportError(TypeAnnotationRequired{ty}, location);
-    }
-}
-
 void TypeChecker2::visit(AstStatFunction* stat)
 {
     visit(stat->name, ValueContext::LValue);
@@ -1420,17 +1392,11 @@ void TypeChecker2::visit(AstStatFunction* stat)
         auto rhsType = lookupType(stat->func);
         testIsSubtype(rhsType, lhsType, stat->func->location);
     }
-
-    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
-        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(AstStatLocalFunction* stat)
 {
     visit(stat->func);
-
-    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
-        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(const AstTypeList* typeList)
@@ -1602,12 +1568,7 @@ void TypeChecker2::visit(AstStatClass* stat)
             visit(method->function);
 
             if (method->functionName == "__init")
-            {
-                checkFunctionAnnotations(method->function, AnnotationCheckMode::Constructor, method->nameLocation);
                 visitConstructor(stat, method);
-            }
-            else
-                checkFunctionAnnotations(method->function, AnnotationCheckMode::Method, method->nameLocation);
         }
         else
             LUAU_ASSERT(!"Unknown class member!");
@@ -2261,14 +2222,20 @@ void TypeChecker2::visitCall(AstExprCall* call)
         limits,
         call->location,
     };
-    DenseHashSet<TypeId> uniqueTypes;
-    findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
     TypePackId argsPack = module->internalTypes->addTypePack(args);
-    const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
+    const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, false);
 
-    if (!result2.potentialOverloads.empty())
-        reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+    if (FFlag::LuauOneBitAssumedConstraintTracking)
+    {
+        if (!result2.potentialOverloads.empty())
+            reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+    }
+    else
+    {
+        if (!result2.potentialOverloads_DEPRECATED.empty())
+            reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+    }
 
     /*
      * If one overload matches, stop.  Nothing to report.
@@ -2391,22 +2358,11 @@ void TypeChecker2::visitCall(AstExprCall* call)
     if (!result2.nonFunctions.empty())
     {
         auto norm = normalizer.normalize(fnTy);
-        if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations)
-        {
-            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
-                reportError(NormalizationTooComplex{}, call->func->location);
-            // At this point norm is non-null and inhabited.
-            else if (!norm->shouldSuppressErrors())
-                reportError(CannotCallNonFunction{fnTy}, call->func->location);
-        }
-        else
-        {
-            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
-                reportError(NormalizationTooComplex{}, call->func->location);
-            // At this point norm is non-null and inhabited.
-            if (!norm->shouldSuppressErrors())
-                reportError(CannotCallNonFunction{fnTy}, call->func->location);
-        }
+        if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
+            reportError(NormalizationTooComplex{}, call->func->location);
+        // At this point norm is non-null and inhabited.
+        else if (!norm->shouldSuppressErrors())
+            reportError(CannotCallNonFunction{fnTy}, call->func->location);
         return;
     }
 }
@@ -2557,8 +2513,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         return indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
     }
-    else if (const auto primitive = get<PrimitiveType>(exprType);
-             FFlag::LuauCannotAddIndexerToTablePrimitive && primitive && primitive->type == PrimitiveType::Table)
+    else if (const auto primitive = get<PrimitiveType>(exprType); primitive && primitive->type == PrimitiveType::Table)
         reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     else if (auto cls = get<ExternType>(exprType))
     {
@@ -2860,7 +2815,7 @@ static bool isOkToCompare(
     if (NormalizationResult::False != typesHaveIntersection)
         return true;
 
-    if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations && (!normLeft || !normRight))
+    if (!normLeft || !normRight)
         return true;
 
     // We allow anything to be compared to nil.
@@ -3729,7 +3684,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
 
         std::stringstream reason;
 
-        if (FFlag::LuauPropertyModifierMismatchErrors && reasoning.isPropertyModifierViolation)
+        if (reasoning.isPropertyModifierViolation)
         {
             reason << explainPropertyModifierViolation(reasoning.subPath);
         }

@@ -2091,6 +2091,134 @@ RETURN R1 1
 )");
 }
 
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_all_generic_for_results_in_frame")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
+        local function inlinee(values)
+            for first, second, third in values do
+                return first, second, third
+            end
+        end
+
+        local function caller(x)
+            local first, second, third = inlinee(x)
+            return first or second or third
+        end
+    )");
+    REQUIRE(result);
+
+    CompTimeBcFunction& caller = result->second;
+    REQUIRE(allocateSlots(caller));
+
+    // The inlined loop starts at R3 and FORGLOOP writes its third result to R8.
+    CHECK_GE(caller.maxstacksize, 9);
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_unread_call_results_in_frame")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    // most results are never read, so inlining materializes no projection for them, yet CALL still writes all five
+    std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
+        local function inlinee(a)
+            local p, q, r, s, t = os.clock()
+        end
+
+        local function caller(x)
+            inlinee(x)
+        end
+    )");
+    REQUIRE(result);
+
+    CompTimeBcFunction& caller = result->second;
+    REQUIRE(allocateSlots(caller));
+    // important that this is maxstacksize = 8
+    // if we don't keep the unused projections in mind, maxstacksize becomes 4
+    CHECK_EQ(
+        "\n" + toString(caller, true),
+        R"(
+; function caller($arg0) line 6 maxstacksize: 8 upvalues: 1 flags: 0
+; feedback slot 0: CALLTARGET %2
+; feedback slot 1: CALLTARGET %7
+bb_0 (entry):
+; successors: bb_4 [fallthrough], bb_2 [branch]
+  %0 = GETUPVAL U0                                           ; uses: %2, %4
+  %1 = MOVE R0                                               ; uses: %2
+  %4 = CMPPROTO %0, 0, bb_2
+
+bb_4:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_3 [fallthrough]
+  %5 = GETGLOBAL 10, K0 ('os')                               ; uses: %6
+  %6 = GETTABLEKS %5, 140, K1 ('clock')                      ; uses: %7
+  %7 = CALLFB 0, 5, 1, %6
+
+bb_2:
+; predecessors: bb_0 [branch]
+; successors: bb_3 [fallthrough]
+  %2 = CALLFB 1, 0, -1, %0, %1
+
+bb_3:
+; predecessors: bb_2 [fallthrough], bb_4 [fallthrough]
+; successors: bb_1 [fallthrough]
+  %3 = RETURN 0, R0
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_newclass_superclass_apart_from_result")
+{
+    ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(
+        R"(
+        open class Base
+            public x
+        end
+        local t = {x = Base}
+        class Derived extends t.x
+            public y
+        end
+        local a, b = Derived.foo, Derived.bar
+        t.y = a
+        t.z = b
+    )",
+        1
+    );
+
+    bool sawDerivedClass = false;
+    for (CompTimeBcFunction& graph : graphs)
+    {
+        allocateSlots(graph);
+
+        for (const BcBlock& block : graph.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+
+            for (BcOp instructionOp : block.ops)
+            {
+                const BcInst& instruction = graph.instOp(instructionOp);
+                if (instruction.op != LOP_NEWCLASS || instruction.ops.empty() || instruction.ops[0].kind == BcOpKind::None)
+                    continue;
+
+                auto result = graph.regs.find(instructionOp);
+                auto super = graph.regs.find(instruction.ops[0]);
+                REQUIRE(result != graph.regs.end());
+                REQUIRE(super != graph.regs.end());
+                CHECK_NE(result->second, super->second);
+                sawDerivedClass = true;
+            }
+        }
+    }
+    CHECK(sawDerivedClass);
+}
+
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_inlined_namecall_self_in_register")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};

@@ -20,6 +20,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauPromoteProto)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
 
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT
 // This makes sure that we save the pc (in case the Lua call needs to generate a backtrace) before the call,
@@ -224,6 +225,9 @@ Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults)
     // crucially, we can't use ra/argtop after this line
     luaD_checkstackfornewci(L, ccl->stacksize);
 
+    if (FFlag::LuauRuntimeFeedback && ci->p)
+        ci->p->execcount++;
+
     return ccl;
 }
 
@@ -313,6 +317,9 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
     if (!ccl->isC)
     {
         Proto* p = ccl->l.p;
+
+        if (FFlag::LuauRuntimeFeedback)
+            p->execcount++;
 
         // fill unused parameters with nil
         StkId argi = L->top;

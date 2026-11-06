@@ -7,13 +7,21 @@
 struct lua_Page;
 union GCObject;
 
+enum class AllocationPath
+{
+    Frealloc,
+    CagedRealloc
+};
+
 #define luaM_newgco(L, t, size, memcat, tt) cast_to(t*, luaM_newgco_(L, size, memcat, tt, 0))
 #define luaM_newgcoudata(L, t, size, memcat, tt, tag) cast_to(t*, luaM_newgco_(L, size, memcat, tt, tag))
 #define luaM_newgcofixed(L, t, size, memcat, tt) cast_to(t*, luaM_newgcofixed_(L, size, memcat, tt))
 #define luaM_newgcocaged(L, t, size, memcat, tt) cast_to(t*, luaM_newgcocaged_(L, size, memcat, tt, 0))
+#define luaM_newgcotagged(L, t, size, memcat, path, tt) cast_to(t*, (luaM_newgcotagged_<path, tt>(L, size, memcat)))
 #define luaM_freegco(L, p, size, memcat, page) luaM_freegco_(L, obj2gco(p), size, memcat, page)
 #define luaM_freegcofixed(L, p, size, memcat, page) luaM_freegcofixed_(L, obj2gco(p), size, memcat, page)
 #define luaM_freegcocaged(L, p, size, memcat, page) luaM_freegcocaged_(L, obj2gco(p), size, memcat, page)
+#define luaM_freegcotagged(L, p, size, memcat, path, tt, page) luaM_freegcotagged_<path, tt>(L, obj2gco(p), size, memcat, page)
 
 #define luaM_arraysize_(L, n, e) ((cast_to(size_t, (n)) <= SIZE_MAX / (e)) ? (n) * (e) : (luaM_toobig(L), SIZE_MAX))
 
@@ -28,10 +36,18 @@ LUAI_FUNC void* luaM_trynew_(lua_State* L, size_t nsize, uint8_t memcat);
 LUAI_FUNC GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat, int tt, int tag);
 LUAI_FUNC GCObject* luaM_newgcofixed_(lua_State* L, size_t nsize, uint8_t memcat, int tt);
 LUAI_FUNC GCObject* luaM_newgcocaged_(lua_State* L, size_t nsize, uint8_t memcat, int tt, int tag);
+
+template<AllocationPath path, int type>
+LUAI_FUNC GCObject* luaM_newgcotagged_(lua_State* L, size_t nsize, uint8_t memcat);
+
 LUAI_FUNC void luaM_free_(lua_State* L, void* block, size_t osize, uint8_t memcat);
 LUAI_FUNC void luaM_freegco_(lua_State* L, GCObject* block, size_t osize, uint8_t memcat, lua_Page* page);
 LUAI_FUNC void luaM_freegcofixed_(lua_State* L, GCObject* block, size_t osize, uint8_t memcat, lua_Page* page);
 LUAI_FUNC void luaM_freegcocaged_(lua_State* L, GCObject* block, size_t osize, uint8_t memcat, lua_Page* page);
+
+template<AllocationPath path, int type>
+LUAI_FUNC void luaM_freegcotagged_(lua_State* L, GCObject* block, size_t osize, uint8_t memcat, lua_Page* page);
+
 LUAI_FUNC void* luaM_realloc_(lua_State* L, void* block, size_t osize, size_t nsize, uint8_t memcat);
 
 LUAI_FUNC l_noret luaM_toobig(lua_State* L);

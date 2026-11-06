@@ -1032,18 +1032,6 @@ struct ErrorConverter
             return "Access to 'self' before all of its fields have been initialized";
     }
 
-    std::string operator()(const TypeAnnotationRequired& err) const
-    {
-        ToStringOptions opts;
-        opts.functionTypeArguments = true;
-        opts.ignoreSyntheticName = true;
-        auto tos = toStringDetailed(err.inferredTy, opts);
-        if (!tos.invalid && !tos.truncated && !tos.error)
-            return "Type annotation required here.  Consider " + tos.name;
-        else
-            return "Type annotation required here.  Unable to infer the type of this function.";
-    }
-
     std::string operator()(const ConstructorsShouldNotReturnAnything&) const
     {
         return "Class constructors should not return anything.";
@@ -1097,6 +1085,11 @@ struct ErrorConverter
     std::string operator()(const IllegalClassPropertyOverride& e) const
     {
         return "Illegal override of property '" + e.property + "' on class '" + e.className + "' inherited from superclass '" + e.superName + "'";
+    }
+
+    std::string operator()(const NotIterable& e) const
+    {
+        return "`" + toString(e.ty) + "` is not iterable";
     }
 };
 
@@ -1350,6 +1343,11 @@ bool IllegalClassPropertyOverride::operator==(const IllegalClassPropertyOverride
     return property == rhs.property && className == rhs.className && superName == rhs.superName;
 }
 
+bool NotIterable::operator==(const NotIterable& rhs) const
+{
+    return ty == rhs.ty;
+}
+
 int TypeError::code() const
 {
     return minCode() + int(data.index());
@@ -1567,11 +1565,6 @@ bool UnappliedTypeFunction::operator==(const UnappliedTypeFunction& rhs) const
 bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
 {
     return function == rhs.function && arguments == rhs.arguments;
-}
-
-bool TypeAnnotationRequired::operator==(const TypeAnnotationRequired& rhs) const
-{
-    return inferredTy == rhs.inferredTy;
 }
 
 bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) const
@@ -1842,10 +1835,6 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
     {
     }
-    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
-    {
-        e.inferredTy = clone(e.inferredTy);
-    }
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
     {
     }
@@ -1861,6 +1850,10 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
     {
+    }
+    else if constexpr (std::is_same_v<T, NotIterable>)
+    {
+        e.ty = clone(e.ty);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

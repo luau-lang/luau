@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauParseExactTables)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
+LUAU_FASTFLAGVARIABLE(DebugLuauWhileLocalSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -717,6 +718,15 @@ AstStat* Parser::parseWhile()
 
     nextLexeme(); // while
 
+    if (FFlag::DebugLuauWhileLocalSyntax)
+    {
+        if (lexer.current().type == Lexeme::ReservedLocal)
+            return parseWhileLocalCondition(start);
+
+        if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const" && lexer.lookahead().type == Lexeme::Name)
+            return parseWhileLocalCondition(start);
+    }
+
     AstExpr* cond = parseExpr();
 
     Lexeme matchDo = lexer.current();
@@ -734,6 +744,59 @@ AstStat* Parser::parseWhile()
     body->hasEnd = hasEnd;
 
     return allocator.alloc<AstStatWhile>(Location(start, end), cond, body, hasDo, matchDo.location);
+}
+
+// while (`local' | `const') binding `=' exp do block end
+//
+// LUAU_NOINLINE keeps the `while local`/`while const` locals off parseWhile's frame since this variant is rarely taken.
+// `start` is the location of the already-consumed `while` keyword; the current lexeme is the `local`/`const` keyword.
+LUAU_NOINLINE AstStat* Parser::parseWhileLocalCondition(const Location& start)
+{
+    LUAU_ASSERT(FFlag::DebugLuauWhileLocalSyntax);
+
+    bool condIsConst = (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const");
+    std::optional<Location> condKeywordLocation = lexer.current().location;
+    nextLexeme(); // consume 'local' or 'const'
+
+    Binding binding = parseBinding(condIsConst);
+
+    if (lexer.current().type == ',')
+        report(lexer.current().location, "Expected '=' after variable name in 'while local', got ','; only a single binding is allowed");
+
+    std::optional<Location> equalsPosition;
+    if (lexer.current().type == '=')
+        equalsPosition = lexer.current().location;
+    expectAndConsume('=', "while local declaration");
+
+    // The binding is not visible in its own condition expression; it is re-evaluated each iteration.
+    AstExpr* cond = parseExpr();
+
+    Lexeme matchDo = lexer.current();
+    bool hasDo = expectAndConsume(Lexeme::ReservedDo, "while loop");
+
+    // Push the binding so it is in scope for the loop body only, then restore after the body.
+    unsigned int localsBegin = saveLocals();
+    AstLocal* condLocal = pushLocal(binding);
+
+    functionStack.back().loopDepth++;
+
+    AstStatBlock* body = parseBlock();
+
+    functionStack.back().loopDepth--;
+
+    restoreLocals(localsBegin);
+
+    Location end = lexer.current().location;
+
+    bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
+    body->hasEnd = hasEnd;
+
+    AstStatWhile* node = allocator.alloc<AstStatWhile>(
+        Location{start, end}, cond, body, hasDo, matchDo.location, condLocal, condIsConst, condKeywordLocation, equalsPosition
+    );
+    if (options.storeCstData)
+        cstNodeMap[node] = allocator.alloc<CstStatWhile>(binding.annotation ? binding.colonPosition : Position::missing());
+    return node;
 }
 
 // repeat block until exp
@@ -1527,6 +1590,37 @@ const std::unordered_set<std::string> kExplicitlyDisallowedMetamethods{
     "__type",
 };
 
+constexpr size_t kMaxClassPrivateProperties = 255;
+
+// A single leading underscore marks a private member. Metamethod names begin with
+// '__' and are public, so they are deliberately excluded: `self.__tostring` inside
+// a method body must remain an ordinary property access.
+bool isPrivateFieldName(const AstName& name)
+{
+    return name.value && name.value[0] == '_' && name.value[1] != '_';
+}
+
+// Returns the diagnostic for a class member whose name is illegal for its access
+// modifier, or nullptr when the name is acceptable. Public '__' names are reported
+// as nullptr here because they are metamethods, validated against
+// kAllowedMetamethods / kExplicitlyDisallowedMetamethods instead.
+const char* getClassFieldNameError(const AstName& name, AstClassAccess access)
+{
+    LUAU_ASSERT(name.value);
+
+    if (access == AstClassAccess::Private)
+    {
+        if (strncmp(name.value, "__", 2) == 0)
+            return "Private class properties cannot start with '__'";
+        else if (name.value[0] != '_')
+            return "Private class properties must begin with '_'";
+    }
+    else if (isPrivateFieldName(name))
+        return "Public class properties cannot begin with '_'";
+
+    return nullptr;
+}
+
 } // namespace
 
 // classStatement ::= [`open`] `class` Name classProps `end`
@@ -1569,18 +1663,33 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
     // slightly more performant here (e.g.: a "scratch" set).
     DenseHashSet<AstName> classMemberNamespace;
 
+    size_t privateFieldCount = 0;
+    size_t privateMethodCount = 0;
+
     while (lexer.current().type != Lexeme::ReservedEnd && lexer.current().type != Lexeme::Eof)
     {
+        std::optional<AstClassAccess> access;
         std::optional<Location> qualifierLocation;
-        if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "public")
+        if (lexer.current().type == Lexeme::Name)
         {
-            qualifierLocation = lexer.current().location;
-            nextLexeme();
+            AstName currName = AstName(lexer.current().name);
+            if (currName == "public")
+            {
+                access = AstClassAccess::Public;
+                qualifierLocation = lexer.current().location;
+                nextLexeme();
+            }
+            else if (currName == "private")
+            {
+                access = AstClassAccess::Private;
+                qualifierLocation = lexer.current().location;
+                nextLexeme();
+            }
         }
 
         // If we saw a qualifier _and_ the current token is not `function`,
         // assume this is a property.
-        if (qualifierLocation && lexer.current().type != Lexeme::ReservedFunction)
+        if (access && lexer.current().type != Lexeme::ReservedFunction)
         {
             std::optional<Name> propName = parseNameOpt("class property name");
             if (!propName)
@@ -1596,13 +1705,18 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
                 propType = parseType();
             }
 
-            if (strncmp(propName->name.value, "__", 2) == 0)
+            if (const char* nameError = getClassFieldNameError(propName->name, *access))
+                report(propName->location, "%s", nameError);
+            else if (strncmp(propName->name.value, "__", 2) == 0)
                 report(propName->location, "Class properties cannot start with '__'");
             else if (classMemberNamespace.contains(propName->name))
                 report(propName->location, "Duplicate class member '%s'", propName->name.value);
             else
             {
                 classMemberNamespace.insert(propName->name);
+
+                if (*access == AstClassAccess::Private)
+                    privateFieldCount++;
 
                 // Either both of these are present or neither are.
                 LUAU_ASSERT((bool)propType == (bool)typeColonLocation);
@@ -1613,12 +1727,16 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
                         propName->location,
                         typeColonLocation,
                         propType,
+                        *access,
                     }
                 );
             }
         }
         else if (lexer.current().type == Lexeme::ReservedFunction)
         {
+            if (!access.has_value())
+                access = AstClassAccess::Public;
+
             auto matchFunction = lexer.current();
             nextLexeme();
 
@@ -1637,14 +1755,21 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
             // the class' print. That would be `self.print`.
             matchRecoveryStopOnToken[Lexeme::ReservedEnd]++;
 
+            bool oldInClassMethodBody = inClassMethodBody;
+            inClassMethodBody = true;
+
             auto [body, _] = parseFunctionBody(false, matchFunction, name.name, nullptr, {});
+
+            inClassMethodBody = oldInClassMethodBody;
 
             matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
 
             if (body->args.size > 0 && body->args.data[0]->name == "self" && body->args.data[0]->annotation != nullptr)
                 report(body->args.data[0]->annotation->location, "The 'self' parameter cannot have a type annotation");
 
-            if (strncmp(name.name.value, "__", 2) == 0)
+            if (const char* nameError = getClassFieldNameError(name.name, *access))
+                report(name.location, "%s", nameError);
+            else if (strncmp(name.name.value, "__", 2) == 0)
             {
                 if (kExplicitlyDisallowedMetamethods.count(name.name.value) > 0)
                     report(name.location, "Classes cannot define '%s' as a metamethod", name.name.value);
@@ -1652,8 +1777,7 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
                     report(name.location, "Cannot use '%s' as a method name: names starting with '__' are reserved", name.name.value);
             }
 
-            // TODO CLI-200853: We should support attributes, we do not need
-            // to support them prior to the full launch.
+            // TODO CLI-200853: We should support attributes, we do not need to support them prior to the full launch.
             if (classMemberNamespace.contains(name.name))
             {
                 report(name.location, "Duplicate class member '%s'", name.name.value);
@@ -1662,6 +1786,9 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
             {
                 classMemberNamespace.insert(name.name);
 
+                if (*access == AstClassAccess::Private)
+                    privateMethodCount++;
+
                 declarations.push_back(
                     AstClassMethod{
                         qualifierLocation,
@@ -1669,6 +1796,7 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
                         name.name,
                         name.location,
                         body,
+                        *access,
                     }
                 );
             }
@@ -1679,6 +1807,12 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
             nextLexeme(); // skip the unexpected token to avoid an infinite loop
         }
     }
+
+    if (privateFieldCount > kMaxClassPrivateProperties)
+        report(name->location, "Exceeded the maximum of %zu private fields in a class", kMaxClassPrivateProperties);
+
+    if (privateMethodCount > kMaxClassPrivateProperties)
+        report(name->location, "Exceeded the maximum of %zu private methods in a class", kMaxClassPrivateProperties);
 
     // TODO: We should use `expectMatchEndAndConsume`. It is difficult as we
     // are treating "class" as a contextual keyword (and we must as we also)
@@ -1726,9 +1860,21 @@ AstStat* Parser::parseTypeFunction(const Location& start, bool exported, Positio
     size_t oldTypeFunctionDepth = typeFunctionDepth;
     typeFunctionDepth = functionStack.size();
 
+    bool oldInClassMethodBody = false;
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        oldInClassMethodBody = inClassMethodBody;
+        // We don't support capturing classes outside the type function for private field accesses
+        // Classes defined inside the type function are ok though
+        inClassMethodBody = false;
+    }
+
     AstExprFunction* body = parseFunctionBody(/* hasself */ false, matchFn, fnName->name, nullptr, AstArray<AstAttr*>({nullptr, 0})).first;
 
     typeFunctionDepth = oldTypeFunctionDepth;
+
+    if (FFlag::DebugLuauUserDefinedClasses)
+        inClassMethodBody = oldInClassMethodBody;
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
 
@@ -3808,7 +3954,18 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
 
             Name index = parseIndexName(nullptr, opPosition);
 
-            expr = allocator.alloc<AstExprIndexName>(Location(start, index.location.end), expr, index.name, index.location, opPosition, '.');
+            if (inClassMethodBody)
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+            expr = allocator.alloc<AstExprIndexName>(
+                Location(start, index.location.end),
+                expr,
+                index.name,
+                index.location,
+                opPosition,
+                '.',
+                inClassMethodBody && isPrivateFieldName(index.name)
+            );
         }
         else if (lexer.current().type == '[')
         {
@@ -3876,7 +4033,14 @@ AstExpr* Parser::parseMethodCall(Position start, AstExpr* expr)
     nextLexeme();
 
     Name index = parseIndexName("method name", opPosition);
-    AstExpr* func = allocator.alloc<AstExprIndexName>(Location(start, index.location.end), expr, index.name, index.location, opPosition, ':');
+
+    // See the equivalent '.' access in parsePrimaryExpr for why the bool is tested first.
+    if (inClassMethodBody)
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+    AstExpr* func = allocator.alloc<AstExprIndexName>(
+        Location(start, index.location.end), expr, index.name, index.location, opPosition, ':', inClassMethodBody && isPrivateFieldName(index.name)
+    );
 
     AstArray<AstTypeOrPack> typeArguments;
     CstTypeInstantiation* cstTypeArguments = options.storeCstData ? allocator.alloc<CstTypeInstantiation>() : nullptr;

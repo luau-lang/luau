@@ -240,11 +240,6 @@ struct Fixture
     // use this to test the stack guard itself.
     void limitStackSize(size_t size);
 
-    // Edits the result, pruning any warnings about missing annotations.  This
-    // is useful for tests that are specifically about how we infer unannotated
-    // symbols.
-    void ignoreMissingAnnotations(CheckResult& result);
-
 private:
     bool hasDumpedErrors = false;
 

@@ -13,7 +13,6 @@
 #include <stdlib.h>
 
 LUAU_FASTFLAGVARIABLE(LuauFastpcall)
-LUAU_FASTFLAGVARIABLE(LuauPcallOptimize)
 
 static void writestring(const char* s, size_t l)
 {
@@ -291,53 +290,33 @@ static int luaB_pcally(lua_State* L)
 
 static int luaB_pcallcont(lua_State* L, int status)
 {
-    if (FFlag::LuauPcallOptimize)
+    luaD_checkstack(L, 1);
+
+    if (status == 0)
     {
-        luaD_checkstack(L, 1);
+        StkId base = L->base;
+        StkId top = L->top;
 
-        if (status == 0)
-        {
-            StkId base = L->base;
-            StkId top = L->top;
+        // Move results 1 right to make space for the 'true' status
+        for (StkId q = top; q > base; q--)
+            setobj2s(L, q, q - 1);
 
-            // Move results 1 right to make space for the 'true' status
-            for (StkId q = top; q > base; q--)
-                setobj2s(L, q, q - 1);
+        setbvalue(base, 1);
+        L->top = top + 1;
 
-            setbvalue(base, 1);
-            L->top = top + 1;
-
-            return cast_int(L->top - base);
-        }
-        else
-        {
-            StkId top = L->top;
-
-            // Move error 1 right to make space for the 'false' status
-            setobj2s(L, top, top - 1);
-
-            setbvalue(top - 1, 0);
-            L->top = top + 1;
-
-            return 2;
-        }
+        return cast_int(L->top - base);
     }
     else
     {
-        if (status == 0)
-        {
-            lua_rawcheckstack(L, 1);
-            lua_pushboolean(L, true);
-            lua_insert(L, 1); // insert status before all results
-            return lua_gettop(L);
-        }
-        else
-        {
-            lua_rawcheckstack(L, 1);
-            lua_pushboolean(L, false);
-            lua_insert(L, -2); // insert status before error object
-            return 2;
-        }
+        StkId top = L->top;
+
+        // Move error 1 right to make space for the 'false' status
+        setobj2s(L, top, top - 1);
+
+        setbvalue(top - 1, 0);
+        L->top = top + 1;
+
+        return 2;
     }
 }
 
@@ -359,46 +338,26 @@ static int luaB_xpcallcont(lua_State* L, int status)
 {
     if (status == 0)
     {
-        if (FFlag::LuauPcallOptimize)
-        {
-            StkId base = L->base;
+        StkId base = L->base;
 
-            // xpcall had an 'errfunc' before the results, so we just replace it with 'true' status
-            setbvalue(base, 1);
+        // xpcall had an 'errfunc' before the results, so we just replace it with 'true' status
+        setbvalue(base, 1);
 
-            return cast_int(L->top - base);
-        }
-        else
-        {
-            lua_rawcheckstack(L, 1);
-            lua_pushboolean(L, true);
-            lua_replace(L, 1);    // replace error function with status
-            return lua_gettop(L); // return status + all results
-        }
+        return cast_int(L->top - base);
     }
     else
     {
-        if (FFlag::LuauPcallOptimize)
-        {
-            luaD_checkstack(L, 1);
+        luaD_checkstack(L, 1);
 
-            StkId top = L->top;
+        StkId top = L->top;
 
-            // Move error 1 right to make space for the 'false' status
-            setobj2s(L, top, top - 1);
+        // Move error 1 right to make space for the 'false' status
+        setobj2s(L, top, top - 1);
 
-            setbvalue(top - 1, 0);
-            L->top = top + 1;
+        setbvalue(top - 1, 0);
+        L->top = top + 1;
 
-            return 2;
-        }
-        else
-        {
-            lua_rawcheckstack(L, 1);
-            lua_pushboolean(L, false);
-            lua_insert(L, -2); // place status before the error that was on top of the stack
-            return 2;
-        }
+        return 2;
     }
 }
 
