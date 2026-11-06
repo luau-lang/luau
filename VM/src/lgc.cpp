@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, false)
 LUAU_FASTFLAGVARIABLE(LuauRuntimeFeedback)
 LUAU_FASTFLAG(LuauBufferSweep)
+LUAU_FASTFLAG(LuauLoadExplicitGcDisable)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -1423,6 +1424,9 @@ static size_t getheaptrigger(global_State* g, size_t heapgoal)
 size_t luaC_step(lua_State* L, bool assist)
 {
     global_State* g = L->global;
+
+    if (g->gcdisabled != 0)
+        return 0;
 
     size_t lim = g->gcstepsize * g->gcstepmul / 100; // how much to work
     LUAU_ASSERT(g->totalbytes >= g->GCthreshold);

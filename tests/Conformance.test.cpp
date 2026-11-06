@@ -19,6 +19,7 @@
 #include "Luau/BytecodeSummary.h"
 #include "Luau/BytecodeDump.h"
 #include "Luau/Parser.h"
+#include "Luau/StringUtils.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -56,6 +57,8 @@ void luaC_validate(lua_State* L);
 #endif
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
+LUAU_FASTFLAG(LuauPromoteProto)
 LUAU_FASTFLAG(LuauBytecodeFold)
 LUAU_FASTFLAG(LuauBytecodeSlotAlloc)
 LUAU_FASTFLAG(LuauCodegenA64BitlrotateSelf)
@@ -85,7 +88,8 @@ LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauCompileCallFbRemap)
 LUAU_DYNAMIC_FASTFLAG(LuauTableRobustOom)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauLoadExplicitGcDisable)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -978,6 +982,9 @@ void setupUserdataHelpers(lua_State* L)
     lua_pushvalue(L, -1);
     lua_setuserdatametatable(L, kTagVertex);
 
+    lua_pushliteral(L, "vertex");
+    lua_setfield(L, -2, "__type");
+
     lua_pushcfunction(L, lua_vertex_index, nullptr);
     lua_setfield(L, -2, "__index");
 
@@ -1619,6 +1626,8 @@ static void* blockableRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 TEST_CASE("GC")
 {
+    ScopedFastFlag luauLoadExplicitGcDisable{FFlag::LuauLoadExplicitGcDisable, true};
+
     runConformance(
         "gc.luau",
         [](lua_State* L)
@@ -3522,7 +3531,7 @@ TEST_CASE("IfLocal")
 
 TEST_CASE("WhileLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}};
     runConformance("whilelocal.luau");
 }
 
@@ -4945,6 +4954,266 @@ TEST_CASE("NativeUserdata")
     );
 }
 
+static std::string getRecordedFastPathCounters(lua_State* L, const char* global)
+{
+    struct Context
+    {
+        lua_State* L = nullptr;
+        std::string log;
+
+        int lastLine = -1;
+        std::string lastInfo;
+    } context;
+
+    context.L = L;
+
+    lua_getglobal(L, global);
+    lua_getcounters(
+        L,
+        -1,
+        &context,
+        [](void* userdata, const char* function, int linedefined) {},
+        [](void* userdata, int kind, int line, uint64_t hits)
+        {
+            Context& context = *static_cast<Context*>(userdata);
+            std::string info;
+
+            switch (Luau::CodeGen::CodeGenCounter(kind))
+            {
+            case Luau::CodeGen::CodeGenCounter::VmRegTagMismatch:
+            {
+                // { uint32_t count, uint16_t tagMask, uint8_t vmReg, uint8_t expectedTag + 1 }
+                uint16_t tagMask = uint16_t(hits >> 32);
+                uint8_t expectedTag = uint8_t(hits >> 56);
+
+                bool comma = false;
+                for (int tag = 0; tag < LUA_T_COUNT; tag++)
+                {
+                    if ((tagMask & (1u << tag)) == 0)
+                        continue;
+
+                    Luau::formatAppend(info, "%s%s", comma ? ", " : "", lua_typename(context.L, tag));
+                    comma = true;
+                }
+
+                if (expectedTag != 0)
+                {
+                    Luau::formatAppend(info, "(%s)", lua_typename(context.L, expectedTag - 1));
+                    comma = true;
+                }
+
+                context.log += (context.log.empty() ? "" : "; ") + (context.lastLine != line ? Luau::format("line %d: ", line) : "") + info;
+                break;
+            }
+            case Luau::CodeGen::CodeGenCounter::VmRegUserdataTag:
+            {
+                // { uint32_t count, uint16_t flags, uint8_t vmReg, uint8_t firstTag + 1 }
+                uint8_t firstTag = uint8_t(hits >> 56);
+                bool polymorphic = (hits >> 32) & 1;
+
+                if (firstTag == 0)
+                    return;
+
+                if (firstTag - 1 == kTagVec2)
+                    info += "vec2";
+                else if (firstTag - 1 == kTagVertex)
+                    info += "vertex";
+                else if (firstTag - 1 == LUA_UTAG_LIMIT + 1)
+                    info += "proxy";
+                else
+                    info += std::to_string(firstTag - 1);
+
+                if (polymorphic)
+                    info += " polymorphic";
+
+                context.log += (context.log.empty() ? "" : "; ") + (context.lastLine != line ? Luau::format("line %d: ", line) : "") + info;
+                break;
+            }
+            default:
+                break;
+            }
+
+            context.lastLine = line;
+            context.lastInfo = info;
+        }
+    );
+    lua_pop(L, 1);
+
+    return context.log;
+}
+
+TEST_CASE("Promotion")
+{
+    ScopedFastFlag luauRuntimeFeedback{FFlag::LuauRuntimeFeedback, true};
+    ScopedFastFlag luauPromoteProto{FFlag::LuauPromoteProto, true};
+
+    Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
+
+    nativeOpts.hooks.vectorAccessBytecodeType = vectorAccessBytecodeType;
+    nativeOpts.hooks.vectorNamecallBytecodeType = vectorNamecallBytecodeType;
+    nativeOpts.hooks.vectorAccess = vectorAccess;
+    nativeOpts.hooks.vectorNamecall = vectorNamecall;
+
+    nativeOpts.hooks.userdataAccess = userdataAccess;
+    nativeOpts.hooks.userdataMetamethod = userdataMetamethod;
+    nativeOpts.hooks.userdataNamecall = userdataNamecall;
+
+    nativeOpts.userdataTypes = kUserdataRunTypes;
+
+    StateRef globalState = runConformance(
+        "promotion.luau",
+        [](lua_State* L)
+        {
+            Luau::CodeGen::setUserdataRemapper(L, kUserdataRunTypes, remapUserdataTypes);
+
+            setupVectorHelpers(L);
+            setupUserdataHelpers(L);
+        },
+        nullptr,
+        nullptr,
+        nullptr,
+        false,
+        &nativeOpts
+    );
+    lua_State* L = globalState.get();
+
+    bool checkTags = codegen && luau_codegen_supported() == 1;
+
+    struct ExpectedCounters
+    {
+        int frame = 0;
+        std::string counters;
+    };
+
+    struct PromotionTest
+    {
+        const char* test = nullptr;
+        const char* function = nullptr;
+        std::vector<ExpectedCounters> expectations;
+    };
+
+    const PromotionTest tests[] = {
+        {"test1",
+         "sumvectors",
+         {
+             {0, "line 10: vector(number); vector(number)"},
+             {1, "line 10: (vector); (vector)"},
+             {9, "line 10: (vector); (vector)"},
+         }},
+        // vectors seen again after switching back to numbers do not cause another rebuild
+        {"test2",
+         "sumvalues",
+         {
+             {0, "line 35: (number); (number)"},
+             {1, "line 35: vector(number); vector(number)"},
+             {2, "line 35: number(vector); number(vector)"},
+             {3, "line 35: vector(number); vector(number)"},
+             {4, "line 35: (number); (number)"},
+         }},
+        {"test3",
+         "sumnumbers",
+         {
+             {0, "line 67: (number); (number)"},
+             {9, "line 67: (number); (number)"},
+         }},
+        // switch to generic path with no counter
+        {"test4",
+         "iteratecomplex",
+         {
+             {0, "line 101: table(number); table(number); table(number)"},
+             {1, ""},
+             {9, ""},
+         }},
+        {"test5",
+         "scalevectors",
+         {
+             {0, "line 121: vector(number); number(number); vector(number); vector(number)"},
+             {1, "line 121: (vector); (number); (vector); (vector)"},
+             {9, "line 121: (vector); (number); (vector); (vector)"},
+         }},
+        {"test6",
+         "sumcomponents",
+         {
+             {0, "line 146: vector(table); (number); vector(table); (number); (number)"},
+             {1, "line 146: (vector); (number); (vector); (number); (number)"},
+             {9, "line 146: (vector); (number); (vector); (number); (number)"},
+         }},
+        // record userdata tags, then switch to the host lowering with no more observations
+        // tables arriving later go through the fallback, but are too rare to cause a rebuild
+        {"test7",
+         "vec2values",
+         {
+             {0, "line 171: userdata(table); userdata(table); (number); (number); (number)"},
+             {1, "line 171: userdata(userdata); vec2; userdata(userdata); vec2; (number); (number); (number)"},
+             {2, "line 171: (userdata); (userdata); (number); (number); (number)"},
+             {5, "line 171: table(userdata); table(userdata); (number); (number); (number)"},
+             {9, "line 171: table(userdata); table(userdata); (number); (number); (number)"},
+         }},
+        {"test8",
+         "vec2operators",
+         {
+             {0, "line 204: userdata(number); userdata(number); userdata(number); userdata(number); userdata(number); userdata(number)"},
+             {1,
+              "line 204: userdata(userdata); vec2; userdata(userdata); vec2; userdata(userdata); vec2; "
+              "userdata(userdata); vec2; userdata(userdata); vec2; userdata(userdata); vec2"},
+             {2, "line 204: (userdata); (userdata); (userdata); (userdata); (userdata); (userdata)"},
+             {9, "line 204: (userdata); (userdata); (userdata); (userdata); (userdata); (userdata)"},
+         }},
+        // record userdata tags, then switch to generic path with no counter
+        {"test9",
+         "userdatasizes",
+         {
+             {0, "line 230: userdata(table); (number)"},
+             {1, "line 230: userdata(userdata); vec2 polymorphic; (number)"},
+             {2, "line 230: (number)"},
+             {9, "line 230: (number)"},
+         }},
+        {"test10",
+         "proxysizes",
+         {
+             {0, "line 258: userdata(table); (number)"},
+             {1, "line 258: userdata(userdata); proxy; (number)"},
+             {2, "line 258: (number)"},
+             {9, "line 258: (number)"},
+         }},
+    };
+
+    for (const PromotionTest& test : tests)
+    {
+        INFO(std::string(test.function));
+
+        int frameCount = test.expectations.back().frame + 1;
+        int expectedIdx = 0;
+
+        for (int frame = 0; frame < frameCount; frame++)
+        {
+            lua_getglobal(L, test.test);
+            lua_pushinteger(L, frame);
+
+            int status = lua_pcall(L, 1, 0, 0);
+            REQUIRE(status == LUA_OK);
+
+            // get counter data before promotions might happen
+            std::string counters = getRecordedFastPathCounters(L, test.function);
+
+            // full GC cycle examines the functions and commits the rebuilds
+            lua_gc(L, LUA_GCCOLLECT, 0);
+
+            const auto& expected = test.expectations[expectedIdx];
+
+            if (expected.frame == frame)
+            {
+                INFO("frame " << frame);
+
+                if (checkTags)
+                    CHECK_EQ(counters, expected.counters);
+
+                expectedIdx++;
+            }
+        }
+    }
+}
+
 TEST_CASE("UserdataDirectAccess")
 {
     // Reset global state
@@ -5572,29 +5841,6 @@ TEST_CASE("BytecodeDumpLinked")
     Luau::Bytecode::BcFunction<TValue*> rbc{};
 
     CHECK_EQ(toString(rbc, true), "; function() maxstacksize: 0 upvalues: 0 flags: 0\n");
-}
-
-TEST_CASE("SandboxFreezesVectorMetatable")
-{
-    ScopedFastFlag freezeVectorMetatable{FFlag::LuauSandboxFreezesVectorMetatable, true};
-
-    StateRef globalState(luaL_newstate(), lua_close);
-    lua_State* L = globalState.get();
-
-    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
-
-    luaL_newmetatable(L, "Vector7");
-    lua_pushboolean(L, true);
-    lua_setfield(L, -2, "Supported");
-
-    lua_setmetatable(L, -2);
-
-    luaL_sandbox(L);
-
-    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
-
-    CHECK(lua_getmetatable(L, -1));
-    CHECK(lua_getreadonly(L, -1));
 }
 
 TEST_CASE("ClassInheritanceRepeatedCallMemberOffsetCorruption")

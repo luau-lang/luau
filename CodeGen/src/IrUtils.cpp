@@ -356,6 +356,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_CMP_INT64:
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
+    case IrCmd::UPDATE_COUNTERS:
     case IrCmd::BARRIER_OBJ:
     case IrCmd::BARRIER_TABLE_BACK:
     case IrCmd::BARRIER_TABLE_FORWARD:
@@ -515,6 +516,91 @@ bool isCustomUserdataBytecodeType(uint8_t ty)
 bool isExpectedOrUnknownBytecodeType(uint8_t ty, LuauBytecodeType expected)
 {
     return ty == LBC_TYPE_ANY || ty == expected;
+}
+
+static LuauBytecodeType getBytecodeTypeForTag(uint8_t tag)
+{
+    switch (tag)
+    {
+    case LUA_TNIL:
+        return LBC_TYPE_NIL;
+    case LUA_TBOOLEAN:
+        return LBC_TYPE_BOOLEAN;
+    case LUA_TLIGHTUSERDATA:
+        return LBC_TYPE_ANY; // Doesn't have an LBC mapping
+    case LUA_TNUMBER:
+        return LBC_TYPE_NUMBER;
+    case LUA_TINTEGER:
+        return LBC_TYPE_INTEGER;
+    case LUA_TVECTOR:
+        return LBC_TYPE_VECTOR;
+    case LUA_TSTRING:
+        return LBC_TYPE_STRING;
+    case LUA_TTABLE:
+        return LBC_TYPE_TABLE;
+    case LUA_TFUNCTION:
+        return LBC_TYPE_FUNCTION;
+    case LUA_TUSERDATA:
+        return LBC_TYPE_USERDATA;
+    case LUA_TTHREAD:
+        return LBC_TYPE_THREAD;
+    case LUA_TBUFFER:
+        return LBC_TYPE_BUFFER;
+    case LUA_TCLASS:
+        return LBC_TYPE_CLASS;
+    case LUA_TOBJECT:
+        return LBC_TYPE_OBJECT;
+    }
+
+    return LBC_TYPE_ANY;
+}
+
+LuauBytecodeType getTagFeedback(const IrFunction& function, int pcpos, int reg)
+{
+    const std::vector<BytecodeTagFeedback>& tags = function.feedback.tags;
+
+    auto it = std::lower_bound(
+        tags.begin(),
+        tags.end(),
+        uint32_t(pcpos),
+        [](const BytecodeTagFeedback& item, uint32_t pcpos)
+        {
+            return item.pcpos < pcpos;
+        }
+    );
+
+    // There could be multiple items at the position
+    for (; it != tags.end() && it->pcpos == uint32_t(pcpos); ++it)
+    {
+        if (it->reg == reg)
+            return getBytecodeTypeForTag(it->tag);
+    }
+
+    return LBC_TYPE_ANY;
+}
+
+std::optional<BytecodeUserdataFeedback> getUserdataFeedback(const IrFunction& function, int pcpos, int reg)
+{
+    const std::vector<BytecodeUserdataFeedback>& userdataTypes = function.feedback.userdataTypes;
+
+    auto it = std::lower_bound(
+        userdataTypes.begin(),
+        userdataTypes.end(),
+        uint32_t(pcpos),
+        [](const BytecodeUserdataFeedback& item, uint32_t pcpos)
+        {
+            return item.pcpos < pcpos;
+        }
+    );
+
+    // There could be multiple items at the position
+    for (; it != userdataTypes.end() && it->pcpos == uint32_t(pcpos); ++it)
+    {
+        if (it->reg == reg)
+            return *it;
+    }
+
+    return std::nullopt;
 }
 
 HostMetamethod tmToHostMetamethod(int tm)

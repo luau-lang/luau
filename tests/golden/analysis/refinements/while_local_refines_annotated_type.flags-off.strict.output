@@ -1,0 +1,4 @@
+./analysis/refinements/while_local_refines_annotated_type.luau(2,11): SyntaxError: Expected identifier when parsing expression, got 'local'
+./analysis/refinements/while_local_refines_annotated_type.luau(10,1): SyntaxError: Expected 'end' (to close 'function' at line 1), got <eof>; did you forget to close 'do' at line 2?
+./analysis/refinements/while_local_refines_annotated_type.luau(4,27): TypeError: Expected this to be 'number', but got 'number?'; 
+`nil` is not a subtype of `number`

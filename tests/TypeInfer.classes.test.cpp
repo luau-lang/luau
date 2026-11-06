@@ -1431,4 +1431,15 @@ TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_oct_20")
     )"));
 }
 
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_oct_21")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+        export class l0
+        end
+        local l0 = l0
+        export class l0 extends l0
+        end
+    )"));
+}
+
 TEST_SUITE_END();

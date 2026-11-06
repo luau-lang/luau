@@ -243,6 +243,33 @@ do
     setblockallocations(false)
 end
 
+-- explicit GC does not have effect during bytecode load
+do
+  collectgarbage("restart")
+
+  for i = 1,3 do
+    local called = false
+    gcimport = setmetatable({}, {__index = function(t, k)
+      if i == 2 then collectgarbage("restart") end
+      if i == 3 then
+          for k = 1,10000 do coroutine.create(function() end) end
+      else
+          collectgarbage("collect")
+      end
+
+      called = true
+      return k
+    end})
+
+    local f = loadstring("local s = 'some' .. tostring(1); return gcimport.value, s")
+    assert(called)
+
+    local a, b = f()
+    assert(a == "value" and b == "some1")
+    gcimport = nil
+  end
+end
+
 -- testing userdata
 collectgarbage("stop")   -- stop collection
 local u = newproxy(true)

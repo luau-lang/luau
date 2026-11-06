@@ -404,6 +404,8 @@ const char* getCmdName(IrCmd cmd)
         return "INTERRUPT";
     case IrCmd::CHECK_GC:
         return "CHECK_GC";
+    case IrCmd::UPDATE_COUNTERS:
+        return "UPDATE_COUNTERS";
     case IrCmd::BARRIER_OBJ:
         return "BARRIER_OBJ";
     case IrCmd::BARRIER_TABLE_BACK:
@@ -1049,6 +1051,44 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
             append(ctx.result, "\n");
         }
     }
+
+    if (inst.cmd == IrCmd::UPDATE_COUNTERS)
+    {
+        const IrCounterSet& counterSet = ctx.counterSets[ctx.constants[OP_A(inst).index].valueUint];
+
+        append(ctx.result, "   ; counters: ");
+
+        bool comma = false;
+
+        for (const IrEntryCounter& counter : counterSet.counters)
+        {
+            if (comma)
+                append(ctx.result, ", ");
+            comma = true;
+
+            toString(ctx, counter.operand);
+
+            switch (counter.kind)
+            {
+            case CodeGenCounter::VmRegTagMismatch:
+                append(ctx.result, " tag");
+                break;
+            case CodeGenCounter::VmRegUserdataTag:
+                append(ctx.result, " userdata");
+                break;
+            default:
+                CODEGEN_ASSERT(!"unknown counter kind");
+                break;
+            }
+
+            append(ctx.result, " at pcpos %u", counter.pcpos);
+
+            if (counter.expectedTag != kUnknownTag)
+                append(ctx.result, " (%s expected)", getTagName(counter.expectedTag));
+        }
+
+        append(ctx.result, "\n");
+    }
 }
 
 void toStringDetailed(
@@ -1142,7 +1182,7 @@ void toStringDetailed(
 std::string toString(IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -1259,7 +1299,7 @@ static void appendBlocks(IrToStringContext& ctx, const IrFunction& function, boo
 std::string toDot(const IrFunction& function, bool includeInst)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1301,7 +1341,7 @@ std::string toDot(const IrFunction& function, bool includeInst)
 std::string toDotCfg(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1324,7 +1364,7 @@ std::string toDotCfg(const IrFunction& function)
 std::string toDotDjGraph(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
 

@@ -214,6 +214,8 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
 
     g->ptrenckey[0] = 1;
 
+    g->strt.saltmult = 0x9e3779b9u; // default string table salt provides additional Fibonacci hash mixing
+
     g->totalbytes = sizeof(LG);
     g->memcatbytes[0] = sizeof(LG);
 
