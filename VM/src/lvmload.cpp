@@ -19,6 +19,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCostModel)
 LUAU_FASTFLAGVARIABLE(LuauLoadRemapOptionalUserdata)
+LUAU_FASTFLAGVARIABLE(LuauLoadExplicitGcDisable)
 
 template<typename T>
 struct TempBuffer
@@ -61,30 +62,42 @@ struct TempBuffer
     }
 };
 
-struct ScopedSetGCThreshold
+struct ScopedDisableGC
 {
 public:
-    ScopedSetGCThreshold(global_State* global, size_t newThreshold) noexcept
+    ScopedDisableGC(global_State* global, size_t newThreshold_DEPRECATED) noexcept
         : global{global}
     {
-        originalThreshold = global->GCthreshold;
-        global->GCthreshold = newThreshold;
+        if (FFlag::LuauLoadExplicitGcDisable)
+        {
+            originalGcDisabled = global->gcdisabled;
+            global->gcdisabled = 1;
+        }
+        else
+        {
+            originalThreshold_DEPRECATED = global->GCthreshold;
+            global->GCthreshold = newThreshold_DEPRECATED;
+        }
     }
 
-    ScopedSetGCThreshold(const ScopedSetGCThreshold&) = delete;
-    ScopedSetGCThreshold(ScopedSetGCThreshold&&) = delete;
+    ScopedDisableGC(const ScopedDisableGC&) = delete;
+    ScopedDisableGC(ScopedDisableGC&&) = delete;
 
-    ScopedSetGCThreshold& operator=(const ScopedSetGCThreshold&) = delete;
-    ScopedSetGCThreshold& operator=(ScopedSetGCThreshold&&) = delete;
+    ScopedDisableGC& operator=(const ScopedDisableGC&) = delete;
+    ScopedDisableGC& operator=(ScopedDisableGC&&) = delete;
 
-    ~ScopedSetGCThreshold() noexcept
+    ~ScopedDisableGC() noexcept
     {
-        global->GCthreshold = originalThreshold;
+        if (FFlag::LuauLoadExplicitGcDisable)
+            global->gcdisabled = originalGcDisabled;
+        else
+            global->GCthreshold = originalThreshold_DEPRECATED;
     }
 
 private:
     global_State* global = nullptr;
-    size_t originalThreshold = 0;
+    size_t originalThreshold_DEPRECATED = 0;
+    uint8_t originalGcDisabled = 0;
 };
 
 void luaV_getimport(lua_State* L, LuaTable* env, TValue* k, StkId res, uint32_t id, bool propagatenil)
@@ -864,7 +877,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     luaC_checkGC(L);
 
     // pause GC for the duration of deserialization - some objects we're creating aren't rooted
-    const ScopedSetGCThreshold pauseGC{L->global, SIZE_MAX};
+    const ScopedDisableGC pauseGC{L->global, SIZE_MAX};
 
     struct LoadContext
     {

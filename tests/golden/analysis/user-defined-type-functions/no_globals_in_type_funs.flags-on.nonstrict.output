@@ -1,0 +1,2 @@
+./analysis/user-defined-type-functions/no_globals_in_type_funs.luau(4,14): GlobalUsedAsLocal: Global 'f' is only used in the enclosing function 'g'; consider changing it to local
+./analysis/user-defined-type-functions/no_globals_in_type_funs.luau(4,14): FunctionUnused: Function 'f' is never used; prefix with '_' to silence

@@ -4,7 +4,7 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 namespace Luau
 {
@@ -722,7 +722,7 @@ void AstStatWhile::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
-        if (FFlag::DebugLuauWhileLocalSyntax && conditionLocal && conditionLocal->annotation)
+        if (FFlag::LuauExperimentalWhileLocalSyntax && conditionLocal && conditionLocal->annotation)
             conditionLocal->annotation->visit(visitor);
 
         condition->visit(visitor);

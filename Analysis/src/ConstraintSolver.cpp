@@ -42,13 +42,14 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
+LUAU_FLAGVERSION(LuauTraverseScopeToFunction, 2)
 LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAGVARIABLE(LuauEqualityConstraintBinds)
 LUAU_FASTFLAGVARIABLE(LuauNonreentrantLookupTableProp)
 LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
@@ -856,30 +857,6 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypePackId tp,
         emplaceTypePack<BoundTypePack>(asMutable(tp), boundTo);
     }
 
-    unblock(tp, constraint->location);
-}
-
-template<typename T, typename... Args>
-void ConstraintSolver::DEPRECATED_emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args)
-{
-    static_assert(!std::is_same_v<T, BoundType>, "cannot use `emplace<BoundType>`! use `bind`");
-
-    LUAU_ASSERT(get<BlockedType>(ty) || get<FreeType>(ty) || get<PendingExpansionType>(ty));
-    LUAU_ASSERT(canMutate(ty, constraint));
-
-    emplaceType<T>(asMutable(ty), std::forward<Args>(args)...);
-    unblock(ty, constraint->location);
-}
-
-template<typename T, typename... Args>
-void ConstraintSolver::DEPRECATED_emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args)
-{
-    static_assert(!std::is_same_v<T, BoundTypePack>, "cannot use `emplace<BoundTypePack>`! use `bind`");
-
-    LUAU_ASSERT(get<BlockedTypePack>(tp) || get<FreeTypePack>(tp));
-    LUAU_ASSERT(canMutate(tp, constraint));
-
-    emplaceTypePack<T>(asMutable(tp), std::forward<Args>(args)...);
     unblock(tp, constraint->location);
 }
 
@@ -2040,19 +2017,11 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         else if (auto mt = get<MetatableType>(follow(ft->upperBound)))
             return tryDispatchHasIndexer(recursionDepth, constraint, mt->table, indexType, resultType, seen);
 
-        if (FFlag::LuauRemoveConstraintSolverEmplace)
-        {
-            auto freeResult = freshType(arena, builtinTypes, ft->scope, Polarity::Mixed);
-            trackInteriorFreeType(ft->scope, freeResult);
-            bind(constraint, resultType, freeResult);
-            // We expect `resultType` to be followed later, so just reassign it here.
-            resultType = freeResult;
-        }
-        else
-        {
-            FreeType freeResult{ft->scope, builtinTypes->neverType, builtinTypes->unknownType, Polarity::Mixed};
-            DEPRECATED_emplace<FreeType>(constraint, resultType, freeResult);
-        }
+        auto freeResult = freshType(arena, builtinTypes, ft->scope, Polarity::Mixed);
+        trackInteriorFreeType(ft->scope, freeResult);
+        bind(constraint, resultType, freeResult);
+        // We expect `resultType` to be followed later, so just reassign it here.
+        resultType = freeResult;
 
         const TableState ubState = FFlag::DebugLuauExactTableTypes ? TableState::Sealed : TableState::Unsealed;
         TypeId upperBound = arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, ubState});
@@ -2079,18 +2048,9 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         {
             // FIXME this is greedy.
 
-            if (FFlag::LuauRemoveConstraintSolverEmplace)
-            {
-                auto freeResult = freshType(arena, builtinTypes, tt->scope, Polarity::Mixed);
-                trackInteriorFreeType(tt->scope, freeResult);
-                bind(constraint, resultType, freeResult);
-            }
-            else
-            {
-                FreeType freeResult{tt->scope, builtinTypes->neverType, builtinTypes->unknownType, Polarity::Mixed};
-                DEPRECATED_emplace<FreeType>(constraint, resultType, freeResult);
-                trackInteriorFreeType(constraint->scope, resultType);
-            }
+            auto freeResult = freshType(arena, builtinTypes, tt->scope, Polarity::Mixed);
+            trackInteriorFreeType(tt->scope, freeResult);
+            bind(constraint, resultType, freeResult);
 
             tt->indexer = TableIndexer{indexType, resultType};
             return true;
@@ -2118,72 +2078,36 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         // selection: for every type in the intersection where it is well typed
         // to index into _that_ type, we construct an intersection of said result
         // types.
-        if (FFlag::LuauRemoveConstraintSolverEmplace)
+        IntersectionBuilder ib{arena, builtinTypes};
+        bool success = false;
+
+        for (TypeId part : it)
         {
+            TypeId r = arena->addType(BlockedType{});
+            getMutable<BlockedType>(r)->setOwner(constraint.get());
 
-            IntersectionBuilder ib{arena, builtinTypes};
-            bool success = false;
+            bool ok = tryDispatchHasIndexer(recursionDepth, constraint, part, indexType, r, seen);
+            // If we've cut a recursive loop short, skip it.
+            if (!ok)
+                continue;
 
-            for (TypeId part : it)
+            r = follow(r);
+            if (!get<ErrorType>(r))
             {
-                TypeId r = arena->addType(BlockedType{});
-                getMutable<BlockedType>(r)->setOwner(constraint.get());
-
-                bool ok = tryDispatchHasIndexer(recursionDepth, constraint, part, indexType, r, seen);
-                // If we've cut a recursive loop short, skip it.
-                if (!ok)
-                    continue;
-
-                r = follow(r);
-                if (!get<ErrorType>(r))
-                {
-                    success = true;
-                    ib.add(r);
-                }
+                success = true;
+                ib.add(r);
             }
-
-            // We need to distinguish between the empty case (there
-            // were no valid indexable types) and the bottom type (one of the
-            // indexable result types was never). UnionBuilder will opt to
-            // only record that its seen a top type as an optimization. we
-            // add a flag to distinguish these cases.
-            if (success)
-                bind(constraint, resultType, ib.build());
-            else
-                bind(constraint, resultType, builtinTypes->errorType);
         }
+
+        // We need to distinguish between the empty case (there
+        // were no valid indexable types) and the bottom type (one of the
+        // indexable result types was never). UnionBuilder will opt to
+        // only record that its seen a top type as an optimization. we
+        // add a flag to distinguish these cases.
+        if (success)
+            bind(constraint, resultType, ib.build());
         else
-        {
-
-            DenseHashSet<TypeId> parts;
-            for (TypeId part : it)
-                parts.insert(follow(part));
-
-            DenseHashSet<TypeId> results;
-
-            for (TypeId part : parts)
-            {
-                TypeId r = arena->addType(BlockedType{});
-                getMutable<BlockedType>(r)->setOwner(constraint.get());
-
-                bool ok = tryDispatchHasIndexer(recursionDepth, constraint, part, indexType, r, seen);
-                // If we've cut a recursive loop short, skip it.
-                if (!ok)
-                    continue;
-
-                r = follow(r);
-                if (!get<ErrorType>(r))
-                    results.insert(r);
-            }
-
-            if (0 == results.size())
-                bind(constraint, resultType, builtinTypes->errorType);
-            else if (1 == results.size())
-                bind(constraint, resultType, *results.begin());
-            else
-                DEPRECATED_emplace<IntersectionType>(constraint, resultType, std::vector(results.begin(), results.end()));
-        }
-
+            bind(constraint, resultType, builtinTypes->errorType);
 
         return true;
     }
@@ -2191,69 +2115,33 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     {
         // Indexing into a union of types means constructing a union of
         // results: we don't know _which_ type it could be.
-        if (FFlag::LuauRemoveConstraintSolverEmplace)
+        UnionBuilder ub{arena, builtinTypes};
+        bool success = false;
+
+        for (TypeId option : ut)
         {
-            UnionBuilder ub{arena, builtinTypes};
-            bool success = false;
+            TypeId r = arena->addType(BlockedType{});
+            getMutable<BlockedType>(r)->setOwner(constraint.get());
 
-            for (TypeId option : ut)
-            {
-                TypeId r = arena->addType(BlockedType{});
-                getMutable<BlockedType>(r)->setOwner(constraint.get());
+            bool ok = tryDispatchHasIndexer(recursionDepth, constraint, option, indexType, r, seen);
+            // If we've cut a recursive loop short, skip it.
+            if (!ok)
+                continue;
 
-                bool ok = tryDispatchHasIndexer(recursionDepth, constraint, option, indexType, r, seen);
-                // If we've cut a recursive loop short, skip it.
-                if (!ok)
-                    continue;
-
-                r = follow(r);
-                success = true;
-                ub.add(r);
-            }
-
-            // We need to distinguish between the empty case (there
-            // were no valid indexable types) and the top type (one of the
-            // indexable result types was unknown). UnionBuilder will opt to
-            // only record that its seen a top type as an optimization. we
-            // add a flag to distinguish these cases.
-            if (success)
-                bind(constraint, resultType, ub.build());
-            else
-                bind(constraint, resultType, builtinTypes->errorType);
+            r = follow(r);
+            success = true;
+            ub.add(r);
         }
+
+        // We need to distinguish between the empty case (there
+        // were no valid indexable types) and the top type (one of the
+        // indexable result types was unknown). UnionBuilder will opt to
+        // only record that its seen a top type as an optimization. we
+        // add a flag to distinguish these cases.
+        if (success)
+            bind(constraint, resultType, ub.build());
         else
-        {
-
-            DenseHashSet<TypeId> parts;
-            for (TypeId part : ut)
-                parts.insert(follow(part));
-
-            DenseHashSet<TypeId> results;
-
-            for (TypeId part : parts)
-            {
-                TypeId r = arena->addType(BlockedType{});
-                getMutable<BlockedType>(r)->setOwner(constraint.get());
-
-                bool ok = tryDispatchHasIndexer(recursionDepth, constraint, part, indexType, r, seen);
-                // If we've cut a recursive loop short, skip it.
-                if (!ok)
-                    continue;
-
-                r = follow(r);
-                results.insert(r);
-            }
-
-            if (0 == results.size())
-                bind(constraint, resultType, builtinTypes->errorType);
-            else if (1 == results.size())
-            {
-                TypeId firstResult = *results.begin();
-                bind(constraint, resultType, firstResult);
-            }
-            else
-                DEPRECATED_emplace<UnionType>(constraint, resultType, std::vector(results.begin(), results.end()));
-        }
+            bind(constraint, resultType, builtinTypes->errorType);
 
         return true;
     }
@@ -2804,9 +2692,48 @@ bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const 
 
 bool ConstraintSolver::tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint)
 {
-    unify(constraint, c.resultType, c.assignmentType);
-    unify(constraint, c.assignmentType, c.resultType);
-    return true;
+    if (FFlag::LuauEqualityConstraintBinds)
+    {
+        // TODO CLI-234809: This is fairly conservative as it only fires when
+        // one free type is unbound. Consider something like:
+        //
+        //  ('a <: number | string) ~ ('b <: string | boolean)
+        //
+        // ... in this case, we could consider a new free type 'c that has the
+        // upper bound `(number | string) & (string | boolean)` => `string`.
+        // Additionally, we could perform this check in the Unifier itself, so
+        // that this can be observed as, say, a result of two subtype constraints
+        // and not a single equality constraint.
+        auto hasNoBounds = [](const FreeType* ft) {
+            return is<NeverType>(follow(ft->lowerBound)) && is<UnknownType>(follow(ft->upperBound));
+        };
+
+        auto resultType = follow(c.resultType);
+        auto assignmentType = follow(c.assignmentType);
+
+        if (auto ft = get<FreeType>(resultType); ft && hasNoBounds(ft))
+        {
+            bind(constraint, resultType, assignmentType);
+            return true;
+        }
+
+        if (auto ft = get<FreeType>(assignmentType); ft && hasNoBounds(ft))
+        {
+            bind(constraint, assignmentType, resultType);
+            return true;
+        }
+
+        unify(constraint, resultType, assignmentType);
+        unify(constraint, assignmentType, resultType);
+        return true;
+    
+    }
+    else
+    {
+        unify(constraint, c.resultType, c.assignmentType);
+        unify(constraint, c.assignmentType, c.resultType);
+        return true;
+    }
 }
 
 struct FindAllUnionMembers : TypeOnceVisitor

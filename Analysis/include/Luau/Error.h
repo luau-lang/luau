@@ -667,6 +667,14 @@ struct IllegalClassPropertyOverride
     bool operator==(const IllegalClassPropertyOverride& rhs) const;
 };
 
+struct MissingConstructor
+{
+    Name className;
+    Name superName;
+
+    bool operator==(const MissingConstructor& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -737,7 +745,8 @@ using TypeErrorData = Variant<
     CyclicClassInheritance,
     InvalidClassExtension,
     IncompatibleClassMethodOverride,
-    IllegalClassPropertyOverride>;
+    IllegalClassPropertyOverride,
+    MissingConstructor>;
 
 struct TypeErrorSummary
 {

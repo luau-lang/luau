@@ -3379,6 +3379,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::INTERRUPT:
         // While interrupt can observe state and yield/error, interrupt handlers must never change state
         break;
+    case IrCmd::UPDATE_COUNTERS:
+        break;
     case IrCmd::SETLIST:
         // Find array size information through the pointer stored in the 'B' VM register
         if (uint32_t* loadIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_POINTER, OP_B(inst)))

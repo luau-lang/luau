@@ -1086,6 +1086,11 @@ struct ErrorConverter
     {
         return "Illegal override of property '" + e.property + "' on class '" + e.className + "' inherited from superclass '" + e.superName + "'";
     }
+
+    std::string operator()(const MissingConstructor& e) const
+    {
+        return "'" + e.className + "' inherits a constructor from '" + e.superName + "', so it needs to define one too";
+    }
 };
 
 struct InvalidNameChecker
@@ -1336,6 +1341,11 @@ bool IncompatibleClassMethodOverride::operator==(const IncompatibleClassMethodOv
 bool IllegalClassPropertyOverride::operator==(const IllegalClassPropertyOverride& rhs) const
 {
     return property == rhs.property && className == rhs.className && superName == rhs.superName;
+}
+
+bool MissingConstructor::operator==(const MissingConstructor& rhs) const
+{
+    return className == rhs.className && superName == rhs.superName;
 }
 
 int TypeError::code() const
@@ -1839,6 +1849,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, MissingConstructor>)
     {
     }
     else

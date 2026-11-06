@@ -1,0 +1,1 @@
+./analysis/user-defined-type-functions/udtf_no_shared_state.luau(2,12): GlobalUsedAsLocal: Global 'glob' is only used in the enclosing function 'foo'; consider changing it to local

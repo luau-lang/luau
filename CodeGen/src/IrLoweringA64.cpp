@@ -2866,6 +2866,102 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.setLabel(skip);
         break;
     }
+    case IrCmd::UPDATE_COUNTERS:
+    {
+        const IrCounterSet& counterSet = function.counterSets[uintOp(OP_A(inst))];
+
+        if (counterSet.counters.empty())
+            break;
+
+        RegisterA64 base = regs.allocTemp(KindA64::x);
+        RegisterA64 slot = regs.allocTemp(KindA64::x);
+        RegisterA64 temp1 = regs.allocTemp(KindA64::w);
+        RegisterA64 temp2 = regs.allocTemp(KindA64::w);
+
+        // Get counter slots
+        build.ldr(base, mem(rState, offsetof(lua_State, ci)));
+        build.ldr(base, mem(base, offsetof(CallInfo, p)));
+        build.ldr(base, mem(base, offsetof(Proto, execdata)));
+
+        for (const IrEntryCounter& counter : counterSet.counters)
+        {
+            int vmReg = vmRegOp(counter.operand);
+
+            // {uint32_t kind, uint32_t pcpos, uint32_t count, uint32_t metadata}
+            function.extraNativeData.push_back(uint32_t(counter.kind));
+            function.extraNativeData.push_back(counter.pcpos);
+            uint32_t counterIndex = uint32_t(function.extraNativeData.size());
+            function.extraNativeData.push_back(0);
+
+            emitAddOffset(build, slot, base, size_t(function.proto->sizecode + counterIndex) * 4);
+
+            switch (counter.kind)
+            {
+            case CodeGenCounter::VmRegTagMismatch:
+            {
+                // Counter high part is used for metadata, currently { uint8_t expectedTag + 1, uint8_t vmReg, uint16_t tagMask }
+                static_assert(LUA_T_COUNT <= 16, "tag mask has to fit into 16 bits");
+                uint32_t expectedTag = counter.expectedTag == kUnknownTag ? 0 : counter.expectedTag + 1;
+                function.extraNativeData.push_back((expectedTag << 24) | (vmReg << 16));
+
+                // Increment (32 bit)
+                build.ldr(temp2, mem(slot, 0));
+                build.add(temp2, temp2, uint16_t(1));
+                build.str(temp2, mem(slot, 0));
+
+                // Record the tag in the tag mask
+                build.ldr(temp1, mem(rBase, vmReg * sizeof(TValue) + offsetof(TValue, tt)));
+                build.mov(temp2, 1);
+                build.lsl(temp2, temp2, temp1);
+                build.ldr(temp1, mem(slot, 4));
+                build.orr(temp1, temp1, temp2);
+                build.str(temp1, mem(slot, 4));
+                break;
+            }
+            case CodeGenCounter::VmRegUserdataTag:
+            {
+                // Counter high part is used for metadata, currently { uint8_t firstTag + 1, uint8_t vmReg, uint16_t flags }
+                // Flag bit 0 is set to mark positions with different userdata
+                function.extraNativeData.push_back(vmReg << 16);
+
+                // Make sure it's actually a userdata type and count a hit if it is
+                Label skip, compare;
+                build.ldr(temp1, mem(rBase, vmReg * sizeof(TValue) + offsetof(TValue, tt)));
+                build.cmp(temp1, uint16_t(LUA_TUSERDATA));
+                build.b(ConditionA64::NotEqual, skip);
+
+                // Increment (32 bit)
+                build.ldr(temp2, mem(slot, 0));
+                build.add(temp2, temp2, uint16_t(1));
+                build.str(temp2, mem(slot, 0));
+
+                build.ldr(castReg(KindA64::x, temp1), mem(rBase, vmReg * sizeof(TValue) + offsetof(TValue, value.gc)));
+                build.ldrb(temp1, mem(castReg(KindA64::x, temp1), offsetof(Udata, tag)));
+                build.add(temp1, temp1, uint16_t(1));
+
+                // If the value is not yet set we record it, if it changes we mark it as polymorphic
+                build.ldrb(temp2, mem(slot, 7));
+                build.cbnz(temp2, compare);
+                build.strb(temp1, mem(slot, 7));
+                build.b(skip);
+
+                build.setLabel(compare);
+                build.cmp(temp2, temp1);
+                build.b(ConditionA64::Equal, skip);
+                build.ldrb(temp2, mem(slot, 4));
+                build.orr(temp2, temp2, 1u);
+                build.strb(temp2, mem(slot, 4));
+
+                build.setLabel(skip);
+                break;
+            }
+            default:
+                CODEGEN_ASSERT(!"unknown counter kind");
+                break;
+            }
+        }
+        break;
+    }
     case IrCmd::BARRIER_OBJ:
     {
         RegisterA64 temp = regs.allocTemp(KindA64::x);

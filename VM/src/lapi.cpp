@@ -21,6 +21,8 @@
 
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinally)
+LUAU_FASTFLAG(LuauLoadExplicitGcDisable)
+LUAU_FASTFLAG(LuauSaltedInterningTable)
 
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
@@ -1442,6 +1444,9 @@ int lua_gc(lua_State* L, int what, int data)
     }
     case LUA_GCCOLLECT:
     {
+        if (FFlag::LuauLoadExplicitGcDisable && g->gcdisabled != 0)
+            break;
+
         luaC_fullgc(L);
         break;
     }
@@ -1463,6 +1468,9 @@ int lua_gc(lua_State* L, int what, int data)
     }
     case LUA_GCSTEP:
     {
+        if (FFlag::LuauLoadExplicitGcDisable && g->gcdisabled != 0)
+            break;
+
         size_t amount = (cast_to(size_t, data) << 10);
         ptrdiff_t oldcredit = g->gcstate == GCSpause ? 0 : g->GCthreshold - g->totalbytes;
 
@@ -1839,6 +1847,13 @@ void lua_setpointerencodekey(lua_State* L, uint64_t a, uint64_t b, uint64_t c, u
     {
         g->ptrenckeynew[2 * i + 0] = siphash24(a, b, i);
         g->ptrenckeynew[2 * i + 1] = siphash24(c, d, i);
+    }
+
+    // Derive an additional key for the string interning table
+    if (FFlag::LuauSaltedInterningTable && g->ptrencactive)
+    {
+        uint64_t salt = siphash24(a, b, 4);
+        luaS_sethashsalt(L, uint32_t(salt), uint32_t(salt >> 32));
     }
 }
 

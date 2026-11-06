@@ -47,7 +47,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
-LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -755,7 +755,7 @@ void TypeChecker2::visit(AstStatWhile* whileStatement)
 {
     visit(whileStatement->condition, ValueContext::RValue);
 
-    if (FFlag::DebugLuauWhileLocalAnalysis && whileStatement->conditionLocal && whileStatement->conditionLocal->annotation)
+    if (FFlag::LuauExperimentalWhileLocalAnalysis && whileStatement->conditionLocal && whileStatement->conditionLocal->annotation)
     {
         TypeId annotationType = lookupAnnotation(whileStatement->conditionLocal->annotation);
         testPotentialLiteralIsSubtype(whileStatement->condition, annotationType);
@@ -1569,6 +1569,8 @@ void TypeChecker2::checkMemberOverrides(AstStatClass* stat)
     if (!superInstanceEtv)
         return;
 
+    bool constructorDefined = false;
+
     for (const auto& member : stat->members)
     {
         Luau::visit(
@@ -1579,25 +1581,27 @@ void TypeChecker2::checkMemberOverrides(AstStatClass* stat)
                 },
                 [&](const AstClassMethod& method)
                 {
+                    if (method.functionName == "__init")
+                        constructorDefined = true;
+
                     checkMethodOverride(stat, &method, superInstanceEtv);
                 }
             },
             member
         );
     }
+
+    if (!constructorDefined)
+    {
+        if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, "__init"))
+            reportError(MissingConstructor{Name(stat->name->name.value), *ancestor}, stat->location);
+    }
 }
 
 void TypeChecker2::checkPropertyOverride(AstStatClass* stat, const AstClassProperty* property, const ExternType* superInstanceEtv)
 {
-    std::string propertyName{property->name.value};
-    for (; superInstanceEtv; superInstanceEtv = get<ExternType>(follow(superInstanceEtv->parent)))
-    {
-        if (superInstanceEtv->props.count(propertyName) != 0)
-        {
-            reportError(IllegalClassPropertyOverride{propertyName, Name(stat->name->name.value), superInstanceEtv->name}, property->nameLocation);
-            return;
-        }
-    }
+    if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, property->name.value))
+        reportError(IllegalClassPropertyOverride{property->name.value, Name(stat->name->name.value), *ancestor}, property->nameLocation);
 }
 
 void TypeChecker2::checkMethodOverride(AstStatClass* stat, const AstClassMethod* method, const ExternType* superInstanceEtv)
