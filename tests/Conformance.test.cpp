@@ -84,6 +84,7 @@ LUAU_FASTFLAG(LuauBufferCage)
 LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_FASTFLAG(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAG(LuauCodegenDseTrackTagInvalidation)
+LUAU_FASTFLAG(LuauCodegenDseHintNeedsPendingTag)
 LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauCompileCallFbRemap)
@@ -4790,6 +4791,7 @@ TEST_CASE("Native")
     ScopedFastFlag luauCodegenMarkUsed{FFlag::LuauCodegenMarkUsed, true};
     ScopedFastFlag reloadLargeConstOffset{FFlag::LuauCodegenA64ReloadLargeConstOffset, true};
     ScopedFastFlag luauCodegenDseTrackTagInvalidation{FFlag::LuauCodegenDseTrackTagInvalidation, true};
+    ScopedFastFlag luauCodegenDseHintNeedsPendingTag{FFlag::LuauCodegenDseHintNeedsPendingTag, true};
     ScopedFastFlag luauCodegenCmpAnySideEffecting{FFlag::LuauCodegenCmpAnySideEffecting, true};
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
