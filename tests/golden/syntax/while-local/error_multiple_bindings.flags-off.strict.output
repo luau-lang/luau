@@ -1,4 +1,5 @@
-./syntax/while-local/error_multiple_bindings.luau(3,14): SyntaxError: Expected '=' after variable name in 'while local', got ','; only a single binding is allowed
-./syntax/while-local/error_multiple_bindings.luau(4,1): SyntaxError: Expected 'end' (to close ',' at line 3), got <eof>
-./syntax/while-local/error_multiple_bindings.luau(3,14): UnbalancedAssignment: Assigning 1 values to 2 variables initializes extra variables with nil; add 'nil' to value list to silence
-./syntax/while-local/error_multiple_bindings.luau(3,22): SameLineStatement: A new statement is on the same line; add semi-colon on previous statement to silence
+./syntax/while-local/error_multiple_bindings.luau(1,7): SyntaxError: Expected identifier when parsing expression, got 'local'
+./syntax/while-local/error_multiple_bindings.luau(2,1): SyntaxError: Expected 'end' (to close 'local' at line 1), got <eof>
+./syntax/while-local/error_multiple_bindings.luau(1,7): UnbalancedAssignment: Assigning 1 values to 2 variables initializes extra variables with nil; add 'nil' to value list to silence
+./syntax/while-local/error_multiple_bindings.luau(1,13): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+./syntax/while-local/error_multiple_bindings.luau(1,16): LocalUnused: Variable 'y' is never used; prefix with '_' to silence

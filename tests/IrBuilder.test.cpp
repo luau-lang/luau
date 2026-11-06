@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
+LUAU_FASTFLAG(LuauCodegenX64ConflictCheck)
 
 using namespace Luau::CodeGen;
 
@@ -326,6 +327,57 @@ bb_1:
 
 bb_2:
    RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptNoInlineAcrossStore")
+{
+    ScopedFastFlag luauCodegenX64ConflictCheck{FFlag::LuauCodegenX64ConflictCheck, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.fallbackBlock(0u);
+
+    build.beginBlock(block);
+
+    // Copy U0 into R4 and load it
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(4), build.inst(IrCmd::GET_UPVALUE, build.vmUpvalue(0)));
+    build.inst(IrCmd::CHECK_TAG, build.vmReg(4), build.constTag(tnumber), fallback);
+    IrOp x = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+
+    // Copy U1 into R4 and load it
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(4), build.inst(IrCmd::GET_UPVALUE, build.vmUpvalue(1)));
+    build.inst(IrCmd::CHECK_TAG, build.vmReg(4), build.constTag(tnumber), fallback);
+    IrOp y = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), build.inst(IrCmd::MUL_NUM, y, x));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    optimizeMemoryOperandsX64(build.function);
+
+    // After second store to R4, MUL_NUM cannot use earlier R4 value directly on the RHS
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = GET_UPVALUE U0
+   STORE_TVALUE R4, %0
+   CHECK_TAG R4, tnumber, bb_fallback_1
+   %3 = LOAD_DOUBLE R4
+   %4 = GET_UPVALUE U1
+   STORE_TVALUE R4, %4
+   CHECK_TAG R4, tnumber, bb_fallback_1
+   %7 = LOAD_DOUBLE R4
+   %8 = MUL_NUM %7, %3
+   STORE_DOUBLE R3, %8
+   STORE_TAG R3, tnumber
+   RETURN 0u
+
+bb_fallback_1:
+   RETURN 1u
 
 )");
 }

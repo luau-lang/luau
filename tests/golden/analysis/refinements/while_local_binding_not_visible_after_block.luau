@@ -1,5 +1,3 @@
---!golden fflags=DebugLuauWhileLocalSyntax=true,DebugLuauWhileLocalAnalysis=true
-
 local n = 0
 while local x = n < 3 do
     n += 1

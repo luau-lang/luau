@@ -24,7 +24,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
-LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
@@ -32,6 +31,7 @@ LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauInferReadOnlyIndexers)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauEqualityConstraintBinds)
 LUAU_FASTFLAG(LuauNonreentrantLookupTableProp)
 
 namespace
@@ -1349,6 +1349,11 @@ TEST_CASE_FIXTURE(Fixture, "result_is_bool_for_equality_operators_if_lhs_is_any"
 
 TEST_CASE_FIXTURE(Fixture, "inequality_operators_imply_exactly_matching_types")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauEqualityConstraintBinds, true},
+    };
+
     CheckResult result = check(R"(
         function abs(n)
             if n < 0 then
@@ -5264,8 +5269,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "indexing_branching_table")
 {
-    ScopedFastFlag _{FFlag::LuauRemoveConstraintSolverEmplace, true};
-
     CheckResult result = check(R"(
         local test = if true then { "meow", "woof" } else { 4, 81 }
         local test2 = test[1]
@@ -7385,7 +7388,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_1")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -7401,7 +7403,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -7417,7 +7418,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_3")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -7433,7 +7433,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_1")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -7449,7 +7448,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -7465,7 +7463,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_3")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -7499,7 +7496,6 @@ TEST_CASE_FIXTURE(Fixture, "test_indexing_into_unsealed_table")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     CheckResult results = check(R"(

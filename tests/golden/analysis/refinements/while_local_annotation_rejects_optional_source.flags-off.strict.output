@@ -1,2 +1,5 @@
-./analysis/refinements/while_local_annotation_rejects_optional_source.luau(5,29): TypeError: Expected this to be 'string', but got 'string?'; 
+./analysis/refinements/while_local_annotation_rejects_optional_source.luau(3,11): SyntaxError: Expected identifier when parsing expression, got 'local'
+./analysis/refinements/while_local_annotation_rejects_optional_source.luau(8,1): SyntaxError: Expected 'end' (to close 'function' at line 1), got <eof>; did you forget to close 'do' at line 3?
+./analysis/refinements/while_local_annotation_rejects_optional_source.luau(3,29): TypeError: Expected this to be 'string', but got 'string?'; 
 `nil` is not a subtype of `string`
+./analysis/refinements/while_local_annotation_rejects_optional_source.luau(3,17): LocalUnused: Variable 'x' is never used; prefix with '_' to silence

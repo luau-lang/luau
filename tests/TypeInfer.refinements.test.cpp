@@ -18,8 +18,8 @@ LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauRefineNotNilWaitsForBlockedTarget)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 using namespace Luau;
 
@@ -4020,8 +4020,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_not_nil_waits_for_blocked_target")
 TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_narrows_to_truthy_both_solvers")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauWhileLocalSyntax, true},
-        {FFlag::DebugLuauWhileLocalAnalysis, true},
+        {FFlag::LuauExperimentalWhileLocalSyntax, true},
+        {FFlag::LuauExperimentalWhileLocalAnalysis, true},
     };
 
     CheckResult result = check(R"(
@@ -4041,8 +4041,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_narrows_to_truthy_both_solvers")
 TEST_CASE_FIXTURE(BuiltinsFixture, "while_const_narrows_to_truthy")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauWhileLocalSyntax, true},
-        {FFlag::DebugLuauWhileLocalAnalysis, true},
+        {FFlag::LuauExperimentalWhileLocalSyntax, true},
+        {FFlag::LuauExperimentalWhileLocalAnalysis, true},
     };
 
     CheckResult result = check(R"(
@@ -4056,6 +4056,41 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_const_narrows_to_truthy")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_doesnt_visit_annotation_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalWhileLocalSyntax, true},
+        {FFlag::LuauExperimentalWhileLocalAnalysis, true},
+    };
+
+    // Prior this would assert as `y` was missing a refinement key.
+    CheckResult result = check(R"(
+        while local x: typeof(y) = nil :: any
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_doesnt_visit_annotation_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalWhileLocalSyntax, true},
+        {FFlag::LuauExperimentalWhileLocalAnalysis, true},
+    };
+
+    // Prior this would assert as `y` was missing a refinement key.
+    CheckResult result = check(R"(
+        y = {1,2,3}
+        while local x: typeof(y) = {} do
+            print("hi")
+        end
+
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

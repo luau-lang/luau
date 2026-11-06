@@ -22,6 +22,9 @@ typedef struct stringtable
     TString** hash;
     uint32_t nuse; // number of elements
     int size;
+    uint32_t saltmult;
+    uint32_t saltadd;
+    uint8_t hashshift;
 } stringtable;
 // clang-format on
 
@@ -212,6 +215,7 @@ typedef struct global_State
 
     uint8_t currentwhite;
     uint8_t gcstate; // state of garbage collector
+    uint8_t gcdisabled;
 
     GCObject* gray;      // list of gray objects
     GCObject* grayagain; // list of objects to be traversed atomically

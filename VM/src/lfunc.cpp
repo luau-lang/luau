@@ -66,6 +66,82 @@ Proto* luaF_newproto(lua_State* L)
     return f;
 }
 
+template<typename T>
+static T* copyArray(lua_State* L, const T* source, int size, uint8_t memcat)
+{
+    T* result = luaM_newarray(L, size, T, memcat);
+
+    if (size != 0)
+        memcpy(result, source, size * sizeof(T));
+
+    return result;
+}
+
+Proto* luaF_cloneproto(lua_State* L, Proto* source)
+{
+    Proto* p = luaF_newproto(L);
+    uint8_t memcat = p->memcat;
+
+    p->debugname = source->debugname;
+    p->maxstacksize = source->maxstacksize;
+    p->numparams = source->numparams;
+    p->nups = source->nups;
+    p->is_vararg = source->is_vararg;
+    p->flags = source->flags;
+    p->gclist = nullptr;
+    p->funid = source->funid;
+    p->userdata = source->userdata;
+    p->source = source->source;
+    p->linedefined = source->linedefined;
+    p->cost = source->cost;
+    p->execflags = source->execflags;
+    p->bytecodeid = source->bytecodeid;
+
+    p->k = copyArray<TValue>(L, source->k, source->sizek, memcat);
+    p->sizek = source->sizek;
+
+    p->code = copyArray<Instruction>(L, source->code, source->sizecode, memcat);
+    p->sizecode = source->sizecode;
+    p->codeentry = p->code;
+
+    p->p = copyArray<Proto*>(L, source->p, source->sizep, memcat);
+    p->sizep = source->sizep;
+
+    if (source->lineinfo)
+    {
+        int absoffset = (source->sizecode + 3) & ~3;
+
+        p->lineinfo = copyArray<uint8_t>(L, source->lineinfo, source->sizelineinfo, memcat);
+        p->abslineinfo = (int*)(p->lineinfo + absoffset);
+    }
+
+    p->sizelineinfo = source->sizelineinfo;
+    p->linegaplog2 = source->linegaplog2;
+
+    p->locvars = copyArray<LocVar>(L, source->locvars, source->sizelocvars, memcat);
+    p->sizelocvars = source->sizelocvars;
+
+    p->upvalues = copyArray<TString*>(L, source->upvalues, source->sizeupvalues, memcat);
+    p->sizeupvalues = source->sizeupvalues;
+
+    if (source->debuginsn)
+        p->debuginsn = copyArray<uint8_t>(L, source->debuginsn, source->sizecode, memcat);
+
+    if (source->typeinfo)
+    {
+        p->typeinfo = copyArray<uint8_t>(L, source->typeinfo, source->sizetypeinfo, memcat);
+        p->sizetypeinfo = source->sizetypeinfo;
+    }
+
+    if (source->feedbackvec)
+    {
+        p->feedbackvec = copyArray<FeedbackVectorSlot>(L, source->feedbackvec, int(source->feedbackvecsize), memcat);
+        p->feedbackvecsize = source->feedbackvecsize;
+    }
+
+    return p;
+}
+
 Closure* luaF_newLclosure(lua_State* L, int nelems, LuaTable* e, Proto* p)
 {
     Closure* c = luaM_newgco(L, Closure, sizeLclosure(nelems), L->activememcat, LUA_TFUNCTION);

@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauLoadRemapOptionalUserdata)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
 
 #define ensureVectorSize3() \
     if constexpr (LUA_VECTOR_SIZE != 3) \
@@ -7170,6 +7171,32 @@ integer.extract(integer.extract(integer.extract(...,_,_,_,not _,_),_,_,_),_,_,0i
     );
 }
 
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest30")
+{
+    assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+--!optimize 1
+type t0 = {n0:any,[(any)&(()->true)]:Part}
+export type function t0()
+end
+for l0=0,# "DoubDoub" do
+do end
+local _ = true + l0
+for l0=47,# "Doub" do
+local _ = nil ~= not _ and ... % _
+do end
+end
+end
+do end
+)"
+        )
+            .size() > 0
+    );
+}
+
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore1")
 {
     CHECK_EQ(
@@ -8892,6 +8919,44 @@ bb_fallback_1:
   INTERRUPT 8u
   SET_SAVEDPC 9u
   CALL R3, 1i, 1i
+  JUMP bb_2
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "RuntimeFeedbackCounters")
+{
+    ScopedFastFlag luauCodeGenRuntimeFeedback{FFlag::LuauRuntimeFeedback, true};
+
+    assemblyOptions.compilationOptions.runtimeFeedback = true;
+    assemblyOptions.includeOutlinedCode = true;
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a, b)
+    return a + b
+end
+)"
+               ),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_bytecode_0:
+  CHECK_TAG R0, tnumber, bb_fallback_1
+  CHECK_TAG R1, tnumber, bb_fallback_1
+  %4 = LOAD_DOUBLE R0
+  %6 = ADD_NUM %4, R1
+  STORE_DOUBLE R2, %6
+  STORE_TAG R2, tnumber
+  JUMP bb_2
+bb_2:
+  INTERRUPT 1u
+  RETURN R2, 1i
+bb_fallback_1:
+  UPDATE_COUNTERS 0u
+   ; counters: R0 tag at pcpos 0 (tnumber expected), R1 tag at pcpos 0 (tnumber expected)
+  SET_SAVEDPC 1u
+  DO_ARITH R2, R0, R1, 8i
   JUMP bb_2
 )"
     );
