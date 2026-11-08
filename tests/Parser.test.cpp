@@ -26,7 +26,7 @@ LUAU_FASTFLAG(DebugLuauParseExactTables)
 
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -3476,6 +3476,32 @@ end
     CHECK(superLocal->local == animal->name);
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_extends_same_name_refers_to_outer_binding")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+local Foo = nil
+class Foo extends Foo
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(result.root->body.size, 2);
+
+    const AstStatLocal* outer = result.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(outer);
+
+    const AstStatClass* cls = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(cls);
+    REQUIRE(cls->super);
+
+    const AstExprLocal* superLocal = cls->super->as<AstExprLocal>();
+    REQUIRE(superLocal);
+    CHECK(superLocal->local == outer->vars.data[0]);
+    CHECK(superLocal->local != cls->name);
+}
+
 TEST_CASE_FIXTURE(Fixture, "class_exported_open")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
@@ -4193,8 +4219,8 @@ TEST_CASE_FIXTURE(Fixture, "class_private_method_call")
 
     ParseResult result = tryParse(R"(
         class Point
-            function getMag(self) 
-                return self:_mag() 
+            function getMag(self)
+                return self:_mag()
             end
         end
     )");
@@ -7110,7 +7136,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_nested_in_true_branch")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_local")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         while local x = getValue() do
@@ -7131,7 +7157,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_local")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_const")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         while const x = getValue() do
@@ -7150,7 +7176,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_const_with_annotation")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         while const x: number = getValue() do
@@ -7169,7 +7195,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_const_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_const_compat")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     // `const` not followed by a binding name is a plain condition expression (the global `const`),
     // not a `while const` binding, keeping `const` usable as an ordinary identifier
@@ -7189,7 +7215,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_const_compat")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_local_with_annotation")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         while local x: number = getValue() do
@@ -7207,7 +7233,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_local_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_local_binding_visible_in_body")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         while local x = getValue() do
@@ -7233,7 +7259,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_local_binding_visible_in_body")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_local_binding_not_visible_in_condition")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     // `x` in the condition is the outer global, not the loop binding, since the binding is pushed
     // only after the condition is parsed
@@ -7251,7 +7277,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_local_binding_not_visible_in_condition")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_local_nested")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         while local x = a() do
@@ -7276,7 +7302,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_local_nested")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_local_cst_annotation_colon_position")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
@@ -7296,7 +7322,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_local_cst_annotation_colon_position")
 
 TEST_CASE_FIXTURE(Fixture, "parse_while_const_cst_annotation_colon_position")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;

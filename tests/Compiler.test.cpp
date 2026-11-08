@@ -42,7 +42,7 @@ LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauCompileTableBuiltinsCreateClear)
 LUAU_FASTFLAG(LuauCompileReuseLowersLimit)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 using namespace Luau;
 
@@ -15271,7 +15271,7 @@ RETURN R0 1
 
 TEST_CASE("WhileLocal")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -15294,7 +15294,7 @@ L1: RETURN R0 0
 
 TEST_CASE("WhileLocalConstantFalse")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     // A constant-false condition means the body never runs, so nothing is emitted for the loop.
     CHECK_EQ(
@@ -15311,7 +15311,7 @@ RETURN R0 0
 
 TEST_CASE("WhileConst")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     // `while const` should be identical to `while local`
     CHECK_EQ(

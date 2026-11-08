@@ -36,7 +36,7 @@ LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
-LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -718,7 +718,7 @@ WithPredicate<TypeId> TypeChecker::checkLocalBinding(
     std::optional<TypeId> expectedType
 )
 {
-    LUAU_ASSERT(FFlag::LuauExperimentalIfLocalAnalysis || FFlag::DebugLuauWhileLocalAnalysis);
+    LUAU_ASSERT(FFlag::LuauExperimentalIfLocalAnalysis || FFlag::LuauExperimentalWhileLocalAnalysis);
     LUAU_ASSERT(local);
 
     TypeId lhs = nullptr;
@@ -798,14 +798,14 @@ ErrorVec TypeChecker::canUnify(TypePackId subTy, TypePackId superTy, const Scope
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatWhile& statement)
 {
     std::optional<TypeId> expectedType = std::nullopt;
-    if (FFlag::DebugLuauWhileLocalAnalysis && statement.conditionLocal && statement.conditionLocal->annotation)
+    if (FFlag::LuauExperimentalWhileLocalAnalysis && statement.conditionLocal && statement.conditionLocal->annotation)
         expectedType.emplace(resolveType(scope, *statement.conditionLocal->annotation));
 
     WithPredicate<TypeId> result = checkExpr(scope, *statement.condition, expectedType);
 
     ScopePtr whileScope = childScope(scope, statement.body->location);
 
-    if (FFlag::DebugLuauWhileLocalAnalysis && statement.conditionLocal != nullptr)
+    if (FFlag::LuauExperimentalWhileLocalAnalysis && statement.conditionLocal != nullptr)
     {
         WithPredicate<TypeId> bindingPred = checkLocalBinding(scope, whileScope, statement.conditionLocal, result, expectedType);
         resolve(bindingPred.predicates, whileScope, true);

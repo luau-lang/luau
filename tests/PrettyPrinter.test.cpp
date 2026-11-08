@@ -12,7 +12,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 
 using namespace Luau;
@@ -106,7 +106,7 @@ TEST_CASE("if_local")
 
 TEST_CASE("while_local")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     const std::string local = R"(while local item = next() do process(item) end)";
     CHECK_EQ(local, prettyPrint(local).code);
@@ -114,7 +114,7 @@ TEST_CASE("while_local")
 
 TEST_CASE("while_local_preserves_interior_spacing")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     const std::string spaced = R"(while     local   item   =   next() do process(item) end)";
     CHECK_EQ(spaced, prettyPrint(spaced).code);
@@ -122,7 +122,7 @@ TEST_CASE("while_local_preserves_interior_spacing")
 
 TEST_CASE("while_local_type_annotation")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     const std::string typed = R"(while local res : string = foo() do print(res) end)";
     CHECK_EQ(typed, prettyPrint(typed, {}, /* withTypes */ true).code);
@@ -134,7 +134,7 @@ TEST_CASE("while_local_type_annotation")
 
 TEST_CASE("while_local_without_annotation_with_types")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     const std::string local = R"(while local item = next() do process(item) end)";
     CHECK_EQ(local, prettyPrint(local, {}, /* withTypes */ true).code);
@@ -142,7 +142,7 @@ TEST_CASE("while_local_without_annotation_with_types")
 
 TEST_CASE("while_const")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     const std::string konst = R"(while const item = next() do process(item) end)";
     CHECK_EQ(konst, prettyPrint(konst).code);
@@ -150,7 +150,7 @@ TEST_CASE("while_const")
 
 TEST_CASE("while_const_type_annotation")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     const std::string typed = R"(while const res : string = foo() do print(res) end)";
     CHECK_EQ(typed, prettyPrint(typed, {}, /* withTypes */ true).code);

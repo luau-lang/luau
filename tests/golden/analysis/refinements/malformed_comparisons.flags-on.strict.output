@@ -1,0 +1,3 @@
+./analysis/refinements/malformed_comparisons.luau(4,12): TypeError: Cannot compare unrelated types 'number' and 'string' with '>'
+_luau_print (8, 9): (number) -> ()
+

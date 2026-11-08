@@ -51,7 +51,9 @@ LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalAnalysis)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalAnalysis, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAGVARIABLE(LuauUnconditionallyVisitTypeAliasParams)
-LUAU_FASTFLAGVARIABLE(DebugLuauWhileLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauBanGlobalsInTypeFunctions)
+LUAU_FASTFLAGVARIABLE(LuauFillInUninitializedGlobals)
+LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntaxSupport)
 
 namespace Luau
@@ -457,8 +459,27 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
             asMutable(ty)->ty.emplace<BoundType>(domainTy);
         }
     }
+
     for (TypeId ty : unionsToSimplify)
         addConstraint(scope, block->location, SimplifyConstraint{ty});
+
+    if (FFlag::LuauFillInUninitializedGlobals)
+    {
+        // It's ok for us to iterate over a hash set here: the order in which
+        // we initialize globals like this does not really matter.
+        for (auto name : uninitializedGlobals)
+        {
+            if (auto binding = scope->lookup(name))
+            {
+                if (auto bt = get<BlockedType>(*binding); bt && bt->getOwner() == nullptr)
+                    emplaceType<BoundType>(asMutable(*binding), builtinTypes->errorType);
+                else
+                    LUAU_ASSERT(!"Unexpected non-blocked type or owned blocked type.");
+            }
+            else
+                LUAU_ASSERT(!"Global was stated to be uninitialized but has no binding.");
+        }
+    }
 }
 
 void ConstraintGenerator::visitFragmentRoot(const ScopePtr& resumeScope, AstStatBlock* block)
@@ -1781,7 +1802,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatWhile* whil
         return ControlFlow::None;
     }
 
-    const bool isWhileLocal = FFlag::DebugLuauWhileLocalAnalysis && (while_->conditionLocal != nullptr);
+    const bool isWhileLocal = FFlag::LuauExperimentalWhileLocalAnalysis && (while_->conditionLocal != nullptr);
     ScopePtr whileScope = isWhileLocal ? childScope(while_->body, scope) : childScope(while_, scope);
 
     if (isWhileLocal)
@@ -5382,6 +5403,14 @@ struct GlobalPrepopulator : AstVisitor
     {
         return true;
     }
+
+    bool visit(AstStatTypeFunction* node) override
+    {
+        // Type functions do not participate in global inference:
+        // - They receive fresh environments that are frozen, so users can't set globals;
+        // - They cannot access upvalues nor globals from the current file.
+        return !FFlag::LuauBanGlobalsInTypeFunctions;
+    }
 };
 
 void ConstraintGenerator::prepopulateGlobalScopeForFragmentTypecheck(const ScopePtr& globalScope, const ScopePtr& resumeScope, AstStatBlock* program)
@@ -5406,12 +5435,15 @@ void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, As
     for (auto name : gp.uninitializedGlobals)
         uninitializedGlobals.insert(name);
 
-    // Handle type function globals as well, without preparing a module scope since they have a separate environment
-    GlobalPrepopulator tfgp{NotNull{typeFunctionRuntime->rootScope.get()}, arena, dfg};
-    program->visit(&tfgp);
+    if (!FFlag::LuauBanGlobalsInTypeFunctions)
+    {
+        // Handle type function globals as well, without preparing a module scope since they have a separate environment
+        GlobalPrepopulator tfgp{NotNull{typeFunctionRuntime->rootScope.get()}, arena, dfg};
+        program->visit(&tfgp);
 
-    for (auto name : tfgp.uninitializedGlobals)
-        uninitializedGlobals.insert(name);
+        for (auto name : tfgp.uninitializedGlobals)
+            uninitializedGlobals.insert(name);
+    }
 }
 
 bool ConstraintGenerator::recordPropertyAssignment(TypeId ty)

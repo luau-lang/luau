@@ -12,6 +12,7 @@
 #include "Luau/TypePack.h"
 
 #include <algorithm>
+#include <optional>
 
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 
@@ -1062,6 +1063,16 @@ OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack)
     }
 
     return OccursCheckResult::Pass;
+}
+
+std::optional<Name> propInInheritanceChain(const ExternType* cls, const std::string& prop)
+{
+    for (; cls; cls = get<ExternType>(follow(cls->parent)))
+    {
+        if (cls->props.count(prop) != 0)
+            return cls->name;
+    }
+    return std::nullopt;
 }
 
 

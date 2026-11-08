@@ -15,7 +15,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 namespace
 {
@@ -937,7 +937,7 @@ struct Printer
         else if (const auto& a = program.as<AstStatWhile>())
         {
             writer.keyword("while");
-            if (FFlag::DebugLuauWhileLocalSyntax && a->conditionLocal)
+            if (FFlag::LuauExperimentalWhileLocalSyntax && a->conditionLocal)
             {
                 const auto cstNode = lookupCstNode<CstStatWhile>(a);
 

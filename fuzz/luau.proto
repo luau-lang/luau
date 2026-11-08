@@ -328,6 +328,8 @@ message StatWhile
 {
     required Expr cond = 1;
     required StatBlock body = 2;
+    optional Local condition_local = 3;
+    optional bool condition_is_const = 4 [ default = false ];
 }
 
 message StatRepeat

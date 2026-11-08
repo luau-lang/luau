@@ -4,6 +4,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
+LUAU_FASTFLAG(LuauCodegenX64ConflictCheck)
+
 namespace Luau
 {
 namespace CodeGen
@@ -88,6 +90,14 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
         break;
     case IrCmd::INTERRUPT:
         break;
+    case IrCmd::UPDATE_COUNTERS:
+    {
+        IrCounterSet& counterSet = function.counterSets[function.uintOp(OP_A(inst))];
+
+        for (const IrEntryCounter& counter : counterSet.counters)
+            visitor.use(counter.operand);
+        break;
+    }
     case IrCmd::BARRIER_OBJ:
     case IrCmd::BARRIER_TABLE_FORWARD:
         visitor.maybeUse(OP_B(inst));
@@ -234,6 +244,33 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
         break;
     case IrCmd::MARK_DEAD:
         // Does not affect VM def/use info
+        break;
+
+        // These instructions read VmReg only after optimizeMemoryOperandsX64
+    case IrCmd::CHECK_TAG:
+    case IrCmd::FLOOR_NUM:
+    case IrCmd::CEIL_NUM:
+    case IrCmd::ROUND_NUM:
+    case IrCmd::SQRT_NUM:
+    case IrCmd::ABS_NUM:
+        if (FFlag::LuauCodegenX64ConflictCheck)
+            visitor.maybeUse(OP_A(inst));
+        break;
+    case IrCmd::CHECK_TRUTHY:
+    case IrCmd::ADD_NUM:
+    case IrCmd::SUB_NUM:
+    case IrCmd::MUL_NUM:
+    case IrCmd::DIV_NUM:
+    case IrCmd::IDIV_NUM:
+    case IrCmd::MOD_NUM:
+    case IrCmd::MIN_NUM:
+    case IrCmd::MAX_NUM:
+    case IrCmd::JUMP_CMP_NUM:
+        if (FFlag::LuauCodegenX64ConflictCheck)
+        {
+            visitor.maybeUse(OP_A(inst));
+            visitor.maybeUse(OP_B(inst));
+        }
         break;
 
     default:

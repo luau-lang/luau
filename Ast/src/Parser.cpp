@@ -34,7 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauParseExactTables)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
-LUAU_FASTFLAGVARIABLE(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntaxParsing)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -719,7 +719,7 @@ AstStat* Parser::parseWhile()
 
     nextLexeme(); // while
 
-    if (FFlag::DebugLuauWhileLocalSyntax)
+    if (FFlag::LuauExperimentalWhileLocalSyntax)
     {
         if (lexer.current().type == Lexeme::ReservedLocal)
             return parseWhileLocalCondition(start);
@@ -753,7 +753,7 @@ AstStat* Parser::parseWhile()
 // `start` is the location of the already-consumed `while` keyword; the current lexeme is the `local`/`const` keyword.
 LUAU_NOINLINE AstStat* Parser::parseWhileLocalCondition(const Location& start)
 {
-    LUAU_ASSERT(FFlag::DebugLuauWhileLocalSyntax);
+    LUAU_ASSERT(FFlag::LuauExperimentalWhileLocalSyntax);
 
     bool condIsConst = (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const");
     std::optional<Location> condKeywordLocation = lexer.current().location;
@@ -1624,7 +1624,7 @@ const char* getClassFieldNameError(const AstName& name, AstClassAccess access)
 
 } // namespace
 
-// classStatement ::= [`open`] `class` Name classProps `end`
+// classStatement ::= [`export`] [`open`] `class` Name classProps `end`
 // classProps ::= classProp [classProps]
 // classProp ::= name [: classQualifier* type]
 LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool exported, bool open)
@@ -1636,11 +1636,8 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
     if (!name)
         name = Name(nameError, lexer.current().location);
 
-    // We save the locals here as part of error recovery later.
-    auto savedLocals = saveLocals();
-
-    AstLocal* nameLocal = pushLocal(Binding(*name, nullptr, {0, 0}, true));
-
+    // The superclass is parsed before the class binding is pushed so that `class Foo extends Foo` refers to an outer `Foo` rather than to the class
+    // being declared.
     AstExpr* super = nullptr;
     if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "extends")
     {
@@ -1648,6 +1645,11 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
 
         super = parseClassRefExpr();
     }
+
+    // We save the locals here as part of error recovery later.
+    auto savedLocals = saveLocals();
+
+    AstLocal* nameLocal = pushLocal(Binding(*name, nullptr, {0, 0}, true));
 
     TempVector<AstClassMember> declarations(scratchClassDeclarations);
 
