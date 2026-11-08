@@ -1,0 +1,3 @@
+./analysis/refinements/malformed_comparisons.luau(4,12): TypeError: Types number & string and string cannot be compared with > because they do not have the same metatable
+_luau_print (8, 9): (number & string) -> ()
+

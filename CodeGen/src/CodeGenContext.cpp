@@ -16,6 +16,7 @@
 #include "lfunc.h"
 #include "lgc.h"
 #include "lmem.h"
+#include "ltable.h"
 
 #include <algorithm>
 
@@ -54,6 +55,12 @@ uint32_t jitRngRandom(uint64_t& state)
 static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 
 // TODO: could be promoted to flags or compilation option fields
+
+// Number of counter hits after which the function might be rebuilt
+constexpr uint32_t kRebuildCounterHits = 100'000;
+
+// Number of counter hits after which the recorded register information is considered to be reliable
+constexpr uint32_t kReliableFeedbackHits = 10'000;
 
 // Maximum number of times a single function can be rebuilt
 constexpr uint32_t kMaxFunctionRebuilds = 5;
@@ -489,6 +496,57 @@ static char* getCounterData(lua_State* L, Proto* proto, size_t* count)
     return reinterpret_cast<char*>(static_cast<uint32_t*>(proto->execdata) + proto->sizecode);
 }
 
+struct NativeCounter
+{
+    uint32_t kind; // CodeGenCounter
+    uint32_t pcpos;
+    uint32_t hits;
+    uint32_t data;
+};
+static_assert(sizeof(NativeCounter) == 4 * sizeof(uint32_t));
+
+inline NativeCounter* getNativeCounters(Proto* proto, unsigned& count)
+{
+    const NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(static_cast<const uint32_t*>(proto->execdata));
+
+    count = header.extraDataCount / 4;
+    return reinterpret_cast<NativeCounter*>(static_cast<uint32_t*>(proto->execdata) + proto->sizecode);
+}
+
+static bool matchesExpectedTag(uint32_t data)
+{
+    uint32_t expectedTag = data >> 24;
+    uint32_t tagMask = data & 0xffff;
+
+    return expectedTag != 0 && tagMask == (1u << (expectedTag - 1));
+}
+
+static bool hasUserdataRecorded(uint32_t data)
+{
+    return (data >> 24) != 0;
+}
+
+static uint8_t getFirstUserdata(uint32_t data)
+{
+    return uint8_t((data >> 24) - 1); // Tag is stored with +1 to recognize unset tag
+}
+
+static bool isUserdataPolymorphic(uint32_t data)
+{
+    return (data & 1) == 1;
+}
+
+static bool counterSignalsRebuild(CodeGenCounter kind, uint32_t data)
+{
+    if (kind == CodeGenCounter::VmRegTagMismatch)
+        return !matchesExpectedTag(data);
+
+    if (kind == CodeGenCounter::VmRegUserdataTag)
+        return hasUserdataRecorded(data);
+
+    return false;
+}
+
 static void examineFunction(lua_State* L, Proto* proto)
 {
     // Fast exit if target function never executed
@@ -526,7 +584,192 @@ static void examineFunction(lua_State* L, Proto* proto)
         return;
     }
 
-    // Rebuild based on feedback counters will be detected here
+    unsigned counterCount = 0;
+    NativeCounter* counters = getNativeCounters(proto, counterCount);
+
+    // If function compilation didn't get any counters, there is no need to examine it any more
+    if (counterCount == 0)
+    {
+        proto->execflags |= PEF_EXECLOCKED;
+        return;
+    }
+
+    for (size_t i = 0; i < counterCount; i++)
+    {
+        NativeCounter& counter = counters[i];
+        CodeGenCounter kind = CodeGenCounter(counter.kind);
+
+        if (counter.hits >= kRebuildCounterHits && counterSignalsRebuild(kind, counter.data))
+        {
+            vmData.protosToRebuild.insert(proto);
+            break; // one rebuild signal is enough for a whole Proto
+        }
+    }
+}
+
+template<typename T>
+static T* findRecordedInfo(std::vector<T>& items, uint32_t pcpos, uint8_t reg)
+{
+    auto it = std::find_if(
+        items.begin(),
+        items.end(),
+        [&](const T& item)
+        {
+            return item.pcpos == pcpos && item.reg == reg;
+        }
+    );
+
+    return it != items.end() ? &*it : nullptr;
+}
+
+// Adds info recorded at runtime into the overall function history
+static void mergeRecordedInfo(FunctionBuildHistory& history, Proto* proto)
+{
+    unsigned counterCount = 0;
+    NativeCounter* counters = getNativeCounters(proto, counterCount);
+
+    for (size_t i = 0; i < counterCount; i++)
+    {
+        NativeCounter& counter = counters[i];
+        CodeGenCounter kind = CodeGenCounter(counter.kind);
+
+        if (counter.hits <= kReliableFeedbackHits)
+            continue;
+
+        uint8_t vmReg = uint8_t(counter.data >> 16);
+
+        switch (kind)
+        {
+        case CodeGenCounter::VmRegTagMismatch:
+        {
+            uint16_t tagMask = uint16_t(counter.data & 0xffff);
+
+            if (tagMask == 0 || matchesExpectedTag(counter.data))
+                break;
+
+            if (RecordedRegTags* item = findRecordedInfo(history.recordedTags, counter.pcpos, vmReg))
+            {
+                item->tagMask |= tagMask;
+                item->hits += counter.hits;
+            }
+            else
+            {
+                history.recordedTags.push_back({counter.pcpos, vmReg, tagMask, counter.hits});
+            }
+            break;
+        }
+        case CodeGenCounter::VmRegUserdataTag:
+        {
+            if ((counter.data >> 24) == 0)
+                break;
+
+            uint8_t tag = getFirstUserdata(counter.data);
+            bool polymorphic = isUserdataPolymorphic(counter.data);
+
+            if (RecordedUserdataTag* item = findRecordedInfo(history.recordedUserdataTags, counter.pcpos, vmReg))
+            {
+                item->polymorphic |= polymorphic || item->tag != tag;
+                item->hits += counter.hits;
+            }
+            else
+            {
+                history.recordedUserdataTags.push_back({counter.pcpos, vmReg, tag, polymorphic, counter.hits});
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+}
+
+// Clears the counters to get a fresh runtime recording and stop hitting the same function until new data is gathered
+static void resetRecordedCounters(Proto* proto)
+{
+    unsigned counterCount = 0;
+    NativeCounter* counters = getNativeCounters(proto, counterCount);
+
+    for (size_t i = 0; i < counterCount; i++)
+    {
+        NativeCounter& counter = counters[i];
+
+        switch (CodeGenCounter(counter.kind))
+        {
+        case CodeGenCounter::VmRegTagMismatch:
+            counter.hits = 0;
+            counter.data &= ~0xffffu; // Keep the expected tag and the VM register, clear the tag mask
+            break;
+        case CodeGenCounter::VmRegUserdataTag:
+            counter.hits = 0;
+            counter.data &= 0xff0000u; // Keep the VM register, clear the tag and flags
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static uint8_t getUserdataTagBytecodeType(lua_State* L, uint8_t utag)
+{
+    if (utag >= LUA_UTAG_LIMIT || L->global->ecb.gettypemapping == nullptr)
+        return LBC_TYPE_ANY;
+
+    LuaTable* mt = L->global->udatamt[utag];
+
+    if (mt == nullptr)
+        return LBC_TYPE_ANY;
+
+    const TValue* name = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
+
+    if (!ttisstring(name))
+        return LBC_TYPE_ANY;
+
+    uint8_t type = L->global->ecb.gettypemapping(L, svalue(name), tsvalue(name)->len);
+
+    return isCustomUserdataBytecodeType(type) ? type : LBC_TYPE_ANY;
+}
+
+// Converts aggregated recorded history into bytecode feedback usable at translation time
+static void computeFeedback(lua_State* L, const FunctionBuildHistory& history, BytecodeFeedback& feedback)
+{
+    for (const RecordedRegTags& item : history.recordedTags)
+    {
+        // Polymorphic sites cannot be specialized for a single tag
+        if ((item.tagMask & (item.tagMask - 1)) != 0)
+            continue;
+
+        uint8_t tag = 0;
+        while ((item.tagMask & (1u << tag)) == 0)
+            tag++;
+
+        feedback.tags.push_back({item.pcpos, item.reg, tag});
+    }
+
+    std::sort(
+        feedback.tags.begin(),
+        feedback.tags.end(),
+        [](const BytecodeTagFeedback& a, const BytecodeTagFeedback& b)
+        {
+            return a.pcpos != b.pcpos ? a.pcpos < b.pcpos : a.reg < b.reg;
+        }
+    );
+
+    for (const RecordedUserdataTag& item : history.recordedUserdataTags)
+    {
+        if (item.polymorphic)
+            feedback.userdataTypes.push_back({item.pcpos, item.reg, 0, LBC_TYPE_ANY});
+        else
+            feedback.userdataTypes.push_back({item.pcpos, item.reg, item.tag, getUserdataTagBytecodeType(L, item.tag)});
+    }
+
+    std::sort(
+        feedback.userdataTypes.begin(),
+        feedback.userdataTypes.end(),
+        [](const BytecodeUserdataFeedback& a, const BytecodeUserdataFeedback& b)
+        {
+            return a.pcpos != b.pcpos ? a.pcpos < b.pcpos : a.reg < b.reg;
+        }
+    );
 }
 
 [[nodiscard]] static CompilationResult compileProtos(
@@ -535,7 +778,8 @@ static void examineFunction(lua_State* L, Proto* proto)
     BaseCodeGenContext* codeGenContext,
     const std::vector<Proto*>& protos,
     const CompilationOptions& options,
-    CompilationStats* stats
+    CompilationStats* stats,
+    const std::vector<BytecodeFeedback>* feedback
 );
 
 static void commitFunctions(lua_State* L)
@@ -554,6 +798,7 @@ static void commitFunctions(lua_State* L)
 
     std::vector<PendingBuild> builds;
     std::vector<Proto*> buildProtos;
+    std::vector<BytecodeFeedback> buildFeedback;
 
     for (Proto* proto : vmData.protosToRebuild)
     {
@@ -571,11 +816,58 @@ static void commitFunctions(lua_State* L)
         {
             builds.push_back({proto, nullptr, proto->execcount});
             buildProtos.push_back(proto);
+            buildFeedback.emplace_back();
             proto->execcount = 0;
             continue;
         }
 
-        // Function rebuild based on feedback counters will be here
+        FunctionBuildHistory& history = vmData.buildHistory[proto->funid];
+
+        // Initial history setup
+        if (history.sizecode == 0)
+            history.sizecode = proto->sizecode;
+
+        // Reset history if it was recorded for a different form of the function
+        if (history.sizecode != proto->sizecode)
+        {
+            history.sizecode = proto->sizecode;
+            history.recordedTags.clear();
+            history.recordedUserdataTags.clear();
+            history.lastFeedback = {};
+        }
+
+        mergeRecordedInfo(history, proto);
+        resetRecordedCounters(proto);
+
+        BytecodeFeedback feedback;
+        computeFeedback(L, history, feedback);
+
+        // Rebuilding with the same feedback would produce the same code
+        if (feedback == history.lastFeedback)
+            continue;
+
+        // Create a copy of the Proto so that already executing functions keep running old code
+        struct CopyContext
+        {
+            Proto* source = nullptr;
+            Proto* copy = nullptr;
+
+            static void run(lua_State* L, void* ud)
+            {
+                CopyContext* ctx = static_cast<CopyContext*>(ud);
+                ctx->copy = luaF_cloneproto(L, ctx->source);
+            }
+        } ctx = {proto};
+
+        int status = luaD_rawrunprotected(L, &CopyContext::run, &ctx);
+        CODEGEN_ASSERT(status == LUA_OK || status == LUA_ERRMEM);
+
+        if (status != LUA_OK)
+            continue;
+
+        builds.push_back({proto, ctx.copy, 0});
+        buildProtos.push_back(ctx.copy);
+        buildFeedback.push_back(std::move(feedback));
     }
 
     vmData.protosToRebuild.clear();
@@ -583,7 +875,7 @@ static void commitFunctions(lua_State* L)
     if (builds.empty())
         return;
 
-    CompilationResult result = compileProtos({}, L, codeGenContext, buildProtos, vmData.options, nullptr);
+    CompilationResult result = compileProtos({}, L, codeGenContext, buildProtos, vmData.options, nullptr, &buildFeedback);
 
     // TODO: callback function for host telemetry recording
     if (result.result != CodeGenCompilationResult::Success)
@@ -594,7 +886,7 @@ static void commitFunctions(lua_State* L)
         Proto* proto = builds[i].proto;
         Proto* copy = builds[i].copy;
 
-        // Initial VM to native promotion is performed inplace, so we don't need to swith Proto to the optimized version
+        // Initial VM to native promotion is performed in place, so we don't need to switch Proto to the optimized version
         if (copy == nullptr)
             continue;
 
@@ -609,6 +901,7 @@ static void commitFunctions(lua_State* L)
         luaC_objbarrier(L, proto, copy);
 
         history.rebuildCount++;
+        history.lastFeedback = std::move(buildFeedback[i]);
 
         if (history.rebuildCount >= kMaxFunctionRebuilds)
         {
@@ -749,7 +1042,8 @@ template<typename AssemblyBuilder>
     uint32_t& totalIrInstCount,
     const CompilationOptions& options,
     CodeGenCompilationResult& result,
-    const VmEnvironmentInfo& envInfo
+    const VmEnvironmentInfo& envInfo,
+    const BytecodeFeedback* feedback
 )
 {
     IrBuilder ir(options.hooks, envInfo);
@@ -757,6 +1051,9 @@ template<typename AssemblyBuilder>
     if (FFlag::LuauRuntimeFeedback)
     {
         ir.function.recordFeedback = options.runtimeFeedback;
+
+        if (feedback)
+            ir.function.feedback = *feedback;
     }
 
     ir.buildFunctionIr(proto);
@@ -835,7 +1132,7 @@ template<typename AssemblyBuilder>
         }
     }
 
-    return compileProtos(moduleId, L, codeGenContext, protos, options, stats);
+    return compileProtos(moduleId, L, codeGenContext, protos, options, stats, nullptr);
 }
 
 [[nodiscard]] static CompilationResult compileProtos(
@@ -844,9 +1141,12 @@ template<typename AssemblyBuilder>
     BaseCodeGenContext* codeGenContext,
     const std::vector<Proto*>& protos,
     const CompilationOptions& options,
-    CompilationStats* stats
+    CompilationStats* stats,
+    const std::vector<BytecodeFeedback>* feedbacks
 )
 {
+    CODEGEN_ASSERT(feedbacks == nullptr || feedbacks->size() == protos.size());
+
 #if defined(CODEGEN_TARGET_A64)
     static unsigned int cpuFeatures = getCpuFeaturesA64();
     A64::AssemblyBuilderA64 build(/* logger= */ nullptr, cpuFeatures);
@@ -881,8 +1181,10 @@ template<typename AssemblyBuilder>
     {
         CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
 
+        const BytecodeFeedback* feedback = feedbacks ? &(*feedbacks)[i] : nullptr;
+
         NativeProtoExecDataPtr nativeExecData =
-            createNativeFunction(nullptr, build, helpers, protos[i], totalIrInstCount, options, protoResult, envInfo);
+            createNativeFunction(nullptr, build, helpers, protos[i], totalIrInstCount, options, protoResult, envInfo, feedback);
         if (nativeExecData != nullptr)
         {
             nativeProtos.push_back(std::move(nativeExecData));

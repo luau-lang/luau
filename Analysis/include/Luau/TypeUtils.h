@@ -406,4 +406,6 @@ bool isBlocked(TypeId ty);
  */
 std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty);
 
+std::optional<Name> propInInheritanceChain(const ExternType* cls, const std::string& prop);
+
 } // namespace Luau

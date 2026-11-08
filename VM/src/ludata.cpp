@@ -36,5 +36,6 @@ void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
     if (dtor)
         dtor(L, u->data);
 
+
     luaM_freegco(L, u, sizeudata(u->len), u->memcat, page);
 }
