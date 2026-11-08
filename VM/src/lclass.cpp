@@ -17,6 +17,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauLoadExplicitGcDisable)
+
 LuauClass* luaR_newblankclass(lua_State* L, TString* name, bool isopen)
 {
     LuauClass* classobject = luaM_newgco(L, LuauClass, sizeof(LuauClass), L->activememcat, LUA_TCLASS);
@@ -100,7 +102,10 @@ LuauClass* luaR_newclass(
     LuaTable* envt
 )
 {
-    LUAU_ASSERT(L->global->GCthreshold == SIZE_MAX && "GC must be paused");
+    if (FFlag::LuauLoadExplicitGcDisable)
+        LUAU_ASSERT(L->global->gcdisabled && "GC must be paused");
+    else
+        LUAU_ASSERT(L->global->GCthreshold == SIZE_MAX && "GC must be paused");
     LuauClass* classobject = luaR_newblankclass(L, name, false);
 
     classobject->staticmembers = luaM_newarray(L, numberofstaticmembers, TValue, classobject->memcat);

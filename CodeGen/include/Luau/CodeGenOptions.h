@@ -24,6 +24,9 @@ enum class CodeGenCounter : unsigned
     RegularBlockExecuted = 1,
     FallbackBlockExecuted = 2,
     VmExitTaken = 3,
+
+    VmRegTagMismatch = 4,
+    VmRegUserdataTag = 5,
 };
 
 using AllocationCallback = void(void* context, void* oldPointer, size_t oldSize, void* newPointer, size_t newSize);

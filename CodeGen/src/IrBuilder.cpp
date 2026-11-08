@@ -15,6 +15,7 @@
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
 LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
 LUAU_FASTFLAG(LuauCodegenMarkUsed)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
 
 namespace Luau
 {
@@ -760,6 +761,23 @@ void IrBuilder::beginBlock(IrOp block)
     target.sortkey = target.start;
 
     inTerminatedBlock = false;
+
+    if (FFlag::LuauRuntimeFeedback && target.counterSet != ~0u && !function.counterSets[target.counterSet].counters.empty())
+        inst(IrCmd::UPDATE_COUNTERS, constUint(target.counterSet));
+}
+
+IrCounterSet& IrBuilder::getBlockCounterSet(IrOp block)
+{
+    IrBlock& target = function.blockOp(block);
+    CODEGEN_ASSERT(target.start == ~0u && "block counters should only be reserved before building the block");
+
+    if (target.counterSet == ~0u)
+    {
+        target.counterSet = uint32_t(function.counterSets.size());
+        function.counterSets.emplace_back();
+    }
+
+    return function.counterSets[target.counterSet];
 }
 
 void IrBuilder::loadAndCheckTag(IrOp loc, uint8_t tag, IrOp fallback)
@@ -780,6 +798,16 @@ void IrBuilder::checkSafeEnv(int pcpos)
     }
 
     inst(IrCmd::CHECK_SAFE_ENV, vmExit(pcpos));
+}
+
+IrCounterSet& IrBuilder::addUpdateCounters()
+{
+    uint32_t index = uint32_t(function.counterSets.size());
+    function.counterSets.emplace_back();
+
+    inst(IrCmd::UPDATE_COUNTERS, constUint(index));
+
+    return function.counterSets[index];
 }
 
 void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)

@@ -2632,6 +2632,91 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::CHECK_GC:
         callStepGc(regs, build);
         break;
+    case IrCmd::UPDATE_COUNTERS:
+    {
+        const IrCounterSet& counterSet = function.counterSets[uintOp(OP_A(inst))];
+
+        if (counterSet.counters.empty())
+            break;
+
+        ScopedRegX64 tmp{regs, SizeX64::qword};
+        ScopedRegX64 tmp2{regs, SizeX64::dword};
+        ScopedRegX64 tmp3{regs, SizeX64::dword};
+
+        // Get counter slots
+        build.mov(tmp.reg, qword[rState + offsetof(lua_State, ci)]);
+        build.mov(tmp.reg, qword[tmp.reg + offsetof(CallInfo, p)]);
+        build.mov(tmp.reg, qword[tmp.reg + offsetof(Proto, execdata)]);
+
+        for (const IrEntryCounter& counter : counterSet.counters)
+        {
+            // {uint32_t kind, uint32_t pcpos, uint32_t count, uint32_t data}
+            function.extraNativeData.push_back(uint32_t(counter.kind));
+            function.extraNativeData.push_back(counter.pcpos);
+            uint32_t counterIndex = uint32_t(function.extraNativeData.size());
+            function.extraNativeData.push_back(0);
+
+            switch (counter.kind)
+            {
+            case CodeGenCounter::VmRegTagMismatch:
+            {
+                // Counter high part is used for metadata, currently { uint8_t expectedTag + 1, uint8_t vmReg, uint16_t tagMask }
+                uint32_t expectedTag = counter.expectedTag == kUnknownTag ? 0 : counter.expectedTag + 1;
+                function.extraNativeData.push_back((expectedTag << 24) | (vmRegOp(counter.operand) << 16));
+
+                // Increment counter (32 bit)
+                build.inc(dword[tmp.reg + uint32_t(function.proto->sizecode + counterIndex) * 4]);
+
+                // Record the tag in the tag mask
+                OperandX64 metadata = dword[tmp.reg + uint32_t(function.proto->sizecode + counterIndex + 1) * 4];
+
+                build.mov(tmp2.reg, luauRegTag(vmRegOp(counter.operand)));
+                build.mov(tmp3.reg, metadata);
+                build.bts(tmp3.reg, tmp2.reg);
+                build.mov(metadata, tmp3.reg);
+                break;
+            }
+            case CodeGenCounter::VmRegUserdataTag:
+            {
+                // Counter high part is used for metadata, currently { uint8_t firstTag + 1, uint8_t vmReg, uint16_t flags }
+                // Flag bit 0 is set to mark positions with different userdata
+                function.extraNativeData.push_back(vmRegOp(counter.operand) << 16);
+
+                uint32_t metadataOffset = uint32_t(function.proto->sizecode + counterIndex + 1) * 4;
+
+                Label skip, compare;
+
+                // Make sure it's actually a userdata type and count a hit if it is
+                build.cmp(luauRegTag(vmRegOp(counter.operand)), LUA_TUSERDATA);
+                build.jcc(ConditionX64::NotEqual, skip);
+
+                // Increment counter (32 bit)
+                build.inc(dword[tmp.reg + uint32_t(function.proto->sizecode + counterIndex) * 4]);
+
+                build.mov(qwordReg(tmp2.reg), luauRegValue(vmRegOp(counter.operand)));
+                build.movzx(tmp2.reg, byte[qwordReg(tmp2.reg) + offsetof(Udata, tag)]);
+                build.inc(tmp2.reg);
+
+                // If the value is not yet set we record it, if it changes we mark it as polymorphic
+                build.cmp(byte[tmp.reg + metadataOffset + 3], 0);
+                build.jcc(ConditionX64::NotEqual, compare);
+                build.mov(byte[tmp.reg + metadataOffset + 3], byteReg(tmp2.reg));
+
+                build.setLabel(compare);
+                build.cmp(byte[tmp.reg + metadataOffset + 3], byteReg(tmp2.reg));
+                build.jcc(ConditionX64::Equal, skip);
+                build.or_(byte[tmp.reg + metadataOffset], 1);
+
+                build.setLabel(skip);
+                break;
+            }
+            default:
+                CODEGEN_ASSERT(!"unknown counter kind");
+                break;
+            }
+        }
+        break;
+    }
     case IrCmd::BARRIER_OBJ:
         callBarrierObject(regs, build, regOp(OP_A(inst)), OP_A(inst), noreg, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst)));
         break;

@@ -50,7 +50,8 @@ LUAU_FASTFLAGVARIABLE(LuauExportedTypesParticipateInScc)
 LUAU_FLAGVERSION(LuauExportedTypesParticipateInScc, 3)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileReuseLocalRegs)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileRequireNoInline)
 
 namespace Luau
 {
@@ -634,6 +635,10 @@ struct Compiler
             protoflags |= LPF_USES_EXPORT;
 
         bool isInlinable = !hasMultiRet && !getfenvUsed && !setfenvUsed;
+        // Add to line above on flag removal.
+        if (FFlag::LuauCompileRequireNoInline && hasRequire)
+            isInlinable = false;
+
         uint64_t costModel = 0;
         if (FFlag::LuauEmitCallFeedback && isInlinable && upvals.empty())
         {
@@ -692,6 +697,7 @@ struct Compiler
 
         hasLoops = false;
         hasMultiRet = false;
+        hasRequire = false;
         currentFunction = nullptr;
 
         return fid;
@@ -1388,6 +1394,12 @@ struct Compiler
         LUAU_ASSERT(!targetTop || unsigned(target + targetCount) == regTop);
 
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprCall can be called directly
+
+        if (FFlag::LuauCompileRequireNoInline && !expr->self)
+        {
+            if (AstExprGlobal* g = expr->func->as<AstExprGlobal>(); g && g->name == "require")
+                hasRequire = true;
+        }
 
         // try inlining the function
         if (options.optimizationLevel >= 2 && !expr->self)
@@ -4062,7 +4074,7 @@ struct Compiler
 
     void compileStatWhile(AstStatWhile* stat)
     {
-        if (FFlag::DebugLuauWhileLocalSyntax && stat->conditionLocal)
+        if (FFlag::LuauExperimentalWhileLocalSyntax && stat->conditionLocal)
         {
             compileStatWhileLocal(stat);
             return;
@@ -6039,6 +6051,7 @@ struct Compiler
     size_t argCount = 0;
     bool hasLoops = false;
     bool hasMultiRet = false;
+    bool hasRequire = false;
     AstExprFunction* currentFunction = nullptr;
 
     size_t blockDepth = 0;

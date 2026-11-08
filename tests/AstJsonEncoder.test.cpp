@@ -15,8 +15,8 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 struct JsonEncoderFixture
 {
@@ -414,7 +414,7 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
 
     AstStat* statement = expectParseStatement("while local x = y do end");
 
@@ -426,7 +426,7 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local_type")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
 
     AstStat* statement = expectParseStatement("while local x: number = y do end");
 
@@ -438,7 +438,7 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local_type")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_const")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}, {FFlag::DebugLuauWhileLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
 
     AstStat* statement = expectParseStatement("while const x = y do end");
 
