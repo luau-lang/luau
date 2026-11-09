@@ -10,6 +10,7 @@
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringSplit, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringGsub, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauLinearStringSearch, false)
 
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
@@ -604,6 +605,216 @@ static const char* lmemfind(const char* s1, size_t l1, const char* s2, size_t l2
     }
 }
 
+// computes the maximal suffix of p[0..lp) for the byte order given by 'reverse' and its period
+// returns the index of the byte before the suffix (-1 when the suffix is the whole string)
+static ptrdiff_t maxsuffix(const unsigned char* p, ptrdiff_t lp, ptrdiff_t* period, bool reverse)
+{
+    ptrdiff_t ms = -1; // byte before the current maximal suffix
+    ptrdiff_t j = 0;   // start of the suffix that is being compared against it
+    ptrdiff_t k = 1;   // offset inside the compared suffixes
+    ptrdiff_t per = 1;
+
+    while (j + k < lp)
+    {
+        unsigned char a = p[j + k];
+        unsigned char b = p[ms + k];
+
+        if (reverse ? a > b : a < b)
+        {
+            // suffix at j is smaller, skip past the compared part
+            j += k;
+            k = 1;
+            per = j - ms;
+        }
+        else if (a == b)
+        {
+            // advance through the current period
+            if (k != per)
+                k++;
+            else
+            {
+                j += per;
+                k = 1;
+            }
+        }
+        else
+        {
+            // suffix at j is larger, it becomes the new maximal suffix
+            ms = j;
+            j = ms + 1;
+            k = per = 1;
+        }
+    }
+
+    *period = per;
+    return ms;
+}
+
+// Two-Way string matching (Crochemore and Perrin); finds the first occurrence of p[0..lp) in s[0..ls) with O(ls + lp) comparisons and O(1) memory
+static LUAU_NOINLINE const char* twowayfind(const char* s, size_t ls, const char* p, size_t lp)
+{
+    const unsigned char* x = (const unsigned char*)p;
+    const unsigned char* y = (const unsigned char*)s;
+    ptrdiff_t m = ptrdiff_t(lp);
+    ptrdiff_t n = ptrdiff_t(ls);
+
+    if (m > n)
+        return NULL;
+
+    // critical factorization: the larger of the two maximal suffixes
+    ptrdiff_t per1, per2;
+    ptrdiff_t ms1 = maxsuffix(x, m, &per1, false);
+    ptrdiff_t ms2 = maxsuffix(x, m, &per2, true);
+
+    ptrdiff_t ell = ms1 > ms2 ? ms1 : ms2;
+    ptrdiff_t per = ms1 > ms2 ? per1 : per2;
+
+    if (memcmp(x, x + per, size_t(ell + 1)) == 0)
+    {
+        // periodic needle: remember how much of the left part is known to match after a shift by the period
+        ptrdiff_t memory = -1;
+
+        for (ptrdiff_t j = 0; j <= n - m;)
+        {
+            ptrdiff_t i = (ell > memory ? ell : memory) + 1;
+
+            while (i < m && x[i] == y[i + j])
+                i++;
+
+            if (i >= m)
+            {
+                i = ell;
+
+                while (i > memory && x[i] == y[i + j])
+                    i--;
+
+                if (i <= memory)
+                    return s + j;
+
+                j += per;
+                memory = m - per - 1;
+            }
+            else
+            {
+                j += i - ell;
+                memory = -1;
+            }
+        }
+    }
+    else
+    {
+        // non-periodic needle: any mismatch in the left part allows a shift larger than either part
+        per = (ell + 1 > m - ell - 1 ? ell + 1 : m - ell - 1) + 1;
+
+        for (ptrdiff_t j = 0; j <= n - m;)
+        {
+            ptrdiff_t i = ell + 1;
+
+            while (i < m && x[i] == y[i + j])
+                i++;
+
+            if (i >= m)
+            {
+                i = ell;
+
+                while (i >= 0 && x[i] == y[i + j])
+                    i--;
+
+                if (i < 0)
+                    return s + j;
+
+                j += per;
+            }
+            else
+            {
+                j += i - ell;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+// number of leading bytes that are equal in a and b, comparing 8 bytes at a time
+static LUAU_FORCEINLINE size_t matchprefix(const char* a, const char* b, size_t n)
+{
+    size_t i = 0;
+
+    for (; i + 8 <= n; i += 8)
+    {
+        uint64_t va, vb;
+        memcpy(&va, a + i, 8);
+        memcpy(&vb, b + i, 8);
+
+        if (va != vb)
+            break;
+    }
+
+    while (i < n && a[i] == b[i])
+        i++;
+
+    return i;
+}
+
+// finds the first occurrence of p[0..lp) in s[0..ls)
+// candidates are checked directly, which is fastest for typical text; when the bytes compared for candidates that don't match grow
+// beyond a small multiple of the bytes scanned (repetitive text, e.g. "aaa...b" in "aaa...a"), the remaining text is searched with
+// the Two-Way algorithm, so the time is always linear in the length of the text
+// UseMemchr selects how candidates are found: memchr for the first character (string.find), or checking every position (gsub and split)
+template<bool UseMemchr>
+static LUAU_FORCEINLINE const char* findsubstr(const char* s, size_t ls, const char* p, size_t lp)
+{
+    if (lp == 0)
+        return s;
+
+    if (lp > ls)
+        return NULL;
+
+    if (lp == 1)
+        return (const char*)memchr(s, p[0], ls);
+
+    const char* start = s;
+    const char* last = s + (ls - lp);
+    char first = p[0];
+    char lastc = p[lp - 1];
+
+    size_t work = 0;
+
+    for (; s <= last; s++)
+    {
+        if (UseMemchr)
+        {
+            // the first character is checked inline so that a memchr call is only made when it doesn't match
+            if (*s != first)
+            {
+                s = (const char*)memchr(s + 1, first, last - s);
+
+                if (!s)
+                    return NULL;
+            }
+        }
+        else if (*s != first)
+        {
+            continue;
+        }
+
+        if (s[lp - 1] == lastc)
+        {
+            size_t matched = matchprefix(s + 1, p + 1, lp - 2);
+
+            if (matched == lp - 2)
+                return s;
+
+            work += matched;
+
+            if (work > 2 * size_t(s - start) + 2 * lp + 256)
+                return twowayfind(s + 1, size_t(last - s) + lp - 1, p, lp);
+        }
+    }
+
+    return NULL;
+}
+
 static void push_onecapture(MatchState* ms, int i, const char* s, const char* e)
 {
     if (i >= ms->level)
@@ -680,7 +891,8 @@ static int str_find_aux(lua_State* L, int find)
     if (find && (lua_toboolean(L, 4) || nospecials(p, lp)))
     {
         // do a plain search
-        const char* s2 = lmemfind(s + init - 1, ls - init + 1, p, lp);
+        const char* s2 =
+            DFFlag::LuauLinearStringSearch ? findsubstr<true>(s + init - 1, ls - init + 1, p, lp) : lmemfind(s + init - 1, ls - init + 1, p, lp);
         if (s2)
         {
             lua_pushinteger(L, (int)(s2 - s + 1));
@@ -875,6 +1087,9 @@ static const char* findliteral(const char* s, const char* end, const char* p, si
 
         return (const char*)memchr(s, p[0], last - s + 1);
     }
+
+    if (DFFlag::LuauLinearStringSearch)
+        return findsubstr<false>(s, end - s, p, lp);
 
     // the first and the last characters are checked inline to avoid a memcmp call at most positions
     for (; s <= last; s++)
@@ -1230,7 +1445,19 @@ static int str_split(lua_State* L)
         {
             lua_createtable(L, 0, 0);
 
-            if (needleLen <= haystackLen)
+            if (DFFlag::LuauLinearStringSearch)
+            {
+                const char* found;
+
+                while ((found = findsubstr<false>(spanStart, end - spanStart, needle, needleLen)) != NULL)
+                {
+                    lua_pushlstring(L, spanStart, found - spanStart);
+                    lua_rawseti(L, -2, ++numMatches);
+
+                    spanStart = found + needleLen;
+                }
+            }
+            else if (needleLen <= haystackLen)
             {
                 // Don't iterate the last needleLen - 1 bytes of the string - they are
                 // impossible to be splits and would let us memcmp past the end of the

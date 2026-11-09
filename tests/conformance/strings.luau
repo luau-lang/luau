@@ -288,6 +288,42 @@ assert(os.setlocale() == 'C')
 assert(os.setlocale(nil, "numeric") == 'C')
 ]]--
 
+do -- searches for long literals in repetitive text
+  local a = string.rep("a", 5000)
+  local mid = string.rep("a", 500) .. "b" .. string.rep("a", 499)
+  assert(string.find(a, mid, 1, true) == nil)
+  assert(string.find(a, mid) == nil)
+  assert(string.gsub(a, mid, "X") == a)
+  assert(#string.split(a, mid) == 1)
+
+  local t = a .. "b" .. a
+  local s, e = string.find(t, mid, 1, true)
+  assert(s == 4501 and e == 5500)
+  assert(string.find(t, mid) == 4501)
+  assert(string.find(t, mid, 4501, true) == 4501)
+  assert(string.find(t, mid, 4502, true) == nil)
+
+  local r, n = string.gsub(t .. t, mid, "X")
+  assert(n == 2 and r == string.rep("a", 4500) .. "X" .. string.rep("a", 9001) .. "X" .. string.rep("a", 4501))
+  local parts = string.split(t .. t, mid)
+  assert(#parts == 3 and parts[1] == string.rep("a", 4500) and parts[2] == string.rep("a", 9001) and parts[3] == string.rep("a", 4501))
+
+  -- needles with a short period
+  local ab = string.rep("ab", 3000)
+  local abn = string.rep("ab", 200) .. "b" .. string.rep("ab", 200)
+  assert(string.find(ab, abn, 1, true) == nil)
+  assert(string.find(ab .. "b" .. ab, abn, 1, true) == 6001 - 400)
+  local aab = string.rep("aab", 2000)
+  local aabn = string.rep("aab", 100) .. "aaab" .. string.rep("aab", 100)
+  assert(string.find(aab, aabn, 1, true) == nil)
+  assert(string.find(aab .. "a" .. aab, aabn, 1, true) == 6001 - 300)
+  assert(string.find(aab .. aab, string.rep("aab", 300), 1001, true) == 1003)
+
+  -- match right at the end of the text
+  assert(string.find(a .. "b", string.rep("a", 1000) .. "b", 1, true) == 4001)
+  assert(string.find(a .. "ba", string.rep("a", 500) .. "ba", 1, true) == 4501)
+end
+
 return('OK')
 
 
