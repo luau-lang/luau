@@ -234,4 +234,43 @@ for p, c in string.gmatch(x, "()(" .. utf8.charpattern .. ")") do
   end
 end
 
+do -- utf8.len on long strings, with non-ASCII and invalid bytes at every offset
+  for n = 0, 40 do
+    local s = string.rep("a", n)
+    assert(utf8.len(s) == n)
+
+    for i = 1, n do
+      -- ranges that start and end anywhere, including inside an 8-byte block
+      for j = i, n do
+        assert(utf8.len(s, i, j) == j - i + 1)
+      end
+    end
+
+    for _, c in {"\xC3\xA9", "\xE6\x97\xA5", "\xF0\x9F\x98\x80"} do
+      for p = 0, n do
+        local t = s:sub(1, p) .. c .. s:sub(p + 1)
+        assert(utf8.len(t) == n + 1)
+        -- character that starts at the end of the range is counted
+        assert(utf8.len(t, 1, p + 1) == p + 1)
+        -- range that starts inside the character
+        assert(not utf8.len(t, p + 2))
+      end
+    end
+
+    for _, bad in {"\x80", "\xBF", "\xC0\x80", "\xC1\xBF", "\xC3", "\xE0\x80\x80", "\xED\xA0\x80", "\xF0\x80\x80\x80", "\xF4\x90\x80\x80", "\xF5\x80\x80\x80", "\xFF"} do
+      for p = 0, n do
+        local t = s:sub(1, p) .. bad .. s:sub(p + 1)
+        local a, b = utf8.len(t)
+        assert(a == nil and b == p + 1)
+      end
+    end
+  end
+
+  -- non-ASCII characters crossing 8-byte blocks
+  local mixed = string.rep("ab\xC3\xA9cd\xE6\x97\xA5e\xF0\x9F\x98\x80", 20)
+  assert(utf8.len(mixed) == 8 * 20)
+  assert(utf8.len(mixed .. "\xFF") == nil)
+  assert(select(2, utf8.len(mixed .. "\xFF")) == #mixed + 1)
+end
+
 return 'OK'
