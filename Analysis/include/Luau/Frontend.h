@@ -128,6 +128,10 @@ struct FrontendOptions
     std::function<void(const SourceModule& sourceModule, const Luau::Module& module)> customModuleCheck;
 
     bool collectTypeAllocationStats = false;
+
+    // Width of the 'vector' type in the builtin definitions, to match LUA_VECTOR_SIZE.
+    // Read by registerBuiltinGlobals.
+    VectorSize vectorSize = VectorSize::Three;
 };
 
 struct CheckResult
@@ -191,10 +195,6 @@ struct Frontend
     SolverMode getLuauSolverMode() const;
     // The default value assuming there is no workspace setup yet
     std::atomic<SolverMode> useNewLuauSolver;
-
-    void setVectorSize(VectorSize size);
-    VectorSize getVectorSize() const;
-    std::atomic<VectorSize> vectorSize;
     // Parse module graph and prepare SourceNode/SourceModule data, including required dependencies without running typechecking
     void parse(const ModuleName& name);
     void parseModules(const std::vector<ModuleName>& name);
