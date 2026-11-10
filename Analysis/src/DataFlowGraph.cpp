@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -538,6 +539,17 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatWhile* w)
     {
         PushScope ps{scopeStack, whileScope};
         visitExpr(w->condition);
+
+        if (FFlag::LuauExperimentalWhileLocalAnalysis && w->conditionLocal)
+        {
+            DefId def = defArena->freshCell(w->conditionLocal, w->conditionLocal->location, false);
+            if (w->conditionLocal->annotation)
+                visitType(w->conditionLocal->annotation);
+            graph.localDefs[w->conditionLocal] = def;
+            whileScope->bindings[w->conditionLocal] = def;
+            captures[w->conditionLocal].allVersions.push_back(def);
+        }
+
         cf = visit(w->body);
     }
 

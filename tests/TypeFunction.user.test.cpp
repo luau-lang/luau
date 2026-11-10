@@ -11,10 +11,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
 
@@ -1300,34 +1298,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_unordered")
     CHECK(toString(tm->givenType) == "\"hi\"");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
-{
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
-
-    CheckResult result = check(R"(
-        type function foo()
-            if not glob then
-                glob = 'a'
-            else
-                glob ..= 'b'
-            end
-
-            return glob
-        end
-        type function bar(prefix)
-            return types.singleton(tostring(prefix:value()) .. foo())
-        end
-        local function ok1(idx: bar<'x'>): nil return idx end
-        local function ok2(idx: bar<'y'>): nil return idx end
-    )");
-
-    // We are only checking first errors, others are mostly duplicates
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
-    CHECK(toString(result.errors[0]) == R"(Unknown global 'glob'; consider assigning to it first)");
-    CHECK(toString(result.errors[1]) == R"('bar' type function errored at runtime: foo:4: attempt to modify a readonly table)");
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
 {
     if (FFlag::DebugLuauForceOldSolver)
@@ -1666,7 +1636,6 @@ end
 local a = test()
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(toString(requireType("a")) == R"("hi")");
@@ -1920,7 +1889,6 @@ type test = typeof(m)
 local function ok(idx: pass<test>): test return idx end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -2113,7 +2081,6 @@ type test = typeof(m)
 local function ok(idx: pass<test>): <T, U>(T) -> (U) return idx end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -3184,7 +3151,6 @@ type function test(t: type) return t end
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_identity_preserves_parameter_names")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag serializeArgNames{FFlag::LuauTypeFunctionSerializeArgNames, true};
 
     CheckResult result = check(R"(
 type function identity(t)
@@ -3815,7 +3781,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_type_function_type_check")
 TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag fixTypeNameTypo{FFlag::LuauUdtfFixTypeNameTypo, true};
 
     CheckResult result = check(R"(
         type function foo()

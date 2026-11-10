@@ -1,0 +1,16 @@
+Block 0 (entry "Entry Block") -> [B1]:
+  local x-0 = <expr>
+Block 1 (linear "repeat-loop body") -> [B4, B5]:
+  x-1 = join(x-0, x-4)
+Block 2 (condition "repeat-loop condition") -> [B7, B8]:
+Block 3 (linear "repeat-loop exit"):
+  x-5 = join(x-1, x-3)
+  local w-0 = <expr>
+Block 4 (linear "then block") -> [B3]:
+Block 5 (linear "else block") -> [B6]:
+Block 6 (linear "merge") -> [B2]:
+  x-2 = <expr>
+Block 7 (linear "repeat-loop condition truthy") -> [B3]:
+  x-3 = refine(x-2 is truthy)
+Block 8 (linear "repeat-loop condition falsy") -> [B1]:
+  x-4 = refine(x-2 is falsy)

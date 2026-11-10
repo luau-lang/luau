@@ -63,8 +63,14 @@ struct ConstraintList
     Iterator end();
 
 private:
-    DenseHashMap<ConstraintVertex, bool, HashBlockedConstraintId> present;
-    std::vector<ConstraintVertex> order;
+    // Clip with LuauTraverseScopeToFunction
+    DenseHashMap<ConstraintVertex, bool, HashBlockedConstraintId> present_DEPRECATED;
+    // Clip with LuauTraverseScopeToFunction
+    std::vector<ConstraintVertex> order_DEPRECATED;
+
+    DenseHashMap<ConstraintVertex, size_t, HashBlockedConstraintId> indices;
+    std::vector<std::pair<ConstraintVertex, bool>> order;
+
     size_t entries = 0;
 };
 
@@ -237,16 +243,16 @@ private:
      * - Any constraint with no dependencies can be dispatched.
      */
     ConstraintMap dependencies;
-
-
-    NotNull<ConstraintList> findDependencyList(ConstraintVertex vertex);
+    ConstraintList* findDependencyList(ConstraintVertex vertex);
+    NotNull<ConstraintList> findOrMakeDependencyList(ConstraintVertex vertex);
 
     /**
      * Inverse of the above mapping. Yes, the proper name for this is
      * "dependents," but naming it such will result in hellish typos.
      */
     ConstraintMap reverseDependencies;
-    NotNull<ConstraintList> findReverseDependencyList(ConstraintVertex vertex);
+    ConstraintList* findReverseDependencyList(ConstraintVertex vertex);
+    NotNull<ConstraintList> findOrMakeReverseDependencyList(ConstraintVertex vertex);
 
     /**
      * We do the same pseudo-arena trick as constraints do right now.

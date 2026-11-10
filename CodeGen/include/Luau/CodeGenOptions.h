@@ -24,6 +24,9 @@ enum class CodeGenCounter : unsigned
     RegularBlockExecuted = 1,
     FallbackBlockExecuted = 2,
     VmExitTaken = 3,
+
+    VmRegTagMismatch = 4,
+    VmRegUserdataTag = 5,
 };
 
 using AllocationCallback = void(void* context, void* oldPointer, size_t oldSize, void* newPointer, size_t newSize);
@@ -128,6 +131,9 @@ struct CompilationOptions
     const char* const* userdataTypes = nullptr;
 
     bool recordCounters = false;
+
+    // Compile with runtime counters which will guide further recompilation of native code
+    bool runtimeFeedback = false;
 
     // When true, random NOP sleds are inserted between blocks to
     // make intra-function gadget offsets unpredictable.

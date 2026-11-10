@@ -2,6 +2,7 @@
 print("testing integers")
 
 local function noinline(x: integer): integer local s, r = pcall(function(y) return y end, x) return r end
+local function noinlinenum(x: number): number local s, r = pcall(function(y) return y end, x) return r end
 
 -- Integers have the 'integer' type
 assert(type(123i)=="integer")
@@ -25,23 +26,31 @@ assert(not rawequal(76i, 32i))
 assert(not rawequal(76i, 76))
 
 -- integer.create
-assert(typeof(integer.create(4711))=="integer")
+assert(typeof(integer.create(4711)) == "integer")
+
 assert(integer.create(4711) == 4711i)
 assert(integer.create(-3) == -3i)
 assert(integer.create(1e18) == 1000000000000000000i)
 assert(integer.create(-1e18) == -1000000000000000000i)
 
+assert(integer.create(noinlinenum(4711)) == 4711i)
+assert(integer.create(noinlinenum(-3)) == -3i)
+assert(integer.create(noinlinenum(1e18)) == 1000000000000000000i)
+assert(integer.create(noinlinenum(-1e18)) == -1000000000000000000i)
+
 -- isolate tests which take a VM exit in native code
-function testCreateVmExit()
-    assert(integer.create(2.5) == nil)
-    assert(integer.create(1e30) == nil)
-    assert(integer.create(0/0) == nil)
-    assert(integer.create(math.huge) == nil)
-    assert(integer.create(-math.huge) == nil)
-    assert(integer.create(1.0000000005) == nil)
-    assert(integer.create(0.9999999995) == nil)
+function testCreateVmExit(x)
+    local y = integer.create(x)
+    return y
 end
-testCreateVmExit()
+
+assert(testCreateVmExit(2.5) == nil)
+assert(testCreateVmExit(1e30) == nil)
+assert(testCreateVmExit(0/0) == nil)
+assert(testCreateVmExit(math.huge) == nil)
+assert(testCreateVmExit(-math.huge) == nil)
+assert(testCreateVmExit(1.0000000005) == nil)
+assert(testCreateVmExit(0.9999999995) == nil)
 
 -- integer.fromstring
 assert(integer.fromstring("30") == 30i)
@@ -348,6 +357,15 @@ assert(integer.arshift(noinline(512i), 3i) == 64i)
 assert(integer.arshift(noinline(-256i), 64i) == -1i)
 assert(integer.arshift(noinline(-1i), -3i) == -8i)
 
+assert(integer.lshift(noinline(12345i), -256i) == 0i)
+assert(integer.rshift(noinline(12345i), -256i) == 0i)
+assert(integer.lshift(noinline(12345i), 256i) == 0i)
+assert(integer.rshift(noinline(12345i), 256i) == 0i)
+assert(integer.lshift(noinline(12345i), 0x8000000000000000i) == 0i)
+assert(integer.rshift(noinline(12345i), 0x8000000000000000i) == 0i)
+assert(integer.arshift(noinline(12345i), -256i) == 0i)
+assert(integer.arshift(noinline(-12345i), 256i) == -1i)
+
 -- Rotations
 assert(integer.lrotate(0x6003000000000000i, 4i) == 0x0030000000000006i)
 assert(integer.lrotate(0x1000200000000000i, 69i) == 0x0004000000000002i)
@@ -401,8 +419,12 @@ assert(not success)
 assert(string.find(errmsg, "trying to access non%-existent bits"))
 local success,errmsg = pcall(function() integer.extract(1i, 64i, 1i) end)
 assert(not success)
+assert(string.find(errmsg, "trying to access non%-existent bits"))
 local success,errmsg = pcall(function() integer.extract(1i, integer.maxsigned, 1i) end)
 assert(not success)
+local success,errmsg = pcall(function() integer.extract(-1i, 1i, integer.maxsigned) end)
+assert(not success)
+assert(string.find(errmsg, "trying to access non%-existent bits"))
 
 -- replace
 assert(integer.replace(0xBADBEEFi, 0x500Di, 16i, 16i) == 0x500DBEEFi)
@@ -426,8 +448,12 @@ assert(not success)
 assert(string.find(errmsg, "trying to access non%-existent bits"))
 local success,errmsg = pcall(function() integer.replace(1i, 2i, 64i, 1i) end)
 assert(not success)
+assert(string.find(errmsg, "trying to access non%-existent bits"))
 local success,errmsg = pcall(function() integer.replace(1i, 2i, integer.maxsigned, 1i) end)
 assert(not success)
+local success,errmsg = pcall(function() integer.replace(0i, -1i, 63i, integer.maxsigned) end)
+assert(not success)
+assert(string.find(errmsg, "trying to access non%-existent bits"))
 
 -- btest 
 assert(not integer.btest(0xAAAAi, 0x5555i))
@@ -465,6 +491,15 @@ assert(integer.bswap(0x0BADBEEFC001D00Di) == 0x0DD001C0EFBEAD0Bi)
 
 assert(integer.bswap(noinline(0x1122334455667748i)) == 0x4877665544332211i)
 assert(integer.bswap(noinline(0x0BADBEEFC001D00Di)) == 0x0DD001C0EFBEAD0Bi)
+
+-- roundtrip regression test
+local function roundtrip(i: integer)
+    local d = integer.tonumber(i)
+    return integer.create(d)
+end
+
+assert(roundtrip(9007199254740993i) == 9007199254740992i)
+assert(roundtrip(4711i) == 4711i)
 
 -- table indexing and hashes
 local x = {}

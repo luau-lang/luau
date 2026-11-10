@@ -9,6 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -763,6 +764,10 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(condition);
                 PROP(body);
                 PROP(hasDo);
+                if (FFlag::LuauExperimentalWhileLocalAnalysis && node->conditionLocal)
+                {
+                    write("conditionLocal", node->conditionLocal);
+                }
             }
         );
     }

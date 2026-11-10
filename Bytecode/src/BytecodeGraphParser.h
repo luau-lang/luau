@@ -1022,11 +1022,18 @@ struct BytecodeGraphParser
                 break;
 
             case LOP_NEWCLASSMEMBER:
+            {
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
                 addVmRegInput(node, LUAU_INSN_A(insn));
+                uint8_t flags = LUAU_INSN_B(insn);
+                addImmInput(node, static_cast<int32_t>(flags));
                 addVmRegInput(node, LUAU_INSN_C(insn));
-                addVmConstInput(node, aux);
-                break;
+                if (flags & 0x1)
+                    addImmInput(node, aux);
+                else
+                    addVmConstInput(node, aux);
+            }
+            break;
 
             case LOP_FASTPCALL:
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_A(insn)));
@@ -1034,6 +1041,7 @@ struct BytecodeGraphParser
                 // turn it in BcOp to CALL BcInst&.
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
                 break;
+
             case LOP_NEWCLASS:
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 
@@ -1058,6 +1066,32 @@ struct BytecodeGraphParser
             case LOP_FINCONSTRUCT:
                 addVmRegInput(node, LUAU_INSN_A(insn));
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
+                break;
+                
+            case LOP_GETPRIVATEFIELD:
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+                addVmRegInput(node, LUAU_INSN_B(insn));
+                addUpvalInput(node, LUAU_INSN_C(insn));
+                addImmInput(node, aux);
+
+                if (LUAU_INSN_AUX_NAMECALL(aux))
+                {
+                    func.regs[nodeOp] = LUAU_INSN_A(insn);
+                    addProducer(LUAU_INSN_A(insn), func.addProj(nodeOp, 0));
+                    addProducer(LUAU_INSN_A(insn) + 1, func.addProj(nodeOp, 1));
+                }
+                else
+                    addProducer(LUAU_INSN_A(insn), nodeOp);
+                break;
+
+            case LOP_SETPRIVATEFIELD:
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+                addVmRegInput(node, LUAU_INSN_A(insn));
+                addVmRegInput(node, LUAU_INSN_B(insn));
+                addUpvalInput(node, LUAU_INSN_C(insn));
+                addImmInput(node, aux);
                 break;
 
             case LOP__COUNT:

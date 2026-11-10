@@ -1,12 +1,18 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/CodeGenOptions.h"
 #include "Luau/SharedCodeAllocator.h"
+#include "Luau/DenseHash.h"
+#include "Luau/IrData.h"
 
 #include "NativeState.h"
 
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <vector>
+
 #include <stdint.h>
 
 namespace Luau
@@ -26,6 +32,48 @@ struct ModuleBindResult
     CodeGenCompilationResult compilationResult = {};
 
     uint32_t functionsBound = 0;
+};
+
+struct RecordedRegTags
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint16_t tagMask = 0;
+    uint64_t hits = 0;
+};
+
+struct RecordedUserdataTag
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint8_t tag = 0;
+    bool polymorphic = false;
+    uint64_t hits = 0;
+};
+
+struct FunctionBuildHistory
+{
+    uint32_t rebuildCount = 0;
+
+    // If Proto size changes, history has to be invalidated
+    int sizecode = 0;
+
+    std::vector<RecordedRegTags> recordedTags;
+    std::vector<RecordedUserdataTag> recordedUserdataTags;
+
+    BytecodeFeedback lastFeedback;
+};
+
+struct VmCodeGenData
+{
+    DenseHashSet<Proto*> protosToRebuild;
+    DenseHashMap<uint32_t, FunctionBuildHistory> buildHistory;
+
+    // Functions are only rebuilt or promoted at runtime after these options are provided
+    CompilationOptions options;
+
+    bool runtimeRebuildEnabled = false;
+    bool promoteVmFunctions = false;
 };
 
 class BaseCodeGenContext
@@ -51,7 +99,9 @@ public:
         size_t codeSize
     ) = 0;
 
-    virtual void onCloseState() noexcept = 0;
+    virtual VmCodeGenData& getVmData(lua_State* L) = 0;
+
+    virtual void onCloseState(lua_State* L) noexcept = 0;
     virtual void onDestroyFunction(void* execdata) noexcept = 0;
 
     CodeAllocator codeAllocator;
@@ -82,11 +132,15 @@ public:
         size_t codeSize
     ) override;
 
-    void onCloseState() noexcept override;
+    VmCodeGenData& getVmData(lua_State* L) override;
+
+    void onCloseState(lua_State* L) noexcept override;
     void onDestroyFunction(void* execdata) noexcept override;
 
 private:
     SharedCodeAllocator sharedAllocator;
+
+    VmCodeGenData vmData;
 };
 
 class SharedCodeGenContext final : public BaseCodeGenContext
@@ -106,11 +160,16 @@ public:
         size_t codeSize
     ) override;
 
-    void onCloseState() noexcept override;
+    VmCodeGenData& getVmData(lua_State* L) override;
+
+    void onCloseState(lua_State* L) noexcept override;
     void onDestroyFunction(void* execdata) noexcept override;
 
 private:
     SharedCodeAllocator sharedAllocator;
+
+    std::mutex vmDataMutex;
+    DenseHashMap<lua_State*, std::unique_ptr<VmCodeGenData>> vmData;
 };
 
 // JIT layout randomization helpers

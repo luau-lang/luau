@@ -19,6 +19,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCostModel)
 LUAU_FASTFLAGVARIABLE(LuauLoadRemapOptionalUserdata)
+LUAU_FASTFLAGVARIABLE(LuauLoadExplicitGcDisable)
 
 template<typename T>
 struct TempBuffer
@@ -61,30 +62,42 @@ struct TempBuffer
     }
 };
 
-struct ScopedSetGCThreshold
+struct ScopedDisableGC
 {
 public:
-    ScopedSetGCThreshold(global_State* global, size_t newThreshold) noexcept
+    ScopedDisableGC(global_State* global, size_t newThreshold_DEPRECATED) noexcept
         : global{global}
     {
-        originalThreshold = global->GCthreshold;
-        global->GCthreshold = newThreshold;
+        if (FFlag::LuauLoadExplicitGcDisable)
+        {
+            originalGcDisabled = global->gcdisabled;
+            global->gcdisabled = 1;
+        }
+        else
+        {
+            originalThreshold_DEPRECATED = global->GCthreshold;
+            global->GCthreshold = newThreshold_DEPRECATED;
+        }
     }
 
-    ScopedSetGCThreshold(const ScopedSetGCThreshold&) = delete;
-    ScopedSetGCThreshold(ScopedSetGCThreshold&&) = delete;
+    ScopedDisableGC(const ScopedDisableGC&) = delete;
+    ScopedDisableGC(ScopedDisableGC&&) = delete;
 
-    ScopedSetGCThreshold& operator=(const ScopedSetGCThreshold&) = delete;
-    ScopedSetGCThreshold& operator=(ScopedSetGCThreshold&&) = delete;
+    ScopedDisableGC& operator=(const ScopedDisableGC&) = delete;
+    ScopedDisableGC& operator=(ScopedDisableGC&&) = delete;
 
-    ~ScopedSetGCThreshold() noexcept
+    ~ScopedDisableGC() noexcept
     {
-        global->GCthreshold = originalThreshold;
+        if (FFlag::LuauLoadExplicitGcDisable)
+            global->gcdisabled = originalGcDisabled;
+        else
+            global->GCthreshold = originalThreshold_DEPRECATED;
     }
 
 private:
     global_State* global = nullptr;
-    size_t originalThreshold = 0;
+    size_t originalThreshold_DEPRECATED = 0;
+    uint8_t originalGcDisabled = 0;
 };
 
 void luaV_getimport(lua_State* L, LuaTable* env, TValue* k, StkId res, uint32_t id, bool propagatenil)
@@ -631,13 +644,30 @@ static int loadsafe(
                 uint32_t cnid = readVarInt(data, size, offset);
                 TValue* classname = &p->k[cnid];
                 LUAU_ASSERT(ttisstring(classname));
+                uint8_t numPrivateFields = read<uint8_t>(data, size, offset);
+                uint8_t numPrivateMethods = read<uint8_t>(data, size, offset);
                 uint32_t numProperties = readVarInt(data, size, offset);
                 uint32_t numMethods = readVarInt(data, size, offset);
                 uint32_t numMembers = numMethods + numProperties;
-                TString** offsetToMember = luaM_newarray(L, numMembers, TString*, L->activememcat);
-                LuaTable* membersToOffset = luaH_new(L, 0, numMembers);
+                uint32_t membersWithoutPrivateMethods = numMembers - static_cast<uint32_t>(numPrivateMethods);
+                TString** offsetToMember = luaM_newarray(L, membersWithoutPrivateMethods, TString*, L->activememcat);
+                memset(offsetToMember, 0, membersWithoutPrivateMethods * sizeof(TString*));
+                LuaTable* membersToOffset = luaH_new(L, 0, membersWithoutPrivateMethods - static_cast<uint32_t>(numPrivateFields));
 
-                for (uint32_t idx = 0; idx < numMembers; idx++)
+                uint32_t idx = 0;
+                // Set public field names
+                for (; idx < numProperties - static_cast<uint32_t>(numPrivateFields); idx++)
+                {
+                    uint32_t mid = readVarInt(data, size, offset);
+                    TValue* memberName = &p->k[mid];
+                    LUAU_ASSERT(ttisstring(memberName));
+                    offsetToMember[idx] = tsvalue(memberName);
+                    TValue* val = luaH_setstr(L, membersToOffset, tsvalue(memberName));
+                    setnvalue(val, idx);
+                }
+
+                // Set public method names
+                for (idx = numProperties; idx < membersWithoutPrivateMethods; idx++)
                 {
                     uint32_t mid = readVarInt(data, size, offset);
                     TValue* memberName = &p->k[mid];
@@ -649,7 +679,9 @@ static int loadsafe(
 
                 membersToOffset->readonly = true;
 
-                LuauClass* lco = luaR_newclass(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, envt);
+                LuauClass* lco = luaR_newclass(
+                    L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, numPrivateFields, numPrivateMethods, envt
+                );
                 setclassvalue(L, &p->k[j], lco);
                 break;
             }
@@ -845,7 +877,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     luaC_checkGC(L);
 
     // pause GC for the duration of deserialization - some objects we're creating aren't rooted
-    const ScopedSetGCThreshold pauseGC{L->global, SIZE_MAX};
+    const ScopedDisableGC pauseGC{L->global, SIZE_MAX};
 
     struct LoadContext
     {

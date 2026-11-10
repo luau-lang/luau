@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
-LUAU_FASTFLAG(LuauBlockingTypeAliasExpansion)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -36,8 +35,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
 
         local g: F = f
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = () -> t1?", toString(requireType("g")));
@@ -383,8 +380,6 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
     CHECK_EQ(expected, decorateWithTypes(code));
     CheckResult result = check(code);
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -668,8 +663,6 @@ end
 export type f = typeof(get())
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -682,8 +675,6 @@ end
 
 export type f = typeof(get())
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -751,8 +742,6 @@ TEST_CASE_FIXTURE(Fixture, "free_variables_from_typeof_in_aliases")
         type ContainsContainsFree = { that: ContainsFree<number> }
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -803,8 +792,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_quantify_unresolved_aliases")
         export type Key = typeof(newkey(newKeyPool(), 1))
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -842,8 +829,6 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
         type FutureType = { foo: typeof(x()) }
         local d: FutureType = { smth = true } -- missing error, 'd' is resolved to 'any'
     )");
-
-    ignoreMissingAnnotations(result);
 
     CHECK_EQ("{ foo: number }", toString(requireType("d"), {true}));
 
@@ -1476,8 +1461,6 @@ type Pack4 = Pack4a | Pack4b | Pack4c | Pack4d | Pack4e
 TEST_CASE_FIXTURE(BuiltinsFixture, "blocked_type_alias_do_not_leak_generic_arguments")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag luauBlockingTypeAliasExpansion{FFlag::LuauBlockingTypeAliasExpansion, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
 type Alias<Generic> = typeof(getmetatable(... :: Generic))

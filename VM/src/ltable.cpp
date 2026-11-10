@@ -34,10 +34,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauFrozenMetaButterfly)
 LUAU_DYNAMIC_FASTFLAG(LuauTableFindImprovement)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauSplitTableLookups, false)
-LUAU_FASTFLAGVARIABLE(LuauTableArrayShrinkOrder)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableRobustOom, false)
 
 // Set this to 1 to change the hash function to something different (and possibly trivial). Useful
@@ -693,25 +690,7 @@ static void setnodevector(lua_State* L, LuaTable* t, int size)
     t->lastfree = size; // all positions are free
 }
 
-// TODO: forward declaration not needed with DFFlagLuauSplitTableLookups removal
-static TValue* newkey_DEPRECATED(lua_State* L, LuaTable* t, const TValue* key);
-
 static TValue* reinsertkey(lua_State* L, LuaTable* t, const TValue* key, bool checkarraypart);
-
-// TODO: remove with DFFlagLuauSplitTableLookups
-static TValue* arrayornewkey_DEPRECATED(lua_State* L, LuaTable* t, const TValue* key)
-{
-    if (ttisnumber(key))
-    {
-        int k;
-        double n = nvalue(key);
-        luai_num2int(k, n);
-        if (luai_numeq(cast_num(k), n) && unsigned(k) - 1 < unsigned(t->sizearray))
-            return &t->array[k - 1];
-    }
-
-    return newkey_DEPRECATED(L, t, key);
-}
 
 static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
 {
@@ -809,15 +788,8 @@ static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
             {
                 TValue ok;
                 setnvalue(&ok, cast_num(i + 1));
-                if (DFFlag::LuauSplitTableLookups)
-                {
-                    // integer number keys from a shrinking slice cannot get into the new array part
-                    setobjt2t(L, reinsertkey(L, t, &ok, false), &oldarray[i]);
-                }
-                else
-                {
-                    setobjt2t(L, newkey_DEPRECATED(L, t, &ok), &oldarray[i]);
-                }
+                // integer number keys from a shrinking slice cannot get into the new array part
+                setobjt2t(L, reinsertkey(L, t, &ok, false), &oldarray[i]);
             }
         }
 
@@ -829,15 +801,7 @@ static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
             {
                 TValue ok;
                 getnodekey(L, &ok, old);
-
-                if (DFFlag::LuauSplitTableLookups)
-                {
-                    setobjt2t(L, reinsertkey(L, t, &ok, true), gval(old));
-                }
-                else
-                {
-                    setobjt2t(L, arrayornewkey_DEPRECATED(L, t, &ok), gval(old));
-                }
+                setobjt2t(L, reinsertkey(L, t, &ok, true), gval(old));
             }
         }
 
@@ -867,64 +831,29 @@ static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
     LuaNode* nnew = t->node;
     if (nasize < oldasize)
     { // array part must shrink?
-        if (FFlag::LuauTableArrayShrinkOrder)
+        TValue* oldarray = t->array;
+
+        // shrink array
+        t->array = luaM_newarray(L, nasize, TValue, t->memcat);
+        t->sizearray = nasize;
+
+        // copy elements from remaining slice
+        if (nasize != 0)
+            memcpy(t->array, oldarray, nasize * sizeof(TValue));
+
+        // re-insert elements from vanishing slice (landing into the hash part)
+        for (int i = nasize; i < oldasize; i++)
         {
-            TValue* oldarray = t->array;
-
-            // shrink array
-            t->array = luaM_newarray(L, nasize, TValue, t->memcat);
-            t->sizearray = nasize;
-
-            // copy elements from remaining slice
-            if (nasize != 0)
-                memcpy(t->array, oldarray, nasize * sizeof(TValue));
-
-            // re-insert elements from vanishing slice (landing into the hash part)
-            for (int i = nasize; i < oldasize; i++)
+            if (!ttisnil(&oldarray[i]))
             {
-                if (!ttisnil(&oldarray[i]))
-                {
-                    TValue ok;
-                    setnvalue(&ok, cast_num(i + 1));
-                    if (DFFlag::LuauSplitTableLookups)
-                    {
-                        // integer number keys from a shrinking slice cannot get into the new array part
-                        setobjt2t(L, reinsertkey(L, t, &ok, false), &oldarray[i]);
-                    }
-                    else
-                    {
-                        setobjt2t(L, newkey_DEPRECATED(L, t, &ok), &oldarray[i]);
-                    }
-                }
+                TValue ok;
+                setnvalue(&ok, cast_num(i + 1));
+                // integer number keys from a shrinking slice cannot get into the new array part
+                setobjt2t(L, reinsertkey(L, t, &ok, false), &oldarray[i]);
             }
-
-            luaM_freearray(L, oldarray, oldasize, TValue, t->memcat);
         }
-        else
-        {
-            t->sizearray = nasize;
-            // re-insert elements from vanishing slice
-            for (int i = nasize; i < oldasize; i++)
-            {
-                if (!ttisnil(&t->array[i]))
-                {
-                    TValue ok;
-                    setnvalue(&ok, cast_num(i + 1));
 
-                    if (DFFlag::LuauSplitTableLookups)
-                    {
-                        // integer number keys from a shrinking slice cannot get into the new array part
-                        setobjt2t(L, reinsertkey(L, t, &ok, false), &t->array[i]);
-                    }
-                    else
-                    {
-                        setobjt2t(L, newkey_DEPRECATED(L, t, &ok), &t->array[i]);
-                    }
-                }
-            }
-            // shrink array
-            luaM_reallocarray(L, t->array, oldasize, nasize, TValue, t->memcat);
-        }
+        luaM_freearray(L, oldarray, oldasize, TValue, t->memcat);
     }
     // used for the migration check at the end
     TValue* anew = t->array;
@@ -936,15 +865,7 @@ static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
         {
             TValue ok;
             getnodekey(L, &ok, old);
-
-            if (DFFlag::LuauSplitTableLookups)
-            {
-                setobjt2t(L, reinsertkey(L, t, &ok, true), gval(old));
-            }
-            else
-            {
-                setobjt2t(L, arrayornewkey_DEPRECATED(L, t, &ok), gval(old));
-            }
+            setobjt2t(L, reinsertkey(L, t, &ok, true), gval(old));
         }
     }
 
@@ -954,16 +875,6 @@ static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
 
     if (nold != dummynode)
         luaM_freearray(L, nold, twoto(oldhsize), LuaNode, t->memcat); // free old array
-}
-
-static int adjustasize_DEPRECATED(LuaTable* t, int size, const TValue* ek)
-{
-    bool tbound = t->node != dummynode || size < t->sizearray;
-    int ekindex = ek && ttisnumber(ek) ? arrayindex(nvalue(ek)) : -1;
-    // move the array size up until the boundary is guaranteed to be inside the array part
-    while (size + 1 == ekindex || (tbound && !ttisnil(luaH_getnum(t, size + 1))))
-        size++;
-    return size;
 }
 
 // When we already know that new key is an integer number
@@ -982,54 +893,13 @@ void luaH_resizearray(lua_State* L, LuaTable* t, int nasize)
         luaG_runerror(L, "table overflow");
 
     int nsize = (t->node == dummynode) ? 0 : sizenode(t);
-    int asize = DFFlag::LuauSplitTableLookups ? adjustasize(t, nasize, -1) : adjustasize_DEPRECATED(t, nasize, NULL);
+    int asize = adjustasize(t, nasize, -1);
     resize(L, t, asize, nsize);
 }
 
 void luaH_resizehash(lua_State* L, LuaTable* t, int nhsize)
 {
     resize(L, t, t->sizearray, nhsize);
-}
-
-static void rehash_DEPRECATED(lua_State* L, LuaTable* t, const TValue* ek)
-{
-    int nums[MAXBITS + 1]; // nums[i] = number of keys between 2^(i-1) and 2^i
-    for (int i = 0; i <= MAXBITS; i++)
-        nums[i] = 0;                          // reset counts
-    int nasize = numusearray(t, nums);        // count keys in array part
-    int totaluse = nasize;                    // all those keys are integer keys
-    totaluse += numusehash(t, nums, &nasize); // count keys in hash part
-
-    // count extra key
-    if (ttisnumber(ek))
-        nasize += countint(nvalue(ek), nums);
-    totaluse++;
-
-    // compute new size for array part
-    int na = computesizes(nums, &nasize);
-    int nh = totaluse - na;
-
-    // enforce the boundary invariant; for performance, only do hash lookups if we must
-    int nadjusted = adjustasize_DEPRECATED(t, nasize, ek);
-
-    // count how many extra elements belong to array part instead of hash part
-    int aextra = nadjusted - nasize;
-
-    if (aextra != 0)
-    {
-        // we no longer need to store those extra array elements in hash part
-        nh -= aextra;
-
-        // because hash nodes are twice as large as array nodes, the memory we saved for hash parts can be used by array part
-        // this follows the general sparse array part optimization where array is allocated when 50% occupation is reached
-        nasize = nadjusted + aextra;
-
-        // since the size was changed, it's again important to enforce the boundary invariant at the new size
-        nasize = adjustasize_DEPRECATED(t, nasize, ek);
-    }
-
-    // resize the table to new computed sizes
-    resize(L, t, nasize, nh);
 }
 
 template<bool IsIntKey>
@@ -1127,19 +997,11 @@ void luaH_free(lua_State* L, LuaTable* t, lua_Page* page)
     if (t->node != dummynode)
         luaM_freearray(L, t->node, sizenode(t), LuaNode, t->memcat);
 
-    if (FFlag::LuauFrozenMetaButterfly)
+    if (t->array)
     {
-        if (t->array)
-        {
-            if (hasmetacache(t))
-                luaM_freearray(L, t->array - TM_N, t->sizearray + TM_N, TValue, t->memcat);
-            else
-                luaM_freearray(L, t->array, t->sizearray, TValue, t->memcat);
-        }
-    }
-    else
-    {
-        if (t->array)
+        if (hasmetacache(t))
+            luaM_freearray(L, t->array - TM_N, t->sizearray + TM_N, TValue, t->memcat);
+        else
             luaM_freearray(L, t->array, t->sizearray, TValue, t->memcat);
     }
 
@@ -1197,64 +1059,6 @@ static LuaNode* newcollidingkey(lua_State* L, LuaTable* t, LuaNode* mp, LuaNode*
         gnext(mp) = cast_int(n - mp);
         return n;
     }
-}
-
-static TValue* newkey_DEPRECATED(lua_State* L, LuaTable* t, const TValue* key)
-{
-    // enforce boundary invariant
-    if (ttisnumber(key) && nvalue(key) == t->sizearray + 1)
-    {
-        rehash_DEPRECATED(L, t, key); // grow table
-
-        // after rehash, numeric keys might be located in the new array part, but won't be found in the node part
-        return arrayornewkey_DEPRECATED(L, t, key);
-    }
-
-    LuaNode* mp = mainposition(t, key);
-    if (!ttisnil(gval(mp)) || mp == dummynode)
-    {
-        LuaNode* n = getfreepos(t); // get a free place
-        if (n == NULL)
-        {                      // cannot find a free place?
-            rehash_DEPRECATED(L, t, key); // grow table
-
-            // after rehash, numeric keys might be located in the new array part, but won't be found in the node part
-            return arrayornewkey_DEPRECATED(L, t, key);
-        }
-        LUAU_ASSERT(n != dummynode);
-        TValue mk;
-        getnodekey(L, &mk, mp);
-        LuaNode* othern = mainposition(t, &mk);
-        if (othern != mp)
-        { // is colliding node out of its main position?
-            // yes; move colliding node into free position
-            while (othern + gnext(othern) != mp)
-                othern += gnext(othern);          // find previous
-            gnext(othern) = cast_int(n - othern); // redo the chain with `n' in place of `mp'
-            *n = *mp;                             // copy colliding node into free pos. (mp->next also goes)
-            if (gnext(mp) != 0)
-            {
-                gnext(n) += cast_int(mp - n); // correct 'next'
-                gnext(mp) = 0;                // now 'mp' is free
-            }
-            setnilvalue(gval(mp));
-        }
-        else
-        { // colliding node is in its own main position
-            // new node will go into free position
-            if (gnext(mp) != 0)
-                gnext(n) = cast_int((mp + gnext(mp)) - n); // chain new position
-            else
-                LUAU_ASSERT(gnext(n) == 0);
-            gnext(mp) = cast_int(n - mp);
-            mp = n;
-        }
-    }
-
-    setnodekey(L, mp, key);
-    luaC_barriert(L, t, key);
-    LUAU_ASSERT(ttisnil(gval(mp)));
-    return gval(mp);
 }
 
 /*
@@ -1398,7 +1202,7 @@ const TValue* luaH_getp(LuaTable* t, void* key, int tag)
 */
 const TValue* luaH_get(LuaTable* t, const TValue* key)
 {
-    if (DFFlag::LuauSplitTableLookups && DFFlag::LuauTableFindImprovement)
+    if (DFFlag::LuauTableFindImprovement)
     {
         switch (ttype(key))
         {
@@ -1428,7 +1232,7 @@ const TValue* luaH_get(LuaTable* t, const TValue* key)
             return chainsearchtagged<LUA_TGCO>(t, gcvalue(key), ttype(key));
         }
     }
-    else if (DFFlag::LuauSplitTableLookups)
+    else
     {
         switch (ttype(key))
         {
@@ -1458,38 +1262,6 @@ const TValue* luaH_get(LuaTable* t, const TValue* key)
             return chainsearchtagged_DEPRECATED<LUA_TGCO>(t, gcvalue(key), ttype(key));
         }
     }
-    else
-    {
-        switch (ttype(key))
-        {
-        case LUA_TNIL:
-            return luaO_nilobject;
-        case LUA_TSTRING:
-            return luaH_getstr(t, tsvalue(key));
-        case LUA_TNUMBER:
-        {
-            int k;
-            double n = nvalue(key);
-            luai_num2int(k, n);
-            if (luai_numeq(cast_num(k), nvalue(key))) // index is int?
-                return luaH_getnum(t, k);             // use specialized version
-            LUAU_FALLTHROUGH;                         // else go through
-        }
-        default:
-        {
-            LuaNode* n = mainposition(t, key);
-            for (;;)
-            { // check whether `key' is somewhere in the chain
-                if (luaO_rawequalKey(gkey(n), key))
-                    return gval(n); // that's it
-                if (gnext(n) == 0)
-                    break;
-                n += gnext(n);
-            }
-            return luaO_nilobject;
-        }
-        }
-    }
 }
 
 TValue* luaH_set(lua_State* L, LuaTable* t, const TValue* key)
@@ -1504,53 +1276,40 @@ TValue* luaH_set(lua_State* L, LuaTable* t, const TValue* key)
 
 TValue* luaH_newkey(lua_State* L, LuaTable* t, const TValue* key)
 {
-    if (DFFlag::LuauSplitTableLookups)
+    switch (ttype(key))
     {
-        switch (ttype(key))
-        {
-        case LUA_TNIL:
-            luaG_runerror(L, "table index is nil");
-            break;
-        case LUA_TBOOLEAN:
-            return newkeytagged<LUA_TBOOLEAN, false>(L, t, key, bvalue(key), -1);
-        case LUA_TLIGHTUSERDATA:
-            return newkeytagged<LUA_TLIGHTUSERDATA, false>(L, t, key, pvalue(key), -1);
-        case LUA_TNUMBER:
-        {
-            double n = nvalue(key);
-
-            if (luai_numisnan(n))
-                luaG_runerror(L, "table index is NaN");
-
-            int k;
-            luai_num2int(k, n);
-            if (luai_numeq(cast_num(k), n))
-                return newkeytagged<LUA_TNUMBER, true>(L, t, key, n, k);
-
-            return newkeytagged<LUA_TNUMBER, false>(L, t, key, n, -1);
-        }
-        case LUA_TINTEGER:
-            return newkeytagged<LUA_TINTEGER, false>(L, t, key, lvalue(key), -1);
-        case LUA_TVECTOR:
-            if (luai_vecisnan(vvalue(key)))
-                luaG_runerror(L, "table index contains NaN");
-
-            return newkeytagged<LUA_TVECTOR, false>(L, t, key, (const LUA_VECTOR_TYPE*)vvalue(key), -1);
-        case LUA_TSTRING:
-            return newkeytagged<LUA_TSTRING, false>(L, t, key, tsvalue(key), -1);
-        default:
-            return newkeytagged<LUA_TGCO, false>(L, t, key, gcvalue(key), -1);
-        }
-    }
-    else
+    case LUA_TNIL:
+        luaG_runerror(L, "table index is nil");
+        break;
+    case LUA_TBOOLEAN:
+        return newkeytagged<LUA_TBOOLEAN, false>(L, t, key, bvalue(key), -1);
+    case LUA_TLIGHTUSERDATA:
+        return newkeytagged<LUA_TLIGHTUSERDATA, false>(L, t, key, pvalue(key), -1);
+    case LUA_TNUMBER:
     {
-        if (ttisnil(key))
-            luaG_runerror(L, "table index is nil");
-        else if (ttisnumber(key) && luai_numisnan(nvalue(key)))
+        double n = nvalue(key);
+
+        if (luai_numisnan(n))
             luaG_runerror(L, "table index is NaN");
-        else if (ttisvector(key) && luai_vecisnan(vvalue(key)))
+
+        int k;
+        luai_num2int(k, n);
+        if (luai_numeq(cast_num(k), n))
+            return newkeytagged<LUA_TNUMBER, true>(L, t, key, n, k);
+
+        return newkeytagged<LUA_TNUMBER, false>(L, t, key, n, -1);
+    }
+    case LUA_TINTEGER:
+        return newkeytagged<LUA_TINTEGER, false>(L, t, key, lvalue(key), -1);
+    case LUA_TVECTOR:
+        if (luai_vecisnan(vvalue(key)))
             luaG_runerror(L, "table index contains NaN");
-        return newkey_DEPRECATED(L, t, key);
+
+        return newkeytagged<LUA_TVECTOR, false>(L, t, key, (const LUA_VECTOR_TYPE*)vvalue(key), -1);
+    case LUA_TSTRING:
+        return newkeytagged<LUA_TSTRING, false>(L, t, key, tsvalue(key), -1);
+    default:
+        return newkeytagged<LUA_TGCO, false>(L, t, key, gcvalue(key), -1);
     }
 }
 
@@ -1565,20 +1324,11 @@ TValue* luaH_setnum(lua_State* L, LuaTable* t, int key)
         return cast_to(TValue*, p);
     else
     {
-        if (DFFlag::LuauSplitTableLookups)
-        {
-            double n = cast_num(key);
+        double n = cast_num(key);
 
-            TValue k;
-            setnvalue(&k, n);
-            return newkeytagged<LUA_TNUMBER, true>(L, t, &k, n, key);
-        }
-        else
-        {
-            TValue k;
-            setnvalue(&k, cast_num(key));
-            return newkey_DEPRECATED(L, t, &k);
-        }
+        TValue k;
+        setnvalue(&k, n);
+        return newkeytagged<LUA_TNUMBER, true>(L, t, &k, n, key);
     }
 }
 
@@ -1592,11 +1342,7 @@ TValue* luaH_setstr(lua_State* L, LuaTable* t, TString* key)
     {
         TValue k;
         setsvalue(L, &k, key);
-
-        if (DFFlag::LuauSplitTableLookups)
-            return newkeytagged<LUA_TSTRING, false>(L, t, &k, key, -1);
-        else
-            return newkey_DEPRECATED(L, t, &k);
+        return newkeytagged<LUA_TSTRING, false>(L, t, &k, key, -1);
     }
 }
 
@@ -1609,11 +1355,7 @@ TValue* luaH_setp(lua_State* L, LuaTable* t, void* key, int tag)
     {
         TValue k;
         setpvalue(&k, key, tag);
-
-        if (DFFlag::LuauSplitTableLookups)
-            return newkeytagged<LUA_TLIGHTUSERDATA, false>(L, t, &k, key, -1);
-        else
-            return newkey_DEPRECATED(L, t, &k);
+        return newkeytagged<LUA_TLIGHTUSERDATA, false>(L, t, &k, key, -1);
     }
 }
 

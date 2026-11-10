@@ -28,6 +28,7 @@ LUAU_FASTFLAGVARIABLE(LuauRefineNotNilWaitsForBlockedTarget)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
 namespace Luau
 {
@@ -130,11 +131,18 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
         ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->scope, ctx->ice, ctx->limits, location
     );
 
-    DenseHashSet<TypeId> uniqueTypes;
-    OverloadResolution resolution = resolver->resolveOverload(fnTy, argsPack, location, NotNull{&uniqueTypes}, /* useFreeTypeBounds */ false);
+    OverloadResolution resolution = resolver->resolveOverload(fnTy, argsPack, location, /* useFreeTypeBounds */ false);
 
-    if (resolution.ok.empty() && resolution.potentialOverloads.empty())
-        return std::nullopt;
+    if (FFlag::LuauOneBitAssumedConstraintTracking)
+    {
+        if (resolution.ok.empty() && resolution.potentialOverloads.empty())
+            return std::nullopt;
+    }
+    else
+    {
+        if (resolution.ok.empty() && resolution.potentialOverloads_DEPRECATED.empty())
+            return std::nullopt;
+    }
 
     SelectedOverload selected = resolution.getUnambiguousOverload();
 

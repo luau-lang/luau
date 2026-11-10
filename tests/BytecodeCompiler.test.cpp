@@ -924,7 +924,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "bytecode_roundtrip")
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "classes_bytecode_roundtrips")
 {
-
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     checkRoundtrip(R"(
@@ -1014,7 +1013,7 @@ K3: '__tostring'
 K4: function live
 K5: 'live'
 K6: '__init'
-K7: class Animal (props: 1, methods: 3)
+K7: class Animal (public fields: 1, public methods: 3, private fields: 0, private methods: 0)
   props:
     K1 ['species']
   methods:
@@ -1024,7 +1023,7 @@ K7: class Animal (props: 1, methods: 3)
 K8: 'Cat'
 K9: 'breed'
 K10: function __tostring
-K11: class Cat (props: 1, methods: 2)
+K11: class Cat (public fields: 1, public methods: 2, private fields: 0, private methods: 0)
   props:
     K9 ['breed']
   methods:
@@ -1033,15 +1032,15 @@ K11: class Cat (props: 1, methods: 2)
 K12: 'print'
 K13: print
 K14: {['Animal'] #1, ['Cat'] #0} sizenode=2
-NEWCLASS R0 no_base K7 1 [class Animal (props: 1, methods: 3)]
+NEWCLASS R0 no_base K7 1 [class Animal (public fields: 1, public methods: 3, private fields: 0, private methods: 0)]
 DUPCLOSURE R1 K2 ['__tostring']
-NEWCLASSMEMBER R0 R1 ['__tostring']
+NEWCLASSMEMBER R0 R1 [public] ['__tostring']
 DUPCLOSURE R1 K4 ['live']
-NEWCLASSMEMBER R0 R1 ['live']
-NEWCLASS R1 R0 K11 0 [class Cat (props: 1, methods: 2)]
+NEWCLASSMEMBER R0 R1 [public] ['live']
+NEWCLASS R1 R0 K11 0 [class Cat (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
 DUPCLOSURE R2 K10 ['__tostring']
 CAPTURE VAL R0
-NEWCLASSMEMBER R1 R2 ['__tostring']
+NEWCLASSMEMBER R1 R2 [public] ['__tostring']
 GETIMPORT R2 13 [print]
 MOVE R3 R1
 CALL R2 1 0
@@ -1050,6 +1049,74 @@ SETTABLEKS R0 R2 K0 ['Animal']
 SETTABLEKS R1 R2 K8 ['Cat']
 RETURN R2 1
 )");
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "private_class_fields_bytecode_roundtrips")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string_view source = R"(
+class Counter
+    public label: string
+    private _count: number
+    private _step: number
+
+    private function _peek(self)
+        return self._count
+    end
+
+    function __init(self, label)
+        self.label = label
+        self._count = 0
+        self._step = 1
+    end
+
+    function bump(self)
+        self._count += self._step
+    end
+
+    function reset(self)
+        self._count, self._step = 0, 1
+    end
+
+    function copyFrom(self, other)
+        other._count = self._count
+    end
+
+    function report(self)
+        local peek = self._peek
+        return self.label, peek(self), self._count
+    end
+end
+
+return { Counter = Counter }
+    )";
+
+    checkRoundtrip(source);
+
+    source = R"(
+class PrivateCallback
+    private _cb
+    public str: string
+
+    function __init(self, str, prefix)
+        self._cb = function(self, suffix)
+            return prefix .. self.str .. suffix
+        end
+        self.str = str
+    end
+
+    function rebind(self, cb)
+        self._cb = cb
+    end
+
+    function invoke(self, suffix)
+        return self:_cb(suffix)
+    end
+end
+)";
+
+    checkRoundtrip(source);
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "fastpcall_roundtrip")

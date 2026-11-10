@@ -268,6 +268,9 @@ struct NormalizedType
     /// Returns true if the type is a subtype of boolean(it could be a singleton). Behaves like Type::isBoolean()
     bool isSubtypeOfBooleans() const;
 
+    /// Returns true if the type is a subtype of `table`.
+    bool isSubtypeOfTable() const;
+
     /// Returns true if this type should result in error suppressing behavior.
     bool shouldSuppressErrors() const;
 
@@ -391,6 +394,8 @@ private:
     void subtractPrimitive(NormalizedType& here, TypeId ty);
     void subtractSingleton(NormalizedType& here, TypeId ty);
     NormalizationResult intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect);
+
+    NormalizationResult unionNormalWithNegationTy(NormalizedType& here, TypeId there);
 
     // ------- Normalizing intersections
     TypeId intersectionOfTops(TypeId here, TypeId there);

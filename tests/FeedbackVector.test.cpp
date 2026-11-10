@@ -15,6 +15,7 @@
 
 LUAU_FASTINT(LuauInlineHitsThreshold)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCompileRequireNoInline)
 
 using namespace Luau;
 
@@ -375,6 +376,26 @@ RETURN R1 1
     CHECK_EQ(fbslot.call_target.proto, g->funid);
     CHECK_EQ(fbslot.call_target.hits, 2);
     CHECK_EQ(data->called, true);
+}
+
+TEST_CASE_FIXTURE(FeedbackVectorFixture, "require_call_blocks_inline")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag requireNoInline{FFlag::LuauCompileRequireNoInline, true};
+
+    compile(R"(
+        local function withRequire() require("mod") return 1 end
+        local function noRequire() return 1 end
+        withRequire()
+        noRequire()
+    )");
+
+    Proto* top = load();
+    Proto* withRequire = top->p[0];
+    Proto* noRequire = top->p[1];
+
+    CHECK_EQ(withRequire->flags & LPF_INLINABLE, 0);
+    CHECK_NE(noRequire->flags & LPF_INLINABLE, 0);
 }
 
 TEST_SUITE_END();

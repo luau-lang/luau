@@ -1,0 +1,8 @@
+Block 0 (entry "Entry Block") -> [B1, B2]:
+  local x-0 = <expr>
+Block 1 (linear "if-else expr then") -> [B3]:
+  x-1 = refine(x-0 is truthy)
+Block 2 (linear "if-else expr else") -> [B3]:
+  x-2 = refine(x-0 is falsy)
+Block 3 (linear "if-else expr merge"):
+  local y-0 = <expr>

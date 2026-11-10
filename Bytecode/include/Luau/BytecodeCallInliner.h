@@ -10,6 +10,7 @@
 #include <unordered_set>
 
 LUAU_FASTFLAG(LuauInlinerNamecallSelfFromMove)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 namespace Luau
 {
@@ -747,6 +748,17 @@ struct CallInliner
         // inlining of upvalues is not supported yet
         if (target.nups > 0)
             return false;
+
+        if (FFlag::DebugLuauUserDefinedClassesRuntime)
+        {
+            // inlining private field namecalls is not supported yet
+            if (BcOp callTarget = call.Target(); callTarget.kind == BcOpKind::Proj)
+            {
+                BcOp producer = caller.projOp(callTarget).op;
+                if (producer.kind == BcOpKind::Inst && caller.instOp(producer).op == LOP_GETPRIVATEFIELD)
+                    return false;
+            }
+        }
 
         caller.maxstacksize = newMaxStackSize;
 

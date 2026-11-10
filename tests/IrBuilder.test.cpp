@@ -17,10 +17,8 @@ LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
-LUAU_FASTFLAG(LuauCodegenNoZeroScale)
-LUAU_FASTFLAG(LuauCodegenNoLinearFastpcall)
-LUAU_FASTFLAG(LuauCodegenLimitVersions)
-LUAU_FASTFLAG(LuauCodegenLimitVersionsExtra)
+LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
+LUAU_FASTFLAG(LuauCodegenX64ConflictCheck)
 
 using namespace Luau::CodeGen;
 
@@ -329,6 +327,57 @@ bb_1:
 
 bb_2:
    RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptNoInlineAcrossStore")
+{
+    ScopedFastFlag luauCodegenX64ConflictCheck{FFlag::LuauCodegenX64ConflictCheck, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.fallbackBlock(0u);
+
+    build.beginBlock(block);
+
+    // Copy U0 into R4 and load it
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(4), build.inst(IrCmd::GET_UPVALUE, build.vmUpvalue(0)));
+    build.inst(IrCmd::CHECK_TAG, build.vmReg(4), build.constTag(tnumber), fallback);
+    IrOp x = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+
+    // Copy U1 into R4 and load it
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(4), build.inst(IrCmd::GET_UPVALUE, build.vmUpvalue(1)));
+    build.inst(IrCmd::CHECK_TAG, build.vmReg(4), build.constTag(tnumber), fallback);
+    IrOp y = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), build.inst(IrCmd::MUL_NUM, y, x));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    optimizeMemoryOperandsX64(build.function);
+
+    // After second store to R4, MUL_NUM cannot use earlier R4 value directly on the RHS
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = GET_UPVALUE U0
+   STORE_TVALUE R4, %0
+   CHECK_TAG R4, tnumber, bb_fallback_1
+   %3 = LOAD_DOUBLE R4
+   %4 = GET_UPVALUE U1
+   STORE_TVALUE R4, %4
+   CHECK_TAG R4, tnumber, bb_fallback_1
+   %7 = LOAD_DOUBLE R4
+   %8 = MUL_NUM %7, %3
+   STORE_DOUBLE R3, %8
+   STORE_TAG R3, tnumber
+   RETURN 0u
+
+bb_fallback_1:
+   RETURN 1u
 
 )");
 }
@@ -2533,7 +2582,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
 
     build.beginBlock(block);
 
-    // NUM_TO_INT64(INT64_TO_NUM(x)) => x
+    // NUM_TO_INT64(INT64_TO_NUM(x)) != x
     IrOp intVal = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
     IrOp dblVal = build.inst(IrCmd::INT64_TO_NUM, intVal);
     IrOp backToInt = build.inst(IrCmd::NUM_TO_INT64, dblVal);
@@ -2547,7 +2596,9 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    %0 = LOAD_INT64 R0
-   STORE_INT64 R1, %0
+   %1 = INT64_TO_NUM %0
+   %2 = NUM_TO_INT64 %1
+   STORE_INT64 R1, %2
    RETURN 0u
 
 )");
@@ -4727,8 +4778,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NoLinearExtractionForChainWithPcall")
 {
-    ScopedFastFlag luauCodegenNoLinearFastpcall{FFlag::LuauCodegenNoLinearFastpcall, true};
-
     IrOp block1 = build.block(IrBlockKind::Internal);
     IrOp fallback1 = build.fallbackBlock(0u);
     IrOp block2 = build.block(IrBlockKind::Internal);
@@ -5741,8 +5790,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthCheckIntVsDouble")
 {
-    ScopedFastFlag luauCodegenNoZeroScale{FFlag::LuauCodegenNoZeroScale, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -7009,9 +7056,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VersionLimitChecks")
 {
-    ScopedFastFlag luauCodegenLimitVersions{FFlag::LuauCodegenLimitVersions, true};
     ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-    ScopedFastFlag luauCodegenLimitVersionsExtra{FFlag::LuauCodegenLimitVersionsExtra, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp unrelated = build.block(IrBlockKind::Internal);
@@ -8404,6 +8449,33 @@ bb_3:
 ; predecessors: bb_1
 ; in regs: R1
    RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseCmpAnySideEffects")
+{
+    ScopedFastFlag luauCodegenCmpAnySideEffecting{FFlag::LuauCodegenCmpAnySideEffecting, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp result = build.inst(IrCmd::CMP_ANY, build.vmReg(0), build.vmReg(0), build.cond(IrCondition::Equal));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), result);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0
+   %0 = CMP_ANY R0, R0, eq
+   RETURN R0, 0i
 
 )");
 }

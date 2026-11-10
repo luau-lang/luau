@@ -10,12 +10,9 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/Scope.h"
 
-#include <optional>
+#include <vector>
 
 namespace Luau
-{
-
-namespace CFG
 {
 
 // TypeStateMap walks a ControlFlowGraph in SSA form and assigns a TypeId to every
@@ -35,21 +32,40 @@ struct TypeStateMap
 {
     TypeStateMap(NotNull<TypeArena> arena, NotNull<Scope> globalScope, NotNull<BuiltinTypes> builtinTypes, NotNull<ControlFlowGraph> g);
     void computeTypes();
+    void finalizeDomains();
     TypeId getRHSType(AstExpr* expr);
-    TypeId getLHSType(const LValue& lv) const;
-    std::optional<ConstraintV> getOptionalConstraint(TypeId ty) const;
+    TypeId getDomain(Symbol sym) const;
+    void expandDomain(const LHS& lv, TypeId rhs);
+    std::vector<ConstraintV> getConstraints(TypeId ty) const;
+
+    std::vector<ConstraintV> flushConstraintsRequiringFinalization();
+
 
 private:
-    TypeId getType(Definition* def) const;
-    void handleInstruction(InstrId id);
-    TypeId getDiscriminantOf(const Refine& refine);
+    TypeId getType(SSAId def) const;
+    void handleInstruction(InstructionId id);
+    TypeId getDiscriminantOf(const NarrowingConstraint& constraint);
+    void addConstraintForType(TypeId ty, ConstraintV&& constraint);
+    void transferConstraints(TypeId from, TypeId to);
 
-    DenseHashMap<Definition*, TypeId> defTypes;
 
+    TypeId newBlockedType(SSAId d);
+
+    // This tracks a mapping from AstLocal/Global -> placeholder.
+    DenseHashMap<Symbol, TypeId> lvalueDomain;
+    // This tracks the SSA defs that participate in the domain of a given local
+    DenseHashMap<TypeId, DenseHashMap<SSAId, TypeId>> domainStates;
+
+
+    DenseHashMap<SSAId, TypeId> defTypes;
+
+    DenseHashMap<SSAId, NarrowingConstraint> constraints;
     // Mapping from types to the constraints they require to be solved
     // Join instructions will require simplification constraints
     // Refine instructions will require refinement constraints
-    DenseHashMap<TypeId, ConstraintV> typesRequiringConstraint;
+
+    DenseHashMap<TypeId, std::vector<ConstraintV>> typesRequiringConstraints;
+    DenseHashMap<AstLocal*, std::vector<TypeId>> locals;
 
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
@@ -57,6 +73,5 @@ private:
     NotNull<Scope> globalScope;
 };
 
-} // namespace CFG
 
 } // namespace Luau

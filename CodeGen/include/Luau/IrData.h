@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
@@ -762,6 +763,10 @@ enum class IrCmd : uint8_t
     // Check and run GC assist if necessary
     CHECK_GC,
 
+    // Update runtime counters from the counter set
+    // A: unsigned int (counter set index)
+    UPDATE_COUNTERS,
+
     // Handle GC write barrier (forward)
     // A: pointer (GCObject)
     // B: Rn (TValue that was written to the object)
@@ -1348,6 +1353,20 @@ struct IrInstEq
     }
 };
 
+struct IrEntryCounter
+{
+    CodeGenCounter kind = CodeGenCounter::VmRegTagMismatch;
+    IrOp operand;
+    uint32_t pcpos = ~0u;
+
+    uint8_t expectedTag = kUnknownTag; // tag expected by fast path falling back to this counter
+};
+
+struct IrCounterSet
+{
+    SmallVector<IrEntryCounter, 4> counters;
+};
+
 enum class IrBlockKind : uint8_t
 {
     Bytecode,
@@ -1383,6 +1402,8 @@ struct IrBlock
     uint32_t startpc = kBlockNoStartPc;
 
     Label label;
+
+    uint32_t counterSet = ~0u;
 };
 
 struct BytecodeMapping
@@ -1423,6 +1444,44 @@ struct BytecodeTypeInfo
     // Offsets into regTypes for each individual register
     // One extra element at the end contains the vector size for easier arr[Rn], arr[Rn + 1] range access
     std::vector<uint32_t> regTypeOffsets;
+};
+
+// VM register tag that was recorded at the bytecode instruction at runtime
+struct BytecodeTagFeedback
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint8_t tag = 0;
+
+    bool operator==(const BytecodeTagFeedback& rhs) const
+    {
+        return pcpos == rhs.pcpos && reg == rhs.reg && tag == rhs.tag;
+    }
+};
+
+struct BytecodeUserdataFeedback
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint8_t tag = 0;             // Runtime tag
+    uint8_t type = LBC_TYPE_ANY; // Bytecode type
+
+    bool operator==(const BytecodeUserdataFeedback& rhs) const
+    {
+        return pcpos == rhs.pcpos && reg == rhs.reg && tag == rhs.tag && type == rhs.type;
+    }
+};
+
+// Feedback recorded about the function at runtime
+struct BytecodeFeedback
+{
+    std::vector<BytecodeTagFeedback> tags;               // Sorted by pcpos
+    std::vector<BytecodeUserdataFeedback> userdataTypes; // Sorted by pcpos
+
+    bool operator==(const BytecodeFeedback& rhs) const
+    {
+        return tags == rhs.tags && userdataTypes == rhs.userdataTypes;
+    }
 };
 
 struct ValueRestoreLocation
@@ -1495,6 +1554,9 @@ struct IrFunction
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
     BytecodeTypeInfo bcTypeInfo;         // Bytecode type information with additional inferences
 
+    std::vector<IrCounterSet> counterSets;
+    BytecodeFeedback feedback;
+
     VmEnvironmentInfo envInfo;
 
     Proto* proto = nullptr;
@@ -1504,7 +1566,9 @@ struct IrFunction
 
     LoweringStats* stats = nullptr;
 
-    bool recordCounters = false; // Taken from CompilationOptions for easy access
+    // Taken from CompilationOptions for easy access
+    bool recordCounters = false;
+    bool recordFeedback = false;
 
     uint64_t jitRngState = 0; // PCG32 state for NOP padding; seeded per-function in lowerFunction
 
