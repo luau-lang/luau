@@ -8,6 +8,7 @@ LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
+LUAU_FASTFLAGVARIABLE(LuauConfigurableVectorSize)
 
 namespace Luau
 {
@@ -529,7 +530,10 @@ std::string getBuiltinDefinitionSource(VectorSize vectorSize)
     else
         result += kBuiltinDefinitionBufferSrc_NOINTEGER;
 
-    result += vectorSize == VectorSize::Four ? kBuiltinDefinitionVector4HeaderSrc : kBuiltinDefinitionVector3HeaderSrc;
+    if (FFlag::LuauConfigurableVectorSize && vectorSize == VectorSize::Four)
+        result += kBuiltinDefinitionVector4HeaderSrc;
+    else
+        result += kBuiltinDefinitionVector3HeaderSrc;
     result += kBuiltinDefinitionVectorSrc;
 
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
