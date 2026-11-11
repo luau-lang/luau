@@ -38,6 +38,7 @@ struct BuiltinTypeFunctions
     TypeFunction singletonFunc;
     TypeFunction unionFunc;
     TypeFunction intersectFunc;
+    TypeFunction negateFunc;
 
     TypeFunction keyofFunc;
     TypeFunction rawkeyofFunc;

@@ -27,6 +27,7 @@ LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -7338,6 +7339,31 @@ TEST_CASE_FIXTURE(Fixture, "parse_while_const_cst_annotation_colon_position")
     auto cstNode = (*baseCstNode)->as<CstStatWhile>();
     REQUIRE(cstNode);
     CHECK_EQ(cstNode->annotationColonPosition, Position{0, 13});
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntaxParsing, true};
+
+    AstStatBlock* block = parse(R"(
+        type T = ~number
+    )");
+
+    REQUIRE_EQ(1, block->body.size);
+
+    const auto stat1 = block->body.data[0];
+    LUAU_ASSERT(stat1);
+    CHECK_EQ(Position{1, 18}, stat1->location.end);
+
+    AstStatTypeAlias* ta = stat1->as<AstStatTypeAlias>();
+    CHECK(ta != nullptr);
+
+    CHECK(ta->type->is<AstTypeNegation>());
+
+    AstTypeReference* tr = ta->type->as<AstTypeNegation>()->inner->as<AstTypeReference>();
+    CHECK(tr != nullptr);
+
+    CHECK_EQ(tr->name, "number");
 }
 
 TEST_SUITE_END();
