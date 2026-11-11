@@ -13,7 +13,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauEZAddBuiltins)
-LUAU_FASTFLAG(LuauUdtfConvertStringsIntoTypesForProps)
+LUAU_FASTFLAG(DebugLuauUdtfConvertStringsIntoTypesForProps)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -818,7 +818,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_accepts_string_keys")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag ezAddBuiltins{FFlag::LuauEZAddBuiltins, true};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function gettable()
@@ -848,7 +848,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_accept_string_keys")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag ezAddBuiltins{FFlag::LuauEZAddBuiltins, true};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function gettable()
@@ -887,7 +887,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_reject_non_string_keys")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag ezAddBuiltins{FFlag::LuauEZAddBuiltins, true};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function badkey()
@@ -911,7 +911,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_rejects_non_string_keys")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag ezAddBuiltins{FFlag::LuauEZAddBuiltins, true};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function badkey()

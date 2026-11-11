@@ -8,7 +8,7 @@
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauUdtfConvertStringsIntoTypesForProps)
+LUAU_FASTFLAG(DebugLuauUdtfConvertStringsIntoTypesForProps)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauEZAddBuiltins)
 
@@ -901,7 +901,7 @@ static void buildTypeMethodDefinitions(TypeDefBuilder& builder)
     table.registerProp("value", "(self: type) -> (string | boolean | nil)");
     table.registerProp("inner", "(self: type) -> type");
     table.registerProp("components", "(self: type) -> {type}");
-    if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
+    if (FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps)
     {
         table.registerProp("setproperty", "(self: type, key: type | string, value: type?) -> ()");
         table.registerProp("setreadproperty", "(self: type, key: type | string, value: type?) -> ()");
@@ -955,7 +955,7 @@ static void buildTypesLibraryDefinitions(TypeDefBuilder& builder)
     table.registerProp("negationof", "@checked (arg: type) -> type");
     table.registerProp("unionof", "@checked (...type) -> type");
     table.registerProp("intersectionof", "@checked (...type) -> type");
-    if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
+    if (FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps)
     {
         // `any` keys because indexer keys are invariant, so `{[type | string]: ...}` would reject existing `{[type]: ...}` tables
         table.registerProp(
