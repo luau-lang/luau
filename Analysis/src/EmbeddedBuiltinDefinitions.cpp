@@ -764,7 +764,7 @@ declare types: {
     negationof: @checked (arg: type) -> type,
     unionof: @checked (...type) -> type,
     intersectionof: @checked (...type) -> type,
-    newtable: @checked (props: ({ read [type | string]: type } | { read [any]: { read: type?, write: type? } })?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
+    newtable: @checked (props: ({ [type | string]: type } | { [any]: { read: type?, write: type? } })?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
     newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
     copy: @checked (arg: type) -> type,
 }
@@ -813,7 +813,7 @@ declare types: {
     negationof: @checked (arg: type) -> type,
     unionof: @checked (...type) -> type,
     intersectionof: @checked (...type) -> type,
-    newtable: @checked (props: ({ read [type | string]: type } | { read [any]: { read: type?, write: type? } })?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
+    newtable: @checked (props: ({ [type | string]: type } | { [any]: { read: type?, write: type? } })?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
     newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
     copy: @checked (arg: type) -> type,
 }
