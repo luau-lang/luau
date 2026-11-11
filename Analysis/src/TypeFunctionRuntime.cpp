@@ -29,7 +29,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 
 LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
-LUAU_FASTFLAGVARIABLE(LuauUdtfConvertStringsIntoTypesForProps)
+LUAU_FASTFLAGVARIABLE(DebugLuauUdtfConvertStringsIntoTypesForProps)
 
 namespace Luau
 {
@@ -811,7 +811,7 @@ static int getNegatedValue(lua_State* L)
 // Reads a table property key at `idx`, which is either a string singleton type instance or a string
 static Name getPropKey(lua_State* L, int idx, const char* fname)
 {
-    if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
+    if (FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps)
     {
         // lua_type is used instead of lua_isstring so number keys don't get converted into strings
         if (lua_type(L, idx) == LUA_TSTRING)

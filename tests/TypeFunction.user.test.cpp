@@ -15,7 +15,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
-LUAU_FASTFLAG(LuauUdtfConvertStringsIntoTypesForProps)
+LUAU_FASTFLAG(DebugLuauUdtfConvertStringsIntoTypesForProps)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -770,9 +770,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_t
         local function ok(idx: gettable<>): never return idx end
     )");
 
-    // FIXME(CLI-178738): Without LuauUdtfConvertStringsIntoTypesForProps, an extra error is reported on the props table.
+    // FIXME(CLI-178738): Without DebugLuauUdtfConvertStringsIntoTypesForProps, an extra error is reported on the props table.
     // Only the one described above should exist.
-    LUAU_REQUIRE_ERROR_COUNT((FFlag::LuauUdtfConvertStringsIntoTypesForProps ? 1 : 2), result);
+    LUAU_REQUIRE_ERROR_COUNT((FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps ? 1 : 2), result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors.back());
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{ write bar: string, read foo: number }");
@@ -823,7 +823,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_accepts_string_keys")
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function gettable()
@@ -854,7 +854,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_accept_string_keys")
     DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function gettable()
@@ -893,7 +893,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_reject_non_string_keys")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function badkey()
@@ -917,7 +917,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_rejects_non_string_keys")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
-    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+    ScopedFastFlag stringPropKeys{FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps, true};
 
     CheckResult result = check(R"(
         type function badkey()

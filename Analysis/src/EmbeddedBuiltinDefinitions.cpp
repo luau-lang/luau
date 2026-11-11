@@ -6,7 +6,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauUdtfConvertStringsIntoTypesForProps)
+LUAU_FASTFLAG(DebugLuauUdtfConvertStringsIntoTypesForProps)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
 
@@ -847,7 +847,7 @@ std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
 
-    if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
+    if (FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps)
     {
         if (FFlag::LuauIntegerType2)
             result += kBuiltinDefinitionTypeMethodSrc;
