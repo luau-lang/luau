@@ -8,6 +8,7 @@
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauUdtfConvertStringsIntoTypesForProps)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauEZAddBuiltins)
 
@@ -900,11 +901,22 @@ static void buildTypeMethodDefinitions(TypeDefBuilder& builder)
     table.registerProp("value", "(self: type) -> (string | boolean | nil)");
     table.registerProp("inner", "(self: type) -> type");
     table.registerProp("components", "(self: type) -> {type}");
-    table.registerProp("setproperty", "(self: type, key: type, value: type?) -> ()");
-    table.registerProp("setreadproperty", "(self: type, key: type, value: type?) -> ()");
-    table.registerProp("setwriteproperty", "(self: type, key: type, value: type?) -> ()");
-    table.registerProp("readproperty", "(self: type, key: type) -> type?");
-    table.registerProp("writeproperty", "(self: type, key: type) -> type?");
+    if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
+    {
+        table.registerProp("setproperty", "(self: type, key: type | string, value: type?) -> ()");
+        table.registerProp("setreadproperty", "(self: type, key: type | string, value: type?) -> ()");
+        table.registerProp("setwriteproperty", "(self: type, key: type | string, value: type?) -> ()");
+        table.registerProp("readproperty", "(self: type, key: type | string) -> type?");
+        table.registerProp("writeproperty", "(self: type, key: type | string) -> type?");
+    }
+    else
+    {
+        table.registerProp("setproperty", "(self: type, key: type, value: type?) -> ()");
+        table.registerProp("setreadproperty", "(self: type, key: type, value: type?) -> ()");
+        table.registerProp("setwriteproperty", "(self: type, key: type, value: type?) -> ()");
+        table.registerProp("readproperty", "(self: type, key: type) -> type?");
+        table.registerProp("writeproperty", "(self: type, key: type) -> type?");
+    }
     table.registerProp("properties", "(self: type) -> { [type]: { read: type?, write: type? } }");
     table.registerProp("setindexer", "(self: type, index: type, result: type) -> ()");
     table.registerProp("setreadindexer", "(self: type, index: type, result: type) -> ()");
@@ -943,11 +955,23 @@ static void buildTypesLibraryDefinitions(TypeDefBuilder& builder)
     table.registerProp("negationof", "@checked (arg: type) -> type");
     table.registerProp("unionof", "@checked (...type) -> type");
     table.registerProp("intersectionof", "@checked (...type) -> type");
-    table.registerProp(
-        "newtable",
-        "@checked (props: {[type]: type} | {[type]: { read: type?, write: type? } }?, indexer: { index: type, readresult: "
-        "type, writeresult: type? }?, metatable: type?) -> type"
-    );
+    if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
+    {
+        // `any` keys because indexer keys are invariant, so `{[type | string]: ...}` would reject existing `{[type]: ...}` tables
+        table.registerProp(
+            "newtable",
+            "@checked (props: ({ [any]: type } | { [any]: { read: type?, write: type? } })?, indexer: { index: type, readresult: "
+            "type, writeresult: type? }?, metatable: type?) -> type"
+        );
+    }
+    else
+    {
+        table.registerProp(
+            "newtable",
+            "@checked (props: {[type]: type} | {[type]: { read: type?, write: type? } }?, indexer: { index: type, readresult: "
+            "type, writeresult: type? }?, metatable: type?) -> type"
+        );
+    }
     table.registerProp(
         "newfunction",
         "@checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) "
