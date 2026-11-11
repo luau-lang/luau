@@ -29,6 +29,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 
 LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
+LUAU_FASTFLAGVARIABLE(LuauUdtfConvertStringsIntoTypesForProps)
 
 namespace Luau
 {
@@ -807,8 +808,38 @@ static int getNegatedValue(lua_State* L)
     return 1;
 }
 
-// Luau: `types.newtable(props: {[type]: type | { read: type, write: type }}?, indexer: {index: type, readresult: type, writeresult: type}?,
-// metatable: type?) -> type` Returns the type instance representing table
+// Reads a table property key at `idx`, which is either a string singleton type or, with LuauUdtfConvertStringsIntoTypesForProps, a string
+static Name getPropKey(lua_State* L, int idx, const char* fname)
+{
+    if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
+    {
+        // lua_type rather than lua_isstring so number keys aren't coerced in place (which would break lua_next)
+        if (lua_type(L, idx) == LUA_TSTRING)
+        {
+            size_t len = 0;
+            const char* str = lua_tolstring(L, idx, &len);
+            return Name(str, len);
+        }
+
+        if (!isTypeUserData(L, idx))
+            luaL_error(L, "%s: expected to be given a string or a string singleton type, but got %s instead", fname, luaL_typename(L, idx));
+    }
+
+    TypeFunctionTypeId key = getTypeUserData(L, idx);
+    auto tfst = get<TypeFunctionSingletonType>(key);
+    if (!tfst)
+        luaL_error(L, "%s: expected to be given a singleton type, but got %s instead", fname, getTag(L, key).c_str());
+
+    auto tfsst = get<TypeFunctionStringSingleton>(tfst);
+    if (!tfsst)
+        luaL_error(L, "%s: expected to be given a string singleton type, but got %s instead", fname, getTag(L, key).c_str());
+
+    return tfsst->value;
+}
+
+// Luau: `types.newtable(props: {[type | string]: type | { read: type, write: type }}?,
+// indexer: {index: type, readresult: type, writeresult: type}?, metatable: type?) -> type`
+// Returns the type instance representing table
 static int createTable(lua_State* L)
 {
     int argumentCount = lua_gettop(L);
@@ -822,15 +853,7 @@ static int createTable(lua_State* L)
         lua_pushnil(L);
         while (lua_next(L, 1) != 0)
         {
-            TypeFunctionTypeId key = getTypeUserData(L, -2);
-
-            auto tfst = get<TypeFunctionSingletonType>(key);
-            if (!tfst)
-                luaL_error(L, "types.newtable: expected to be given a singleton type, but got %s instead", getTag(L, key).c_str());
-
-            auto tfsst = get<TypeFunctionStringSingleton>(tfst);
-            if (!tfsst)
-                luaL_error(L, "types.newtable: expected to be given a string singleton type, but got %s instead", getTag(L, key).c_str());
+            Name key = getPropKey(L, -2, "types.newtable");
 
             if (lua_istable(L, -1))
             {
@@ -846,12 +869,12 @@ static int createTable(lua_State* L)
                     writeTy = getTypeUserData(L, -1);
                 lua_pop(L, 1);
 
-                props[tfsst->value] = TypeFunctionProperty{readTy, writeTy};
+                props[std::move(key)] = TypeFunctionProperty{readTy, writeTy};
             }
             else
             {
                 TypeFunctionTypeId value = getTypeUserData(L, -1);
-                props[tfsst->value] = TypeFunctionProperty::rw(value);
+                props[std::move(key)] = TypeFunctionProperty::rw(value);
             }
 
             lua_pop(L, 1);
@@ -887,7 +910,7 @@ static int createTable(lua_State* L)
     return 1;
 }
 
-// Luau: `self:setproperty(key: type, value: type?)`
+// Luau: `self:setproperty(key: type | string, value: type?)`
 // Sets the properties of a table
 static int setTableProp(lua_State* L)
 {
@@ -903,28 +926,21 @@ static int setTableProp(lua_State* L)
     if (self->frozen)
         luaL_error(L, "type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
-    TypeFunctionTypeId key = getTypeUserData(L, 2);
-    auto tfst = get<TypeFunctionSingletonType>(key);
-    if (!tfst)
-        luaL_error(L, "type.setproperty: expected to be given a singleton type, but got %s instead", getTag(L, key).c_str());
-
-    auto tfsst = get<TypeFunctionStringSingleton>(tfst);
-    if (!tfsst)
-        luaL_error(L, "type.setproperty: expected to be given a string singleton type, but got %s instead", getTag(L, key).c_str());
+    Name key = getPropKey(L, 2, "type.setproperty");
 
     if (argumentCount == 2 || lua_isnil(L, 3))
     {
-        tftt->props.erase(tfsst->value);
+        tftt->props.erase(key);
         return 0;
     }
 
     TypeFunctionTypeId value = getTypeUserData(L, 3);
-    tftt->props[tfsst->value] = TypeFunctionProperty::rw(value, value);
+    tftt->props[key] = TypeFunctionProperty::rw(value, value);
 
     return 0;
 }
 
-// Luau: `self:setreadproperty(key: type, value: type?)`
+// Luau: `self:setreadproperty(key: type | string, value: type?)`
 // Sets the properties of a table
 static int setReadTableProp(lua_State* L)
 {
@@ -940,22 +956,15 @@ static int setReadTableProp(lua_State* L)
     if (self->frozen)
         luaL_error(L, "type.setreadproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
-    TypeFunctionTypeId key = getTypeUserData(L, 2);
-    auto tfst = get<TypeFunctionSingletonType>(key);
-    if (!tfst)
-        luaL_error(L, "type.setreadproperty: expected to be given a singleton type, but got %s instead", getTag(L, key).c_str());
+    Name key = getPropKey(L, 2, "type.setreadproperty");
 
-    auto tfsst = get<TypeFunctionStringSingleton>(tfst);
-    if (!tfsst)
-        luaL_error(L, "type.setreadproperty: expected to be given a string singleton type, but got %s instead", getTag(L, key).c_str());
-
-    auto iter = tftt->props.find(tfsst->value);
+    auto iter = tftt->props.find(key);
 
     if (argumentCount == 2 || lua_isnil(L, 3))
     {
         // if it's read-only, remove it altogether
         if (iter != tftt->props.end() && iter->second.isReadOnly())
-            tftt->props.erase(tfsst->value);
+            tftt->props.erase(key);
         // but if it's not, just null out the read type.
         else if (iter != tftt->props.end())
             iter->second.readTy = std::nullopt;
@@ -965,14 +974,14 @@ static int setReadTableProp(lua_State* L)
 
     TypeFunctionTypeId value = getTypeUserData(L, 3);
     if (iter == tftt->props.end())
-        tftt->props[tfsst->value] = TypeFunctionProperty::readonly(value);
+        tftt->props[key] = TypeFunctionProperty::readonly(value);
     else
         iter->second.readTy = value;
 
     return 0;
 }
 
-// Luau: `self:setwriteproperty(key: type, value: type?)`
+// Luau: `self:setwriteproperty(key: type | string, value: type?)`
 // Sets the properties of a table
 static int setWriteTableProp(lua_State* L)
 {
@@ -988,22 +997,15 @@ static int setWriteTableProp(lua_State* L)
     if (self->frozen)
         luaL_error(L, "type.setwriteproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
-    TypeFunctionTypeId key = getTypeUserData(L, 2);
-    auto tfst = get<TypeFunctionSingletonType>(key);
-    if (!tfst)
-        luaL_error(L, "type.setwriteproperty: expected to be given a singleton type, but got %s instead", getTag(L, key).c_str());
+    Name key = getPropKey(L, 2, "type.setwriteproperty");
 
-    auto tfsst = get<TypeFunctionStringSingleton>(tfst);
-    if (!tfsst)
-        luaL_error(L, "type.setwriteproperty: expected to be given a string singleton type, but got %s instead", getTag(L, key).c_str());
-
-    auto iter = tftt->props.find(tfsst->value);
+    auto iter = tftt->props.find(key);
 
     if (argumentCount == 2 || lua_isnil(L, 3))
     {
         // if it's write-only, remove it altogether
         if (iter != tftt->props.end() && iter->second.isWriteOnly())
-            tftt->props.erase(tfsst->value);
+            tftt->props.erase(key);
         // but if it's not, just null out the write type.
         else if (iter != tftt->props.end())
             iter->second.writeTy = std::nullopt;
@@ -1013,14 +1015,14 @@ static int setWriteTableProp(lua_State* L)
 
     TypeFunctionTypeId value = getTypeUserData(L, 3);
     if (iter == tftt->props.end())
-        tftt->props[tfsst->value] = TypeFunctionProperty::writeonly(value);
+        tftt->props[key] = TypeFunctionProperty::writeonly(value);
     else
         iter->second.writeTy = value;
 
     return 0;
 }
 
-// Luau: `self:readproperty(key: type) -> type`
+// Luau: `self:readproperty(key: type | string) -> type`
 // Returns the property of a table associated with the key
 static int readTableProp(lua_State* L)
 {
@@ -1033,23 +1035,16 @@ static int readTableProp(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.readproperty: expected self to be either a table, but got %s instead", getTag(L, self).c_str());
 
-    TypeFunctionTypeId key = getTypeUserData(L, 2);
-    auto tfst = get<TypeFunctionSingletonType>(key);
-    if (!tfst)
-        luaL_error(L, "type.readproperty: expected to be given a singleton type, but got %s instead", getTag(L, key).c_str());
-
-    auto tfsst = get<TypeFunctionStringSingleton>(tfst);
-    if (!tfsst)
-        luaL_error(L, "type.readproperty: expected to be given a string singleton type, but got %s instead", getTag(L, key).c_str());
+    Name key = getPropKey(L, 2, "type.readproperty");
 
     // Check if key is a valid prop
-    if (tftt->props.find(tfsst->value) == tftt->props.end())
+    if (tftt->props.find(key) == tftt->props.end())
     {
         lua_pushnil(L);
         return 1;
     }
 
-    auto prop = tftt->props.at(tfsst->value);
+    auto prop = tftt->props.at(key);
     if (prop.readTy)
         allocTypeUserData(L, (*prop.readTy)->type);
     else
@@ -1058,7 +1053,7 @@ static int readTableProp(lua_State* L)
     return 1;
 }
 //
-// Luau: `self:writeproperty(key: type) -> type`
+// Luau: `self:writeproperty(key: type | string) -> type`
 // Returns the property of a table associated with the key
 static int writeTableProp(lua_State* L)
 {
@@ -1071,23 +1066,16 @@ static int writeTableProp(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.writeproperty: expected self to be either a table, but got %s instead", getTag(L, self).c_str());
 
-    TypeFunctionTypeId key = getTypeUserData(L, 2);
-    auto tfst = get<TypeFunctionSingletonType>(key);
-    if (!tfst)
-        luaL_error(L, "type.writeproperty: expected to be given a singleton type, but got %s instead", getTag(L, key).c_str());
-
-    auto tfsst = get<TypeFunctionStringSingleton>(tfst);
-    if (!tfsst)
-        luaL_error(L, "type.writeproperty: expected to be given a string singleton type, but got %s instead", getTag(L, key).c_str());
+    Name key = getPropKey(L, 2, "type.writeproperty");
 
     // Check if key is a valid prop
-    if (tftt->props.find(tfsst->value) == tftt->props.end())
+    if (tftt->props.find(key) == tftt->props.end())
     {
         lua_pushnil(L);
         return 1;
     }
 
-    auto prop = tftt->props.at(tfsst->value);
+    auto prop = tftt->props.at(key);
     if (prop.writeTy)
         allocTypeUserData(L, (*prop.writeTy)->type);
     else

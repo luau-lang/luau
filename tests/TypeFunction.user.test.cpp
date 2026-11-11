@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
+LUAU_FASTFLAG(LuauUdtfConvertStringsIntoTypesForProps)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -769,9 +770,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_t
         local function ok(idx: gettable<>): never return idx end
     )");
 
-    // FIXME(CLI-178738): The first error should not exist, only the one described above.
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
+    // FIXME(CLI-178738): Without LuauUdtfConvertStringsIntoTypesForProps, an extra error is reported on the props table.
+    // Only the one described above should exist.
+    LUAU_REQUIRE_ERROR_COUNT((FFlag::LuauUdtfConvertStringsIntoTypesForProps ? 1 : 2), result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors.back());
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{ write bar: string, read foo: number }");
 }
@@ -814,6 +816,124 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{ [boolean]: string, number: string }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_accepts_string_keys")
+{
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+
+    CheckResult result = check(R"(
+        type function gettable()
+            return types.newtable({
+                foo = types.number,
+                bar = { read = types.string },
+                [types.singleton("baz")] = types.boolean,
+            })
+        end
+
+        type function getstoredtable()
+            return types.newtable({ bar = types.string })
+        end
+        type _ = getstoredtable<>
+
+        -- forcing an error here to check the exact type of the table
+        local function ok(idx: gettable<>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(toString(tm->givenType) == "{ read bar: string, baz: boolean, foo: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_accept_string_keys")
+{
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+
+    CheckResult result = check(R"(
+        type function gettable()
+            local ty = types.newtable()
+            ty:setproperty("a", types.number)
+            ty:setproperty("removed", types.number)
+            ty:setproperty("removed", nil)
+            ty:setreadproperty("b", types.string)
+            ty:setwriteproperty("b", types.boolean)
+            ty:setreadproperty("c", types.number)
+            ty:setreadproperty("c", nil)
+
+            assert(ty:readproperty("a") == types.number)
+            assert(ty:writeproperty("a") == types.number)
+            assert(ty:readproperty("b") == types.string)
+            assert(ty:writeproperty("b") == types.boolean)
+            assert(ty:readproperty("c") == nil)
+            assert(ty:readproperty("removed") == nil)
+            -- string and string singleton keys refer to the same property
+            assert(ty:readproperty(types.singleton("a")) == ty:readproperty("a"))
+
+            return ty
+        end
+
+        -- forcing an error here to check the exact type of the table
+        local function ok(idx: gettable<>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(toString(tm->givenType) == "{ a: number, read b: string, write b: boolean }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_reject_non_string_keys")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
+    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+
+    CheckResult result = check(R"(
+        type function badkey()
+            local key: any = 5
+            types.newtable():setproperty(key, types.number)
+            return types.number
+        end
+        local function bad(arg: badkey<>) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(
+        e->message == "'badkey' type function errored at runtime: badkey:4: type.setproperty: expected to be given a string or a string "
+                      "singleton type, but got number instead"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_rejects_non_string_keys")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
+    ScopedFastFlag stringPropKeys{FFlag::LuauUdtfConvertStringsIntoTypesForProps, true};
+
+    CheckResult result = check(R"(
+        type function badkey()
+            local props: any = { [1] = types.number }
+            return types.newtable(props)
+        end
+        local function bad(arg: badkey<>) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(
+        e->message == "'badkey' type function errored at runtime: badkey:4: types.newtable: expected to be given a string or a string "
+                      "singleton type, but got number instead"
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_metatable_methods_work")
