@@ -29,17 +29,24 @@ bool occursCheck(TypeId needle, TypeId haystack)
     LUAU_ASSERT(get<BlockedType>(needle) || get<PendingExpansionType>(needle));
     haystack = follow(haystack);
 
-    auto checkHaystack = [needle](TypeId haystack)
-    {
-        return occursCheck(needle, haystack);
-    };
-
     if (needle == haystack)
         return true;
     else if (auto ut = get<UnionType>(haystack))
-        return std::any_of(begin(ut), end(ut), checkHaystack);
+    {
+        for (TypeId option : ut)
+        {
+            if (occursCheck(needle, option))
+                return true;
+        }
+    }
     else if (auto it = get<IntersectionType>(haystack))
-        return std::any_of(begin(it), end(it), checkHaystack);
+    {
+        for (TypeId part : it)
+        {
+            if (occursCheck(needle, part))
+                return true;
+        }
+    }
 
     return false;
 }

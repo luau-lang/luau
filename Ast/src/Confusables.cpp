@@ -206,44 +206,44 @@ static const Confusable kConfusables[] =
     {1412, "f"},     // MA# ( ք → f ) ARMENIAN SMALL LETTER KEH → LATIN SMALL LETTER F#
     {1413, "o"},     // MA# ( օ → o ) ARMENIAN SMALL LETTER OH → LATIN SMALL LETTER O#
     {1417, ":"},     // MA#* ( ։ → : ) ARMENIAN FULL STOP → COLON#
-    {1472, "l"},     // MA#* ( ‎׀‎ → l ) HEBREW PUNCTUATION PASEQ → LATIN SMALL LETTER L# →|→
-    {1475, ":"},     // MA#* ( ‎׃‎ → : ) HEBREW PUNCTUATION SOF PASUQ → COLON#
-    {1493, "l"},     // MA# ( ‎ו‎ → l ) HEBREW LETTER VAV → LATIN SMALL LETTER L#
-    {1496, "v"},     // MA# ( ‎ט‎ → v ) HEBREW LETTER TET → LATIN SMALL LETTER V#
-    {1497, "'"},     // MA# ( ‎י‎ → ' ) HEBREW LETTER YOD → APOSTROPHE#
-    {1503, "l"},     // MA# ( ‎ן‎ → l ) HEBREW LETTER FINAL NUN → LATIN SMALL LETTER L#
-    {1505, "o"},     // MA# ( ‎ס‎ → o ) HEBREW LETTER SAMEKH → LATIN SMALL LETTER O#
-    {1520, "ll"},    // MA# ( ‎װ‎ → ll ) HEBREW LIGATURE YIDDISH DOUBLE VAV → LATIN SMALL LETTER L, LATIN SMALL LETTER L# →‎וו‎→
-    {1521, "l'"},    // MA# ( ‎ױ‎ → l' ) HEBREW LIGATURE YIDDISH VAV YOD → LATIN SMALL LETTER L, APOSTROPHE# →‎וי‎→
-    {1522, "\""},    // MA# ( ‎ײ‎ → '' ) HEBREW LIGATURE YIDDISH DOUBLE YOD → APOSTROPHE, APOSTROPHE# →‎יי‎→# Converted to a quote.
-    {1523, "'"},     // MA#* ( ‎׳‎ → ' ) HEBREW PUNCTUATION GERESH → APOSTROPHE#
-    {1524, "\""},    // MA#* ( ‎״‎ → '' ) HEBREW PUNCTUATION GERSHAYIM → APOSTROPHE, APOSTROPHE# →"→# Converted to a quote.
-    {1549, ","},     // MA#* ( ‎؍‎ → , ) ARABIC DATE SEPARATOR → COMMA# →‎٫‎→
-    {1575, "l"},     // MA# ( ‎ا‎ → l ) ARABIC LETTER ALEF → LATIN SMALL LETTER L# →1→
-    {1607, "o"},     // MA# ( ‎ه‎ → o ) ARABIC LETTER HEH → LATIN SMALL LETTER O#
-    {1632, "."},     // MA# ( ‎٠‎ → . ) ARABIC-INDIC DIGIT ZERO → FULL STOP#
-    {1633, "l"},     // MA# ( ‎١‎ → l ) ARABIC-INDIC DIGIT ONE → LATIN SMALL LETTER L# →1→
-    {1637, "o"},     // MA# ( ‎٥‎ → o ) ARABIC-INDIC DIGIT FIVE → LATIN SMALL LETTER O#
-    {1639, "V"},     // MA# ( ‎٧‎ → V ) ARABIC-INDIC DIGIT SEVEN → LATIN CAPITAL LETTER V#
-    {1643, ","},     // MA#* ( ‎٫‎ → , ) ARABIC DECIMAL SEPARATOR → COMMA#
-    {1645, "*"},     // MA#* ( ‎٭‎ → * ) ARABIC FIVE POINTED STAR → ASTERISK#
-    {1726, "o"},     // MA# ( ‎ھ‎ → o ) ARABIC LETTER HEH DOACHASHMEE → LATIN SMALL LETTER O# →‎ه‎→
-    {1729, "o"},     // MA# ( ‎ہ‎ → o ) ARABIC LETTER HEH GOAL → LATIN SMALL LETTER O# →‎ه‎→
-    {1748, "-"},     // MA#* ( ‎۔‎ → - ) ARABIC FULL STOP → HYPHEN-MINUS# →‐→
-    {1749, "o"},     // MA# ( ‎ە‎ → o ) ARABIC LETTER AE → LATIN SMALL LETTER O# →‎ه‎→
-    {1776, "."},     // MA# ( ۰ → . ) EXTENDED ARABIC-INDIC DIGIT ZERO → FULL STOP# →‎٠‎→
+    {1472, "l"},     // MA#* ( ׀ → l ) HEBREW PUNCTUATION PASEQ → LATIN SMALL LETTER L# →|→
+    {1475, ":"},     // MA#* ( ׃ → : ) HEBREW PUNCTUATION SOF PASUQ → COLON#
+    {1493, "l"},     // MA# ( ו → l ) HEBREW LETTER VAV → LATIN SMALL LETTER L#
+    {1496, "v"},     // MA# ( ט → v ) HEBREW LETTER TET → LATIN SMALL LETTER V#
+    {1497, "'"},     // MA# ( י → ' ) HEBREW LETTER YOD → APOSTROPHE#
+    {1503, "l"},     // MA# ( ן → l ) HEBREW LETTER FINAL NUN → LATIN SMALL LETTER L#
+    {1505, "o"},     // MA# ( ס → o ) HEBREW LETTER SAMEKH → LATIN SMALL LETTER O#
+    {1520, "ll"},    // MA# ( װ → ll ) HEBREW LIGATURE YIDDISH DOUBLE VAV → LATIN SMALL LETTER L, LATIN SMALL LETTER L# →וו→
+    {1521, "l'"},    // MA# ( ױ → l' ) HEBREW LIGATURE YIDDISH VAV YOD → LATIN SMALL LETTER L, APOSTROPHE# →וי→
+    {1522, "\""},    // MA# ( ײ → '' ) HEBREW LIGATURE YIDDISH DOUBLE YOD → APOSTROPHE, APOSTROPHE# →יי→# Converted to a quote.
+    {1523, "'"},     // MA#* ( ׳ → ' ) HEBREW PUNCTUATION GERESH → APOSTROPHE#
+    {1524, "\""},    // MA#* ( ״ → '' ) HEBREW PUNCTUATION GERSHAYIM → APOSTROPHE, APOSTROPHE# →"→# Converted to a quote.
+    {1549, ","},     // MA#* ( ؍ → , ) ARABIC DATE SEPARATOR → COMMA# →٫→
+    {1575, "l"},     // MA# ( ا → l ) ARABIC LETTER ALEF → LATIN SMALL LETTER L# →1→
+    {1607, "o"},     // MA# ( ه → o ) ARABIC LETTER HEH → LATIN SMALL LETTER O#
+    {1632, "."},     // MA# ( ٠ → . ) ARABIC-INDIC DIGIT ZERO → FULL STOP#
+    {1633, "l"},     // MA# ( ١ → l ) ARABIC-INDIC DIGIT ONE → LATIN SMALL LETTER L# →1→
+    {1637, "o"},     // MA# ( ٥ → o ) ARABIC-INDIC DIGIT FIVE → LATIN SMALL LETTER O#
+    {1639, "V"},     // MA# ( ٧ → V ) ARABIC-INDIC DIGIT SEVEN → LATIN CAPITAL LETTER V#
+    {1643, ","},     // MA#* ( ٫ → , ) ARABIC DECIMAL SEPARATOR → COMMA#
+    {1645, "*"},     // MA#* ( ٭ → * ) ARABIC FIVE POINTED STAR → ASTERISK#
+    {1726, "o"},     // MA# ( ھ → o ) ARABIC LETTER HEH DOACHASHMEE → LATIN SMALL LETTER O# →ه→
+    {1729, "o"},     // MA# ( ہ → o ) ARABIC LETTER HEH GOAL → LATIN SMALL LETTER O# →ه→
+    {1748, "-"},     // MA#* ( ۔ → - ) ARABIC FULL STOP → HYPHEN-MINUS# →‐→
+    {1749, "o"},     // MA# ( ە → o ) ARABIC LETTER AE → LATIN SMALL LETTER O# →ه→
+    {1776, "."},     // MA# ( ۰ → . ) EXTENDED ARABIC-INDIC DIGIT ZERO → FULL STOP# →٠→
     {1777, "l"},     // MA# ( ۱ → l ) EXTENDED ARABIC-INDIC DIGIT ONE → LATIN SMALL LETTER L# →1→
-    {1781, "o"},     // MA# ( ۵ → o ) EXTENDED ARABIC-INDIC DIGIT FIVE → LATIN SMALL LETTER O# →‎٥‎→
-    {1783, "V"},     // MA# ( ۷ → V ) EXTENDED ARABIC-INDIC DIGIT SEVEN → LATIN CAPITAL LETTER V# →‎٧‎→
-    {1793, "."},     // MA#* ( ‎܁‎ → . ) SYRIAC SUPRALINEAR FULL STOP → FULL STOP#
-    {1794, "."},     // MA#* ( ‎܂‎ → . ) SYRIAC SUBLINEAR FULL STOP → FULL STOP#
-    {1795, ":"},     // MA#* ( ‎܃‎ → : ) SYRIAC SUPRALINEAR COLON → COLON#
-    {1796, ":"},     // MA#* ( ‎܄‎ → : ) SYRIAC SUBLINEAR COLON → COLON#
-    {1984, "O"},     // MA# ( ‎߀‎ → O ) NKO DIGIT ZERO → LATIN CAPITAL LETTER O# →0→
-    {1994, "l"},     // MA# ( ‎ߊ‎ → l ) NKO LETTER A → LATIN SMALL LETTER L# →∣→→ǀ→
-    {2036, "'"},     // MA# ( ‎ߴ‎ → ' ) NKO HIGH TONE APOSTROPHE → APOSTROPHE# →’→
-    {2037, "'"},     // MA# ( ‎ߵ‎ → ' ) NKO LOW TONE APOSTROPHE → APOSTROPHE# →‘→
-    {2042, "_"},     // MA# ( ‎ߺ‎ → _ ) NKO LAJANYALAN → LOW LINE#
+    {1781, "o"},     // MA# ( ۵ → o ) EXTENDED ARABIC-INDIC DIGIT FIVE → LATIN SMALL LETTER O# →٥→
+    {1783, "V"},     // MA# ( ۷ → V ) EXTENDED ARABIC-INDIC DIGIT SEVEN → LATIN CAPITAL LETTER V# →٧→
+    {1793, "."},     // MA#* ( ܁ → . ) SYRIAC SUPRALINEAR FULL STOP → FULL STOP#
+    {1794, "."},     // MA#* ( ܂ → . ) SYRIAC SUBLINEAR FULL STOP → FULL STOP#
+    {1795, ":"},     // MA#* ( ܃ → : ) SYRIAC SUPRALINEAR COLON → COLON#
+    {1796, ":"},     // MA#* ( ܄ → : ) SYRIAC SUBLINEAR COLON → COLON#
+    {1984, "O"},     // MA# ( ߀ → O ) NKO DIGIT ZERO → LATIN CAPITAL LETTER O# →0→
+    {1994, "l"},     // MA# ( ߊ → l ) NKO LETTER A → LATIN SMALL LETTER L# →∣→→ǀ→
+    {2036, "'"},     // MA# ( ߴ → ' ) NKO HIGH TONE APOSTROPHE → APOSTROPHE# →’→
+    {2037, "'"},     // MA# ( ߵ → ' ) NKO LOW TONE APOSTROPHE → APOSTROPHE# →‘→
+    {2042, "_"},     // MA# ( ߺ → _ ) NKO LAJANYALAN → LOW LINE#
     {2307, ":"},     // MA# ( ः → : ) DEVANAGARI SIGN VISARGA → COLON#
     {2406, "o"},     // MA# ( ० → o ) DEVANAGARI DIGIT ZERO → LATIN SMALL LETTER O#
     {2429, "?"},     // MA# ( ॽ → ? ) DEVANAGARI LETTER GLOTTAL STOP → QUESTION MARK#
@@ -749,14 +749,14 @@ static const Confusable kConfusables[] =
     {64259, "ffi"},  // MA# ( ﬃ → ffi ) LATIN SMALL LIGATURE FFI → LATIN SMALL LETTER F, LATIN SMALL LETTER F, LATIN SMALL LETTER I#
     {64260, "ffl"},  // MA# ( ﬄ → ffl ) LATIN SMALL LIGATURE FFL → LATIN SMALL LETTER F, LATIN SMALL LETTER F, LATIN SMALL LETTER L#
     {64262, "st"},   // MA# ( ﬆ → st ) LATIN SMALL LIGATURE ST → LATIN SMALL LETTER S, LATIN SMALL LETTER T#
-    {64422, "o"},    // MA# ( ‎ﮦ‎ → o ) ARABIC LETTER HEH GOAL ISOLATED FORM → LATIN SMALL LETTER O# →‎ه‎→
-    {64423, "o"},    // MA# ( ‎ﮧ‎ → o ) ARABIC LETTER HEH GOAL FINAL FORM → LATIN SMALL LETTER O# →‎ہ‎→→‎ه‎→
-    {64424, "o"},    // MA# ( ‎ﮨ‎ → o ) ARABIC LETTER HEH GOAL INITIAL FORM → LATIN SMALL LETTER O# →‎ہ‎→→‎ه‎→
-    {64425, "o"},    // MA# ( ‎ﮩ‎ → o ) ARABIC LETTER HEH GOAL MEDIAL FORM → LATIN SMALL LETTER O# →‎ہ‎→→‎ه‎→
-    {64426, "o"},    // MA# ( ‎ﮪ‎ → o ) ARABIC LETTER HEH DOACHASHMEE ISOLATED FORM → LATIN SMALL LETTER O# →‎ه‎→
-    {64427, "o"},    // MA# ( ‎ﮫ‎ → o ) ARABIC LETTER HEH DOACHASHMEE FINAL FORM → LATIN SMALL LETTER O# →‎ﻪ‎→→‎ه‎→
-    {64428, "o"},    // MA# ( ‎ﮬ‎ → o ) ARABIC LETTER HEH DOACHASHMEE INITIAL FORM → LATIN SMALL LETTER O# →‎ﻫ‎→→‎ه‎→
-    {64429, "o"},    // MA# ( ‎ﮭ‎ → o ) ARABIC LETTER HEH DOACHASHMEE MEDIAL FORM → LATIN SMALL LETTER O# →‎ﻬ‎→→‎ه‎→
+    {64422, "o"},    // MA# ( ﮦ → o ) ARABIC LETTER HEH GOAL ISOLATED FORM → LATIN SMALL LETTER O# →ه→
+    {64423, "o"},    // MA# ( ﮧ → o ) ARABIC LETTER HEH GOAL FINAL FORM → LATIN SMALL LETTER O# →ہ→→ه→
+    {64424, "o"},    // MA# ( ﮨ → o ) ARABIC LETTER HEH GOAL INITIAL FORM → LATIN SMALL LETTER O# →ہ→→ه→
+    {64425, "o"},    // MA# ( ﮩ → o ) ARABIC LETTER HEH GOAL MEDIAL FORM → LATIN SMALL LETTER O# →ہ→→ه→
+    {64426, "o"},    // MA# ( ﮪ → o ) ARABIC LETTER HEH DOACHASHMEE ISOLATED FORM → LATIN SMALL LETTER O# →ه→
+    {64427, "o"},    // MA# ( ﮫ → o ) ARABIC LETTER HEH DOACHASHMEE FINAL FORM → LATIN SMALL LETTER O# →ﻪ→→ه→
+    {64428, "o"},    // MA# ( ﮬ → o ) ARABIC LETTER HEH DOACHASHMEE INITIAL FORM → LATIN SMALL LETTER O# →ﻫ→→ه→
+    {64429, "o"},    // MA# ( ﮭ → o ) ARABIC LETTER HEH DOACHASHMEE MEDIAL FORM → LATIN SMALL LETTER O# →ﻬ→→ه→
     {64830, "("},    // MA#* ( ﴾ → ( ) ORNATE LEFT PARENTHESIS → LEFT PARENTHESIS#
     {64831, ")"},    // MA#* ( ﴿ → ) ) ORNATE RIGHT PARENTHESIS → RIGHT PARENTHESIS#
     {65072, ":"},    // MA#* ( ︰ → : ) PRESENTATION FORM FOR VERTICAL TWO DOT LEADER → COLON#
@@ -765,12 +765,12 @@ static const Confusable kConfusables[] =
     {65103, "_"},    // MA# ( ﹏ → _ ) WAVY LOW LINE → LOW LINE#
     {65112, "-"},    // MA#* ( ﹘ → - ) SMALL EM DASH → HYPHEN-MINUS#
     {65128, "\\"},   // MA#* ( ﹨ → \ ) SMALL REVERSE SOLIDUS → REVERSE SOLIDUS# →∖→
-    {65165, "l"},    // MA# ( ‎ﺍ‎ → l ) ARABIC LETTER ALEF ISOLATED FORM → LATIN SMALL LETTER L# →‎ا‎→→1→
-    {65166, "l"},    // MA# ( ‎ﺎ‎ → l ) ARABIC LETTER ALEF FINAL FORM → LATIN SMALL LETTER L# →‎ا‎→→1→
-    {65257, "o"},    // MA# ( ‎ﻩ‎ → o ) ARABIC LETTER HEH ISOLATED FORM → LATIN SMALL LETTER O# →‎ه‎→
-    {65258, "o"},    // MA# ( ‎ﻪ‎ → o ) ARABIC LETTER HEH FINAL FORM → LATIN SMALL LETTER O# →‎ه‎→
-    {65259, "o"},    // MA# ( ‎ﻫ‎ → o ) ARABIC LETTER HEH INITIAL FORM → LATIN SMALL LETTER O# →‎ه‎→
-    {65260, "o"},    // MA# ( ‎ﻬ‎ → o ) ARABIC LETTER HEH MEDIAL FORM → LATIN SMALL LETTER O# →‎ه‎→
+    {65165, "l"},    // MA# ( ﺍ → l ) ARABIC LETTER ALEF ISOLATED FORM → LATIN SMALL LETTER L# →ا→→1→
+    {65166, "l"},    // MA# ( ﺎ → l ) ARABIC LETTER ALEF FINAL FORM → LATIN SMALL LETTER L# →ا→→1→
+    {65257, "o"},    // MA# ( ﻩ → o ) ARABIC LETTER HEH ISOLATED FORM → LATIN SMALL LETTER O# →ه→
+    {65258, "o"},    // MA# ( ﻪ → o ) ARABIC LETTER HEH FINAL FORM → LATIN SMALL LETTER O# →ه→
+    {65259, "o"},    // MA# ( ﻫ → o ) ARABIC LETTER HEH INITIAL FORM → LATIN SMALL LETTER O# →ه→
+    {65260, "o"},    // MA# ( ﻬ → o ) ARABIC LETTER HEH MEDIAL FORM → LATIN SMALL LETTER O# →ه→
     {65281, "!"},    // MA#* ( ！ → ! ) FULLWIDTH EXCLAMATION MARK → EXCLAMATION MARK# →ǃ→
     {65282, "\""},   // MA#* ( ＂ → '' ) FULLWIDTH QUOTATION MARK → APOSTROPHE, APOSTROPHE# →”→→"→# Converted to a quote.
     {65287, "'"},    // MA#* ( ＇ → ' ) FULLWIDTH APOSTROPHE → APOSTROPHE# →’→
@@ -863,7 +863,7 @@ static const Confusable kConfusables[] =
     {66853, "F"},    // MA# ( 𐔥 → F ) ELBASAN LETTER GHE → LATIN CAPITAL LETTER F#
     {66854, "L"},    // MA# ( 𐔦 → L ) ELBASAN LETTER GHAMMA → LATIN CAPITAL LETTER L#
     {66855, "X"},    // MA# ( 𐔧 → X ) ELBASAN LETTER KHE → LATIN CAPITAL LETTER X#
-    {68176, "."},    // MA#* ( ‎𐩐‎ → . ) KHAROSHTHI PUNCTUATION DOT → FULL STOP#
+    {68176, "."},    // MA#* ( 𐩐 → . ) KHAROSHTHI PUNCTUATION DOT → FULL STOP#
     {70864, "O"},    // MA# ( 𑓐 → O ) TIRHUTA DIGIT ZERO → LATIN CAPITAL LETTER O# →০→→0→
     {71424, "rn"},   // MA# ( 𑜀 → rn ) AHOM LETTER KA → LATIN SMALL LETTER R, LATIN SMALL LETTER N# →m→
     {71430, "v"},    // MA# ( 𑜆 → v ) AHOM LETTER PA → LATIN SMALL LETTER V#
@@ -1751,13 +1751,13 @@ static const Confusable kConfusables[] =
     {120829, "7"},   // MA# ( 𝟽 → 7 ) MATHEMATICAL MONOSPACE DIGIT SEVEN → DIGIT SEVEN#
     {120830, "8"},   // MA# ( 𝟾 → 8 ) MATHEMATICAL MONOSPACE DIGIT EIGHT → DIGIT EIGHT#
     {120831, "9"},   // MA# ( 𝟿 → 9 ) MATHEMATICAL MONOSPACE DIGIT NINE → DIGIT NINE#
-    {125127, "l"},   // MA#* ( ‎𞣇‎ → l ) MENDE KIKAKUI DIGIT ONE → LATIN SMALL LETTER L#
-    {125131, "8"},   // MA#* ( ‎𞣋‎ → 8 ) MENDE KIKAKUI DIGIT FIVE → DIGIT EIGHT#
-    {126464, "l"},   // MA# ( ‎𞸀‎ → l ) ARABIC MATHEMATICAL ALEF → LATIN SMALL LETTER L# →‎ا‎→→1→
-    {126500, "o"},   // MA# ( ‎𞸤‎ → o ) ARABIC MATHEMATICAL INITIAL HEH → LATIN SMALL LETTER O# →‎ه‎→
-    {126564, "o"},   // MA# ( ‎𞹤‎ → o ) ARABIC MATHEMATICAL STRETCHED HEH → LATIN SMALL LETTER O# →‎ه‎→
-    {126592, "l"},   // MA# ( ‎𞺀‎ → l ) ARABIC MATHEMATICAL LOOPED ALEF → LATIN SMALL LETTER L# →‎ا‎→→1→
-    {126596, "o"},   // MA# ( ‎𞺄‎ → o ) ARABIC MATHEMATICAL LOOPED HEH → LATIN SMALL LETTER O# →‎ه‎→
+    {125127, "l"},   // MA#* ( 𞣇 → l ) MENDE KIKAKUI DIGIT ONE → LATIN SMALL LETTER L#
+    {125131, "8"},   // MA#* ( 𞣋 → 8 ) MENDE KIKAKUI DIGIT FIVE → DIGIT EIGHT#
+    {126464, "l"},   // MA# ( 𞸀 → l ) ARABIC MATHEMATICAL ALEF → LATIN SMALL LETTER L# →ا→→1→
+    {126500, "o"},   // MA# ( 𞸤 → o ) ARABIC MATHEMATICAL INITIAL HEH → LATIN SMALL LETTER O# →ه→
+    {126564, "o"},   // MA# ( 𞹤 → o ) ARABIC MATHEMATICAL STRETCHED HEH → LATIN SMALL LETTER O# →ه→
+    {126592, "l"},   // MA# ( 𞺀 → l ) ARABIC MATHEMATICAL LOOPED ALEF → LATIN SMALL LETTER L# →ا→→1→
+    {126596, "o"},   // MA# ( 𞺄 → o ) ARABIC MATHEMATICAL LOOPED HEH → LATIN SMALL LETTER O# →ه→
     {127232, "O."},  // MA#* ( 🄀 → O. ) DIGIT ZERO FULL STOP → LATIN CAPITAL LETTER O, FULL STOP# →0.→
     {127233, "O,"},  // MA#* ( 🄁 → O, ) DIGIT ZERO COMMA → LATIN CAPITAL LETTER O, COMMA# →0,→
     {127234, "l,"},  // MA#* ( 🄂 → l, ) DIGIT ONE COMMA → LATIN SMALL LETTER L, COMMA# →1,→
