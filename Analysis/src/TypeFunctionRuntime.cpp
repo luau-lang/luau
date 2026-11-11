@@ -808,12 +808,12 @@ static int getNegatedValue(lua_State* L)
     return 1;
 }
 
-// Reads a table property key at `idx`, which is either a string singleton type or, with LuauUdtfConvertStringsIntoTypesForProps, a string
+// Reads a table property key at `idx`, which is either a string singleton type instance or a string
 static Name getPropKey(lua_State* L, int idx, const char* fname)
 {
     if (FFlag::LuauUdtfConvertStringsIntoTypesForProps)
     {
-        // lua_type rather than lua_isstring so number keys aren't coerced in place (which would break lua_next)
+        // lua_type is used instead of lua_isstring so number keys don't get converted into strings
         if (lua_type(L, idx) == LUA_TSTRING)
         {
             size_t len = 0;
