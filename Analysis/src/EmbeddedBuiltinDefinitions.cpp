@@ -8,6 +8,7 @@ LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
+LUAU_FASTFLAGVARIABLE(LuauNarrowSelectSignature)
 
 namespace Luau
 {
@@ -50,9 +51,6 @@ declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...
 -- <E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., A...) -> (true, R1...) | (false, R2...)
 -- Since we can't represent the return value, we use (boolean, R1...).
 declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., ...: A...): (boolean, R1...)
-
--- `select` has a magic function attached to provide more detailed type information
-declare function select<A...>(i: number | "#", ...: A...): ...any
 
 @checked declare function newproxy(mt: boolean?): any
 
@@ -99,9 +97,6 @@ declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...
 -- <E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., A...) -> (true, R1...) | (false, R2...)
 -- Since we can't represent the return value, we use (boolean, R1...).
 declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., ...: A...): (boolean, R1...)
-
--- `select` has a magic function attached to provide more detailed type information
-declare function select<A...>(i: number | "#", ...: A...): ...any
 
 -- FIXME: This type is not entirely correct - `loadstring` returns a function or
 -- (nil, string).
@@ -491,6 +486,11 @@ declare class: {
 std::string getBuiltinDefinitionSource()
 {
     std::string result = FFlag::LuauRemoveLoadstringFromBuiltinDefinitions ? kBuiltinDefinitionBaseSrc : kBuiltinDefinitionBaseSrc_DEPRECATED;
+
+    // `select` has a magic function attached to provide more detailed type information.
+    result += FFlag::LuauNarrowSelectSignature
+        ? "declare function select<A...>(i: number | \"#\", ...: A...): ...any\n"
+        : "declare function select<A...>(i: string | number, ...: A...): ...any\n";
 
     result += kBuiltinDefinitionBit32Src;
     result += kBuiltinDefinitionMathSrc;
