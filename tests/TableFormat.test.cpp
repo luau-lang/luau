@@ -363,7 +363,9 @@ static Table nestedTable(size_t depth)
 
 TEST_CASE("depth_limit")
 {
-    readOk(nested(kMaxDepth));
+    // The limit matches how deeply plain table constructors can nest in Luau.
+    checkMatchesVm(nested(kMaxDepth));
+    CHECK(compile("return " + nested(kMaxDepth + 1)).front() == 0); // a compile error
     checkMalformed(nested(kMaxDepth + 1));
     checkMalformed(nested(100000));
 
