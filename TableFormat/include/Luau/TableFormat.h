@@ -101,9 +101,9 @@ struct ReadResult
 
 ReadResult read(std::string_view source);
 
-// Returns the source of a well-formed file holding the table, which reads back as an identical table, except that NaN
-// payloads aren't preserved. The output is formatted consistently, so identical tables (with their map parts in the same
-// order) are written identically.
+// Returns the source of a well-formed file holding just the table, without `return`. It reads back as an identical table,
+// except that NaN payloads aren't preserved. The output is formatted consistently, so identical tables (with their map
+// parts in the same order) are written identically.
 std::string write(const Table& table);
 
 } // namespace Luau::TableFormat

@@ -308,18 +308,40 @@ struct Reader
     }
 };
 
+// Converts a position from the lexer, which counts lines by '\n' and columns in bytes, to an offset into the source.
+static size_t offsetOf(std::string_view source, Position position)
+{
+    size_t offset = 0;
+    for (unsigned int line = 0; line < position.line; line++)
+        offset = source.find('\n', offset) + 1;
+
+    return offset + position.column;
+}
+
 // Finds the root expression: either the whole file, or the single value returned by the file.
 static AstExpr* parseRoot(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
 {
-    // Parser::parseExpr doesn't reject every trailing token, and Luau allows a semicolon after `return`, so we check
-    // that the root expression ends at the last token ourselves.
     Lexer lexer(source.data(), source.size(), names);
     lexer.setSkipComments(true);
 
+    // Parser::parseExpr doesn't reject every trailing token, so we find where the root expression should end ourselves.
     Lexeme first = lexer.next();
     Lexeme last = first;
+    Lexeme beforeLast = first;
     for (Lexeme lexeme = first; lexeme.type != Lexeme::Eof; lexeme = lexer.next())
+    {
+        beforeLast = last;
         last = lexeme;
+    }
+
+    Position end = last.location.end;
+
+    // A single `;` at the end of the file is ignored, so we parse only what comes before it.
+    if (last.type == ';')
+    {
+        source = source.substr(0, offsetOf(source, last.location.begin));
+        end = beforeLast.location.end;
+    }
 
     AstExpr* root = nullptr;
 
@@ -349,9 +371,9 @@ static AstExpr* parseRoot(std::string_view source, AstNameTable& names, Allocato
         root = result.root;
     }
 
-    if (root->location.end != last.location.end)
+    if (root->location.end != end)
     {
-        errors.emplace_back(last.location, "Expected end of file");
+        errors.emplace_back(Location{root->location.end, end}, "Expected end of file");
         return nullptr;
     }
 
@@ -541,7 +563,6 @@ struct Writer
 std::string write(const Table& table)
 {
     Writer writer;
-    writer.out += "return ";
     writer.writeTable(table, 0);
     writer.out += "\n";
     return std::move(writer.out);

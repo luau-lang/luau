@@ -262,6 +262,10 @@ TEST_CASE("read_syntax_variations")
     readOk("--[[ before ]] return --[==[ between ]==] {} -- after");
     readOk("{ 1; 2, a = 3; }");
     readOk("{ [2] = 2, 1 }");
+    readOk("{};");
+    readOk("return {};");
+    readOk("return {} -- a\n; -- b");
+    readOk("{ a = {} }\n;\n");
     readOk("{ [vector.create(1, 2, 3)] = 1, [vector.create(1, 2, 4)] = 2 }");
 }
 
@@ -317,8 +321,12 @@ TEST_CASE("read_rejects_malformed")
     checkMalformed("\"a\"");
     checkMalformed("{} {}");
     checkMalformed("{} 5");
-    checkMalformed("{};");
-    checkMalformed("return {};");
+    checkMalformed(";");
+    checkMalformed("; {}");
+    checkMalformed("{};;");
+    checkMalformed("{}; ;");
+    checkMalformed("return {};;");
+    checkMalformed("return; {}");
     checkMalformed("return {}, {}");
     checkMalformed("return ({})");
     checkMalformed("local a = 1 return {}");
@@ -396,7 +404,7 @@ TEST_CASE("table_edit_in_place")
     REQUIRE(nested);
     *nested->find(std::string("count")) = 2.0;
 
-    CHECK(write(table) == "return {\n    nested = {\n        count = 2,\n    },\n}\n");
+    CHECK(write(table) == "{\n    nested = {\n        count = 2,\n    },\n}\n");
 }
 
 TEST_CASE("write_format")
@@ -407,7 +415,7 @@ TEST_CASE("write_format")
         [2.5] = -0, [-1] = math.huge, [false] = math.nan, [vector.create(1, 0.5, -2)] = { 1 },
     })");
 
-    CHECK(write(table) == R"(return {
+    CHECK(write(table) == R"({
     "a",
     true,
     {},
@@ -427,7 +435,7 @@ TEST_CASE("write_format")
 )");
 
     readOk(write(table));
-    CHECK(write(Table{}) == "return {}\n");
+    CHECK(write(Table{}) == "{}\n");
 }
 
 TEST_CASE("write_numbers_and_strings_round_trip")
