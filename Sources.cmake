@@ -108,6 +108,13 @@ target_sources(Luau.Config PRIVATE
     Config/src/LuauConfig.cpp
 )
 
+# Luau.TableFormat Sources
+target_sources(Luau.TableFormat PRIVATE
+    TableFormat/include/Luau/TableFormat.h
+
+    TableFormat/src/TableFormat.cpp
+)
+
 # Luau.CodeGen Sources
 target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/AddressA64.h
@@ -548,6 +555,7 @@ if(TARGET Luau.UnitTest)
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/StringUtils.test.cpp
+        tests/TableFormat.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
         tests/ToDot.test.cpp
