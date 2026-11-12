@@ -2,20 +2,29 @@
 #include "Luau/TableFormat.h"
 
 #include "Luau/Ast.h"
+#include "Luau/Common.h"
 #include "Luau/HashUtil.h"
 #include "Luau/Lexer.h"
 #include "Luau/Parser.h"
 #include "Luau/StringUtils.h"
 
 #include <cmath>
-#include <ctype.h>
 #include <limits>
 #include <stdio.h>
 #include <stdlib.h>
 #include <utility>
 
+LUAU_FASTINT(LuauParseErrorLimit)
+
 namespace Luau::TableFormat
 {
+
+static std::string describeKey(const Key& key);
+
+static std::string depthError()
+{
+    return format("Exceeded the maximum table nesting depth of %zu", kMaxDepth);
+}
 
 static bool isValidKey(const Key& key)
 {
@@ -80,13 +89,91 @@ bool KeyEqual::operator()(const Key& lhs, const Key& rhs) const
     return a->x == b->x && a->y == b->y && a->z == b->z;
 }
 
+Table::Table(const Table& other)
+{
+    // Copying a nested table recursively would recurse once per level of nesting, so instead we copy one table at a
+    // time, leaving nested tables empty and filling them in later.
+    std::vector<std::pair<const Table*, Table*>> pending = {{&other, this}};
+
+    while (!pending.empty())
+    {
+        auto [from, to] = pending.back();
+        pending.pop_back();
+
+        to->arrayPart.reserve(from->arrayPart.size());
+        for (const Value& value : from->arrayPart)
+            to->arrayPart.push_back(value.get_if<Table>() ? Value(Table()) : value);
+
+        to->mapPart.reserve(from->mapPart.size());
+        for (const Entry& entry : from->mapPart)
+            to->mapPart.push_back(Entry{entry.key, entry.value.get_if<Table>() ? Value(Table()) : entry.value});
+
+        to->mapIndex = from->mapIndex;
+
+        for (size_t i = 0; i < from->arrayPart.size(); i++)
+            if (const Table* nested = from->arrayPart[i].get_if<Table>())
+                pending.push_back({nested, to->arrayPart[i].get_if<Table>()});
+
+        for (size_t i = 0; i < from->mapPart.size(); i++)
+            if (const Table* nested = from->mapPart[i].value.get_if<Table>())
+                pending.push_back({nested, to->mapPart[i].value.get_if<Table>()});
+    }
+}
+
+Table::Table(Table&& other) noexcept = default;
+
+Table& Table::operator=(const Table& other)
+{
+    if (this != &other)
+        *this = Table(other);
+
+    return *this;
+}
+
+Table& Table::operator=(Table&& other) noexcept
+{
+    // `other` may be nested inside this table, so it has to be moved out before this table's contents are destroyed.
+    Table moved(std::move(other));
+    arrayPart.swap(moved.arrayPart);
+    mapPart.swap(moved.mapPart);
+    std::swap(mapIndex, moved.mapIndex);
+    return *this;
+}
+
+Table::~Table()
+{
+    // Destroying nested tables would recurse once per level of nesting too, so instead we move them out into a list
+    // and destroy them one at a time, each after its own nested tables have been moved out.
+    std::vector<Table> pending;
+
+    auto takeNested = [&pending](Table& table)
+    {
+        for (Value& value : table.arrayPart)
+            if (Table* nested = value.get_if<Table>())
+                pending.push_back(std::move(*nested));
+
+        for (Entry& entry : table.mapPart)
+            if (Table* nested = entry.value.get_if<Table>())
+                pending.push_back(std::move(*nested));
+    };
+
+    takeNested(*this);
+
+    while (!pending.empty())
+    {
+        Table table = std::move(pending.back());
+        pending.pop_back();
+        takeNested(table);
+    }
+}
+
 const Value* Table::find(const Key& key) const
 {
     if (std::optional<size_t> index = arrayIndex(key, arrayPart.size()))
         return &arrayPart[*index];
 
-    auto it = mapIndex.find(key);
-    return it == mapIndex.end() ? nullptr : &mapPart[it->second].value;
+    const size_t* position = mapIndex.find(key);
+    return position ? &mapPart[*position].value : nullptr;
 }
 
 Value* Table::find(const Key& key)
@@ -96,7 +183,7 @@ Value* Table::find(const Key& key)
 
 bool Table::append(Value value)
 {
-    if (mapIndex.count(Key(double(arrayPart.size() + 1))))
+    if (mapIndex.contains(Key(double(arrayPart.size() + 1))))
         return false;
 
     arrayPart.push_back(std::move(value));
@@ -108,12 +195,12 @@ bool Table::insert(Key key, Value value)
     if (!isValidKey(key) || find(key))
         return false;
 
-    mapIndex.emplace(key, mapPart.size());
+    mapIndex[key] = mapPart.size();
     mapPart.push_back(Entry{std::move(key), std::move(value)});
     return true;
 }
 
-bool Table::remove(const Key& key)
+bool Table::erase(const Key& key)
 {
     if (std::optional<size_t> index = arrayIndex(key, arrayPart.size()))
     {
@@ -124,15 +211,15 @@ bool Table::remove(const Key& key)
         return true;
     }
 
-    auto it = mapIndex.find(key);
-    if (it == mapIndex.end())
+    const size_t* found = mapIndex.find(key);
+    if (!found)
         return false;
 
-    size_t position = it->second;
-    mapIndex.erase(it);
+    size_t position = *found;
+    mapIndex.erase(key);
     mapPart.erase(mapPart.begin() + position);
 
-    // Removing the last entry is common enough (and cheap enough) to skip renumbering the rest.
+    // Erasing the last entry is common enough (and cheap enough) to skip renumbering the rest.
     if (position != mapPart.size())
     {
         for (auto& [_, later] : mapIndex)
@@ -194,7 +281,15 @@ struct Reader
 
     void report(const Location& location, std::string message)
     {
+        // Like the parser, stop reporting errors once there are too many to be useful.
+        size_t limit = size_t(FInt::LuauParseErrorLimit);
+        if (errors.size() > limit)
+            return;
+
         errors.emplace_back(location, std::move(message));
+
+        if (errors.size() == limit)
+            errors.emplace_back(location, format("Reached error limit (%d)", int(FInt::LuauParseErrorLimit)));
     }
 
     std::optional<Key> readPrimitive(AstExpr* expr)
@@ -211,7 +306,7 @@ struct Reader
             if (string->expressions.size == 0)
                 return std::string(string->strings.data[0].data, string->strings.data[0].size);
 
-            report(expr->location, "String interpolation is not allowed in Luau Table");
+            report(expr->location, "Cannot use string interpolation in Luau Table");
             return std::nullopt;
         }
 
@@ -254,14 +349,14 @@ struct Reader
     {
         if (expr->is<AstExprTable>())
         {
-            report(expr->location, "Tables can't be used as keys");
+            report(expr->location, "Cannot use a table as a key");
             return std::nullopt;
         }
 
         std::optional<Key> key = readPrimitive(expr);
         if (key && !isValidKey(*key))
         {
-            report(expr->location, "NaN can't be used as a key");
+            report(expr->location, "Cannot use NaN as a key");
             return std::nullopt;
         }
 
@@ -285,7 +380,7 @@ struct Reader
 
         if (depth > kMaxDepth)
         {
-            report(expr->location, format("Tables can't be nested more than %d deep", int(kMaxDepth)));
+            report(expr->location, depthError());
             return table;
         }
 
@@ -295,8 +390,9 @@ struct Reader
 
             if (item.kind == AstExprTable::Item::Kind::List)
             {
+                Key implicitKey = double(table.getArray().size() + 1);
                 if (value && !table.append(std::move(*value)))
-                    report(item.value->location, "Duplicate key");
+                    report(item.value->location, "Duplicate key " + describeKey(implicitKey));
 
                 continue;
             }
@@ -311,8 +407,17 @@ struct Reader
             else
                 key = readKey(item.key);
 
-            if (key && value && !table.insert(std::move(*key), std::move(*value)))
-                report(item.key->location, "Duplicate key");
+            if (!key || !value)
+                continue;
+
+            if (table.find(*key))
+            {
+                report(item.key->location, "Duplicate key " + describeKey(*key));
+                continue;
+            }
+
+            bool inserted = table.insert(std::move(*key), std::move(*value));
+            LUAU_ASSERT(inserted);
         }
 
         return table;
@@ -439,13 +544,19 @@ ReadResult read(std::string_view source)
     return result;
 }
 
+// Matches what the lexer accepts as a name, which is always ASCII, regardless of locale.
+static bool isNameStart(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
 static bool isName(const std::string& string)
 {
-    if (string.empty() || !(isalpha((unsigned char)string[0]) || string[0] == '_'))
+    if (string.empty() || !isNameStart(string[0]))
         return false;
 
     for (char c : string)
-        if (!(isalnum((unsigned char)c) || c == '_'))
+        if (!isNameStart(c) && !(c >= '0' && c <= '9'))
             return false;
 
     return !Lexer::isReserved(string);
@@ -455,6 +566,8 @@ struct Writer
 {
     std::string out;
     bool tooDeep = false;
+
+    // The root table has a depth of 1, and its entries are indented once.
 
     // Writes the shortest number that reads back as exactly the same value.
     template<typename T>
@@ -560,28 +673,28 @@ struct Writer
         out += " = ";
     }
 
-    void writeValue(const Value& value, int depth)
+    void writeValue(const Value& value, size_t depth)
     {
         if (const Table* table = value.get_if<Table>())
-            writeTable(*table, depth);
+            writeTable(*table, depth + 1);
         else
             writePrimitive(value);
     }
 
-    void indent(int depth)
+    void indent(size_t depth)
     {
         out.append(depth * 4, ' ');
     }
 
-    void writeTable(const Table& table, int depth)
+    void writeTable(const Table& table, size_t depth)
     {
-        if (size_t(depth) >= kMaxDepth)
+        if (depth > kMaxDepth)
         {
             tooDeep = true;
             return;
         }
 
-        if (table.array().empty() && table.map().empty())
+        if (table.getArray().empty() && table.getMap().empty())
         {
             out += "{}";
             return;
@@ -589,35 +702,42 @@ struct Writer
 
         out += "{\n";
 
-        for (const Value& value : table.array())
+        for (const Value& value : table.getArray())
         {
-            indent(depth + 1);
-            writeValue(value, depth + 1);
+            indent(depth);
+            writeValue(value, depth);
             out += ",\n";
         }
 
-        for (const Entry& entry : table.map())
+        for (const Entry& entry : table.getMap())
         {
-            indent(depth + 1);
+            indent(depth);
             writeKey(entry.key);
-            writeValue(entry.value, depth + 1);
+            writeValue(entry.value, depth);
             out += ",\n";
         }
 
-        indent(depth);
+        indent(depth - 1);
         out += "}";
     }
 };
 
-std::optional<std::string> write(const Table& table)
+static std::string describeKey(const Key& key)
 {
     Writer writer;
-    writer.writeTable(table, 0);
+    writer.writePrimitive(key);
+    return std::move(writer.out);
+}
+
+WriteResult write(const Table& table)
+{
+    Writer writer;
+    writer.writeTable(table, 1);
     if (writer.tooDeep)
-        return std::nullopt;
+        return {std::nullopt, depthError()};
 
     writer.out += "\n";
-    return std::move(writer.out);
+    return {std::move(writer.out), {}};
 }
 
 } // namespace Luau::TableFormat

@@ -1,13 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
 #include "Luau/ParseResult.h"
 #include "Luau/Variant.h"
 
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 // Reads and writes the Luau Table format (`.table`): a subset of Luau that holds a single table of strings, booleans,
@@ -18,6 +18,9 @@
 // that), and malformed files are always rejected. Writing always produces well-formed files.
 namespace Luau::TableFormat
 {
+
+// How deeply tables can nest, counting the root table as 1. Deeper files are malformed, and deeper tables can't be written.
+constexpr size_t kMaxDepth = 255;
 
 struct Vector
 {
@@ -32,6 +35,11 @@ struct Vector
 struct Key : Variant<bool, double, std::string, Vector>
 {
     using Variant::Variant;
+
+    Key(const char* string)
+        : Variant(std::string(string))
+    {
+    }
 };
 
 struct KeyHash
@@ -52,13 +60,22 @@ struct Entry;
 class Table
 {
 public:
-    const std::vector<Value>& array() const
+    Table() = default;
+
+    // Copying and destroying don't recurse, so deeply nested tables can't overflow the stack.
+    Table(const Table& other);
+    Table(Table&& other) noexcept;
+    Table& operator=(const Table& other);
+    Table& operator=(Table&& other) noexcept;
+    ~Table();
+
+    const std::vector<Value>& getArray() const
     {
         return arrayPart;
     }
 
     // In insertion order, which is also the order they're written in.
-    const std::vector<Entry>& map() const
+    const std::vector<Entry>& getMap() const
     {
         return mapPart;
     }
@@ -68,24 +85,29 @@ public:
     Value* find(const Key& key);
 
     // Adds a value to the end of the array part. Fails if its implicit key is already in the map part.
-    bool append(Value value);
+    [[nodiscard]] bool append(Value value);
 
     // Adds a value to the map part. Fails if the key is invalid or already present in either part.
-    bool insert(Key key, Value value);
+    [[nodiscard]] bool insert(Key key, Value value);
 
-    // Removes a key from either part. To keep the array part free of holes, only its last value can be removed. Removing
+    // Erases a key from either part. To keep the array part free of holes, only its last value can be erased. Erasing
     // from the map part takes time proportional to its size, unless the key is the last one in it.
-    bool remove(const Key& key);
+    [[nodiscard]] bool erase(const Key& key);
 
 private:
     std::vector<Value> arrayPart;
     std::vector<Entry> mapPart;
-    std::unordered_map<Key, size_t, KeyHash, KeyEqual> mapIndex;
+    DenseHashMap<Key, size_t, KeyHash, KeyEqual> mapIndex;
 };
 
 struct Value : Variant<bool, double, std::string, Vector, Table>
 {
     using Variant::Variant;
+
+    Value(const char* string)
+        : Variant(std::string(string))
+    {
+    }
 };
 
 struct Entry
@@ -93,9 +115,6 @@ struct Entry
     Key key;
     Value value;
 };
-
-// How deeply tables can nest, counting the root table as 1. Deeper files are malformed, and deeper tables can't be written.
-constexpr size_t kMaxDepth = 255;
 
 struct ReadResult
 {
@@ -106,9 +125,17 @@ struct ReadResult
 
 ReadResult read(std::string_view source);
 
-// Returns the source of a well-formed file holding just the table, without `return`, or nothing if the table is nested
-// more deeply than kMaxDepth. The source reads back as an identical table, except that NaN payloads aren't preserved. The
-// output is formatted consistently, so identical tables (with their map parts in the same order) are written identically.
-std::optional<std::string> write(const Table& table);
+struct WriteResult
+{
+    // Present only if the table could be written, which it can be unless it nests more deeply than kMaxDepth.
+    std::optional<std::string> source;
+    // Why the table couldn't be written, if it couldn't.
+    std::string error;
+};
+
+// Writes a well-formed file holding just the table, without `return`. It reads back as an identical table, except that
+// NaN payloads aren't preserved. The output is formatted consistently, so identical tables (with their map parts in the
+// same order) are written identically.
+WriteResult write(const Table& table);
 
 } // namespace Luau::TableFormat

@@ -65,17 +65,6 @@ Much of it is similar to the [Lua 5.x API](https://www.lua.org/manual/5.1/manual
 
 To gain advantage of many performance improvements, it's highly recommended to use the `safeenv` feature, which sandboxes individual scripts' global tables from each other, and protects builtin libraries from monkey-patching. For this to work, you must call `luaL_sandbox` on the global state and `luaL_sandboxthread` for each new script's execution thread.
 
-To read and write data in the Luau Table format (`.table` files), depend on `Luau.TableFormat`, which works without a VM and rejects malformed files:
-
-```cpp
-Luau::TableFormat::ReadResult result = Luau::TableFormat::read(source);
-if (result.table)
-{
-    result.table->insert(std::string("retries"), 3.0);
-    std::optional<std::string> updated = Luau::TableFormat::write(*result.table);
-}
-```
-
 # Testing
 
 Luau has an internal test suite; in CMake builds, it is split into two targets, `Luau.UnitTest` (for the bytecode compiler and type checker/linter tests) and `Luau.Conformance` (for the VM tests). The unit tests are written in C++, whereas the conformance tests are largely written in Luau (see `tests/conformance`).

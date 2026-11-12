@@ -1,15 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TableFormat.h"
 
-#include "Luau/Compiler.h"
-
-#include "lua.h"
-#include "lualib.h"
-
 #include "doctest.h"
 
 #include <cmath>
-#include <memory>
 #include <string>
 
 using namespace Luau;
@@ -48,111 +42,6 @@ static std::string string(const Table& table, const Key& key)
     return *value->get_if<std::string>();
 }
 
-static bool sameNumber(double a, double b)
-{
-    return (std::isnan(a) && std::isnan(b)) || (a == b && std::signbit(a) == std::signbit(b));
-}
-
-static Key toKey(lua_State* L, int index)
-{
-    switch (lua_type(L, index))
-    {
-    case LUA_TBOOLEAN:
-        return bool(lua_toboolean(L, index));
-    case LUA_TNUMBER:
-        return lua_tonumber(L, index);
-    case LUA_TSTRING:
-    {
-        size_t length = 0;
-        const char* data = lua_tolstring(L, index, &length);
-        return std::string(data, length);
-    }
-    case LUA_TVECTOR:
-    {
-        const float* v = lua_tovector(L, index);
-        return Vector{v[0], v[1], v[2]};
-    }
-    default:
-        FAIL("unexpected key type ", lua_typename(L, lua_type(L, index)));
-        return false;
-    }
-}
-
-// Checks that the Luau table at the top of the stack is identical to the table that was read.
-static void checkSameAsVm(lua_State* L, const Table& table)
-{
-    size_t count = 0;
-
-    lua_pushnil(L);
-    while (lua_next(L, -2))
-    {
-        count++;
-
-        const Value* value = table.find(toKey(L, -2));
-        REQUIRE(value);
-
-        switch (lua_type(L, -1))
-        {
-        case LUA_TBOOLEAN:
-            REQUIRE(value->get_if<bool>());
-            CHECK(*value->get_if<bool>() == bool(lua_toboolean(L, -1)));
-            break;
-        case LUA_TNUMBER:
-            REQUIRE(value->get_if<double>());
-            CHECK(sameNumber(*value->get_if<double>(), lua_tonumber(L, -1)));
-            break;
-        case LUA_TSTRING:
-        {
-            size_t length = 0;
-            const char* data = lua_tolstring(L, -1, &length);
-            REQUIRE(value->get_if<std::string>());
-            CHECK(*value->get_if<std::string>() == std::string(data, length));
-            break;
-        }
-        case LUA_TVECTOR:
-        {
-            REQUIRE(value->get_if<Vector>());
-            const Vector& expected = *value->get_if<Vector>();
-            const float* actual = lua_tovector(L, -1);
-            CHECK(sameNumber(expected.x, actual[0]));
-            CHECK(sameNumber(expected.y, actual[1]));
-            CHECK(sameNumber(expected.z, actual[2]));
-            break;
-        }
-        case LUA_TTABLE:
-            REQUIRE(value->get_if<Table>());
-            checkSameAsVm(L, *value->get_if<Table>());
-            break;
-        default:
-            FAIL("unexpected value type ", lua_typename(L, lua_type(L, -1)));
-        }
-
-        lua_pop(L, 1);
-    }
-
-    CHECK(count == table.array().size() + table.map().size());
-}
-
-// Reading a well-formed file must produce what running it in a Luau VM does.
-static void checkMatchesVm(const std::string& source)
-{
-    INFO(source);
-    Table table = readOk(source);
-
-    std::string module = source.find("return") == std::string::npos ? "return " + source : source;
-    std::string bytecode = compile(module);
-
-    std::unique_ptr<lua_State, void (*)(lua_State*)> state(luaL_newstate(), lua_close);
-    lua_State* L = state.get();
-    luaL_openlibs(L);
-
-    REQUIRE(luau_load(L, "=test", bytecode.data(), bytecode.size(), 0) == 0);
-    REQUIRE(lua_pcall(L, 0, 1, 0) == 0);
-    REQUIRE(lua_istable(L, -1));
-
-    checkSameAsVm(L, table);
-}
-
 static const char* const kRfcExample = R"(-- Settings for the example service.
 return {
     name = "example",
@@ -178,8 +67,8 @@ TEST_CASE("read_rfc_example")
 {
     Table table = readOk(kRfcExample);
 
-    CHECK(table.array().empty());
-    CHECK(table.map().size() == 11);
+    CHECK(table.getArray().empty());
+    CHECK(table.getMap().size() == 11);
     CHECK(string(table, std::string("name")) == "example");
     CHECK(*table.find(std::string("enabled"))->get_if<bool>() == true);
     CHECK(number(table, std::string("retries")) == 3);
@@ -197,7 +86,7 @@ TEST_CASE("read_rfc_example")
 
     const Table* tags = table.find(std::string("tags"))->get_if<Table>();
     REQUIRE(tags);
-    REQUIRE(tags->array().size() == 2);
+    REQUIRE(tags->getArray().size() == 2);
     CHECK(string(*tags, 2.0) == "beta");
 
     const Table* limits = table.find(std::string("limits"))->get_if<Table>();
@@ -206,8 +95,8 @@ TEST_CASE("read_rfc_example")
     CHECK(number(*limits, false) == 0);
 
     // The map part keeps the order the keys were written in.
-    CHECK(*table.map()[0].key.get_if<std::string>() == "name");
-    CHECK(*table.map()[10].key.get_if<std::string>() == "limits");
+    CHECK(*table.getMap()[0].key.get_if<std::string>() == "name");
+    CHECK(*table.getMap()[10].key.get_if<std::string>() == "limits");
 }
 
 TEST_CASE("read_literals")
@@ -219,7 +108,7 @@ TEST_CASE("read_literals")
         1_000, 0xf_f, 0B11, 1e-3, .5, 5., 0.1, -0, 1e999, 0xffffffffffffffffff,
     })");
 
-    REQUIRE(table.array().size() == 16);
+    REQUIRE(table.getArray().size() == 16);
     CHECK(string(table, 1.0) == "single");
     CHECK(string(table, 3.0) == "raw");
     CHECK(string(table, 4.0) == "raw ]] level");
@@ -342,8 +231,7 @@ TEST_CASE("read_rejects_malformed")
 TEST_CASE("read_allows_unknown_escapes")
 {
     // Luau reads an unknown escape as the character after the backslash.
-    CHECK(string(readOk(R"({ "\q\w\X41", '\%' })"), 1.0) == "qwX41");
-    checkMatchesVm(R"({ "\q\w\X41", '\%', `\!` })");
+    CHECK(string(readOk(R"({ "\q\w\X41", '\%', `\!` })"), 1.0) == "qwX41");
 }
 
 TEST_CASE("read_allows_escaped_nul")
@@ -359,28 +247,35 @@ static std::string nested(size_t depth)
 static Table nestedTable(size_t depth)
 {
     Table table;
+    bool appended = true;
     for (size_t i = 1; i < depth; i++)
     {
         Table outer;
-        outer.append(std::move(table));
+        appended &= outer.append(std::move(table));
         table = std::move(outer);
     }
+    REQUIRE(appended);
     return table;
 }
 
 TEST_CASE("depth_limit")
 {
-    // The limit matches how deeply plain table constructors can nest in Luau.
-    checkMatchesVm(nested(kMaxDepth));
-    CHECK(compile("return " + nested(kMaxDepth + 1)).front() == 0); // a compile error
+    readOk(nested(kMaxDepth));
     checkMalformed(nested(kMaxDepth + 1));
     checkMalformed(nested(100000));
 
-    std::optional<std::string> deepest = write(nestedTable(kMaxDepth));
-    REQUIRE(deepest);
-    readOk(*deepest);
+    ReadResult tooDeep = read(nested(kMaxDepth + 1));
+    REQUIRE(tooDeep.errors.size() == 1);
+    CHECK(tooDeep.errors[0].getMessage() == "Exceeded the maximum table nesting depth of 255");
 
-    CHECK(!write(nestedTable(kMaxDepth + 1)));
+    WriteResult deepest = write(nestedTable(kMaxDepth));
+    REQUIRE(deepest.source);
+    CHECK(deepest.error.empty());
+    readOk(*deepest.source);
+
+    WriteResult deeper = write(nestedTable(kMaxDepth + 1));
+    CHECK(!deeper.source);
+    CHECK(deeper.error == tooDeep.errors[0].getMessage());
 }
 
 TEST_CASE("read_reports_locations")
@@ -390,22 +285,39 @@ TEST_CASE("read_reports_locations")
     CHECK(result.errors[0].getLocation().begin == Position{2, 8});
 }
 
-TEST_CASE("read_matches_vm")
+TEST_CASE("read_reports_duplicate_keys")
 {
-    checkMatchesVm(kRfcExample);
-    checkMatchesVm(R"({ 'a', [[b]], `c`, "\x00\255\u{10FFFF}", 0x7fffffffffffffff, 1e-320, -0, 0.1 })");
-    checkMatchesVm("{ -math.huge, math.nan, vector.create(0.1, -0, 1e39), vector.create(1, 2) }");
-    checkMatchesVm("{ [2] = 2, 1, [3.5] = 3, [-1] = 4, [true] = { { {} } }, [vector.create(1, 2, 3)] = \"v\" }");
+    ReadResult result = read("{ \"a\", [1] = 1, b = 1, [\"b\"] = 2, [vector.create(1, 2)] = 1, [vector.create(1, 2, 0)] = 2 }");
+    REQUIRE(result.errors.size() == 3);
+    CHECK(result.errors[0].getMessage() == "Duplicate key 1");
+    CHECK(result.errors[1].getMessage() == "Duplicate key \"b\"");
+    CHECK(result.errors[2].getMessage() == "Duplicate key vector.create(1, 2, 0)");
+
+    ReadResult implicit = read("{ [2] = 1, \"a\", \"b\" }");
+    REQUIRE(implicit.errors.size() == 1);
+    CHECK(implicit.errors[0].getMessage() == "Duplicate key 2");
+}
+
+TEST_CASE("read_limits_errors")
+{
+    std::string source = "{";
+    for (int i = 0; i < 1000; i++)
+        source += " x,";
+    source += " }";
+
+    ReadResult result = read(source);
+    CHECK(result.errors.size() == 101);
+    CHECK(result.errors.back().getMessage() == "Reached error limit (100)");
 }
 
 TEST_CASE("table_keys")
 {
     Table table;
 
-    CHECK(table.append(std::string("a")));
-    CHECK(table.insert(3.0, std::string("c")));
-    CHECK(table.append(std::string("b")));
-    CHECK(!table.append(std::string("x"))); // 3 is already in the map part
+    CHECK(table.append("a"));
+    CHECK(table.insert(3.0, "c"));
+    CHECK(table.append("b"));
+    CHECK(!table.append("x")); // 3 is already in the map part
 
     CHECK(!table.insert(1.0, true));
     CHECK(!table.insert(3.0, true));
@@ -416,7 +328,8 @@ TEST_CASE("table_keys")
     CHECK(!table.insert(-0.0, true));
     CHECK(table.insert(Vector{-0.0f, 1.0f, 0.0f}, true));
     CHECK(table.find(Vector{0.0f, 1.0f, -0.0f}));
-    CHECK(table.insert(std::string("1"), true));
+    CHECK(table.insert("1", true));
+    CHECK(table.find("1"));
     CHECK(table.insert(false, true));
 
     CHECK(string(table, 2.0) == "b");
@@ -426,28 +339,28 @@ TEST_CASE("table_keys")
     CHECK(!table.find(std::nan("")));
 }
 
-TEST_CASE("table_remove")
+TEST_CASE("table_erase")
 {
     Table table = readOk("{ 1, 2, a = 1, b = 2, c = 3 }");
 
-    CHECK(!table.remove(1.0)); // would leave a hole
-    CHECK(table.remove(2.0));
-    CHECK(table.remove(1.0));
-    CHECK(table.array().empty());
+    CHECK(!table.erase(1.0)); // would leave a hole
+    CHECK(table.erase(2.0));
+    CHECK(table.erase(1.0));
+    CHECK(table.getArray().empty());
 
-    CHECK(table.remove(std::string("b")));
-    CHECK(!table.remove(std::string("b")));
+    CHECK(table.erase(std::string("b")));
+    CHECK(!table.erase(std::string("b")));
     CHECK(number(table, std::string("a")) == 1);
     CHECK(number(table, std::string("c")) == 3);
-    CHECK(table.map().size() == 2);
+    CHECK(table.getMap().size() == 2);
 
-    // Removing the last map entry keeps the rest findable.
-    CHECK(table.remove(std::string("c")));
+    // Erasing the last map entry keeps the rest findable.
+    CHECK(table.erase(std::string("c")));
     CHECK(number(table, std::string("a")) == 1);
     CHECK(table.insert(std::string("d"), 4.0));
     CHECK(number(table, std::string("d")) == 4);
 
-    // The array part can grow back into keys that were removed.
+    // The array part can grow back into keys that were erased.
     CHECK(table.append(true));
 }
 
@@ -459,7 +372,35 @@ TEST_CASE("table_edit_in_place")
     REQUIRE(nested);
     *nested->find(std::string("count")) = 2.0;
 
-    CHECK(write(table) == "{\n    nested = {\n        count = 2,\n    },\n}\n");
+    CHECK(write(table).source == "{\n    nested = {\n        count = 2,\n    },\n}\n");
+}
+
+TEST_CASE("table_copy_and_move")
+{
+    Table table = readOk("{ a = { b = { 1, 2 } }, c = 3 }");
+
+    Table copy = table;
+    *copy.find("a")->get_if<Table>()->find("b")->get_if<Table>()->find(1.0) = 10.0;
+    CHECK(number(*table.find("a")->get_if<Table>()->find("b")->get_if<Table>(), 1.0) == 1);
+    CHECK(number(*copy.find("a")->get_if<Table>()->find("b")->get_if<Table>(), 1.0) == 10);
+    CHECK(number(copy, "c") == 3);
+
+    // A table can be replaced by one of its own nested tables.
+    table = std::move(*table.find("a")->get_if<Table>());
+    CHECK(table.getMap().size() == 1);
+    REQUIRE(table.find("b"));
+
+    copy = *copy.find("a")->get_if<Table>();
+    CHECK(number(*copy.find("b")->get_if<Table>(), 1.0) == 10);
+}
+
+TEST_CASE("table_deep_nesting_doesnt_overflow_stack")
+{
+    // Far deeper than can be read or written, to check that copying and destroying don't recurse.
+    Table table = nestedTable(1000000);
+    Table copy = table;
+    CHECK(copy.getArray().size() == 1);
+    CHECK(!write(copy).source);
 }
 
 TEST_CASE("write_format")
@@ -470,7 +411,7 @@ TEST_CASE("write_format")
         [2.5] = -0, [-1] = math.huge, [false] = math.nan, [vector.create(1, 0.5, -2)] = { 1 },
     })");
 
-    CHECK(write(table) == R"({
+    CHECK(write(table).source == R"({
     "a",
     true,
     {},
@@ -489,15 +430,24 @@ TEST_CASE("write_format")
 }
 )");
 
-    readOk(*write(table));
-    CHECK(write(Table{}) == "{}\n");
+    readOk(*write(table).source);
+    CHECK(write(Table{}).source == "{}\n");
+}
+
+TEST_CASE("write_names_are_ascii")
+{
+    Table table;
+    CHECK(table.insert("caf\xc3\xa9", 1.0));
+    CHECK(table.insert("_x9", 2.0));
+
+    CHECK(write(table).source == "{\n    [\"caf\xc3\xa9\"] = 1,\n    _x9 = 2,\n}\n");
 }
 
 TEST_CASE("write_whole_numbers")
 {
     Table table = readOk("{ 10, 100, 1e6, -1e14, 99999999999999.5, 1e15, vector.create(10, 20, 300) }");
 
-    CHECK(write(table) == R"({
+    CHECK(write(table).source == R"({
     10,
     100,
     1000000,
@@ -523,12 +473,11 @@ TEST_CASE("write_numbers_and_strings_round_trip")
     for (const std::string& s : strings)
         CHECK(table.insert(s, s));
 
-    std::string source = *write(table);
+    std::string source = *write(table).source;
     INFO(source);
     Table copy = readOk(source);
 
-    CHECK(write(copy) == source);
-    checkMatchesVm(source);
+    CHECK(write(copy).source == source);
 
     for (size_t i = 0; i < std::size(numbers); i++)
         CHECK(number(copy, double(i + 1)) == numbers[i]);

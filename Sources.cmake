@@ -108,13 +108,6 @@ target_sources(Luau.Config PRIVATE
     Config/src/LuauConfig.cpp
 )
 
-# Luau.TableFormat Sources
-target_sources(Luau.TableFormat PRIVATE
-    TableFormat/include/Luau/TableFormat.h
-
-    TableFormat/src/TableFormat.cpp
-)
-
 # Luau.CodeGen Sources
 target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/AddressA64.h
@@ -555,9 +548,9 @@ if(TARGET Luau.UnitTest)
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/StringUtils.test.cpp
-        tests/TableFormat.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
+        tests/TableFormat.test.cpp
         tests/ToDot.test.cpp
         tests/TopoSort.test.cpp
         tests/ToString.test.cpp
@@ -616,6 +609,7 @@ if(TARGET Luau.Conformance)
         tests/FeedbackVector.test.cpp
         tests/IrLowering.test.cpp
         tests/SharedCodeAllocator.test.cpp
+        tests/TableFormat.vm.test.cpp
         tests/main.cpp)
 endif()
 
@@ -663,6 +657,14 @@ if(TARGET Luau.Require)
     Require/src/Require.cpp
     Require/src/RequireImpl.cpp
     Require/src/RequireNavigator.cpp)
+endif()
+
+if(TARGET Luau.TableFormat)
+    # Luau.TableFormat Sources
+    target_sources(Luau.TableFormat PRIVATE
+        TableFormat/include/Luau/TableFormat.h
+
+        TableFormat/src/TableFormat.cpp)
 endif()
 
 if(TARGET Luau.Web)
