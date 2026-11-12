@@ -72,7 +72,7 @@ Luau::TableFormat::ReadResult result = Luau::TableFormat::read(source);
 if (result.table)
 {
     result.table->insert(std::string("retries"), 3.0);
-    std::string updated = Luau::TableFormat::write(*result.table);
+    std::optional<std::string> updated = Luau::TableFormat::write(*result.table);
 }
 ```
 

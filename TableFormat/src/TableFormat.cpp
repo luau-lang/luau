@@ -5,6 +5,7 @@
 #include "Luau/HashUtil.h"
 #include "Luau/Lexer.h"
 #include "Luau/Parser.h"
+#include "Luau/StringUtils.h"
 
 #include <cmath>
 #include <ctype.h>
@@ -131,9 +132,13 @@ bool Table::remove(const Key& key)
     mapIndex.erase(it);
     mapPart.erase(mapPart.begin() + position);
 
-    for (auto& [_, later] : mapIndex)
-        if (later > position)
-            later--;
+    // Removing the last entry is common enough (and cheap enough) to skip renumbering the rest.
+    if (position != mapPart.size())
+    {
+        for (auto& [_, later] : mapIndex)
+            if (later > position)
+                later--;
+    }
 
     return true;
 }
@@ -263,10 +268,10 @@ struct Reader
         return key;
     }
 
-    std::optional<Value> readValue(AstExpr* expr)
+    std::optional<Value> readValue(AstExpr* expr, size_t depth)
     {
         if (AstExprTable* table = expr->as<AstExprTable>())
-            return readTable(table);
+            return readTable(table, depth + 1);
 
         if (std::optional<Key> primitive = readPrimitive(expr))
             return toValue(std::move(*primitive));
@@ -274,13 +279,19 @@ struct Reader
         return std::nullopt;
     }
 
-    Table readTable(AstExprTable* expr)
+    Table readTable(AstExprTable* expr, size_t depth)
     {
         Table table;
 
+        if (depth > kMaxDepth)
+        {
+            report(expr->location, format("Tables can't be nested more than %d deep", int(kMaxDepth)));
+            return table;
+        }
+
         for (const AstExprTable::Item& item : expr->items)
         {
-            std::optional<Value> value = readValue(item.value);
+            std::optional<Value> value = readValue(item.value, depth);
 
             if (item.kind == AstExprTable::Item::Kind::List)
             {
@@ -316,6 +327,22 @@ static size_t offsetOf(std::string_view source, Position position)
         offset = source.find('\n', offset) + 1;
 
     return offset + position.column;
+}
+
+static Position positionOf(std::string_view source, size_t offset)
+{
+    unsigned int line = 0;
+    size_t lineStart = 0;
+    for (size_t i = 0; i < offset; i++)
+    {
+        if (source[i] == '\n')
+        {
+            line++;
+            lineStart = i + 1;
+        }
+    }
+
+    return Position{line, unsigned(offset - lineStart)};
 }
 
 // Finds the root expression: either the whole file, or the single value returned by the file.
@@ -393,11 +420,19 @@ ReadResult read(std::string_view source)
 
     ReadResult result;
 
+    // The lexer treats a NUL byte as the end of the source, which would hide anything after it.
+    if (size_t nul = source.find('\0'); nul != std::string_view::npos)
+    {
+        Position position = positionOf(source, nul);
+        result.errors.emplace_back(Location{position, 1}, "NUL bytes must be escaped");
+        return result;
+    }
+
     AstExpr* root = parseRoot(source, names, allocator, result.errors);
     if (!root)
         return result;
 
-    Table table = Reader{result.errors}.readTable(root->as<AstExprTable>());
+    Table table = Reader{result.errors}.readTable(root->as<AstExprTable>(), 1);
     if (result.errors.empty())
         result.table = std::move(table);
 
@@ -419,6 +454,7 @@ static bool isName(const std::string& string)
 struct Writer
 {
     std::string out;
+    bool tooDeep = false;
 
     // Writes the shortest number that reads back as exactly the same value.
     template<typename T>
@@ -428,6 +464,13 @@ struct Writer
             out += "math.nan";
         else if (std::isinf(number))
             out += number > 0 ? "math.huge" : "-math.huge";
+        else if (number == std::floor(number) && std::fabs(number) < 1e15)
+        {
+            // Whole numbers are written out in full, as %g would switch to an exponent for values like 100.
+            char buffer[32];
+            snprintf(buffer, sizeof(buffer), "%.0f", double(number));
+            out += buffer;
+        }
         else
         {
             char buffer[32];
@@ -532,6 +575,12 @@ struct Writer
 
     void writeTable(const Table& table, int depth)
     {
+        if (size_t(depth) >= kMaxDepth)
+        {
+            tooDeep = true;
+            return;
+        }
+
         if (table.array().empty() && table.map().empty())
         {
             out += "{}";
@@ -560,10 +609,13 @@ struct Writer
     }
 };
 
-std::string write(const Table& table)
+std::optional<std::string> write(const Table& table)
 {
     Writer writer;
     writer.writeTable(table, 0);
+    if (writer.tooDeep)
+        return std::nullopt;
+
     writer.out += "\n";
     return std::move(writer.out);
 }

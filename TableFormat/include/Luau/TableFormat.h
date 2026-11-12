@@ -72,7 +72,8 @@ public:
     // Adds a value to the map part. Fails if the key is invalid or already present in either part.
     bool insert(Key key, Value value);
 
-    // Removes a key from either part. To keep the array part free of holes, only its last value can be removed.
+    // Removes a key from either part. To keep the array part free of holes, only its last value can be removed. Removing
+    // from the map part takes time proportional to its size, unless the key is the last one in it.
     bool remove(const Key& key);
 
 private:
@@ -92,6 +93,9 @@ struct Entry
     Value value;
 };
 
+// How deeply tables can nest, counting the root table as 1. Deeper files are malformed, and deeper tables can't be written.
+constexpr size_t kMaxDepth = 255;
+
 struct ReadResult
 {
     // Present only if the source was well-formed.
@@ -101,9 +105,9 @@ struct ReadResult
 
 ReadResult read(std::string_view source);
 
-// Returns the source of a well-formed file holding just the table, without `return`. It reads back as an identical table,
-// except that NaN payloads aren't preserved. The output is formatted consistently, so identical tables (with their map
-// parts in the same order) are written identically.
-std::string write(const Table& table);
+// Returns the source of a well-formed file holding just the table, without `return`, or nothing if the table is nested
+// more deeply than kMaxDepth. The source reads back as an identical table, except that NaN payloads aren't preserved. The
+// output is formatted consistently, so identical tables (with their map parts in the same order) are written identically.
+std::optional<std::string> write(const Table& table);
 
 } // namespace Luau::TableFormat

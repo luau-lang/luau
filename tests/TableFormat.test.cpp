@@ -332,6 +332,46 @@ TEST_CASE("read_rejects_malformed")
     checkMalformed("local a = 1 return {}");
     checkMalformed("return {} return {}");
     checkMalformed("{ a = 1");
+
+    // The lexer stops at a NUL byte, so whatever follows must not be ignored.
+    checkMalformed(std::string("{}\0garbage", 10));
+    checkMalformed(std::string("{}--\0garbage", 12));
+    checkMalformed(std::string("{ a = \"\0\" }", 12));
+}
+
+TEST_CASE("read_allows_escaped_nul")
+{
+    CHECK(string(readOk("{ \"a\\0b\" }"), 1.0) == std::string("a\0b", 3));
+}
+
+static std::string nested(size_t depth)
+{
+    return std::string(depth, '{') + std::string(depth, '}');
+}
+
+static Table nestedTable(size_t depth)
+{
+    Table table;
+    for (size_t i = 1; i < depth; i++)
+    {
+        Table outer;
+        outer.append(std::move(table));
+        table = std::move(outer);
+    }
+    return table;
+}
+
+TEST_CASE("depth_limit")
+{
+    readOk(nested(kMaxDepth));
+    checkMalformed(nested(kMaxDepth + 1));
+    checkMalformed(nested(100000));
+
+    std::optional<std::string> deepest = write(nestedTable(kMaxDepth));
+    REQUIRE(deepest);
+    readOk(*deepest);
+
+    CHECK(!write(nestedTable(kMaxDepth + 1)));
 }
 
 TEST_CASE("read_reports_locations")
@@ -392,6 +432,12 @@ TEST_CASE("table_remove")
     CHECK(number(table, std::string("c")) == 3);
     CHECK(table.map().size() == 2);
 
+    // Removing the last map entry keeps the rest findable.
+    CHECK(table.remove(std::string("c")));
+    CHECK(number(table, std::string("a")) == 1);
+    CHECK(table.insert(std::string("d"), 4.0));
+    CHECK(number(table, std::string("d")) == 4);
+
     // The array part can grow back into keys that were removed.
     CHECK(table.append(true));
 }
@@ -434,8 +480,24 @@ TEST_CASE("write_format")
 }
 )");
 
-    readOk(write(table));
+    readOk(*write(table));
     CHECK(write(Table{}) == "{}\n");
+}
+
+TEST_CASE("write_whole_numbers")
+{
+    Table table = readOk("{ 10, 100, 1e6, -1e14, 99999999999999.5, 1e15, vector.create(10, 20, 300) }");
+
+    CHECK(write(table) == R"({
+    10,
+    100,
+    1000000,
+    -100000000000000,
+    99999999999999.5,
+    1e+15,
+    vector.create(10, 20, 300),
+}
+)");
 }
 
 TEST_CASE("write_numbers_and_strings_round_trip")
@@ -452,7 +514,7 @@ TEST_CASE("write_numbers_and_strings_round_trip")
     for (const std::string& s : strings)
         CHECK(table.insert(s, s));
 
-    std::string source = write(table);
+    std::string source = *write(table);
     INFO(source);
     Table copy = readOk(source);
 
