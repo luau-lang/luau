@@ -339,6 +339,13 @@ TEST_CASE("read_rejects_malformed")
     checkMalformed(std::string("{ a = \"\0\" }", 12));
 }
 
+TEST_CASE("read_allows_unknown_escapes")
+{
+    // Luau reads an unknown escape as the character after the backslash.
+    CHECK(string(readOk(R"({ "\q\w\X41", '\%' })"), 1.0) == "qwX41");
+    checkMatchesVm(R"({ "\q\w\X41", '\%', `\!` })");
+}
+
 TEST_CASE("read_allows_escaped_nul")
 {
     CHECK(string(readOk("{ \"a\\0b\" }"), 1.0) == std::string("a\0b", 3));

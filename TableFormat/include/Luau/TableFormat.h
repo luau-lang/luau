@@ -14,7 +14,8 @@
 // numbers, vectors and nested tables, all written out literally.
 //
 // Reading parses the source and never evaluates it, so no Luau VM is involved. Well-formed files produce exactly the
-// values a Luau VM would, and malformed files are always rejected. Writing always produces well-formed files.
+// values a Luau VM would wherever the VM can evaluate them (Luau's own limits, such as register counts, can prevent
+// that), and malformed files are always rejected. Writing always produces well-formed files.
 namespace Luau::TableFormat
 {
 
