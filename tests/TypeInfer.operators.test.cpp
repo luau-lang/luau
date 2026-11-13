@@ -13,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
 
@@ -1279,8 +1278,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_concat")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_branch_succeeds")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local mm = {}
         type Foo = typeof(setmetatable({}, mm))
@@ -1705,8 +1702,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         type classData = {
             b:buffer;
@@ -1735,37 +1730,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "negated_integer_literal_is_a_constant")
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
-
-    // compileExprUnary folds this into one negative constant, so it never negates anything at runtime.
-    CheckResult result = check(R"(
-        --!strict
-        local a = -4194626i
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("integer" == toString(requireType("a")));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "negating_a_non_literal_integer_is_an_error")
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
-
-    // Only the literal is folded. This one reaches the runtime, where integer has no __unm.
-    CheckResult result = check(R"(
-        --!strict
-        local b = 5i
-        local c = -b
-        local d = -(5i)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
 }
 
 TEST_SUITE_END();

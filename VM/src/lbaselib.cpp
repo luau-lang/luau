@@ -12,8 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-LUAU_FASTFLAGVARIABLE(LuauFastpcall)
-
 static void writestring(const char* s, size_t l)
 {
     fwrite(s, 1, l, stdout);
@@ -433,15 +431,13 @@ int luaopen_base(lua_State* L)
 
     lua_pushcclosurek(L, luaB_pcally, "pcall", 0, luaB_pcallcont);
 
-    if (FFlag::LuauFastpcall)
-        L->global->builtinPcall = clvalue(luaA_toobject(L, -1));
+    L->global->builtinPcall = clvalue(luaA_toobject(L, -1));
 
     lua_setfield(L, -2, "pcall");
 
     lua_pushcclosurek(L, luaB_xpcally, "xpcall", 0, luaB_xpcallcont);
 
-    if (FFlag::LuauFastpcall)
-        L->global->builtinXpcall = clvalue(luaA_toobject(L, -1));
+    L->global->builtinXpcall = clvalue(luaA_toobject(L, -1));
 
     lua_setfield(L, -2, "xpcall");
 

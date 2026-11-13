@@ -14,8 +14,6 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 
 TEST_SUITE_BEGIN("ToString");
@@ -91,8 +89,6 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
 
 TEST_CASE_FIXTURE(Fixture, "empty_table")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local a: {}
     )");
@@ -148,8 +144,6 @@ TEST_CASE_FIXTURE(Fixture, "long_disjunct_of_nil_is_nil_not_question_mark")
 
 TEST_CASE_FIXTURE(Fixture, "metatable")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     Type table{TypeVariant(TableType())};
     Type metatable{TypeVariant(TableType())};
     Type mtv{TypeVariant(MetatableType{&table, &metatable})};
@@ -158,8 +152,6 @@ TEST_CASE_FIXTURE(Fixture, "metatable")
 
 TEST_CASE_FIXTURE(Fixture, "metatables_are_valid")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag sff{FFlag::LuauBetterMetatableStringification, true};
 
     Type table{TypeVariant(TableType(TableState::Sealed, TypeLevel{}))};
@@ -451,8 +443,6 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table_state_braces")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     TableType ttv{TableState::Sealed, TypeLevel{}};
     for (char c : std::string("abcdefghij"))
         ttv.props[std::string(1, c)] = {getBuiltins()->numberType};
@@ -486,8 +476,6 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_intersection_type_bails_early")
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     TableType ttv{TableState::Sealed, TypeLevel{}};
     ttv.indexer = TableIndexer{getBuiltins()->numberType, getBuiltins()->stringType};
 
@@ -635,8 +623,6 @@ function foo(a, b) return a(b) end
 
 TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_TypePack")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     Type tv1{TableType{}};
     TableType* ttv = getMutable<TableType>(&tv1);
     ttv->state = TableState::Sealed;
@@ -720,8 +706,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local function map(arr, fn)
             local t = {}
@@ -948,8 +932,6 @@ TEST_CASE_FIXTURE(Fixture, "read_only_properties")
 
 TEST_CASE_FIXTURE(Fixture, "cycle_rooted_in_a_pack")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     TypeArena arena;
 
     TypePackId thePack = arena.addTypePack({getBuiltins()->numberType, getBuiltins()->numberType});
@@ -1102,38 +1084,15 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_generic")
 
 TEST_CASE_FIXTURE(Fixture, "empty_tables")
 {
-    TypeId emptyExact = arena.addType(TableType{TableState::Exact, TypeLevel{}});
-    TypeId emptyInexact = arena.addType(TableType{TableState::Sealed, TypeLevel{}});
+    TypeId emptySealed = arena.addType(TableType{TableState::Sealed, TypeLevel{}});
     TypeId emptyUnsealed = arena.addType(TableType{TableState::Unsealed, TypeLevel{}});
     TypeId emptyFree = arena.addType(TableType{TableState::Free, TypeLevel{}});
     TypeId emptyGeneric = arena.addType(TableType{TableState::Generic, TypeLevel{}});
 
-    SUBCASE("flags_off")
-    {
-        ScopedFastFlag sff[] = {
-            {FFlag::DebugLuauParseExactTables, false},
-            {FFlag::DebugLuauExactTableTypes, false},
-        };
-
-        CHECK("{  }" == toString(emptyInexact));
-        CHECK("{  }" == toString(emptyExact));
-        CHECK("{|  |}" == toString(emptyUnsealed));
-        CHECK("{-  -}" == toString(emptyFree));
-        CHECK("{+  +}" == toString(emptyGeneric));
-    }
-
-    SUBCASE("flags_on")
-    {
-        ScopedFastFlag sff[] = {
-            {FFlag::DebugLuauParseExactTables, true},
-            {FFlag::DebugLuauExactTableTypes, true},
-        };
-        CHECK("{ ... }" == toString(emptyInexact));
-        CHECK("{ }" == toString(emptyExact));
-        CHECK("{| |}" == toString(emptyUnsealed));
-        CHECK("{- -}" == toString(emptyFree));
-        CHECK("{+ +}" == toString(emptyGeneric));
-    }
+    CHECK("{  }" == toString(emptySealed));
+    CHECK("{|  |}" == toString(emptyUnsealed));
+    CHECK("{-  -}" == toString(emptyFree));
+    CHECK("{+  +}" == toString(emptyGeneric));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tables_with_indexers_and_props")
@@ -1144,161 +1103,30 @@ TEST_CASE_FIXTURE(Fixture, "tables_with_indexers_and_props")
     TableIndexer readOnlyStringIndexer{getBuiltins()->stringType, getBuiltins()->numberType, true};
 
     TypeId sealedStrIdx = arena.addType(TableType{{}, stringIndexer, TypeLevel{}, TableState::Sealed});
-    TypeId exactStrIdx = arena.addType(TableType{{}, stringIndexer, TypeLevel{}, TableState::Exact});
 
     TypeId sealedProps = arena.addType(TableType{xProp, std::nullopt, TypeLevel{}, TableState::Sealed});
-    TypeId exactProps = arena.addType(TableType{xProp, std::nullopt, TypeLevel{}, TableState::Exact});
 
     TypeId sealedBoth = arena.addType(TableType{xProp, stringIndexer, TypeLevel{}, TableState::Sealed});
-    TypeId exactBoth = arena.addType(TableType{xProp, stringIndexer, TypeLevel{}, TableState::Exact});
     TypeId unsealedBoth = arena.addType(TableType{xProp, stringIndexer, TypeLevel{}, TableState::Unsealed});
 
     TypeId sealedNumIdxProps = arena.addType(TableType{xProp, numberIndexer, TypeLevel{}, TableState::Sealed});
-    TypeId exactNumIdxProps = arena.addType(TableType{xProp, numberIndexer, TypeLevel{}, TableState::Exact});
 
     TypeId sealedNumIdx = arena.addType(TableType{{}, numberIndexer, TypeLevel{}, TableState::Sealed});
-    TypeId exactNumIdx = arena.addType(TableType{{}, numberIndexer, TypeLevel{}, TableState::Exact});
 
     TypeId sealedReadOnlyStrIdx = arena.addType(TableType{{}, readOnlyStringIndexer, TypeLevel{}, TableState::Sealed});
-    TypeId exactReadOnlyStrIdx = arena.addType(TableType{{}, readOnlyStringIndexer, TypeLevel{}, TableState::Exact});
 
-    SUBCASE("flags_off")
-    {
-        ScopedFastFlag sff[] = {
-            {FFlag::DebugLuauParseExactTables, false},
-            {FFlag::DebugLuauExactTableTypes, false},
-        };
+    CHECK("{ [string]: number }" == toString(sealedStrIdx));
 
-        CHECK("{ [string]: number }" == toString(sealedStrIdx));
-        CHECK("{ [string]: number }" == toString(exactStrIdx));
+    CHECK("{ x: number }" == toString(sealedProps));
 
-        CHECK("{ x: number }" == toString(sealedProps));
-        CHECK("{ x: number }" == toString(exactProps));
+    CHECK("{ [string]: number, x: number }" == toString(sealedBoth));
+    CHECK("{| [string]: number, x: number |}" == toString(unsealedBoth));
 
-        CHECK("{ [string]: number, x: number }" == toString(sealedBoth));
-        CHECK("{ [string]: number, x: number }" == toString(exactBoth));
-        CHECK("{| [string]: number, x: number |}" == toString(unsealedBoth));
+    CHECK("{ [number]: string, x: number }" == toString(sealedNumIdxProps));
 
-        CHECK("{ [number]: string, x: number }" == toString(sealedNumIdxProps));
-        CHECK("{ [number]: string, x: number }" == toString(exactNumIdxProps));
+    CHECK("{string}" == toString(sealedNumIdx));
 
-        CHECK("{string}" == toString(sealedNumIdx));
-        CHECK("{string}" == toString(exactNumIdx));
-
-        CHECK("{ read [string]: number }" == toString(sealedReadOnlyStrIdx));
-        CHECK("{ read [string]: number }" == toString(exactReadOnlyStrIdx));
-    }
-
-    SUBCASE("flags_on")
-    {
-        ScopedFastFlag sff[] = {
-            {FFlag::DebugLuauParseExactTables, true},
-            {FFlag::DebugLuauExactTableTypes, true},
-        };
-
-        CHECK("{ [string]: number, ... }" == toString(sealedStrIdx));
-        CHECK("{ [string]: number }" == toString(exactStrIdx));
-
-        CHECK("{ x: number, ... }" == toString(sealedProps));
-        CHECK("{ x: number }" == toString(exactProps));
-
-        CHECK("{ [string]: number, x: number, ... }" == toString(sealedBoth));
-        CHECK("{ [string]: number, x: number }" == toString(exactBoth));
-        CHECK("{| [string]: number, x: number |}" == toString(unsealedBoth));
-
-        CHECK("{ [number]: string, x: number, ... }" == toString(sealedNumIdxProps));
-        CHECK("{ [number]: string, x: number }" == toString(exactNumIdxProps));
-
-        CHECK("{string, ...}" == toString(sealedNumIdx));
-        CHECK("{string}" == toString(exactNumIdx));
-
-        CHECK("{ read [string]: number, ... }" == toString(sealedReadOnlyStrIdx));
-        CHECK("{ read [string]: number }" == toString(exactReadOnlyStrIdx));
-    }
-
-    SUBCASE("flags_on_multiline")
-    {
-        ScopedFastFlag sff[] = {
-            {FFlag::DebugLuauParseExactTables, true},
-            {FFlag::DebugLuauExactTableTypes, true},
-        };
-
-        ToStringOptions opts;
-        opts.useLineBreaks = true;
-
-        CHECK(
-            "{\n"
-            "    [string]: number,\n"
-            "    ...\n"
-            "}" == toString(sealedStrIdx, opts)
-        );
-        CHECK(
-            "{\n"
-            "    [string]: number\n"
-            "}" == toString(exactStrIdx, opts)
-        );
-
-        CHECK(
-            "{\n"
-            "    x: number,\n"
-            "    ...\n"
-            "}" == toString(sealedProps, opts)
-        );
-        CHECK(
-            "{\n"
-            "    x: number\n"
-            "}" == toString(exactProps, opts)
-        );
-
-        CHECK(
-            "{\n"
-            "    [string]: number,\n"
-            "    x: number,\n"
-            "    ...\n"
-            "}" == toString(sealedBoth, opts)
-        );
-        CHECK(
-            "{\n"
-            "    [string]: number,\n"
-            "    x: number\n"
-            "}" == toString(exactBoth, opts)
-        );
-        CHECK(
-            "{|\n"
-            "    [string]: number,\n"
-            "    x: number\n"
-            "|}" == toString(unsealedBoth, opts)
-        );
-
-        CHECK(
-            "{\n"
-            "    [number]: string,\n"
-            "    x: number,\n"
-            "    ...\n"
-            "}" == toString(sealedNumIdxProps, opts)
-        );
-        CHECK(
-            "{\n"
-            "    [number]: string,\n"
-            "    x: number\n"
-            "}" == toString(exactNumIdxProps, opts)
-        );
-
-        CHECK("{string, ...}" == toString(sealedNumIdx, opts));
-        CHECK("{string}" == toString(exactNumIdx, opts));
-
-        CHECK(
-            "{\n"
-            "    read [string]: number,\n"
-            "    ...\n"
-            "}" == toString(sealedReadOnlyStrIdx, opts)
-        );
-        CHECK(
-            "{\n"
-            "    read [string]: number\n"
-            "}" == toString(exactReadOnlyStrIdx, opts)
-        );
-    }
+    CHECK("{ read [string]: number }" == toString(sealedReadOnlyStrIdx));
 }
 
 TEST_SUITE_END();

@@ -17,9 +17,7 @@
 #include <algorithm>
 #include <string>
 
-LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
+
 LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
 
 /*
@@ -656,13 +654,6 @@ struct TypeStringifier
         case PrimitiveType::Table:
             state.emit("table");
             return;
-        case PrimitiveType::Integer:
-            if (FFlag::LuauIntegerType2)
-            {
-                state.emit("integer");
-                return;
-            }
-            [[fallthrough]];
         default:
             LUAU_ASSERT(!"Unknown primitive type");
             throw InternalCompilerError("Unknown primitive type " + std::to_string(ptv.type));
@@ -829,10 +820,6 @@ struct TypeStringifier
             openbrace = "{+";
             closedbrace = "+}";
             break;
-        case TableState::Exact:
-            openbrace = "{";
-            closedbrace = "}";
-            break;
         }
 
         // If this appears to be an array, we want to stringify it using the {T} syntax.
@@ -843,8 +830,6 @@ struct TypeStringifier
                 state.emit("read ");
             stringify(ttv.indexer->indexResultType);
 
-            if (FFlag::DebugLuauExactTableTypes && ttv.state == TableState::Sealed)
-                state.emit(", ...");
             state.emit("}");
 
             state.unsee(&ttv);
@@ -895,36 +880,11 @@ struct TypeStringifier
             ++index;
         }
 
-        if (FFlag::DebugLuauParseExactTables && FFlag::DebugLuauExactTableTypes)
-        {
-            if (ttv.state == TableState::Sealed)
-            {
-                if (comma)
-                {
-                    state.emit(",");
-                    state.newline();
-                }
-                else
-                    state.emit(" ");
-                state.emit("...");
-            }
-        }
-
         state.dedent();
-        if (FFlag::DebugLuauParseExactTables && FFlag::DebugLuauExactTableTypes)
-        {
-            if (comma)
-                state.newline();
-            else
-                state.emit(" ");
-        }
+        if (comma)
+            state.newline();
         else
-        {
-            if (comma)
-                state.newline();
-            else
-                state.emit("  ");
-        }
+            state.emit("  ");
         state.emit(closedbrace);
 
         state.unsee(&ttv);

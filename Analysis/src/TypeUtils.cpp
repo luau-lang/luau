@@ -15,6 +15,7 @@
 #include <optional>
 
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAGVARIABLE(LuauDoNotCrashOnRecursiveSetType)
 
 namespace Luau
 {
@@ -24,31 +25,79 @@ bool inConditional(const TypeContext& context)
     return context == TypeContext::Condition;
 }
 
+namespace
+{
+
+struct OccursCheck : IterativeTypeVisitor
+{
+    TypeId needle;
+    bool found = false;
+
+    explicit OccursCheck(TypeId needle)
+        : IterativeTypeVisitor("OccursCheck", /* skipBoundTypes */ true)
+        , needle(needle)
+    {
+        LUAU_ASSERT((is<BlockedType, PendingExpansionType>(needle)));
+    }
+
+    bool visit(TypeId ty) override
+    {
+        found |= ty == needle;
+        return false;
+    }
+
+    bool visit(TypeId, const UnionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId, const IntersectionType&) override
+    {
+        return true;
+    }
+};
+
+} // namespace
+
 bool occursCheck(TypeId needle, TypeId haystack)
 {
-    LUAU_ASSERT(get<BlockedType>(needle) || get<PendingExpansionType>(needle));
-    haystack = follow(haystack);
-
-    if (needle == haystack)
-        return true;
-    else if (auto ut = get<UnionType>(haystack))
+    if (FFlag::LuauDoNotCrashOnRecursiveSetType)
     {
-        for (TypeId option : ut)
-        {
-            if (occursCheck(needle, option))
-                return true;
-        }
+        OccursCheck oc{needle};
+        oc.run(haystack);
+        return oc.found;
     }
-    else if (auto it = get<IntersectionType>(haystack))
+    else
     {
-        for (TypeId part : it)
-        {
-            if (occursCheck(needle, part))
-                return true;
-        }
-    }
+        LUAU_ASSERT(get<BlockedType>(needle) || get<PendingExpansionType>(needle));
+        haystack = follow(haystack);
 
-    return false;
+        auto checkHaystack = [needle](TypeId haystack)
+        {
+            return occursCheck(needle, haystack);
+        };
+
+        if (needle == haystack)
+            return true;
+        else if (auto ut = get<UnionType>(haystack))
+        {
+            for (TypeId option : ut)
+            {
+                if (occursCheck(needle, option))
+                    return true;
+            }
+        }
+        else if (auto it = get<IntersectionType>(haystack))
+        {
+            for (TypeId part : it)
+            {
+                if (occursCheck(needle, part))
+                    return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 std::optional<TypeId> findMetatableEntry(

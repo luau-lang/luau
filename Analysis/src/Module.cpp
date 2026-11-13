@@ -14,7 +14,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAGVARIABLE(LuauExportAnnotationBinding)
 LUAU_FASTFLAGVARIABLE(LuauReduceTypeFunctionToSyntheticError)
@@ -192,13 +191,7 @@ struct ClonePublicInterface : Substitution
             if (isNewSolver())
             {
                 ttv->scope = nullptr;
-                if (FFlag::DebugLuauExactTableTypes)
-                {
-                    if (ttv->state != TableState::Sealed && ttv->state != TableState::Exact)
-                        ttv->state = TableState::Sealed;
-                }
-                else
-                    ttv->state = TableState::Sealed;
+                ttv->state = TableState::Sealed;
             }
         }
 
@@ -507,11 +500,13 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
         {
             if (AstStatClass* classStat = statement->as<AstStatClass>())
             {
-                if (!classStat->exported)
+                if (classStat->declModifier != AstStatClass::DeclModifier::Export)
                     continue;
 
-                props[classStat->name->name.value] = Property::readonly(lookupExportedBindingType(classStat->name));
-                props[classStat->name->name.value].location = classStat->name->location;
+                Name className = Name{classStat->getName().value};
+
+                props[className] = Property::readonly(lookupExportedBindingType(classStat->localName));
+                props[className].location = classStat->localName->location;
             }
         }
     }
@@ -519,8 +514,7 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
     if (props.empty())
         return;
 
-    const TableState state = FFlag::DebugLuauExactTableTypes ? TableState::Exact : TableState::Sealed;
-    TableType tbl{props, std::nullopt, moduleScope->level, state};
+    TableType tbl{props, std::nullopt, moduleScope->level, TableState::Sealed};
     tbl.definitionModuleName = module->name;
     TypeId exports = module->internalTypes->addType(std::move(tbl));
     moduleScope->returnType = module->internalTypes->addTypePack({exports});

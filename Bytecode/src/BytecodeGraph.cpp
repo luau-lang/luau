@@ -8,7 +8,6 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCostModel)
 LUAU_FASTFLAGVARIABLE(LuauInlinerNamecallSelfFromMove)
-LUAU_FASTFLAG(LuauCompileRefactorFeedback)
 
 namespace Luau
 {
@@ -155,15 +154,6 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
         {
             fn.constants[i].kind = BcVmConstKind::Closure;
             fn.constants[i].valueClosure = readVarInt(data, offset);
-            break;
-        }
-
-        case LBC_CONSTANT_INTEGER:
-        {
-            fn.constants[i].kind = BcVmConstKind::Integer;
-            bool isNegative = read<uint8_t>(data, offset);
-            uint64_t magnitude = readVarInt64(data, offset);
-            fn.constants[i].valueInteger = isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude;
             break;
         }
 
@@ -402,10 +392,6 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
             consts.push_back(bcb.addConstantClosure(c.valueClosure));
             break;
 
-        case BcVmConstKind::Integer:
-            consts.push_back(bcb.addConstantInteger(c.valueInteger));
-            break;
-
         case BcVmConstKind::ClassShape:
         {
             LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
@@ -432,10 +418,7 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
             LUAU_ASSERT(slot.callTarget.inst < insnsPC.size());
             LUAU_ASSERT(insnsPC[slot.callTarget.inst] != ~0u);
 
-            if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
-                slotId = bcb.addCallTargetSlot(insnsPC[slot.callTarget.inst]);
-            else
-                slotId = bcb.addFbSlot_DEPRECATED(LFT_CALLTARGET, insnsPC[slot.callTarget.inst]);
+            slotId = bcb.addCallTargetSlot(insnsPC[slot.callTarget.inst]);
         }
         else if (slot.kind == LFT_CONSTRUCT)
         {

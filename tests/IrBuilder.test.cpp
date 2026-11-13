@@ -12,13 +12,12 @@
 
 #include <limits.h>
 
+LUAU_FASTFLAG(LuauCodegenForwardSplitStore)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenInteger3)
-LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauIntegerLibrary)
-LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
+LUAU_FASTFLAG(LuauCodegenMultiLaneDot)
 LUAU_FASTFLAG(LuauCodegenX64ConflictCheck)
+LUAU_FASTFLAG(LuauCodegenExitSyncExpectedTag)
 
 using namespace Luau::CodeGen;
 
@@ -120,7 +119,6 @@ public:
     int tnil = parseTagName("tnil");
     int tboolean = parseTagName("tboolean");
     int tnumber = parseTagName("tnumber");
-    int tinteger = parseTagName("tinteger");
     int tvector = parseTagName("tvector");
     int tstring = parseTagName("tstring");
     int ttable = parseTagName("ttable");
@@ -638,178 +636,8 @@ bb_0:
 )");
 }
 
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Arithmetic")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // ADD_INT64 constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::ADD_INT64, build.constInt64(10), build.constInt64(20)));
-    // ADD_INT64 wrapping (unsigned arithmetic)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::ADD_INT64, build.constInt64(INT64_MAX), build.constInt64(1)));
-
-    // SUB_INT64 constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::SUB_INT64, build.constInt64(10), build.constInt64(20)));
-    // SUB_INT64 wrapping
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::SUB_INT64, build.constInt64(INT64_MIN), build.constInt64(1)));
-
-    // MUL_INT64 constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::MUL_INT64, build.constInt64(6), build.constInt64(7)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, 30i
-   STORE_INT64 R1, -9223372036854775808i
-   STORE_INT64 R2, -10i
-   STORE_INT64 R3, 9223372036854775807i
-   STORE_INT64 R4, 42i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Bitwise")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    IrOp unk = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-
-    // BITAND_INT64 constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::BITAND_INT64, build.constInt64(0xFE), build.constInt64(0x0E)));
-    // BITAND_INT64 identity: x & 0 = 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::BITAND_INT64, unk, build.constInt64(0)));
-    // BITAND_INT64 identity: 0 & x = 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::BITAND_INT64, build.constInt64(0), unk));
-    // BITAND_INT64 identity: x & -1 = x
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::BITAND_INT64, unk, build.constInt64(-1)));
-    // BITAND_INT64 identity: -1 & x = x
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::BITAND_INT64, build.constInt64(-1), unk));
-
-    // BITXOR_INT64 constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::BITXOR_INT64, build.constInt64(0xFE), build.constInt64(0x0E)));
-    // BITXOR_INT64 identity: x ^ 0 = x
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::BITXOR_INT64, unk, build.constInt64(0)));
-    // BITXOR_INT64 identity: 0 ^ x = x
-    build.inst(IrCmd::STORE_INT64, build.vmReg(7), build.inst(IrCmd::BITXOR_INT64, build.constInt64(0), unk));
-
-    // BITOR_INT64 constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(8), build.inst(IrCmd::BITOR_INT64, build.constInt64(0xF0), build.constInt64(0x0E)));
-    // BITOR_INT64 identity: x | 0 = x
-    build.inst(IrCmd::STORE_INT64, build.vmReg(9), build.inst(IrCmd::BITOR_INT64, unk, build.constInt64(0)));
-    // BITOR_INT64 identity: 0 | x = x
-    build.inst(IrCmd::STORE_INT64, build.vmReg(10), build.inst(IrCmd::BITOR_INT64, build.constInt64(0), unk));
-    // BITOR_INT64 identity: x | -1 = -1
-    build.inst(IrCmd::STORE_INT64, build.vmReg(11), build.inst(IrCmd::BITOR_INT64, unk, build.constInt64(-1)));
-    // BITOR_INT64 identity: -1 | x = -1
-    build.inst(IrCmd::STORE_INT64, build.vmReg(12), build.inst(IrCmd::BITOR_INT64, build.constInt64(-1), unk));
-
-    // BITNOT_INT64 constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(13), build.inst(IrCmd::BITNOT_INT64, build.constInt64(0x0E)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   STORE_INT64 R0, 14i
-   STORE_INT64 R1, 0i
-   STORE_INT64 R2, 0i
-   STORE_INT64 R3, %0
-   STORE_INT64 R4, %0
-   STORE_INT64 R5, 240i
-   STORE_INT64 R6, %0
-   STORE_INT64 R7, %0
-   STORE_INT64 R8, 254i
-   STORE_INT64 R9, %0
-   STORE_INT64 R10, %0
-   STORE_INT64 R11, -1i
-   STORE_INT64 R12, -1i
-   STORE_INT64 R13, -15i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftsAndRotates")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // BITLSHIFT_INT64
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::BITLSHIFT_INT64, build.constInt64(0xF), build.constInt64(4)));
-    // BITLSHIFT_INT64 negative shift reverses direction
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::BITLSHIFT_INT64, build.constInt64(0xF0), build.constInt64(-4)));
-    // BITLSHIFT_INT64 out-of-range returns 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::BITLSHIFT_INT64, build.constInt64(0xF), build.constInt64(64)));
-
-    // BITRSHIFT_INT64
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::BITRSHIFT_INT64, build.constInt64(0xF0), build.constInt64(4)));
-
-    // BITARSHIFT_INT64 (sign-extending)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::BITARSHIFT_INT64, build.constInt64(-16), build.constInt64(2)));
-
-    // BITLROTATE_INT64
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::BITLROTATE_INT64, build.constInt64(1), build.constInt64(63)));
-    // BITRROTATE_INT64
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::BITRROTATE_INT64, build.constInt64(1), build.constInt64(1)));
-
-    // BITCOUNTLZ_INT64
-    build.inst(IrCmd::STORE_INT64, build.vmReg(7), build.inst(IrCmd::BITCOUNTLZ_INT64, build.constInt64(0xFF00)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(8), build.inst(IrCmd::BITCOUNTLZ_INT64, build.constInt64(0)));
-
-    // BITCOUNTRZ_INT64
-    build.inst(IrCmd::STORE_INT64, build.vmReg(9), build.inst(IrCmd::BITCOUNTRZ_INT64, build.constInt64(0xFF00)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(10), build.inst(IrCmd::BITCOUNTRZ_INT64, build.constInt64(0)));
-
-    // BYTESWAP_INT64
-    build.inst(IrCmd::STORE_INT64, build.vmReg(11), build.inst(IrCmd::BYTESWAP_INT64, build.constInt64(0x0102030405060708LL)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, 240i
-   STORE_INT64 R1, 15i
-   STORE_INT64 R2, 0i
-   STORE_INT64 R3, 15i
-   STORE_INT64 R4, -4i
-   STORE_INT64 R5, -9223372036854775808i
-   STORE_INT64 R6, -9223372036854775808i
-   STORE_INT64 R7, 48i
-   STORE_INT64 R8, 64i
-   STORE_INT64 R9, 8i
-   STORE_INT64 R10, 64i
-   STORE_INT64 R11, 578437695752307201i
-   RETURN 0u
-
-)");
-}
-
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Comparisons")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -882,10 +710,41 @@ bb_0:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Arithmetic")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    build.beginBlock(block);
+
+    const auto checkResult = [this](int reg, IrOp result, int64_t expected)
+    {
+        IrOp equal = build.inst(IrCmd::CMP_INT64, result, build.constInt64(expected), build.cond(IrCondition::Equal));
+        build.inst(IrCmd::STORE_INT, build.vmReg(reg), equal);
+    };
+
+    checkResult(0, build.inst(IrCmd::ADD_INT64, build.constInt64(10), build.constInt64(20)), 30);
+    checkResult(1, build.inst(IrCmd::ADD_INT64, build.constInt64(INT64_MAX), build.constInt64(1)), INT64_MIN);
+    checkResult(2, build.inst(IrCmd::SUB_INT64, build.constInt64(10), build.constInt64(20)), -10);
+    checkResult(3, build.inst(IrCmd::SUB_INT64, build.constInt64(INT64_MIN), build.constInt64(1)), INT64_MAX);
+    checkResult(4, build.inst(IrCmd::MUL_INT64, build.constInt64(6), build.constInt64(7)), 42);
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constantFold();
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_INT R0, 1i
+   STORE_INT R1, 1i
+   STORE_INT R2, 1i
+   STORE_INT R3, 1i
+   STORE_INT R4, 1i
+   RETURN 0u
+
+)");
+}
+
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
@@ -916,10 +775,22 @@ bb_1:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "RawInt64OutOfRangeConversion")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    build.beginBlock(block);
+    IrOp conversion = build.inst(IrCmd::NUM_TO_INT64, build.constDouble(1e19));
+    IrOp equal = build.inst(IrCmd::CMP_INT64, conversion, build.constInt64(0), build.cond(IrCondition::Equal));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), equal);
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constantFold();
+    CHECK(build.function.instOp(conversion).cmd == IrCmd::NUM_TO_INT64);
+}
+
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFoldPass")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
@@ -927,7 +798,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFoldPass")
 
     // CHECK_CMP_INT64 where condition is true: guard passes, gets killed
     build.inst(IrCmd::CHECK_CMP_INT64, build.constInt64(5), build.constInt64(0), build.cond(IrCondition::NotEqual), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(42));
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
@@ -938,237 +808,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFoldPass")
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
-   STORE_INT64 R0, 42i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ArithmeticExtended")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // MUL_INT64 overflow wrapping
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::MUL_INT64, build.constInt64(INT64_MAX), build.constInt64(2)));
-    // MUL_INT64 with zero
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::MUL_INT64, build.constInt64(INT64_MAX), build.constInt64(0)));
-    // MUL_INT64 with -1 (negation via multiply)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::MUL_INT64, build.constInt64(42), build.constInt64(-1)));
-
-    // ADD_INT64 with zero (identity)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::ADD_INT64, build.constInt64(100), build.constInt64(0)));
-    // SUB_INT64 self (should be zero)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::SUB_INT64, build.constInt64(100), build.constInt64(100)));
-
-    // ADD_INT64 negative numbers
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::ADD_INT64, build.constInt64(-10), build.constInt64(-20)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, -2i
-   STORE_INT64 R1, 0i
-   STORE_INT64 R2, -42i
-   STORE_INT64 R3, 100i
-   STORE_INT64 R4, 0i
-   STORE_INT64 R5, -30i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftEdgeCases")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // BITRSHIFT_INT64 negative shift reverses to left shift
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::BITRSHIFT_INT64, build.constInt64(0xF), build.constInt64(-4)));
-    // BITRSHIFT_INT64 out-of-range returns 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::BITRSHIFT_INT64, build.constInt64(0xF), build.constInt64(64)));
-
-    // BITARSHIFT_INT64 with negative number, large shift (>63) fills with sign
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::BITARSHIFT_INT64, build.constInt64(-1), build.constInt64(64)));
-    // BITARSHIFT_INT64 with positive number, large shift (>63) fills with 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::BITARSHIFT_INT64, build.constInt64(1), build.constInt64(64)));
-    // BITARSHIFT_INT64 negative shift reverses to left shift
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::BITARSHIFT_INT64, build.constInt64(0xF), build.constInt64(-4)));
-    // BITARSHIFT_INT64 large negative shift (<-63) returns 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::BITARSHIFT_INT64, build.constInt64(0xF), build.constInt64(-64)));
-
-    // BITLSHIFT_INT64 with 0 shift amount
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::BITLSHIFT_INT64, build.constInt64(0xFF), build.constInt64(0)));
-
-    // BITLROTATE_INT64 with full rotation (mod 64 = 0)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(7), build.inst(IrCmd::BITLROTATE_INT64, build.constInt64(0xFF), build.constInt64(64)));
-    // BITRROTATE_INT64 with 0 rotation
-    build.inst(IrCmd::STORE_INT64, build.vmReg(8), build.inst(IrCmd::BITRROTATE_INT64, build.constInt64(0xFF), build.constInt64(0)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, 240i
-   STORE_INT64 R1, 0i
-   STORE_INT64 R2, -1i
-   STORE_INT64 R3, 0i
-   STORE_INT64 R4, 240i
-   STORE_INT64 R5, 0i
-   STORE_INT64 R6, 255i
-   STORE_INT64 R7, 255i
-   STORE_INT64 R8, 255i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64BitwiseExtended")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // BITNOT_INT64 of 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::BITNOT_INT64, build.constInt64(0)));
-    // BITNOT_INT64 of -1
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::BITNOT_INT64, build.constInt64(-1)));
-
-    // BITAND_INT64 self identity (both const equal)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::BITAND_INT64, build.constInt64(0xABCD), build.constInt64(0xABCD)));
-    // BITXOR_INT64 same value (both const equal) = 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::BITXOR_INT64, build.constInt64(0xABCD), build.constInt64(0xABCD)));
-    // BITOR_INT64 with self
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::BITOR_INT64, build.constInt64(0xABCD), build.constInt64(0xABCD)));
-
-    // BITCOUNTLZ_INT64 of 1 (63 leading zeros for 64-bit)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::BITCOUNTLZ_INT64, build.constInt64(1)));
-    // BITCOUNTLZ_INT64 of -1 (all bits set, 0 leading zeros)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::BITCOUNTLZ_INT64, build.constInt64(-1)));
-
-    // BITCOUNTRZ_INT64 of 1 (0 trailing zeros)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(7), build.inst(IrCmd::BITCOUNTRZ_INT64, build.constInt64(1)));
-    // BITCOUNTRZ_INT64 of -1 (0 trailing zeros)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(8), build.inst(IrCmd::BITCOUNTRZ_INT64, build.constInt64(-1)));
-    // BITCOUNTRZ_INT64 of a power of 2
-    build.inst(IrCmd::STORE_INT64, build.vmReg(9), build.inst(IrCmd::BITCOUNTRZ_INT64, build.constInt64(1LL << 32)));
-
-    // BYTESWAP_INT64 of 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(10), build.inst(IrCmd::BYTESWAP_INT64, build.constInt64(0)));
-    // BYTESWAP_INT64 of -1 (all bytes 0xFF, swaps to itself)
-    build.inst(IrCmd::STORE_INT64, build.vmReg(11), build.inst(IrCmd::BYTESWAP_INT64, build.constInt64(-1)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, -1i
-   STORE_INT64 R1, 0i
-   STORE_INT64 R2, 43981i
-   STORE_INT64 R3, 0i
-   STORE_INT64 R4, 43981i
-   STORE_INT64 R5, 63i
-   STORE_INT64 R6, 0i
-   STORE_INT64 R7, 0i
-   STORE_INT64 R8, 0i
-   STORE_INT64 R9, 32i
-   STORE_INT64 R10, 0i
-   STORE_INT64 R11, -1i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionOpsPreserved")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    IrOp a = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-    IrOp b = build.inst(IrCmd::LOAD_INT64, build.vmReg(1));
-
-    // Division operations don't constant-fold (divisor may be zero at runtime), verify they are preserved
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::DIV_INT64, a, b));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::IDIV_INT64, a, b));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::UDIV_INT64, a, b));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::REM_INT64, a, b));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::UREM_INT64, a, b));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(7), build.inst(IrCmd::MOD_INT64, a, b));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   %1 = LOAD_INT64 R1
-   %2 = DIV_INT64 %0, %1
-   STORE_INT64 R2, %2
-   %4 = IDIV_INT64 %0, %1
-   STORE_INT64 R3, %4
-   %6 = UDIV_INT64 %0, %1
-   STORE_INT64 R4, %6
-   %8 = REM_INT64 %0, %1
-   STORE_INT64 R5, %8
-   %10 = UREM_INT64 %0, %1
-   STORE_INT64 R6, %10
-   %12 = MOD_INT64 %0, %1
-   STORE_INT64 R7, %12
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivGuardFoldKnownNonZero")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-    IrOp fallback = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    IrOp a = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-
-    // When divisor is a known non-zero constant, the CHECK_CMP_INT64 guard folds away
-    build.inst(IrCmd::CHECK_CMP_INT64, build.constInt64(7), build.constInt64(0), build.cond(IrCondition::NotEqual), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::DIV_INT64, a, build.constInt64(7)));
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    build.beginBlock(fallback);
-    build.inst(IrCmd::RETURN, build.constUint(1));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   %2 = DIV_INT64 %0, 7i
-   STORE_INT64 R1, %2
    RETURN 0u
 
 )");
@@ -1176,8 +815,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivGuardZeroDivisorJumps")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
@@ -1185,7 +822,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivGuardZeroDivisorJumps")
 
     // When divisor is known-zero, the guard condition fails and we jump to fallback
     build.inst(IrCmd::CHECK_CMP_INT64, build.constInt64(0), build.constInt64(0), build.cond(IrCondition::NotEqual), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(99));
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
@@ -1204,173 +840,8 @@ bb_1:
 )");
 }
 
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64SelectPreservedWithDifferentBranches")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    IrOp a = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-    IrOp b = build.inst(IrCmd::LOAD_INT64, build.vmReg(1));
-
-    // SELECT_INT64 with different result branches must be preserved through constant folding
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::SELECT_INT64, a, b, a, b, build.cond(IrCondition::Less)));
-    // SELECT_INT64 with same value for comparison but different results
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::SELECT_INT64, a, a, a, b, build.cond(IrCondition::LessEqual)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   %1 = LOAD_INT64 R1
-   %2 = SELECT_INT64 %0, %1, %0, %1, lt
-   STORE_INT64 R2, %2
-   %4 = SELECT_INT64 %0, %0, %0, %1, le
-   STORE_INT64 R3, %4
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NegationConstFold")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // Negation is implemented as SUB_INT64(0, x). With constant x, should fold.
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::SUB_INT64, build.constInt64(0), build.constInt64(42)));
-    // Negation of INT64_MIN wraps to itself
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::SUB_INT64, build.constInt64(0), build.constInt64(INT64_MIN)));
-    // Negation of 0 is 0
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::SUB_INT64, build.constInt64(0), build.constInt64(0)));
-    // Negation of -1
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::SUB_INT64, build.constInt64(0), build.constInt64(-1)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, -42i
-   STORE_INT64 R1, -9223372036854775808i
-   STORE_INT64 R2, 0i
-   STORE_INT64 R3, 1i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionConstProp")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // INT64_TO_NUM followed by duplicate INT64_TO_NUM of same source should be deduped by constprop
-    IrOp val = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-    IrOp asNum1 = build.inst(IrCmd::INT64_TO_NUM, val);
-    IrOp asNum2 = build.inst(IrCmd::INT64_TO_NUM, val);
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), asNum1);
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), asNum2);
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constPropInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   %1 = INT64_TO_NUM %0
-   STORE_DOUBLE R1, %1
-   STORE_DOUBLE R2, %1
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionDedup")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // Multiple NUM_TO_INT64 of the same source should be deduplicated by constprop
-    IrOp dbl = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
-    IrOp i1 = build.inst(IrCmd::NUM_TO_INT64, dbl);
-    IrOp i2 = build.inst(IrCmd::NUM_TO_INT64, dbl);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), i1);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), i2);
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constPropInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_DOUBLE R0
-   %1 = NUM_TO_INT64 %0
-   STORE_INT64 R1, %1
-   STORE_INT64 R2, %1
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionStoreForward")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // Store a division result, then load it back; the load should be forwarded
-    IrOp a = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-    IrOp b = build.inst(IrCmd::LOAD_INT64, build.vmReg(1));
-    IrOp divResult = build.inst(IrCmd::DIV_INT64, a, b);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), divResult);
-
-    IrOp loaded = build.inst(IrCmd::LOAD_INT64, build.vmReg(2));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), loaded);
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constPropInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   %1 = LOAD_INT64 R1
-   %2 = DIV_INT64 %0, %1
-   STORE_INT64 R2, %2
-   STORE_INT64 R3, %2
-   RETURN 0u
-
-)");
-}
-
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
@@ -1378,7 +849,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFold")
 
     // Unsigned comparison: -1 as uint64 is UINT64_MAX, which is > 0
     build.inst(IrCmd::CHECK_CMP_INT64, build.constInt64(-1), build.constInt64(0), build.cond(IrCondition::UnsignedGreater), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(1));
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
@@ -1390,7 +860,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFold")
     // Guard passes (UINT64_MAX > 0 is true), so it should be eliminated
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
-   STORE_INT64 R0, 1i
    RETURN 0u
 
 )");
@@ -1398,8 +867,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFoldFail")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
@@ -1407,7 +874,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFoldFail")
 
     // 0 is NOT UnsignedGreater than -1 (i.e. UINT64_MAX), so guard fails
     build.inst(IrCmd::CHECK_CMP_INT64, build.constInt64(0), build.constInt64(-1), build.cond(IrCondition::UnsignedGreater), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(1));
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
@@ -1427,99 +893,8 @@ bb_1:
 )");
 }
 
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ArithChainConstFold")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // Chain of arithmetic that should all fold: ((10 + 20) * 3) - 5
-    IrOp add = build.inst(IrCmd::ADD_INT64, build.constInt64(10), build.constInt64(20));
-    IrOp mul = build.inst(IrCmd::MUL_INT64, add, build.constInt64(3));
-    IrOp sub = build.inst(IrCmd::SUB_INT64, mul, build.constInt64(5));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), sub);
-
-    // Bitwise chain: (0xFF & 0x0F) | 0xF0 = 0xFF
-    IrOp band = build.inst(IrCmd::BITAND_INT64, build.constInt64(0xFF), build.constInt64(0x0F));
-    IrOp bor = build.inst(IrCmd::BITOR_INT64, band, build.constInt64(0xF0));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), bor);
-
-    // Shift chain: (1 << 10) >> 5 = 32
-    IrOp lshift = build.inst(IrCmd::BITLSHIFT_INT64, build.constInt64(1), build.constInt64(10));
-    IrOp rshift = build.inst(IrCmd::BITRSHIFT_INT64, lshift, build.constInt64(5));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), rshift);
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, 85i
-   STORE_INT64 R1, 255i
-   STORE_INT64 R2, 32i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64BitwiseLargeValues")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // Test with values that exercise the upper 32 bits (beyond int32 range)
-    int64_t hiVal = int64_t(0x8000000000000000LL); // INT64_MIN
-    int64_t hiMask = int64_t(0xFFFFFFFF00000000LL);
-    int64_t loMask = int64_t(0x00000000FFFFFFFFLL);
-
-    // AND with high mask extracts upper 32 bits
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::BITAND_INT64, build.constInt64(0x123456789ABCDEF0LL), build.constInt64(hiMask)));
-    // AND with low mask extracts lower 32 bits
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::BITAND_INT64, build.constInt64(0x123456789ABCDEF0LL), build.constInt64(loMask)));
-    // XOR of INT64_MIN with itself
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::BITXOR_INT64, build.constInt64(hiVal), build.constInt64(hiVal)));
-    // OR combining high and low halves
-    build.inst(
-        IrCmd::STORE_INT64,
-        build.vmReg(3),
-        build.inst(IrCmd::BITOR_INT64, build.constInt64(0xFF00000000000000LL), build.constInt64(0x00000000000000FFLL))
-    );
-
-    // BYTESWAP of a value with distinct bytes
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::BYTESWAP_INT64, build.constInt64(int64_t(0x0123456789ABCDEFLL))));
-
-    // Left rotate by 32 swaps high and low halves
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::BITLROTATE_INT64, build.constInt64(0x0000000100000002LL), build.constInt64(32)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, 1311768464867721216i
-   STORE_INT64 R1, 2596069104i
-   STORE_INT64 R2, 0i
-   STORE_INT64 R3, -72057594037927681i
-   STORE_INT64 R4, -1167088121787636991i
-   STORE_INT64 R5, 8589934593i
-   RETURN 0u
-
-)");
-}
-
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ComparisonBoundaryValues")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -1580,142 +955,14 @@ bb_0:
 )");
 }
 
-TEST_CASE_FIXTURE(IrBuilderFixture, "DseInt64Overwrite")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp entry = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(entry);
-
-    IrOp val = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-
-    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(1.0));
-
-    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tinteger));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), val);
-
-    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
-
-    updateUseCounts(build.function);
-    computeCfgInfo(build.function);
-    constPropInBlockChains(build);
-    markDeadStoresInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-; in regs: R0
-   %0 = LOAD_INT64 R0
-   STORE_SPLIT_TVALUE R1, tinteger, %0
-   RETURN R1, 1i
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionConstFold")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::DIV_INT64, build.constInt64(42), build.constInt64(7)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::DIV_INT64, build.constInt64(-7), build.constInt64(2)));
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::IDIV_INT64, build.constInt64(-7), build.constInt64(2)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::IDIV_INT64, build.constInt64(7), build.constInt64(2)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::IDIV_INT64, build.constInt64(-6), build.constInt64(2)));
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::UDIV_INT64, build.constInt64(-1), build.constInt64(2)));
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::REM_INT64, build.constInt64(7), build.constInt64(3)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(7), build.inst(IrCmd::REM_INT64, build.constInt64(-7), build.constInt64(3)));
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(8), build.inst(IrCmd::UREM_INT64, build.constInt64(-1), build.constInt64(10)));
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(9), build.inst(IrCmd::MOD_INT64, build.constInt64(-7), build.constInt64(3)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(10), build.inst(IrCmd::MOD_INT64, build.constInt64(7), build.constInt64(3)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(11), build.inst(IrCmd::MOD_INT64, build.constInt64(7), build.constInt64(-3)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, 6i
-   STORE_INT64 R1, -3i
-   STORE_INT64 R2, -4i
-   STORE_INT64 R3, 3i
-   STORE_INT64 R4, -3i
-   STORE_INT64 R5, 9223372036854775807i
-   STORE_INT64 R6, 1i
-   STORE_INT64 R7, -1i
-   STORE_INT64 R8, 5i
-   STORE_INT64 R9, 2i
-   STORE_INT64 R10, 1i
-   STORE_INT64 R11, -2i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionUnsafeCasesNotFolded")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::DIV_INT64, build.constInt64(42), build.constInt64(0)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::DIV_INT64, build.constInt64(INT64_MIN), build.constInt64(-1)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::IDIV_INT64, build.constInt64(42), build.constInt64(0)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::REM_INT64, build.constInt64(42), build.constInt64(0)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::REM_INT64, build.constInt64(INT64_MIN), build.constInt64(-1)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::UDIV_INT64, build.constInt64(42), build.constInt64(0)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::MOD_INT64, build.constInt64(INT64_MIN), build.constInt64(-1)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = DIV_INT64 42i, 0i
-   STORE_INT64 R0, %0
-   %2 = DIV_INT64 -9223372036854775808i, -1i
-   STORE_INT64 R1, %2
-   %4 = IDIV_INT64 42i, 0i
-   STORE_INT64 R2, %4
-   %6 = REM_INT64 42i, 0i
-   STORE_INT64 R3, %6
-   %8 = REM_INT64 -9223372036854775808i, -1i
-   STORE_INT64 R4, %8
-   %10 = UDIV_INT64 42i, 0i
-   STORE_INT64 R5, %10
-   %12 = MOD_INT64 -9223372036854775808i, -1i
-   STORE_INT64 R6, %12
-   RETURN 0u
-
-)");
-}
-
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldSafe")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
 
     build.inst(IrCmd::CHECK_DIV_INT64, build.constInt64(100), build.constInt64(7), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(99));
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
@@ -1726,7 +973,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldSafe")
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
-   STORE_INT64 R0, 99i
    RETURN 0u
 
 )");
@@ -1734,15 +980,12 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldZeroDivisor")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
 
     build.inst(IrCmd::CHECK_DIV_INT64, build.constInt64(100), build.constInt64(0), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(99));
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
@@ -1763,15 +1006,12 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldOverflow")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
 
     build.inst(IrCmd::CHECK_DIV_INT64, build.constInt64(INT64_MIN), build.constInt64(-1), fallback);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(99));
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
@@ -1792,8 +1032,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -1801,11 +1039,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionConstFold")
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.inst(IrCmd::INT64_TO_NUM, build.constInt64(42)));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.inst(IrCmd::INT64_TO_NUM, build.constInt64(0)));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.inst(IrCmd::INT64_TO_NUM, build.constInt64(-100)));
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::NUM_TO_INT64, build.constDouble(42.0)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::NUM_TO_INT64, build.constDouble(0.0)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::NUM_TO_INT64, build.constDouble(-100.0)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(6), build.inst(IrCmd::NUM_TO_INT64, build.constDouble(3.7)));
 
     build.inst(IrCmd::RETURN, build.constUint(0));
 
@@ -1817,83 +1050,6 @@ bb_0:
    STORE_DOUBLE R0, 42
    STORE_DOUBLE R1, 0
    STORE_DOUBLE R2, -100
-   STORE_INT64 R3, 42i
-   STORE_INT64 R4, 0i
-   STORE_INT64 R5, -100i
-   STORE_INT64 R6, 3i
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumToInt64OutOfRangeNotFolded")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::NUM_TO_INT64, build.constDouble(1e19)));
-    build.inst(
-        IrCmd::STORE_INT64,
-        build.vmReg(1),
-        build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0)))
-    );
-    build.inst(
-        IrCmd::STORE_INT64,
-        build.vmReg(2),
-        build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), build.constDouble(0.0)))
-    );
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    // 1e19 is beyond INT64_MAX, so it shouldn't fold
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = NUM_TO_INT64 1e+19
-   STORE_INT64 R0, %0
-   %3 = NUM_TO_INT64 nan
-   STORE_INT64 R1, %3
-   %6 = NUM_TO_INT64 inf
-   STORE_INT64 R2, %6
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftBoundary63")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::BITLSHIFT_INT64, build.constInt64(1), build.constInt64(63)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::BITRSHIFT_INT64, build.constInt64(INT64_MIN), build.constInt64(63)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::BITARSHIFT_INT64, build.constInt64(-1), build.constInt64(63)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(3), build.inst(IrCmd::BITARSHIFT_INT64, build.constInt64(INT64_MAX), build.constInt64(63)));
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(4), build.inst(IrCmd::BITLSHIFT_INT64, build.constInt64(INT64_MIN), build.constInt64(-63)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(5), build.inst(IrCmd::BITRSHIFT_INT64, build.constInt64(1), build.constInt64(-63)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constantFold();
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, -9223372036854775808i
-   STORE_INT64 R1, 1i
-   STORE_INT64 R2, -1i
-   STORE_INT64 R3, 0i
-   STORE_INT64 R4, 1i
-   STORE_INT64 R5, -9223372036854775808i
    RETURN 0u
 
 )");
@@ -1975,33 +1131,6 @@ bb_0:
 
 bb_1:
    RETURN 1u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64SplitTvalueStoreConstProp")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp entry = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(entry);
-
-    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tinteger));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(42));
-
-    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
-
-    updateUseCounts(build.function);
-    computeCfgInfo(build.function);
-    constPropInBlockChains(build);
-    markDeadStoresInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_TAG R0, tinteger
-   STORE_INT64 R0, 42i
-   RETURN R0, 1i
 
 )");
 }
@@ -2532,133 +1661,6 @@ bb_0:
    STORE_TAG R9, %18
    STORE_INT R10, %14
    STORE_DOUBLE R11, %16
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "RememberInt64Values")
-{
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(42));
-
-    // We know the constant from this load
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::LOAD_INT64, build.vmReg(0)));
-
-    // Redundant store of same constant should be removed
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.constInt64(42));
-
-    // Override with unknown invalidates
-    build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::LOAD_INT64, build.vmReg(5)));
-
-    // So now the load has to be made
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::LOAD_INT64, build.vmReg(0)));
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constPropInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   STORE_INT64 R0, 42i
-   STORE_INT64 R1, 42i
-   %4 = LOAD_INT64 R5
-   STORE_INT64 R0, %4
-   STORE_INT64 R2, %4
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // NUM_TO_INT64(INT64_TO_NUM(x)) != x
-    IrOp intVal = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-    IrOp dblVal = build.inst(IrCmd::INT64_TO_NUM, intVal);
-    IrOp backToInt = build.inst(IrCmd::NUM_TO_INT64, dblVal);
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), backToInt);
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constPropInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   %1 = INT64_TO_NUM %0
-   %2 = NUM_TO_INT64 %1
-   STORE_INT64 R1, %2
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64StoreForwardToLoad")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // Store a computed int64 value
-    IrOp val = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), val);
-
-    // Loading back should forward to the stored value
-    IrOp loaded = build.inst(IrCmd::LOAD_INT64, build.vmReg(1));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), loaded);
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constPropInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   STORE_INT64 R1, %0
-   STORE_INT64 R2, %0
-   RETURN 0u
-
-)");
-}
-
-TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DuplicateStoreRemoval")
-{
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger3, true}};
-
-    IrOp block = build.block(IrBlockKind::Internal);
-
-    build.beginBlock(block);
-
-    // Store a computed value
-    IrOp val = build.inst(IrCmd::LOAD_INT64, build.vmReg(0));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), val);
-
-    // Store the same value to the same register
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), val);
-
-    build.inst(IrCmd::RETURN, build.constUint(0));
-
-    updateUseCounts(build.function);
-    constPropInBlockChains(build);
-
-    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
-bb_0:
-   %0 = LOAD_INT64 R0
-   STORE_INT64 R1, %0
    RETURN 0u
 
 )");
@@ -4080,8 +3082,6 @@ bb_3:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagsAreJoinedFromFallbackPredecessor")
 {
-    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
     IrOp exit = build.block(IrBlockKind::Internal);
@@ -4135,8 +3135,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagsEstablishedBeforeFallbackBranchPropagateThroughMerge")
 {
-    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
     IrOp merge = build.block(IrBlockKind::Internal);
@@ -4197,8 +3195,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "FallbackClobberDoesNotPropagateOverwrittenTag")
 {
-    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
     IrOp merge = build.block(IrBlockKind::Internal);
@@ -4251,8 +3247,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "FallbackMultipleBranchPointsFromSameBlockIntersect")
 {
-    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
     IrOp merge = build.block(IrBlockKind::Internal);
@@ -4315,8 +3309,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "FallbackReachedByFoldedUnconditionalJump")
 {
-    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
     IrOp merge = build.block(IrBlockKind::Internal);
@@ -4435,6 +3427,82 @@ bb_3:
 bb_4:
 ; predecessors: bb_2
 ; in regs: R0
+   RETURN R0, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "ForwardSplitStore1")
+{
+    ScopedFastFlag luauCodegenForwardSplitStore{FFlag::LuauCodegenForwardSplitStore, true};
+
+    build.beginBlock(build.block(IrBlockKind::Internal));
+
+    IrOp number = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    build.inst(IrCmd::STORE_SPLIT_TVALUE, build.vmReg(1), build.constTag(tnumber), number);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1)));
+
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = LOAD_DOUBLE R0
+   STORE_SPLIT_TVALUE R1, tnumber, %0
+   STORE_DOUBLE R2, %0
+   RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "ForwardSplitStore2")
+{
+    ScopedFastFlag luauCodegenForwardSplitStore{FFlag::LuauCodegenForwardSplitStore, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.fallbackBlock(0);
+    IrOp fallback2 = build.fallbackBlock(1);
+
+    build.beginBlock(entry);
+
+    IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(0));
+    IrOp node = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table, build.constUint(0), build.vmConst(1));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, node, build.vmConst(1), fallback);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), build.inst(IrCmd::LOAD_TVALUE, node, build.constInt(0)));
+    build.inst(IrCmd::STORE_SPLIT_TVALUE, build.vmReg(1), build.constTag(ttable), table);
+
+    // Second load through the same table stored with a split instruction can disappear
+    IrOp copy = build.inst(IrCmd::LOAD_POINTER, build.vmReg(1));
+    IrOp otherNode = build.inst(IrCmd::GET_SLOT_NODE_ADDR, copy, build.constUint(2), build.vmConst(1));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, otherNode, build.vmConst(1), fallback2);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(3), build.inst(IrCmd::LOAD_TVALUE, otherNode, build.constInt(0)));
+
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(2));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    // Will not be needed after the optimization
+    build.beginBlock(fallback2);
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = LOAD_POINTER R0
+   %1 = GET_SLOT_NODE_ADDR %0, 0u, K1
+   CHECK_SLOT_MATCH %1, K1, bb_fallback_1
+   %3 = LOAD_TVALUE %1, 0i
+   STORE_TVALUE R2, %3
+   STORE_SPLIT_TVALUE R1, ttable, %0
+   STORE_TVALUE R3, %3
+   RETURN R2, 2i
+
+bb_fallback_1:
    RETURN R0, 1i
 
 )");
@@ -4957,8 +4025,6 @@ bb_8:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "EntryBlockBackEdgeTagPropagation")
 {
-    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp target = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
@@ -7056,8 +6122,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VersionLimitChecks")
 {
-    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp unrelated = build.block(IrBlockKind::Internal);
     IrOp next = build.block(IrBlockKind::Internal);
@@ -9033,6 +8097,128 @@ bb_exit_1:
    STORE_TAG R1, tnumber
    STORE_DOUBLE R1, %15
    JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncHintedPartialStoreTag")
+{
+    ScopedFastFlag luauCodegenExitSyncExpectedTag{FFlag::LuauCodegenExitSyncExpectedTag, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+    build.beginBlock(block);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(1)), build.constTag(tnumber), build.vmExit(0));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(2)), build.constTag(tnumber), build.vmExit(0));
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp add = build.inst(IrCmd::ADD_NUM, load, build.constDouble(1.0));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), add);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.constDouble(6.0));
+    build.inst(IrCmd::STORE_SPLIT_TVALUE, build.vmReg(3), build.constTag(tnumber), add);
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(1));
+
+    IrOp result = build.inst(IrCmd::UINT_TO_NUM, build.inst(IrCmd::NUM_TO_UINT, add));
+    build.inst(IrCmd::STORE_SPLIT_TVALUE, build.vmReg(0), build.constTag(tnumber), result);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R1, R2
+   %0 = LOAD_TAG R1
+   CHECK_TAG %0, tnumber, exit(0)
+   %2 = LOAD_TAG R2
+   CHECK_TAG %2, tnumber, exit(0)
+   %4 = LOAD_DOUBLE R0
+   %5 = ADD_NUM %4, 1
+   CHECK_SAFE_ENV bb_exit_1
+   ; exit sync: R3, R2, R1, {%5}
+   %10 = NUM_TO_UINT %5
+   %11 = UINT_TO_NUM %10
+   STORE_SPLIT_TVALUE R0, tnumber, %11
+   RETURN R0, 1i
+
+bb_exit_1:
+   STORE_SPLIT_TVALUE R3, tnumber, %5
+   STORE_DOUBLE R2, 6
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %5
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "PackedBufferStoreForwardingAndPartialWrite")
+{
+    build.beginBlock(build.block(IrBlockKind::Internal));
+
+    IrOp pointer = build.inst(IrCmd::LOAD_POINTER, build.vmReg(0));
+    IrOp vector = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(1));
+    build.inst(IrCmd::BUFFER_WRITEF32X4, pointer, build.constInt(0), vector, build.constTag(tuserdata));
+
+    IrOp forwarded = build.inst(IrCmd::BUFFER_READF32X4, pointer, build.constInt(0), build.constTag(tuserdata));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), forwarded);
+    build.inst(IrCmd::BUFFER_WRITEF32, pointer, build.constInt(12), build.constDouble(99), build.constTag(tuserdata));
+
+    IrOp reloaded = build.inst(IrCmd::BUFFER_READF32X4, pointer, build.constInt(0), build.constTag(tuserdata));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(3), reloaded);
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = LOAD_POINTER R0
+   %1 = LOAD_TVALUE R1
+   BUFFER_WRITEF32X4 %0, 0i, %1, tuserdata
+   STORE_TVALUE R2, %1
+   BUFFER_WRITEF32 %0, 12i, 99, tuserdata
+   %6 = BUFFER_READF32X4 %0, 0i, tuserdata
+   STORE_TVALUE R3, %6
+   RETURN R2, 2i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "PackedBufferVectorLanes")
+{
+    ScopedFastFlag luauCodegenMultiLaneDot{FFlag::LuauCodegenMultiLaneDot, true};
+
+    build.beginBlock(build.block(IrBlockKind::Internal));
+
+    IrOp vector = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0));
+    IrOp tagged = build.inst(IrCmd::TAG_VECTOR, vector);
+    IrOp untagged = build.inst(IrCmd::UNTAG_VECTOR, tagged);
+    IrOp duplicate = build.inst(IrCmd::UNTAG_VECTOR, untagged);
+    IrOp three = build.inst(IrCmd::DOT_VEC, tagged, duplicate, build.constInt(3));
+    IrOp four = build.inst(IrCmd::DOT_VEC, tagged, duplicate, build.constInt(4));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.inst(IrCmd::FLOAT_TO_NUM, three));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.inst(IrCmd::FLOAT_TO_NUM, four));
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = LOAD_TVALUE R0
+   %1 = TAG_VECTOR %0
+   %2 = UNTAG_VECTOR %1
+   %4 = DOT_VEC %0, %2, 3i
+   %5 = DOT_VEC %1, %2, 4i
+   %6 = FLOAT_TO_NUM %4
+   STORE_DOUBLE R1, %6
+   %8 = FLOAT_TO_NUM %5
+   STORE_DOUBLE R2, %8
+   RETURN R1, 2i
 
 )");
 }

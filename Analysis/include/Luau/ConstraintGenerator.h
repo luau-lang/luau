@@ -163,6 +163,7 @@ struct ConstraintGenerator
     DenseHashMap<AstExpr*, Inference> inferredExprCache;
 
     DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords;
+    DenseHashSet<AstStatClass*> duplicateClassDecls;
 
     DcrLogger* logger;
 
@@ -303,7 +304,8 @@ private:
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     LUAU_NOINLINE void prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block);
-    void prototypeClass(const ScopePtr& scope, AstStatClass* classDecl, TypeId classObjectTy);
+    ClassDeclRecord prototypeClass(const ScopePtr& scope, AstStatClass* classDecl, TypeId classObjectTy, Name className);
+    TypeId resolveSuperclass(const ScopePtr& scope, AstStatClass* statClass, TypeId superValueTy);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 

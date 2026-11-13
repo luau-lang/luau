@@ -19,7 +19,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAGVARIABLE(LuauCodegenUpdateSafeEnvList)
 LUAU_FASTFLAGVARIABLE(LuauCodegenCmpAnySideEffecting)
 
@@ -181,13 +180,11 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
     case IrCmd::CHECK_DIV_INT64:
         return IrValueKind::None;
-    case IrCmd::LOAD_INT64:
     case IrCmd::ADD_INT64:
     case IrCmd::SUB_INT64:
     case IrCmd::MUL_INT64:
@@ -316,6 +313,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Float;
     case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
+    case IrCmd::UNTAG_VECTOR:
         return IrValueKind::Tvalue;
     case IrCmd::TRUNCATE_UINT:
         return IrValueKind::Int;
@@ -328,6 +326,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Int;
     case IrCmd::CHECK_FASTCALL_RES:
     case IrCmd::INVOKE_FASTPCALL:
+    case IrCmd::INVOKE_NAMECALL:
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
     case IrCmd::CONSTRUCT:
@@ -422,11 +421,18 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::BUFFER_WRITEF32:
     case IrCmd::BUFFER_WRITEF64:
     case IrCmd::BUFFER_WRITEI64:
+    case IrCmd::BUFFER_WRITEF32X4:
         return IrValueKind::None;
     case IrCmd::BUFFER_READF32:
         return IrValueKind::Float;
     case IrCmd::BUFFER_READF64:
         return IrValueKind::Double;
+    case IrCmd::BUFFER_READVECTOR:
+        return IrValueKind::Tvalue;
+    case IrCmd::BUFFER_WRITEVECTOR:
+        return IrValueKind::None;
+    case IrCmd::BUFFER_READF32X4:
+        return IrValueKind::Tvalue;
     case IrCmd::JUMP_CMP_PROTOID:
         return IrValueKind::None;
     }
@@ -530,8 +536,6 @@ static LuauBytecodeType getBytecodeTypeForTag(uint8_t tag)
         return LBC_TYPE_ANY; // Doesn't have an LBC mapping
     case LUA_TNUMBER:
         return LBC_TYPE_NUMBER;
-    case LUA_TINTEGER:
-        return LBC_TYPE_INTEGER;
     case LUA_TVECTOR:
         return LBC_TYPE_VECTOR;
     case LUA_TSTRING:
@@ -1178,8 +1182,6 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                     sameValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::Equal);
                 else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
                     sameValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::Equal);
-                else if (function.tagOp(OP_B(inst)) == LUA_TINTEGER)
-                    sameValue = compare(function.int64Op(OP_C(inst)), function.int64Op(OP_D(inst)), IrCondition::Equal);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
@@ -1207,8 +1209,6 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                     differentValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::NotEqual);
                 else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
                     differentValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::NotEqual);
-                else if (function.tagOp(OP_B(inst)) == LUA_TINTEGER)
-                    differentValue = compare(function.int64Op(OP_C(inst)), function.int64Op(OP_D(inst)), IrCondition::NotEqual);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
@@ -1974,7 +1974,7 @@ void propagateTagsFromPredecessors(
         return;
 
     // Entry block has an implicit edge as the function start and it has no tag info at that moment
-    if (FFlag::LuauCodegenPropagateFallbackTags && function.entryBlock == blockIdx)
+    if (function.entryBlock == blockIdx)
         return;
 
     BlockIteratorWrapper preds = predecessors(function.cfg, blockIdx);
@@ -2041,8 +2041,6 @@ std::optional<uint8_t> tryGetLuauTagForBcType(uint8_t bcType, bool ignoreOptiona
         return LUA_TBOOLEAN;
     case LBC_TYPE_NUMBER:
         return LUA_TNUMBER;
-    case LBC_TYPE_INTEGER:
-        return LUA_TINTEGER;
     case LBC_TYPE_STRING:
         return LUA_TSTRING;
     case LBC_TYPE_TABLE:
