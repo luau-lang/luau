@@ -303,16 +303,6 @@ bool NormalizedType::isSubtypeOfTable() const
            !hasThreads() && !hasBuffers() && !hasFunctions() && !hasTyvars();
 }
 
-bool NormalizedType::isSubtypeOfTable() const
-{
-    if (FFlag::LuauIntegerType2)
-        return hasTables() && !hasTops() && !hasBooleans() && !hasExternTypes() && !hasErrors() && !hasNils() && !hasNumbers() && !hasStrings()
-                && !hasThreads() && !hasBuffers() && !hasFunctions() && !hasTyvars() && !hasIntegers();
-    else
-        return hasTables() && !hasTops() && !hasBooleans() && !hasExternTypes() && !hasErrors() && !hasNils() && !hasNumbers() && !hasStrings()
-                && !hasThreads() && !hasBuffers() && !hasFunctions() && !hasTyvars();
-}
-
 bool NormalizedType::shouldSuppressErrors() const
 {
     return hasErrors() || get<AnyType>(tops);
