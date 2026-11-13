@@ -551,6 +551,7 @@ if(TARGET Luau.UnitTest)
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
         tests/TableFormat.test.cpp
+        tests/TableFormatExamples.h
         tests/ToDot.test.cpp
         tests/TopoSort.test.cpp
         tests/ToString.test.cpp
@@ -610,6 +611,7 @@ if(TARGET Luau.Conformance)
         tests/IrLowering.test.cpp
         tests/SharedCodeAllocator.test.cpp
         tests/TableFormat.vm.test.cpp
+        tests/TableFormatExamples.h
         tests/main.cpp)
 endif()
 

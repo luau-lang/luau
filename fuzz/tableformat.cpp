@@ -2,9 +2,10 @@
 #include "Luau/TableFormat.h"
 #include "Luau/Common.h"
 
-#include <string>
-
+#include <stdint.h>
 #include <string.h>
+
+using namespace Luau::TableFormat;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
 {
@@ -14,20 +15,20 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
             flag->value = true;
     }
 
-    Luau::TableFormat::ReadResult result = Luau::TableFormat::read(std::string_view(reinterpret_cast<const char*>(Data), Size));
+    ReadResult result = read(std::string_view(reinterpret_cast<const char*>(Data), Size));
     LUAU_ASSERT(result.table.has_value() == result.errors.empty());
 
     if (!result.table)
         return 0;
 
     // Anything that can be read can be written, and writing what was written reads back identically.
-    Luau::TableFormat::WriteResult written = Luau::TableFormat::write(*result.table);
+    WriteResult written = write(*result.table);
     LUAU_ASSERT(written.source);
 
-    Luau::TableFormat::ReadResult reread = Luau::TableFormat::read(*written.source);
+    ReadResult reread = read(*written.source);
     LUAU_ASSERT(reread.table);
 
-    Luau::TableFormat::WriteResult rewritten = Luau::TableFormat::write(*reread.table);
+    WriteResult rewritten = write(*reread.table);
     LUAU_ASSERT(rewritten.source == written.source);
     return 0;
 }

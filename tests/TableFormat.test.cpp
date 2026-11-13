@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TableFormat.h"
 
+#include "TableFormatExamples.h"
+
 #include "doctest.h"
 
 #include <cmath>
@@ -26,73 +28,44 @@ static void checkMalformed(const std::string& source)
     CHECK(!result.table);
 }
 
-static double number(const Table& table, const Key& key)
+template<typename T>
+static const T& get(const Table& table, const Key& key)
 {
     const Value* value = table.find(key);
     REQUIRE(value);
-    REQUIRE(value->get_if<double>());
-    return *value->get_if<double>();
+    REQUIRE(value->get_if<T>());
+    return *value->get_if<T>();
 }
-
-static std::string string(const Table& table, const Key& key)
-{
-    const Value* value = table.find(key);
-    REQUIRE(value);
-    REQUIRE(value->get_if<std::string>());
-    return *value->get_if<std::string>();
-}
-
-static const char* const kRfcExample = R"(-- Settings for the example service.
-return {
-    name = "example",
-    enabled = true,
-    retries = 3,
-    timeout = 2.5e3,
-    flags = 0b1010_0001,
-    threshold = -math.huge,
-    origin = vector.create(0, 10, -5),
-    tags = { "fast", "beta", },
-    [1] = "first numeric key";
-    ["display name"] = `Example Service`,
-    limits = {
-        [true] = math.huge,
-        [false] = 0,
-    },
-}
-)";
 
 TEST_SUITE_BEGIN("TableFormat");
 
 TEST_CASE("read_rfc_example")
 {
-    Table table = readOk(kRfcExample);
+    Table table = readOk(kTableFormatRfcExample);
 
     CHECK(table.getArray().empty());
     CHECK(table.getMap().size() == 11);
-    CHECK(string(table, std::string("name")) == "example");
-    CHECK(*table.find(std::string("enabled"))->get_if<bool>() == true);
-    CHECK(number(table, std::string("retries")) == 3);
-    CHECK(number(table, std::string("timeout")) == 2500);
-    CHECK(number(table, std::string("flags")) == 0xa1);
-    CHECK(number(table, std::string("threshold")) == -HUGE_VAL);
-    CHECK(string(table, 1.0) == "first numeric key");
-    CHECK(string(table, std::string("display name")) == "Example Service");
+    CHECK(get<std::string>(table, "name") == "example");
+    CHECK(get<bool>(table, "enabled") == true);
+    CHECK(get<double>(table, "retries") == 3);
+    CHECK(get<double>(table, "timeout") == 2500);
+    CHECK(get<double>(table, "flags") == 0xa1);
+    CHECK(get<double>(table, "threshold") == -HUGE_VAL);
+    CHECK(get<std::string>(table, 1.0) == "first numeric key");
+    CHECK(get<std::string>(table, "display name") == "Example Service");
 
-    const Vector* origin = table.find(std::string("origin"))->get_if<Vector>();
-    REQUIRE(origin);
-    CHECK(origin->x == 0.0f);
-    CHECK(origin->y == 10.0f);
-    CHECK(origin->z == -5.0f);
+    const Vector& origin = get<Vector>(table, "origin");
+    CHECK(origin.x == 0.0f);
+    CHECK(origin.y == 10.0f);
+    CHECK(origin.z == -5.0f);
 
-    const Table* tags = table.find(std::string("tags"))->get_if<Table>();
-    REQUIRE(tags);
-    REQUIRE(tags->getArray().size() == 2);
-    CHECK(string(*tags, 2.0) == "beta");
+    const Table& tags = get<Table>(table, "tags");
+    REQUIRE(tags.getArray().size() == 2);
+    CHECK(get<std::string>(tags, 2.0) == "beta");
 
-    const Table* limits = table.find(std::string("limits"))->get_if<Table>();
-    REQUIRE(limits);
-    CHECK(number(*limits, true) == HUGE_VAL);
-    CHECK(number(*limits, false) == 0);
+    const Table& limits = get<Table>(table, "limits");
+    CHECK(get<double>(limits, true) == HUGE_VAL);
+    CHECK(get<double>(limits, false) == 0);
 
     // The map part keeps the order the keys were written in.
     CHECK(*table.getMap()[0].key.get_if<std::string>() == "name");
@@ -109,39 +82,36 @@ TEST_CASE("read_literals")
     })");
 
     REQUIRE(table.getArray().size() == 16);
-    CHECK(string(table, 1.0) == "single");
-    CHECK(string(table, 3.0) == "raw");
-    CHECK(string(table, 4.0) == "raw ]] level");
-    CHECK(string(table, 5.0) == "backtick");
-    CHECK(string(table, 6.0) == "\n\t\\\"AHAskipped");
-    CHECK(number(table, 7.0) == 1000);
-    CHECK(number(table, 8.0) == 255);
-    CHECK(number(table, 9.0) == 3);
-    CHECK(number(table, 10.0) == 0.001);
-    CHECK(number(table, 11.0) == 0.5);
-    CHECK(number(table, 12.0) == 5);
-    CHECK(number(table, 13.0) == 0.1);
-    CHECK(std::signbit(number(table, 14.0)));
-    CHECK(number(table, 15.0) == HUGE_VAL);
+    CHECK(get<std::string>(table, 1.0) == "single");
+    CHECK(get<std::string>(table, 3.0) == "raw");
+    CHECK(get<std::string>(table, 4.0) == "raw ]] level");
+    CHECK(get<std::string>(table, 5.0) == "backtick");
+    CHECK(get<std::string>(table, 6.0) == "\n\t\\\"AHAskipped");
+    CHECK(get<double>(table, 7.0) == 1000);
+    CHECK(get<double>(table, 8.0) == 255);
+    CHECK(get<double>(table, 9.0) == 3);
+    CHECK(get<double>(table, 10.0) == 0.001);
+    CHECK(get<double>(table, 11.0) == 0.5);
+    CHECK(get<double>(table, 12.0) == 5);
+    CHECK(get<double>(table, 13.0) == 0.1);
+    CHECK(std::signbit(get<double>(table, 14.0)));
+    CHECK(get<double>(table, 15.0) == HUGE_VAL);
 }
 
 TEST_CASE("read_blessed_names")
 {
     Table table = readOk("{ math.nan, math.huge, -math.huge, vector.create(1, 2), vector.create(-1, math.huge, math.nan) }");
 
-    CHECK(std::isnan(number(table, 1.0)));
-    CHECK(number(table, 2.0) == HUGE_VAL);
-    CHECK(number(table, 3.0) == -HUGE_VAL);
+    CHECK(std::isnan(get<double>(table, 1.0)));
+    CHECK(get<double>(table, 2.0) == HUGE_VAL);
+    CHECK(get<double>(table, 3.0) == -HUGE_VAL);
 
-    const Vector* two = table.find(4.0)->get_if<Vector>();
-    REQUIRE(two);
-    CHECK(two->z == 0.0f);
+    CHECK(get<Vector>(table, 4.0).z == 0.0f);
 
-    const Vector* three = table.find(5.0)->get_if<Vector>();
-    REQUIRE(three);
-    CHECK(three->x == -1.0f);
-    CHECK(three->y == HUGE_VALF);
-    CHECK(std::isnan(three->z));
+    const Vector& three = get<Vector>(table, 5.0);
+    CHECK(three.x == -1.0f);
+    CHECK(three.y == HUGE_VALF);
+    CHECK(std::isnan(three.z));
 }
 
 TEST_CASE("read_syntax_variations")
@@ -231,17 +201,12 @@ TEST_CASE("read_rejects_malformed")
 TEST_CASE("read_allows_unknown_escapes")
 {
     // Luau reads an unknown escape as the character after the backslash.
-    CHECK(string(readOk(R"({ "\q\w\X41", '\%', `\!` })"), 1.0) == "qwX41");
+    CHECK(get<std::string>(readOk(R"({ "\q\w\X41", '\%', `\!` })"), 1.0) == "qwX41");
 }
 
 TEST_CASE("read_allows_escaped_nul")
 {
-    CHECK(string(readOk("{ \"a\\0b\" }"), 1.0) == std::string("a\0b", 3));
-}
-
-static std::string nested(size_t depth)
-{
-    return std::string(depth, '{') + std::string(depth, '}');
+    CHECK(get<std::string>(readOk("{ \"a\\0b\" }"), 1.0) == std::string("a\0b", 3));
 }
 
 static Table nestedTable(size_t depth)
@@ -260,11 +225,11 @@ static Table nestedTable(size_t depth)
 
 TEST_CASE("depth_limit")
 {
-    readOk(nested(kMaxDepth));
-    checkMalformed(nested(kMaxDepth + 1));
-    checkMalformed(nested(100000));
+    readOk(tableFormatNested(kMaxDepth));
+    checkMalformed(tableFormatNested(kMaxDepth + 1));
+    checkMalformed(tableFormatNested(100000));
 
-    ReadResult tooDeep = read(nested(kMaxDepth + 1));
+    ReadResult tooDeep = read(tableFormatNested(kMaxDepth + 1));
     REQUIRE(tooDeep.errors.size() == 1);
     CHECK(tooDeep.errors[0].getMessage() == "Exceeded the maximum table nesting depth of 255");
 
@@ -332,8 +297,8 @@ TEST_CASE("table_keys")
     CHECK(table.find("1"));
     CHECK(table.insert(false, true));
 
-    CHECK(string(table, 2.0) == "b");
-    CHECK(string(table, 3.0) == "c");
+    CHECK(get<std::string>(table, 2.0) == "b");
+    CHECK(get<std::string>(table, 3.0) == "c");
     CHECK(!table.find(4.0));
     CHECK(!table.find(1.5));
     CHECK(!table.find(std::nan("")));
@@ -348,17 +313,17 @@ TEST_CASE("table_erase")
     CHECK(table.erase(1.0));
     CHECK(table.getArray().empty());
 
-    CHECK(table.erase(std::string("b")));
-    CHECK(!table.erase(std::string("b")));
-    CHECK(number(table, std::string("a")) == 1);
-    CHECK(number(table, std::string("c")) == 3);
+    CHECK(table.erase("b"));
+    CHECK(!table.erase("b"));
+    CHECK(get<double>(table, "a") == 1);
+    CHECK(get<double>(table, "c") == 3);
     CHECK(table.getMap().size() == 2);
 
     // Erasing the last map entry keeps the rest findable.
-    CHECK(table.erase(std::string("c")));
-    CHECK(number(table, std::string("a")) == 1);
-    CHECK(table.insert(std::string("d"), 4.0));
-    CHECK(number(table, std::string("d")) == 4);
+    CHECK(table.erase("c"));
+    CHECK(get<double>(table, "a") == 1);
+    CHECK(table.insert("d", 4.0));
+    CHECK(get<double>(table, "d") == 4);
 
     // The array part can grow back into keys that were erased.
     CHECK(table.append(true));
@@ -368,9 +333,9 @@ TEST_CASE("table_edit_in_place")
 {
     Table table = readOk("{ nested = { count = 1 } }");
 
-    Table* nested = table.find(std::string("nested"))->get_if<Table>();
+    Table* nested = table.find("nested")->get_if<Table>();
     REQUIRE(nested);
-    *nested->find(std::string("count")) = 2.0;
+    *nested->find("count") = 2.0;
 
     CHECK(write(table).source == "{\n    nested = {\n        count = 2,\n    },\n}\n");
 }
@@ -381,17 +346,17 @@ TEST_CASE("table_copy_and_move")
 
     Table copy = table;
     *copy.find("a")->get_if<Table>()->find("b")->get_if<Table>()->find(1.0) = 10.0;
-    CHECK(number(*table.find("a")->get_if<Table>()->find("b")->get_if<Table>(), 1.0) == 1);
-    CHECK(number(*copy.find("a")->get_if<Table>()->find("b")->get_if<Table>(), 1.0) == 10);
-    CHECK(number(copy, "c") == 3);
+    CHECK(get<double>(get<Table>(get<Table>(table, "a"), "b"), 1.0) == 1);
+    CHECK(get<double>(get<Table>(get<Table>(copy, "a"), "b"), 1.0) == 10);
+    CHECK(get<double>(copy, "c") == 3);
 
     // A table can be replaced by one of its own nested tables.
     table = std::move(*table.find("a")->get_if<Table>());
     CHECK(table.getMap().size() == 1);
     REQUIRE(table.find("b"));
 
-    copy = *copy.find("a")->get_if<Table>();
-    CHECK(number(*copy.find("b")->get_if<Table>(), 1.0) == 10);
+    copy = get<Table>(copy, "a");
+    CHECK(get<double>(get<Table>(copy, "b"), 1.0) == 10);
 }
 
 TEST_CASE("table_deep_nesting_doesnt_overflow_stack")
@@ -461,16 +426,12 @@ TEST_CASE("write_whole_numbers")
 
 TEST_CASE("write_numbers_and_strings_round_trip")
 {
-    const double numbers[] = {0.1, 1.0 / 3.0, 1e300, 5e-324, 2.2250738585072014e-308, 9007199254740993.0, 123456789012345680000.0, -1e-7};
-    const float floats[] = {0.1f, 1.0f / 3.0f, 3.4028235e38f, 1e-45f, -16777217.0f};
-    const std::string strings[] = {std::string("\0\0001", 3), "\a\b\f\v\x7f", "\"'`{}[[]]", "\xff\xfe", "multi\r\nline"};
-
     Table table;
-    for (double n : numbers)
+    for (double n : kTableFormatRoundTripNumbers)
         CHECK(table.append(n));
-    for (float f : floats)
+    for (float f : kTableFormatRoundTripFloats)
         CHECK(table.append(Vector{f, -f, 0.0f}));
-    for (const std::string& s : strings)
+    for (const std::string& s : kTableFormatRoundTripStrings)
         CHECK(table.insert(s, s));
 
     std::string source = *write(table).source;
@@ -479,12 +440,13 @@ TEST_CASE("write_numbers_and_strings_round_trip")
 
     CHECK(write(copy).source == source);
 
-    for (size_t i = 0; i < std::size(numbers); i++)
-        CHECK(number(copy, double(i + 1)) == numbers[i]);
-    for (size_t i = 0; i < std::size(floats); i++)
-        CHECK(copy.find(double(std::size(numbers) + i + 1))->get_if<Vector>()->x == floats[i]);
-    for (const std::string& s : strings)
-        CHECK(string(copy, s) == s);
+    double index = 1;
+    for (double n : kTableFormatRoundTripNumbers)
+        CHECK(get<double>(copy, index++) == n);
+    for (float f : kTableFormatRoundTripFloats)
+        CHECK(get<Vector>(copy, index++).x == f);
+    for (const std::string& s : kTableFormatRoundTripStrings)
+        CHECK(get<std::string>(copy, s) == s);
 }
 
 TEST_SUITE_END();

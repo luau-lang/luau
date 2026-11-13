@@ -12,14 +12,14 @@
 #include <limits>
 #include <stdio.h>
 #include <stdlib.h>
+#include <type_traits>
 #include <utility>
-
-LUAU_FASTINT(LuauParseErrorLimit)
 
 namespace Luau::TableFormat
 {
 
-static std::string describeKey(const Key& key);
+// Like the parser, stop reporting errors once there are too many to be useful.
+constexpr size_t kMaxErrors = 100;
 
 static std::string depthError()
 {
@@ -92,7 +92,8 @@ bool KeyEqual::operator()(const Key& lhs, const Key& rhs) const
 Table::Table(const Table& other)
 {
     // Copying a nested table recursively would recurse once per level of nesting, so instead we copy one table at a
-    // time, leaving nested tables empty and filling them in later.
+    // time, leaving each nested table empty and queueing it to be filled in. Reserving both parts up front keeps the
+    // queued tables in place.
     std::vector<std::pair<const Table*, Table*>> pending = {{&other, this}};
 
     while (!pending.empty())
@@ -102,21 +103,23 @@ Table::Table(const Table& other)
 
         to->arrayPart.reserve(from->arrayPart.size());
         for (const Value& value : from->arrayPart)
-            to->arrayPart.push_back(value.get_if<Table>() ? Value(Table()) : value);
+        {
+            if (const Table* nested = value.get_if<Table>())
+                pending.push_back({nested, to->arrayPart.emplace_back(Table()).get_if<Table>()});
+            else
+                to->arrayPart.push_back(value);
+        }
 
         to->mapPart.reserve(from->mapPart.size());
         for (const Entry& entry : from->mapPart)
-            to->mapPart.push_back(Entry{entry.key, entry.value.get_if<Table>() ? Value(Table()) : entry.value});
+        {
+            if (const Table* nested = entry.value.get_if<Table>())
+                pending.push_back({nested, to->mapPart.emplace_back(Entry{entry.key, Table()}).value.get_if<Table>()});
+            else
+                to->mapPart.push_back(entry);
+        }
 
         to->mapIndex = from->mapIndex;
-
-        for (size_t i = 0; i < from->arrayPart.size(); i++)
-            if (const Table* nested = from->arrayPart[i].get_if<Table>())
-                pending.push_back({nested, to->arrayPart[i].get_if<Table>()});
-
-        for (size_t i = 0; i < from->mapPart.size(); i++)
-            if (const Table* nested = from->mapPart[i].value.get_if<Table>())
-                pending.push_back({nested, to->mapPart[i].value.get_if<Table>()});
     }
 }
 
@@ -192,10 +195,9 @@ bool Table::append(Value value)
 
 bool Table::insert(Key key, Value value)
 {
-    if (!isValidKey(key) || find(key))
+    if (!isValidKey(key) || arrayIndex(key, arrayPart.size()) || !mapIndex.try_insert(key, mapPart.size()).second)
         return false;
 
-    mapIndex[key] = mapPart.size();
     mapPart.push_back(Entry{std::move(key), std::move(value)});
     return true;
 }
@@ -263,15 +265,214 @@ static std::optional<double> readNumber(AstExpr* expr)
 
 static Value toValue(Key key)
 {
-    if (bool* boolean = key.get_if<bool>())
-        return *boolean;
-    if (double* number = key.get_if<double>())
-        return *number;
-    if (std::string* string = key.get_if<std::string>())
-        return std::move(*string);
+    return visit(
+        [](auto& primitive) -> Value
+        {
+            return std::move(primitive);
+        },
+        key
+    );
+}
 
-    LUAU_ASSERT(key.get_if<Vector>());
-    return *key.get_if<Vector>();
+// Matches what the lexer accepts as a name, which is always ASCII, regardless of locale.
+static bool isNameStart(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+static bool isName(const std::string& string)
+{
+    if (string.empty() || !isNameStart(string[0]))
+        return false;
+
+    for (char c : string)
+        if (!isNameStart(c) && !(c >= '0' && c <= '9'))
+            return false;
+
+    return !Lexer::isReserved(string);
+}
+
+struct Writer
+{
+    std::string out;
+    bool tooDeep = false;
+
+    // Writes the shortest number that reads back as exactly the same value.
+    template<typename T>
+    void writeNumber(T number)
+    {
+        if (std::isnan(number))
+            out += "math.nan";
+        else if (std::isinf(number))
+            out += number > 0 ? "math.huge" : "-math.huge";
+        else if (number == std::floor(number) && std::fabs(number) < 1e15)
+        {
+            // Whole numbers are written out in full, as %g would switch to an exponent for values like 100.
+            char buffer[32];
+            snprintf(buffer, sizeof(buffer), "%.0f", double(number));
+            out += buffer;
+        }
+        else
+        {
+            // Any number with no more than digits10 significant digits reads back exactly when written with that many,
+            // and %g drops trailing zeros, so the search can start there.
+            char buffer[32];
+            for (int precision = std::numeric_limits<T>::digits10; precision <= std::numeric_limits<T>::max_digits10; precision++)
+            {
+                snprintf(buffer, sizeof(buffer), "%.*g", precision, double(number));
+                if (T(strtod(buffer, nullptr)) == number)
+                    break;
+            }
+            out += buffer;
+        }
+    }
+
+    void writePrimitive(bool boolean)
+    {
+        out += boolean ? "true" : "false";
+    }
+
+    void writePrimitive(double number)
+    {
+        writeNumber(number);
+    }
+
+    void writePrimitive(const Vector& vector)
+    {
+        out += "vector.create(";
+        writeNumber(vector.x);
+        out += ", ";
+        writeNumber(vector.y);
+        out += ", ";
+        writeNumber(vector.z);
+        out += ")";
+    }
+
+    void writePrimitive(const std::string& string)
+    {
+        out += '"';
+
+        for (unsigned char c : string)
+        {
+            switch (c)
+            {
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (c < ' ' || c == 127)
+                {
+                    // Always three digits, so a digit that follows isn't read as part of the escape.
+                    char buffer[8];
+                    snprintf(buffer, sizeof(buffer), "\\%03d", c);
+                    out += buffer;
+                }
+                else
+                    out += char(c);
+            }
+        }
+
+        out += '"';
+    }
+
+    void writeKey(const Key& key)
+    {
+        if (const std::string* name = key.get_if<std::string>(); name && isName(*name))
+            out += *name;
+        else
+        {
+            out += '[';
+            writeKeyValue(key);
+            out += ']';
+        }
+
+        out += " = ";
+    }
+
+    void writeKeyValue(const Key& key)
+    {
+        visit(
+            [this](const auto& primitive)
+            {
+                writePrimitive(primitive);
+            },
+            key
+        );
+    }
+
+    void writeValue(const Value& value, size_t depth)
+    {
+        visit(
+            [&](const auto& alternative)
+            {
+                if constexpr (std::is_same_v<std::decay_t<decltype(alternative)>, Table>)
+                    writeTable(alternative, depth + 1);
+                else
+                    writePrimitive(alternative);
+            },
+            value
+        );
+    }
+
+    void indent(size_t depth)
+    {
+        out.append(depth * 4, ' ');
+    }
+
+    // The root table has a depth of 1, and its entries are indented once.
+    void writeTable(const Table& table, size_t depth)
+    {
+        if (depth > kMaxDepth)
+        {
+            tooDeep = true;
+            return;
+        }
+
+        if (table.getArray().empty() && table.getMap().empty())
+        {
+            out += "{}";
+            return;
+        }
+
+        out += "{\n";
+
+        for (const Value& value : table.getArray())
+        {
+            indent(depth);
+            writeValue(value, depth);
+            out += ",\n";
+        }
+
+        for (const Entry& entry : table.getMap())
+        {
+            indent(depth);
+            writeKey(entry.key);
+            writeValue(entry.value, depth);
+            out += ",\n";
+        }
+
+        indent(depth - 1);
+        out += "}";
+    }
+};
+
+static std::string describeKey(const Key& key)
+{
+    Writer writer;
+    writer.writeKeyValue(key);
+    return std::move(writer.out);
 }
 
 // Walks the AST of a parsed file, accepting only what the Luau Table format allows.
@@ -281,15 +482,13 @@ struct Reader
 
     void report(const Location& location, std::string message)
     {
-        // Like the parser, stop reporting errors once there are too many to be useful.
-        size_t limit = size_t(FInt::LuauParseErrorLimit);
-        if (errors.size() > limit)
+        if (errors.size() > kMaxErrors)
             return;
 
         errors.emplace_back(location, std::move(message));
 
-        if (errors.size() == limit)
-            errors.emplace_back(location, format("Reached error limit (%d)", int(FInt::LuauParseErrorLimit)));
+        if (errors.size() == kMaxErrors)
+            errors.emplace_back(location, format("Reached error limit (%zu)", kMaxErrors));
     }
 
     std::optional<Key> readPrimitive(AstExpr* expr)
@@ -390,49 +589,24 @@ struct Reader
 
             if (item.kind == AstExprTable::Item::Kind::List)
             {
-                Key implicitKey = double(table.getArray().size() + 1);
                 if (value && !table.append(std::move(*value)))
-                    report(item.value->location, "Duplicate key " + describeKey(implicitKey));
+                    report(item.value->location, "Duplicate key " + describeKey(double(table.getArray().size() + 1)));
 
                 continue;
             }
 
-            std::optional<Key> key;
-            if (item.kind == AstExprTable::Item::Kind::Record)
-            {
-                AstExprConstantString* name = item.key->as<AstExprConstantString>();
-                LUAU_ASSERT(name);
-                key = std::string(name->value.data, name->value.size);
-            }
-            else
-                key = readKey(item.key);
+            // `name = value` keys are constant strings, so they read like any other key.
+            std::optional<Key> key = readKey(item.key);
 
-            if (!key || !value)
-                continue;
-
-            if (table.find(*key))
-            {
-                report(item.key->location, "Duplicate key " + describeKey(*key));
-                continue;
-            }
-
-            bool inserted = table.insert(std::move(*key), std::move(*value));
-            LUAU_ASSERT(inserted);
+            // Keys that get this far are valid, so insert only fails for duplicates. The key is moved into insert, so it's
+            // read again to describe it.
+            if (key && value && !table.insert(std::move(*key), std::move(*value)))
+                report(item.key->location, "Duplicate key " + describeKey(*readKey(item.key)));
         }
 
         return table;
     }
 };
-
-// Converts a position from the lexer, which counts lines by '\n' and columns in bytes, to an offset into the source.
-static size_t offsetOf(std::string_view source, Position position)
-{
-    size_t offset = 0;
-    for (unsigned int line = 0; line < position.line; line++)
-        offset = source.find('\n', offset) + 1;
-
-    return offset + position.column;
-}
 
 static Position positionOf(std::string_view source, size_t offset)
 {
@@ -451,19 +625,22 @@ static Position positionOf(std::string_view source, size_t offset)
 }
 
 // Finds the root expression: either the whole file, or the single value returned by the file.
-static AstExpr* parseRoot(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+static AstExprTable* parseRoot(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
 {
     Lexer lexer(source.data(), source.size(), names);
     lexer.setSkipComments(true);
 
     // Parser::parseExpr doesn't reject every trailing token, so we find where the root expression should end ourselves.
     Lexeme first = lexer.next();
-    Lexeme last = first;
     Lexeme beforeLast = first;
-    for (Lexeme lexeme = first; lexeme.type != Lexeme::Eof; lexeme = lexer.next())
+    Lexeme last = first;
+    size_t lastEnd = lexer.getOffset();
+
+    while (lexer.next().type != Lexeme::Eof)
     {
         beforeLast = last;
-        last = lexeme;
+        last = lexer.current();
+        lastEnd = lexer.getOffset();
     }
 
     Position end = last.location.end;
@@ -471,7 +648,7 @@ static AstExpr* parseRoot(std::string_view source, AstNameTable& names, Allocato
     // A single `;` at the end of the file is ignored, so we parse only what comes before it.
     if (last.type == ';')
     {
-        source = source.substr(0, offsetOf(source, last.location.begin));
+        source = source.substr(0, lastEnd - 1);
         end = beforeLast.location.end;
     }
 
@@ -509,13 +686,11 @@ static AstExpr* parseRoot(std::string_view source, AstNameTable& names, Allocato
         return nullptr;
     }
 
-    if (!root->is<AstExprTable>())
-    {
+    AstExprTable* table = root->as<AstExprTable>();
+    if (!table)
         errors.emplace_back(root->location, "Expected a table");
-        return nullptr;
-    }
 
-    return root;
+    return table;
 }
 
 ReadResult read(std::string_view source)
@@ -533,200 +708,15 @@ ReadResult read(std::string_view source)
         return result;
     }
 
-    AstExpr* root = parseRoot(source, names, allocator, result.errors);
+    AstExprTable* root = parseRoot(source, names, allocator, result.errors);
     if (!root)
         return result;
 
-    Table table = Reader{result.errors}.readTable(root->as<AstExprTable>(), 1);
+    Table table = Reader{result.errors}.readTable(root, 1);
     if (result.errors.empty())
         result.table = std::move(table);
 
     return result;
-}
-
-// Matches what the lexer accepts as a name, which is always ASCII, regardless of locale.
-static bool isNameStart(char c)
-{
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-}
-
-static bool isName(const std::string& string)
-{
-    if (string.empty() || !isNameStart(string[0]))
-        return false;
-
-    for (char c : string)
-        if (!isNameStart(c) && !(c >= '0' && c <= '9'))
-            return false;
-
-    return !Lexer::isReserved(string);
-}
-
-struct Writer
-{
-    std::string out;
-    bool tooDeep = false;
-
-    // The root table has a depth of 1, and its entries are indented once.
-
-    // Writes the shortest number that reads back as exactly the same value.
-    template<typename T>
-    void writeNumber(T number, int maxPrecision)
-    {
-        if (std::isnan(number))
-            out += "math.nan";
-        else if (std::isinf(number))
-            out += number > 0 ? "math.huge" : "-math.huge";
-        else if (number == std::floor(number) && std::fabs(number) < 1e15)
-        {
-            // Whole numbers are written out in full, as %g would switch to an exponent for values like 100.
-            char buffer[32];
-            snprintf(buffer, sizeof(buffer), "%.0f", double(number));
-            out += buffer;
-        }
-        else
-        {
-            char buffer[32];
-            for (int precision = 1; precision <= maxPrecision; precision++)
-            {
-                snprintf(buffer, sizeof(buffer), "%.*g", precision, double(number));
-                if (T(strtod(buffer, nullptr)) == number)
-                    break;
-            }
-            out += buffer;
-        }
-    }
-
-    void writeString(const std::string& string)
-    {
-        out += '"';
-
-        for (unsigned char c : string)
-        {
-            switch (c)
-            {
-            case '"':
-                out += "\\\"";
-                break;
-            case '\\':
-                out += "\\\\";
-                break;
-            case '\n':
-                out += "\\n";
-                break;
-            case '\r':
-                out += "\\r";
-                break;
-            case '\t':
-                out += "\\t";
-                break;
-            default:
-                if (c < ' ' || c == 127)
-                {
-                    // Always three digits, so a digit that follows isn't read as part of the escape.
-                    char buffer[8];
-                    snprintf(buffer, sizeof(buffer), "\\%03d", c);
-                    out += buffer;
-                }
-                else
-                    out += char(c);
-            }
-        }
-
-        out += '"';
-    }
-
-    template<typename T>
-    void writePrimitive(const T& primitive)
-    {
-        if (const bool* boolean = primitive.template get_if<bool>())
-            out += *boolean ? "true" : "false";
-        else if (const double* number = primitive.template get_if<double>())
-            writeNumber(*number, 17);
-        else if (const std::string* string = primitive.template get_if<std::string>())
-            writeString(*string);
-        else if (const Vector* vector = primitive.template get_if<Vector>())
-        {
-            out += "vector.create(";
-            writeNumber(vector->x, 9);
-            out += ", ";
-            writeNumber(vector->y, 9);
-            out += ", ";
-            writeNumber(vector->z, 9);
-            out += ")";
-        }
-        else
-            LUAU_ASSERT(!"Unknown primitive");
-    }
-
-    void writeKey(const Key& key)
-    {
-        if (const std::string* name = key.get_if<std::string>(); name && isName(*name))
-            out += *name;
-        else
-        {
-            out += '[';
-            writePrimitive(key);
-            out += ']';
-        }
-
-        out += " = ";
-    }
-
-    void writeValue(const Value& value, size_t depth)
-    {
-        if (const Table* table = value.get_if<Table>())
-            writeTable(*table, depth + 1);
-        else
-            writePrimitive(value);
-    }
-
-    void indent(size_t depth)
-    {
-        out.append(depth * 4, ' ');
-    }
-
-    void writeTable(const Table& table, size_t depth)
-    {
-        if (depth > kMaxDepth)
-        {
-            tooDeep = true;
-            return;
-        }
-
-        if (table.getArray().empty() && table.getMap().empty())
-        {
-            out += "{}";
-            return;
-        }
-
-        out += "{\n";
-
-        for (const Value& value : table.getArray())
-        {
-            indent(depth);
-            writeValue(value, depth);
-            out += ",\n";
-        }
-
-        for (const Entry& entry : table.getMap())
-        {
-            indent(depth);
-            writeKey(entry.key);
-            writeValue(entry.value, depth);
-            out += ",\n";
-        }
-
-        indent(depth - 1);
-        out += "}";
-    }
-};
-
-static std::string describeKey(const Key& key)
-{
-    Writer writer;
-    writer.writePrimitive(key);
-    return std::move(writer.out);
 }
 
 WriteResult write(const Table& table)
