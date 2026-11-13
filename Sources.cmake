@@ -8,6 +8,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
     Common/include/Luau/InsertionOrderedMap.h
+    Common/include/Luau/NumPrint.h
     Common/include/Luau/SmallVector.h
     Common/include/Luau/StringUtils.h
     Common/include/Luau/TimeTrace.h
@@ -15,6 +16,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/VecDeque.h
 
     Common/src/BytecodeWire.cpp
+    Common/src/NumPrint.cpp
     Common/src/StringUtils.cpp
     Common/src/TimeTrace.cpp
 )
@@ -399,7 +401,6 @@ target_sources(Luau.VM PRIVATE
     VM/src/linit.cpp
     VM/src/lmathlib.cpp
     VM/src/lmem.cpp
-    VM/src/lnumprint.cpp
     VM/src/lobject.cpp
     VM/src/loslib.cpp
     VM/src/lperf.cpp
@@ -537,6 +538,7 @@ if(TARGET Luau.UnitTest)
         tests/NonStrictTypeChecker.test.cpp
         tests/Normalize.test.cpp
         tests/NotNull.test.cpp
+        tests/NumPrint.test.cpp
         tests/OverloadResolver.test.cpp
         tests/Parser.test.cpp
         tests/PrettyPrinter.test.cpp
@@ -550,6 +552,8 @@ if(TARGET Luau.UnitTest)
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
+        tests/TableFormat.test.cpp
+        tests/TableFormatExamples.h
         tests/ToDot.test.cpp
         tests/TopoSort.test.cpp
         tests/ToString.test.cpp
@@ -608,6 +612,8 @@ if(TARGET Luau.Conformance)
         tests/FeedbackVector.test.cpp
         tests/IrLowering.test.cpp
         tests/SharedCodeAllocator.test.cpp
+        tests/TableFormat.vm.test.cpp
+        tests/TableFormatExamples.h
         tests/main.cpp)
 endif()
 
@@ -655,6 +661,14 @@ if(TARGET Luau.Require)
     Require/src/Require.cpp
     Require/src/RequireImpl.cpp
     Require/src/RequireNavigator.cpp)
+endif()
+
+if(TARGET Luau.TableFormat)
+    # Luau.TableFormat Sources
+    target_sources(Luau.TableFormat PRIVATE
+        TableFormat/include/Luau/TableFormat.h
+
+        TableFormat/src/TableFormat.cpp)
 endif()
 
 if(TARGET Luau.Web)

@@ -1,0 +1,672 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/TableFormat.h"
+
+#include "Luau/Ast.h"
+#include "Luau/Common.h"
+#include "Luau/HashUtil.h"
+#include "Luau/Lexer.h"
+#include "Luau/NumPrint.h"
+#include "Luau/Parser.h"
+#include "Luau/StringUtils.h"
+
+#include <cmath>
+#include <limits>
+#include <type_traits>
+#include <utility>
+
+namespace Luau::TableFormat
+{
+
+// Like the parser, stop reporting errors once there are too many to be useful.
+constexpr size_t kMaxErrors = 100;
+
+static std::string depthError()
+{
+    return format("Exceeded the maximum table nesting depth of %zu", kMaxDepth);
+}
+
+static bool isValidKey(const Key& key)
+{
+    if (const double* number = key.get_if<double>())
+        return !std::isnan(*number);
+    if (const Vector* vector = key.get_if<Vector>())
+        return !std::isnan(vector->x) && !std::isnan(vector->y) && !std::isnan(vector->z);
+    return true;
+}
+
+// Returns where a key falls in the array part, if it does.
+static std::optional<size_t> arrayIndex(const Key& key, size_t arraySize)
+{
+    const double* number = key.get_if<double>();
+    if (!number || !(*number >= 1.0 && *number <= double(arraySize)) || *number != std::floor(*number))
+        return std::nullopt;
+
+    return size_t(*number) - 1;
+}
+
+// 0 and -0 are equal, so they must hash equally too.
+template<typename T>
+static size_t hashNumber(T number)
+{
+    return std::hash<T>{}(number == 0 ? T(0) : number);
+}
+
+size_t KeyHash::operator()(const Key& key) const
+{
+    if (const bool* boolean = key.get_if<bool>())
+        return std::hash<bool>{}(*boolean);
+    if (const double* number = key.get_if<double>())
+        return hashNumber(*number);
+    if (const std::string* string = key.get_if<std::string>())
+        return std::hash<std::string>{}(*string);
+
+    const Vector* vector = key.get_if<Vector>();
+    LUAU_ASSERT(vector);
+
+    size_t seed = hashNumber(vector->x);
+    hashCombine(seed, hashNumber(vector->y));
+    hashCombine(seed, hashNumber(vector->z));
+    return seed;
+}
+
+bool KeyEqual::operator()(const Key& lhs, const Key& rhs) const
+{
+    if (lhs.index() != rhs.index())
+        return false;
+
+    if (const bool* boolean = lhs.get_if<bool>())
+        return *boolean == *rhs.get_if<bool>();
+    if (const double* number = lhs.get_if<double>())
+        return *number == *rhs.get_if<double>();
+    if (const std::string* string = lhs.get_if<std::string>())
+        return *string == *rhs.get_if<std::string>();
+
+    const Vector* a = lhs.get_if<Vector>();
+    const Vector* b = rhs.get_if<Vector>();
+    LUAU_ASSERT(a && b);
+
+    return a->x == b->x && a->y == b->y && a->z == b->z;
+}
+
+Table::Table(const Table& other)
+{
+    // Copying a nested table recursively would recurse once per level of nesting, so instead we copy one table at a
+    // time, leaving each nested table empty and queueing it to be filled in. Reserving both parts up front keeps the
+    // queued tables in place.
+    std::vector<std::pair<const Table*, Table*>> pending = {{&other, this}};
+
+    while (!pending.empty())
+    {
+        auto [from, to] = pending.back();
+        pending.pop_back();
+
+        to->arrayPart.reserve(from->arrayPart.size());
+        for (const Value& value : from->arrayPart)
+        {
+            if (const Table* nested = value.get_if<Table>())
+                pending.push_back({nested, to->arrayPart.emplace_back(Table()).get_if<Table>()});
+            else
+                to->arrayPart.push_back(value);
+        }
+
+        to->mapPart.reserve(from->mapPart.size());
+        for (const Entry& entry : from->mapPart)
+        {
+            if (const Table* nested = entry.value.get_if<Table>())
+                pending.push_back({nested, to->mapPart.emplace_back(Entry{entry.key, Table()}).value.get_if<Table>()});
+            else
+                to->mapPart.push_back(entry);
+        }
+
+        to->mapIndex = from->mapIndex;
+    }
+}
+
+Table::Table(Table&& other) noexcept = default;
+
+Table& Table::operator=(const Table& other)
+{
+    if (this != &other)
+        *this = Table(other);
+
+    return *this;
+}
+
+Table& Table::operator=(Table&& other) noexcept
+{
+    // `other` may be nested inside this table, so it has to be moved out before this table's contents are destroyed.
+    Table moved(std::move(other));
+    arrayPart.swap(moved.arrayPart);
+    mapPart.swap(moved.mapPart);
+    std::swap(mapIndex, moved.mapIndex);
+    return *this;
+}
+
+Table::~Table()
+{
+    // Destroying nested tables would recurse once per level of nesting too, so instead we move them out into a list
+    // and destroy them one at a time, each after its own nested tables have been moved out.
+    std::vector<Table> pending;
+
+    auto takeNested = [&pending](Table& table)
+    {
+        for (Value& value : table.arrayPart)
+            if (Table* nested = value.get_if<Table>())
+                pending.push_back(std::move(*nested));
+
+        for (Entry& entry : table.mapPart)
+            if (Table* nested = entry.value.get_if<Table>())
+                pending.push_back(std::move(*nested));
+    };
+
+    takeNested(*this);
+
+    while (!pending.empty())
+    {
+        Table table = std::move(pending.back());
+        pending.pop_back();
+        takeNested(table);
+    }
+}
+
+const Value* Table::find(const Key& key) const
+{
+    if (std::optional<size_t> index = arrayIndex(key, arrayPart.size()))
+        return &arrayPart[*index];
+
+    const size_t* position = mapIndex.find(key);
+    return position ? &mapPart[*position].value : nullptr;
+}
+
+Value* Table::find(const Key& key)
+{
+    return const_cast<Value*>(std::as_const(*this).find(key));
+}
+
+bool Table::append(Value value)
+{
+    if (mapIndex.contains(Key(double(arrayPart.size() + 1))))
+        return false;
+
+    arrayPart.push_back(std::move(value));
+    return true;
+}
+
+bool Table::insert(Key key, Value value)
+{
+    if (!isValidKey(key) || arrayIndex(key, arrayPart.size()) || !mapIndex.try_insert(key, mapPart.size()).second)
+        return false;
+
+    mapPart.push_back(Entry{std::move(key), std::move(value)});
+    return true;
+}
+
+bool Table::erase(const Key& key)
+{
+    if (std::optional<size_t> index = arrayIndex(key, arrayPart.size()))
+    {
+        if (*index != arrayPart.size() - 1)
+            return false;
+
+        arrayPart.pop_back();
+        return true;
+    }
+
+    const size_t* found = mapIndex.find(key);
+    if (!found)
+        return false;
+
+    size_t position = *found;
+    mapIndex.erase(key);
+    mapPart.erase(mapPart.begin() + position);
+
+    // Erasing the last entry is common enough (and cheap enough) to skip renumbering the rest.
+    if (position != mapPart.size())
+    {
+        for (auto& [_, later] : mapIndex)
+            if (later > position)
+                later--;
+    }
+
+    return true;
+}
+
+static bool isGlobalMember(AstExpr* expr, const char* global, const char* member)
+{
+    AstExprIndexName* index = expr->as<AstExprIndexName>();
+    if (!index || index->op != '.' || index->index != member)
+        return false;
+
+    AstExprGlobal* object = index->expr->as<AstExprGlobal>();
+    return object && object->name == global;
+}
+
+// Numbers can be literals, math.huge or math.nan, with unary minus allowed on literals and math.huge.
+static std::optional<double> readNumber(AstExpr* expr)
+{
+    if (AstExprConstantNumber* number = expr->as<AstExprConstantNumber>())
+        return number->value;
+    if (isGlobalMember(expr, "math", "huge"))
+        return std::numeric_limits<double>::infinity();
+    if (isGlobalMember(expr, "math", "nan"))
+        return std::numeric_limits<double>::quiet_NaN();
+
+    if (AstExprUnary* unary = expr->as<AstExprUnary>(); unary && unary->op == AstExprUnary::Op::Minus)
+    {
+        if (AstExprConstantNumber* number = unary->expr->as<AstExprConstantNumber>())
+            return -number->value;
+        if (isGlobalMember(unary->expr, "math", "huge"))
+            return -std::numeric_limits<double>::infinity();
+    }
+
+    return std::nullopt;
+}
+
+static Value toValue(Key key)
+{
+    return visit(
+        [](auto& primitive) -> Value
+        {
+            return std::move(primitive);
+        },
+        key
+    );
+}
+
+struct Writer
+{
+    std::string out;
+    bool tooDeep = false;
+
+    void writePrimitive(bool boolean)
+    {
+        out += boolean ? "true" : "false";
+    }
+
+    void writePrimitive(double number)
+    {
+        if (std::isnan(number))
+            out += "math.nan";
+        else if (std::isinf(number))
+            out += number > 0 ? "math.huge" : "-math.huge";
+        else
+        {
+            char buffer[LUAI_MAXNUM2STR];
+            out.append(buffer, luai_num2str(buffer, number));
+        }
+    }
+
+    void writeComponent(float component)
+    {
+        if (std::isnan(component) || std::isinf(component))
+            return writePrimitive(double(component));
+
+        char buffer[LUAI_MAXNUM2STR];
+        out.append(buffer, luai_num2strf(buffer, component));
+    }
+
+    void writePrimitive(const Vector& vector)
+    {
+        out += "vector.create(";
+        writeComponent(vector.x);
+        out += ", ";
+        writeComponent(vector.y);
+        out += ", ";
+        writeComponent(vector.z);
+        out += ")";
+    }
+
+    void writePrimitive(const std::string& string)
+    {
+        out += '"';
+        out += escape(string);
+        out += '"';
+    }
+
+    void writeKey(const Key& key)
+    {
+        if (const std::string* name = key.get_if<std::string>(); name && Lexer::isName(*name))
+            out += *name;
+        else
+        {
+            out += '[';
+            writeKeyValue(key);
+            out += ']';
+        }
+
+        out += " = ";
+    }
+
+    void writeKeyValue(const Key& key)
+    {
+        visit(
+            [this](const auto& primitive)
+            {
+                writePrimitive(primitive);
+            },
+            key
+        );
+    }
+
+    void writeValue(const Value& value, size_t depth)
+    {
+        visit(
+            [&](const auto& alternative)
+            {
+                if constexpr (std::is_same_v<std::decay_t<decltype(alternative)>, Table>)
+                    writeTable(alternative, depth + 1);
+                else
+                    writePrimitive(alternative);
+            },
+            value
+        );
+    }
+
+    void indent(size_t depth)
+    {
+        out.append(depth * 4, ' ');
+    }
+
+    // The root table has a depth of 1, and its entries are indented once.
+    void writeTable(const Table& table, size_t depth)
+    {
+        if (depth > kMaxDepth)
+        {
+            tooDeep = true;
+            return;
+        }
+
+        if (table.getArray().empty() && table.getMap().empty())
+        {
+            out += "{}";
+            return;
+        }
+
+        out += "{\n";
+
+        for (const Value& value : table.getArray())
+        {
+            indent(depth);
+            writeValue(value, depth);
+            out += ",\n";
+        }
+
+        for (const Entry& entry : table.getMap())
+        {
+            indent(depth);
+            writeKey(entry.key);
+            writeValue(entry.value, depth);
+            out += ",\n";
+        }
+
+        indent(depth - 1);
+        out += "}";
+    }
+};
+
+static std::string describeKey(const Key& key)
+{
+    Writer writer;
+    writer.writeKeyValue(key);
+    return std::move(writer.out);
+}
+
+// Walks the AST of a parsed file, accepting only what the Luau Table format allows.
+struct Reader
+{
+    std::vector<ParseError>& errors;
+
+    void report(const Location& location, std::string message)
+    {
+        if (errors.size() > kMaxErrors)
+            return;
+
+        errors.emplace_back(location, std::move(message));
+
+        if (errors.size() == kMaxErrors)
+            errors.emplace_back(location, format("Reached error limit (%zu)", kMaxErrors));
+    }
+
+    std::optional<Key> readPrimitive(AstExpr* expr)
+    {
+        if (AstExprConstantBool* boolean = expr->as<AstExprConstantBool>())
+            return boolean->value;
+        if (AstExprConstantString* string = expr->as<AstExprConstantString>())
+            return std::string(string->value.data, string->value.size);
+        if (std::optional<double> number = readNumber(expr))
+            return *number;
+
+        if (AstExprInterpString* string = expr->as<AstExprInterpString>())
+        {
+            if (string->expressions.size == 0)
+                return std::string(string->strings.data[0].data, string->strings.data[0].size);
+
+            report(expr->location, "Cannot use string interpolation in Luau Table");
+            return std::nullopt;
+        }
+
+        if (AstExprCall* call = expr->as<AstExprCall>(); call && isGlobalMember(call->func, "vector", "create"))
+            return readVector(call);
+
+        report(expr->location, "Luau Table only allows literal strings, booleans, numbers, vectors and tables");
+        return std::nullopt;
+    }
+
+    std::optional<Key> readVector(AstExprCall* call)
+    {
+        if (call->args.size != 2 && call->args.size != 3)
+        {
+            report(call->location, "vector.create must be given 2 or 3 numbers");
+            return std::nullopt;
+        }
+
+        float components[3] = {};
+        bool valid = true;
+
+        for (size_t i = 0; i < call->args.size; i++)
+        {
+            if (std::optional<double> number = readNumber(call->args.data[i]))
+                components[i] = float(*number);
+            else
+            {
+                report(call->args.data[i]->location, "vector.create must be given numbers");
+                valid = false;
+            }
+        }
+
+        if (!valid)
+            return std::nullopt;
+
+        return Vector{components[0], components[1], components[2]};
+    }
+
+    std::optional<Key> readKey(AstExpr* expr)
+    {
+        if (expr->is<AstExprTable>())
+        {
+            report(expr->location, "Cannot use a table as a key");
+            return std::nullopt;
+        }
+
+        std::optional<Key> key = readPrimitive(expr);
+        if (key && !isValidKey(*key))
+        {
+            report(expr->location, "Cannot use NaN as a key");
+            return std::nullopt;
+        }
+
+        return key;
+    }
+
+    std::optional<Value> readValue(AstExpr* expr, size_t depth)
+    {
+        if (AstExprTable* table = expr->as<AstExprTable>())
+            return readTable(table, depth + 1);
+
+        if (std::optional<Key> primitive = readPrimitive(expr))
+            return toValue(std::move(*primitive));
+
+        return std::nullopt;
+    }
+
+    Table readTable(AstExprTable* expr, size_t depth)
+    {
+        Table table;
+
+        if (depth > kMaxDepth)
+        {
+            report(expr->location, depthError());
+            return table;
+        }
+
+        for (const AstExprTable::Item& item : expr->items)
+        {
+            std::optional<Value> value = readValue(item.value, depth);
+
+            if (item.kind == AstExprTable::Item::Kind::List)
+            {
+                if (value && !table.append(std::move(*value)))
+                    report(item.value->location, "Duplicate key " + describeKey(double(table.getArray().size() + 1)));
+
+                continue;
+            }
+
+            // `name = value` keys are constant strings, so they read like any other key.
+            std::optional<Key> key = readKey(item.key);
+
+            // Keys that get this far are valid, so insert only fails for duplicates. The key is moved into insert, so it's
+            // read again to describe it.
+            if (key && value && !table.insert(std::move(*key), std::move(*value)))
+                report(item.key->location, "Duplicate key " + describeKey(*readKey(item.key)));
+        }
+
+        return table;
+    }
+};
+
+static Position positionOf(std::string_view source, size_t offset)
+{
+    unsigned int line = 0;
+    size_t lineStart = 0;
+    for (size_t i = 0; i < offset; i++)
+    {
+        if (source[i] == '\n')
+        {
+            line++;
+            lineStart = i + 1;
+        }
+    }
+
+    return Position{line, unsigned(offset - lineStart)};
+}
+
+static size_t offsetOf(std::string_view source, Position position)
+{
+    size_t offset = 0;
+    for (unsigned int line = 0; line < position.line; line++)
+        offset = source.find('\n', offset) + 1;
+
+    return offset + position.column;
+}
+
+// Whether the source from an offset onwards is a single `;`, which is ignored at the end of a file.
+static bool isTrailingSemicolon(std::string_view source, size_t offset, Position position, AstNameTable& names)
+{
+    Lexer lexer(source.data() + offset, source.size() - offset, names, position);
+    lexer.setSkipComments(true);
+
+    return lexer.next().type == ';' && lexer.next().type == Lexeme::Eof;
+}
+
+static AstExpr* parseExpr(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+{
+    ParseNodeResult<AstExpr> result = Parser::parseExpr(source.data(), source.size(), names, allocator);
+
+    // A single `;` after the table is ignored, but the parser reports it as an error, so parse again without it.
+    if (result.errors.size() == 1)
+    {
+        Position position = result.errors[0].getLocation().begin;
+        size_t offset = offsetOf(source, position);
+
+        if (isTrailingSemicolon(source, offset, position, names))
+            result = Parser::parseExpr(source.data(), offset, names, allocator);
+    }
+
+    errors = std::move(result.errors);
+    return errors.empty() ? result.root : nullptr;
+}
+
+static AstExpr* parseReturn(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+{
+    // The parser already allows a single `;` after `return`.
+    ParseResult result = Parser::parse(source.data(), source.size(), names, allocator);
+    errors = std::move(result.errors);
+    if (!errors.empty())
+        return nullptr;
+
+    AstStatReturn* ret = result.root->body.size == 1 ? result.root->body.data[0]->as<AstStatReturn>() : nullptr;
+    if (!ret || ret->list.size != 1)
+    {
+        errors.emplace_back(result.root->location, "Expected a single table after 'return'");
+        return nullptr;
+    }
+
+    return ret->list.data[0];
+}
+
+// Finds the root table: either the whole file, or the single value returned by the file.
+static AstExprTable* parseRoot(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+{
+    Lexer lexer(source.data(), source.size(), names);
+    lexer.setSkipComments(true);
+
+    AstExpr* root =
+        lexer.next().type == Lexeme::ReservedReturn ? parseReturn(source, names, allocator, errors) : parseExpr(source, names, allocator, errors);
+    if (!root)
+        return nullptr;
+
+    AstExprTable* table = root->as<AstExprTable>();
+    if (!table)
+        errors.emplace_back(root->location, "Expected a table");
+
+    return table;
+}
+
+ReadResult read(std::string_view source)
+{
+    Allocator allocator;
+    AstNameTable names(allocator);
+
+    ReadResult result;
+
+    // The lexer treats a NUL byte as the end of the source, which would hide anything after it.
+    if (size_t nul = source.find('\0'); nul != std::string_view::npos)
+    {
+        Position position = positionOf(source, nul);
+        result.errors.emplace_back(Location{position, 1}, "NUL bytes must be escaped");
+        return result;
+    }
+
+    AstExprTable* root = parseRoot(source, names, allocator, result.errors);
+    if (!root)
+        return result;
+
+    Table table = Reader{result.errors}.readTable(root, 1);
+    if (result.errors.empty())
+        result.table = std::move(table);
+
+    return result;
+}
+
+WriteResult write(const Table& table)
+{
+    Writer writer;
+    writer.writeTable(table, 1);
+    if (writer.tooDeep)
+        return {std::nullopt, depthError()};
+
+    writer.out += "\n";
+    return {std::move(writer.out), {}};
+}
+
+} // namespace Luau::TableFormat

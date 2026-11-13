@@ -17,6 +17,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauKeyNamesMatchLexer)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -499,6 +500,20 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
     ttv.props.clear();
     ttv.state = TableState::Unsealed;
     CHECK_EQ("{string}", toString(Type{ttv}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "keys_that_arent_names_are_quoted")
+{
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+    ScopedFastFlag sff{FFlag::LuauKeyNamesMatchLexer, true};
+
+    TableType ttv{TableState::Sealed, TypeLevel{}};
+    ttv.props["1a"] = {getBuiltins()->numberType};
+    ttv.props["end"] = {getBuiltins()->numberType};
+    ttv.props["continue"] = {getBuiltins()->numberType};
+    ttv.props["ok"] = {getBuiltins()->numberType};
+
+    CHECK_EQ(R"({ ["1a"]: number, continue: number, ["end"]: number, ok: number })", toString(Type{ttv}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "the_empty_type_pack_should_be_parenthesized")

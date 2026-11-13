@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 LUAU_FASTFLAGVARIABLE(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauParseRejectTrailingToken)
 LUAU_FLAGVERSION(LuauExportValueSyntax, 5)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
@@ -260,7 +261,8 @@ ParseNodeResult<Node> Parser::runParse(const char* buffer, size_t bufferSize, As
         Node* expr = f(p);
         size_t lines = p.lexer.current().location.end.line + (bufferSize > 0 && buffer[bufferSize - 1] != '\n');
 
-        Lexeme eof = p.lexer.next();
+        // The parser has already moved on to the lexeme after what it parsed, so that's the one that must be the end of the file
+        Lexeme eof = FFlag::LuauParseRejectTrailingToken ? p.lexer.current() : p.lexer.next();
         if (eof.type != Lexeme::Eof)
         {
             expr = nullptr;

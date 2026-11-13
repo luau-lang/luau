@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
-# This code can be used to generate power tables for Schubfach algorithm (see lnumprint.cpp)
+# This code can be used to generate power tables for Schubfach algorithm (see Common/src/NumPrint.cpp)
 
 import math
 import sys

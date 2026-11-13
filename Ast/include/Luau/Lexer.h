@@ -7,6 +7,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/Common.h"
 
+#include <string_view>
 #include <vector>
 
 namespace Luau
@@ -185,6 +186,10 @@ public:
     }
 
     static bool isReserved(const std::string& word);
+
+    // Whether the lexer reads all of the string as a single name: ASCII letters, digits and underscores, not starting with a
+    // digit, and not a reserved word.
+    static bool isName(std::string_view word);
 
     static bool fixupQuotedString(std::string& data);
     static void fixupMultilineString(std::string& data);
