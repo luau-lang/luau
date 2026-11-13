@@ -499,6 +499,7 @@ int main(int argc, char** argv)
     Luau::FrontendOptions frontendOptions;
     frontendOptions.retainFullTypeGraphs = annotate;
     frontendOptions.runLintChecks = true;
+    frontendOptions.vectorSize = LUA_VECTOR_SIZE == 4 ? Luau::VectorSize::Four : Luau::VectorSize::Three;
 
     CliFileResolver fileResolver;
     CliConfigResolver configResolver(mode);

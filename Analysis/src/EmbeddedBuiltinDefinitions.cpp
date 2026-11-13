@@ -6,6 +6,7 @@ LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
+LUAU_FASTFLAGVARIABLE(LuauConfigurableVectorSize)
 
 namespace Luau
 {
@@ -349,7 +350,9 @@ static constexpr const char* kBuiltinDefinitionBufferSrcSuffix = R"BUILTIN_SRC(
 
 )BUILTIN_SRC";
 
-static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
+// The vector library's shape depends on the vector width: 4-wide vectors expose a 'w' component and take a
+// fourth argument in 'create'. Both headers are compiled in and selected at runtime; the method list is shared.
+static const char* const kBuiltinDefinitionVector3HeaderSrc = R"BUILTIN_SRC(
 
 -- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
 declare extern type vector with
@@ -359,7 +362,22 @@ declare extern type vector with
 end
 
 declare vector: {
-    create: @checked (x: number, y: number, z: number?) -> vector,
+    create: @checked (x: number, y: number, z: number?) -> vector,)BUILTIN_SRC";
+
+static const char* const kBuiltinDefinitionVector4HeaderSrc = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
+declare extern type vector with
+    read x: number
+    read y: number
+    read z: number
+    read w: number
+end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number?, w: number?) -> vector,)BUILTIN_SRC";
+
+static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
     magnitude: @checked (vec: vector) -> number,
     normalize: @checked (vec: vector) -> vector,
     cross: @checked (vec1: vector, vec2: vector) -> vector,
@@ -387,7 +405,7 @@ declare class: {
 }
 )CLASS_SRC";
 
-std::string getBuiltinDefinitionSource()
+std::string getBuiltinDefinitionSource(VectorSize vectorSize)
 {
     std::string result = FFlag::LuauRemoveLoadstringFromBuiltinDefinitions ? kBuiltinDefinitionBaseSrc : kBuiltinDefinitionBaseSrc_DEPRECATED;
 
@@ -408,6 +426,10 @@ std::string getBuiltinDefinitionSource()
         result += kBuiltinDefinitionBufferVectorSrc;
     result += kBuiltinDefinitionBufferSrcSuffix;
 
+    if (FFlag::LuauConfigurableVectorSize && vectorSize == VectorSize::Four)
+        result += kBuiltinDefinitionVector4HeaderSrc;
+    else
+        result += kBuiltinDefinitionVector3HeaderSrc;
     result += kBuiltinDefinitionVectorSrc;
 
     if (FFlag::DebugLuauUserDefinedClasses && FFlag::LuauAllowGlobalDeclarationToBeCalledClass)

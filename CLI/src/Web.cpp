@@ -149,6 +149,7 @@ extern "C" const char* checkScript(const char* source, int useNewSolver)
         DemoFileResolver fileResolver;
         DemoConfigResolver configResolver;
         Luau::FrontendOptions options;
+        options.vectorSize = LUA_VECTOR_SIZE == 4 ? Luau::VectorSize::Four : Luau::VectorSize::Three;
 
         Luau::Frontend frontend(useNewSolver ? Luau::SolverMode::New : Luau::SolverMode::Old, &fileResolver, &configResolver, options);
         // Add Luau builtins
