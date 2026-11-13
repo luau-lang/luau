@@ -955,4 +955,20 @@ end
 
 constantReload()
 
+-- a guard exit must see the number tag of a register whose tag store was removed as redundant
+local function exitSyncKnownTag(a, d, n)
+    for i = 1, n do
+        a = i + (d + a)
+        a = bit32.rshift(a, a ^ i)
+    end
+    return a
+end
+
+-- called through a table to prevent inlining
+local exitSyncKnownTagFns = {exitSyncKnownTag}
+
+for n = 1, 3 do
+    assert(exitSyncKnownTagFns[1](1, 4, n) == 0)
+end
+
 return('OK')

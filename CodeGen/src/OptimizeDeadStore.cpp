@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenExitSyncExpectedTag)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseTrackTagInvalidation)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDseHintNeedsPendingTag)
 LUAU_FASTFLAG(LuauCodegenMarkUsed)
 
 namespace Luau
@@ -187,6 +188,8 @@ struct RemoveDeadStoreState
         // Partial stores can only be removed if the whole pair is established
         if (tagValuePairEstablished(regInfo))
         {
+            bool tagStorePending = regInfo.tagInstIdx != ~0u;
+
             if (regInfo.tagInstIdx != ~0u)
             {
                 kill(function, function.instructions[regInfo.tagInstIdx]);
@@ -195,7 +198,9 @@ struct RemoveDeadStoreState
 
             if (regInfo.valueInstIdx != ~0u)
             {
-                recordHintBeforeKill(regInfo.valueInstIdx);
+                // A lazy hint is materialized with a 'nil' tag, so it is only safe when the exit sync restores the tag as well
+                if (!FFlag::LuauCodegenDseHintNeedsPendingTag || tagStorePending)
+                    recordHintBeforeKill(regInfo.valueInstIdx);
 
                 kill(function, function.instructions[regInfo.valueInstIdx]);
                 regInfo.valueInstIdx = ~0u;
