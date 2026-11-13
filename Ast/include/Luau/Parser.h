@@ -368,8 +368,7 @@ private:
     // fieldsep ::= `,' | `;'
     AstExpr* parseTableConstructor();
 
-    // ifelseexp ::= 'if' exp 'then' exp {'elseif' exp 'then' exp} 'else' exp
-    // TODO: Update ifelseexp for local condition?
+    // ifelseexp ::= 'if' [(`local` | `const`) binding `=`] exp 'then' exp {'elseif' exp 'then' exp} 'else' exp
     AstExpr* parseIfElseExpr();
 
     // (`if' | `elseif') (`local' | `const') binding `=' exp then exp ... else exp -- parses an entire `if local`/`if const` expression
