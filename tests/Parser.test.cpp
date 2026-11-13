@@ -18,6 +18,7 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauParseRejectTrailingToken)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -6351,6 +6352,36 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
     auto err = parseResult.errors[0];
     CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '}'?");
     CHECK_EQ(err.getLocation(), Location({0, 17}, {0, 18}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_expr_and_type_reject_trailing_tokens")
+{
+    ScopedFastFlag sff{FFlag::LuauParseRejectTrailingToken, true};
+
+    auto exprErrors = [](std::string code)
+    {
+        Allocator allocator;
+        AstNameTable names{allocator};
+        return Parser::parseExpr(code.data(), code.size(), names, allocator).errors;
+    };
+
+    auto typeErrors = [](std::string code)
+    {
+        Allocator allocator;
+        AstNameTable names{allocator};
+        return Parser::parseType(code.data(), code.size(), names, allocator).errors;
+    };
+
+    CHECK(exprErrors("{} -- comment").empty());
+    CHECK(typeErrors("number -- comment").empty());
+
+    std::vector<ParseError> errors = exprErrors("{} 5");
+    REQUIRE(errors.size() == 1);
+    CHECK_EQ(errors[0].getMessage(), "Expected end of file");
+    CHECK_EQ(errors[0].getLocation(), Location({0, 3}, {0, 4}));
+
+    CHECK(exprErrors("{};").size() == 1);
+    CHECK(typeErrors("number string").size() == 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_name")
