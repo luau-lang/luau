@@ -11,7 +11,6 @@
 
 #include <cmath>
 #include <limits>
-#include <stdlib.h>
 #include <type_traits>
 #include <utility>
 
@@ -302,16 +301,8 @@ struct Writer
         if (std::isnan(component) || std::isinf(component))
             return writePrimitive(double(component));
 
-        // Luau reads number literals as doubles before narrowing them to floats, which rounds a few of the shortest float
-        // representations to a neighbouring float. Those are written as doubles instead, which always read back exactly.
         char buffer[LUAI_MAXNUM2STR];
-        char* end = luai_num2strf(buffer, component);
-        *end = 0;
-
-        if (float(strtod(buffer, nullptr)) != component)
-            end = luai_num2str(buffer, double(component));
-
-        out.append(buffer, end);
+        out.append(buffer, luai_num2strf(buffer, component));
     }
 
     void writePrimitive(const Vector& vector)

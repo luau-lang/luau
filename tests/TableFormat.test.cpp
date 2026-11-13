@@ -428,7 +428,7 @@ TEST_CASE("write_whole_numbers")
 TEST_CASE("write_vector_components_read_back_through_doubles")
 {
     // The shortest float representation of this component, 7.038531e-26, reads back as a different float when it's read
-    // as a double first, as Luau does.
+    // as a double first, as Luau does, so it's written with one more digit.
     uint32_t bits = 0x15ae43fd;
     float component;
     memcpy(&component, &bits, sizeof(component));
@@ -438,7 +438,7 @@ TEST_CASE("write_vector_components_read_back_through_doubles")
 
     std::string source = *write(table).source;
     INFO(source);
-    CHECK(source.find("vector.create(7.038530691851209e-26, 0.1, 0)") != std::string::npos);
+    CHECK(source.find("vector.create(7.0385307e-26, 0.1, 0)") != std::string::npos);
 
     Table copy = readOk(source);
     const Vector& read = get<Vector>(copy, 1.0);

@@ -11,8 +11,8 @@
 // the output. Infinities and NaN are written as `inf`, `-inf` and `nan`.
 char* luai_num2str(char* buf, double n);
 
-// Like luai_num2str, but for the shortest representation that reads back as exactly the same float when converted
-// directly to a float (as by strtof). Converting to a double first and then to a float can round differently.
+// Like luai_num2str, but for the shortest representation that reads back as exactly the same float, whether it's
+// converted directly to a float (as by strtof) or to a double and then narrowed to a float (as Luau does for literals).
 char* luai_num2strf(char* buf, float n);
 
 char* luai_int2str(char* buf, int64_t n);
