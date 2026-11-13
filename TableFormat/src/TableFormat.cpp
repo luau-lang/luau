@@ -560,67 +560,70 @@ static Position positionOf(std::string_view source, size_t offset)
     return Position{line, unsigned(offset - lineStart)};
 }
 
-// Finds the root expression: either the whole file, or the single value returned by the file.
+static size_t offsetOf(std::string_view source, Position position)
+{
+    size_t offset = 0;
+    for (unsigned int line = 0; line < position.line; line++)
+        offset = source.find('\n', offset) + 1;
+
+    return offset + position.column;
+}
+
+// Whether the source from an offset onwards is a single `;`, which is ignored at the end of a file.
+static bool isTrailingSemicolon(std::string_view source, size_t offset, Position position, AstNameTable& names)
+{
+    Lexer lexer(source.data() + offset, source.size() - offset, names, position);
+    lexer.setSkipComments(true);
+
+    return lexer.next().type == ';' && lexer.next().type == Lexeme::Eof;
+}
+
+static AstExpr* parseExpr(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+{
+    ParseNodeResult<AstExpr> result = Parser::parseExpr(source.data(), source.size(), names, allocator);
+
+    // A single `;` after the table is ignored, but the parser reports it as an error, so parse again without it.
+    if (result.errors.size() == 1)
+    {
+        Position position = result.errors[0].getLocation().begin;
+        size_t offset = offsetOf(source, position);
+
+        if (isTrailingSemicolon(source, offset, position, names))
+            result = Parser::parseExpr(source.data(), offset, names, allocator);
+    }
+
+    errors = std::move(result.errors);
+    return errors.empty() ? result.root : nullptr;
+}
+
+static AstExpr* parseReturn(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+{
+    // The parser already allows a single `;` after `return`.
+    ParseResult result = Parser::parse(source.data(), source.size(), names, allocator);
+    errors = std::move(result.errors);
+    if (!errors.empty())
+        return nullptr;
+
+    AstStatReturn* ret = result.root->body.size == 1 ? result.root->body.data[0]->as<AstStatReturn>() : nullptr;
+    if (!ret || ret->list.size != 1)
+    {
+        errors.emplace_back(result.root->location, "Expected a single table after 'return'");
+        return nullptr;
+    }
+
+    return ret->list.data[0];
+}
+
+// Finds the root table: either the whole file, or the single value returned by the file.
 static AstExprTable* parseRoot(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
 {
     Lexer lexer(source.data(), source.size(), names);
     lexer.setSkipComments(true);
 
-    // Parser::parseExpr doesn't reject every trailing token, so we find where the root expression should end ourselves.
-    Lexeme first = lexer.next();
-    Lexeme beforeLast = first;
-    Lexeme last = first;
-    size_t lastEnd = lexer.getOffset();
-
-    while (lexer.next().type != Lexeme::Eof)
-    {
-        beforeLast = last;
-        last = lexer.current();
-        lastEnd = lexer.getOffset();
-    }
-
-    Position end = last.location.end;
-
-    // A single `;` at the end of the file is ignored, so we parse only what comes before it.
-    if (last.type == ';')
-    {
-        source = source.substr(0, lastEnd - 1);
-        end = beforeLast.location.end;
-    }
-
-    AstExpr* root = nullptr;
-
-    if (first.type == Lexeme::ReservedReturn)
-    {
-        ParseResult result = Parser::parse(source.data(), source.size(), names, allocator);
-        errors = std::move(result.errors);
-        if (!errors.empty())
-            return nullptr;
-
-        AstStatReturn* ret = result.root->body.size == 1 ? result.root->body.data[0]->as<AstStatReturn>() : nullptr;
-        if (!ret || ret->list.size != 1)
-        {
-            errors.emplace_back(result.root->location, "Expected a single table after 'return'");
-            return nullptr;
-        }
-
-        root = ret->list.data[0];
-    }
-    else
-    {
-        ParseNodeResult<AstExpr> result = Parser::parseExpr(source.data(), source.size(), names, allocator);
-        errors = std::move(result.errors);
-        if (!errors.empty())
-            return nullptr;
-
-        root = result.root;
-    }
-
-    if (root->location.end != end)
-    {
-        errors.emplace_back(Location{root->location.end, end}, "Expected end of file");
+    AstExpr* root =
+        lexer.next().type == Lexeme::ReservedReturn ? parseReturn(source, names, allocator, errors) : parseExpr(source, names, allocator, errors);
+    if (!root)
         return nullptr;
-    }
 
     AstExprTable* table = root->as<AstExprTable>();
     if (!table)

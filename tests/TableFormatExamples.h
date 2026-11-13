@@ -1,9 +1,19 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "ScopedFlags.h"
+
 #include <string>
 
 // Shared by the TableFormat tests in Luau.UnitTest and Luau.Conformance.
+
+LUAU_FASTFLAG(LuauParseRejectTrailingToken)
+
+// Luau Table relies on the parser rejecting anything after the expression it parses.
+struct TableFormatFixture
+{
+    ScopedFastFlag rejectTrailingToken{FFlag::LuauParseRejectTrailingToken, true};
+};
 
 inline const char* const kTableFormatRfcExample = R"(-- Settings for the example service.
 return {

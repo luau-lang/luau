@@ -40,7 +40,7 @@ static const T& get(const Table& table, const Key& key)
 
 TEST_SUITE_BEGIN("TableFormat");
 
-TEST_CASE("read_rfc_example")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_rfc_example")
 {
     Table table = readOk(kTableFormatRfcExample);
 
@@ -73,7 +73,7 @@ TEST_CASE("read_rfc_example")
     CHECK(*table.getMap()[10].key.get_if<std::string>() == "limits");
 }
 
-TEST_CASE("read_literals")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_literals")
 {
     Table table = readOk(R"({
         'single', "double", [[raw]], [==[raw ]] level]==], `backtick`,
@@ -99,7 +99,7 @@ TEST_CASE("read_literals")
     CHECK(get<double>(table, 15.0) == HUGE_VAL);
 }
 
-TEST_CASE("read_blessed_names")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_blessed_names")
 {
     Table table = readOk("{ math.nan, math.huge, -math.huge, vector.create(1, 2), vector.create(-1, math.huge, math.nan) }");
 
@@ -115,7 +115,7 @@ TEST_CASE("read_blessed_names")
     CHECK(std::isnan(three.z));
 }
 
-TEST_CASE("read_syntax_variations")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_syntax_variations")
 {
     readOk("{}");
     readOk("return {}");
@@ -129,7 +129,7 @@ TEST_CASE("read_syntax_variations")
     readOk("{ [vector.create(1, 2, 3)] = 1, [vector.create(1, 2, 4)] = 2 }");
 }
 
-TEST_CASE("read_rejects_malformed")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_rejects_malformed")
 {
     // Evaluation of any kind.
     checkMalformed("{ a = 1 + 2 }");
@@ -199,13 +199,13 @@ TEST_CASE("read_rejects_malformed")
     checkMalformed(std::string("{ a = \"\0\" }", 12));
 }
 
-TEST_CASE("read_allows_unknown_escapes")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_allows_unknown_escapes")
 {
     // Luau reads an unknown escape as the character after the backslash.
     CHECK(get<std::string>(readOk(R"({ "\q\w\X41", '\%', `\!` })"), 1.0) == "qwX41");
 }
 
-TEST_CASE("read_allows_escaped_nul")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_allows_escaped_nul")
 {
     CHECK(get<std::string>(readOk("{ \"a\\0b\" }"), 1.0) == std::string("a\0b", 3));
 }
@@ -224,7 +224,7 @@ static Table nestedTable(size_t depth)
     return table;
 }
 
-TEST_CASE("depth_limit")
+TEST_CASE_FIXTURE(TableFormatFixture, "depth_limit")
 {
     readOk(tableFormatNested(kMaxDepth));
     checkMalformed(tableFormatNested(kMaxDepth + 1));
@@ -244,14 +244,14 @@ TEST_CASE("depth_limit")
     CHECK(deeper.error == tooDeep.errors[0].getMessage());
 }
 
-TEST_CASE("read_reports_locations")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_reports_locations")
 {
     ReadResult result = read("{\n    a = 1,\n    b = x,\n}");
     REQUIRE(result.errors.size() == 1);
     CHECK(result.errors[0].getLocation().begin == Position{2, 8});
 }
 
-TEST_CASE("read_reports_duplicate_keys")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_reports_duplicate_keys")
 {
     ReadResult result = read("{ \"a\", [1] = 1, b = 1, [\"b\"] = 2, [vector.create(1, 2)] = 1, [vector.create(1, 2, 0)] = 2 }");
     REQUIRE(result.errors.size() == 3);
@@ -264,7 +264,7 @@ TEST_CASE("read_reports_duplicate_keys")
     CHECK(implicit.errors[0].getMessage() == "Duplicate key 2");
 }
 
-TEST_CASE("read_limits_errors")
+TEST_CASE_FIXTURE(TableFormatFixture, "read_limits_errors")
 {
     std::string source = "{";
     for (int i = 0; i < 1000; i++)
@@ -276,7 +276,7 @@ TEST_CASE("read_limits_errors")
     CHECK(result.errors.back().getMessage() == "Reached error limit (100)");
 }
 
-TEST_CASE("table_keys")
+TEST_CASE_FIXTURE(TableFormatFixture, "table_keys")
 {
     Table table;
 
@@ -305,7 +305,7 @@ TEST_CASE("table_keys")
     CHECK(!table.find(std::nan("")));
 }
 
-TEST_CASE("table_erase")
+TEST_CASE_FIXTURE(TableFormatFixture, "table_erase")
 {
     Table table = readOk("{ 1, 2, a = 1, b = 2, c = 3 }");
 
@@ -330,7 +330,7 @@ TEST_CASE("table_erase")
     CHECK(table.append(true));
 }
 
-TEST_CASE("table_edit_in_place")
+TEST_CASE_FIXTURE(TableFormatFixture, "table_edit_in_place")
 {
     Table table = readOk("{ nested = { count = 1 } }");
 
@@ -341,7 +341,7 @@ TEST_CASE("table_edit_in_place")
     CHECK(write(table).source == "{\n    nested = {\n        count = 2,\n    },\n}\n");
 }
 
-TEST_CASE("table_copy_and_move")
+TEST_CASE_FIXTURE(TableFormatFixture, "table_copy_and_move")
 {
     Table table = readOk("{ a = { b = { 1, 2 } }, c = 3 }");
 
@@ -360,7 +360,7 @@ TEST_CASE("table_copy_and_move")
     CHECK(get<double>(get<Table>(copy, "b"), 1.0) == 10);
 }
 
-TEST_CASE("table_deep_nesting_doesnt_overflow_stack")
+TEST_CASE_FIXTURE(TableFormatFixture, "table_deep_nesting_doesnt_overflow_stack")
 {
     // Far deeper than can be read or written, to check that copying and destroying don't recurse.
     Table table = nestedTable(1000000);
@@ -369,7 +369,7 @@ TEST_CASE("table_deep_nesting_doesnt_overflow_stack")
     CHECK(!write(copy).source);
 }
 
-TEST_CASE("write_format")
+TEST_CASE_FIXTURE(TableFormatFixture, "write_format")
 {
     Table table = readOk(R"({
         "a", true, {},
@@ -400,7 +400,7 @@ TEST_CASE("write_format")
     CHECK(write(Table{}).source == "{}\n");
 }
 
-TEST_CASE("write_names_are_ascii")
+TEST_CASE_FIXTURE(TableFormatFixture, "write_names_are_ascii")
 {
     Table table;
     CHECK(table.insert("caf\xc3\xa9", 1.0));
@@ -409,7 +409,7 @@ TEST_CASE("write_names_are_ascii")
     CHECK(write(table).source == "{\n    [\"caf\xc3\xa9\"] = 1,\n    _x9 = 2,\n}\n");
 }
 
-TEST_CASE("write_whole_numbers")
+TEST_CASE_FIXTURE(TableFormatFixture, "write_whole_numbers")
 {
     Table table = readOk("{ 10, 100, 1e6, -1e14, 99999999999999.5, 1e15, vector.create(10, 20, 300) }");
 
@@ -425,7 +425,7 @@ TEST_CASE("write_whole_numbers")
 )");
 }
 
-TEST_CASE("write_vector_components_read_back_through_doubles")
+TEST_CASE_FIXTURE(TableFormatFixture, "write_vector_components_read_back_through_doubles")
 {
     // The shortest float representation of this component, 7.038531e-26, reads back as a different float when it's read
     // as a double first, as Luau does, so it's written with one more digit.
@@ -445,7 +445,7 @@ TEST_CASE("write_vector_components_read_back_through_doubles")
     CHECK(memcmp(&read.x, &component, sizeof(component)) == 0);
 }
 
-TEST_CASE("write_numbers_and_strings_round_trip")
+TEST_CASE_FIXTURE(TableFormatFixture, "write_numbers_and_strings_round_trip")
 {
     Table table;
     for (double n : kTableFormatRoundTripNumbers)
