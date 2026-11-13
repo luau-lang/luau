@@ -361,9 +361,6 @@ void toString(ToStringContext& ctx, BcFunction<BcVmConst>& function, const BcVmC
         // TODO: detailed mode
         append(ctx.result, "%u", data.valueClosure);
         break;
-    case BcVmConstKind::Integer:
-        append(ctx.result, "%lld", (long long)data.valueInteger);
-        break;
     case BcVmConstKind::ClassShape:
         const BytecodeBuilder::ClassShape& cs = function.classShapes[data.valueClassShape];
         const BcVmConst& className = function.constants[cs.className];

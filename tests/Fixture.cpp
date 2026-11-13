@@ -34,11 +34,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
 
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
-
-LUAU_FASTFLAGVARIABLE(DebugLuauForceExactTables)
-LUAU_FASTFLAGVARIABLE(DebugLuauRunFailingExactTableTests)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -1052,8 +1047,6 @@ doctest::String toString(TableState state)
         return "TableState::Free";
     case TableState::Generic:
         return "TableState::Generic";
-    case TableState::Exact:
-        return "TableState::Exact";
 
     default:
         LUAU_ASSERT(0);

@@ -487,11 +487,22 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                     else if (auto classDecl = stat->as<AstStatClass>())
                     {
                         LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-                        // We need to include the class name as part of the
-                        // locals so that within the fragment the class name
-                        // is defined.
-                        localStack.push_back(classDecl->name);
-                        localMap[classDecl->name->name] = classDecl->name;
+                        // If it exists, we include the associated local as part of locals so that within the fragment the class name is defined
+
+                        if (classDecl->declModifier == AstStatClass::DeclModifier::None)
+                        {
+                            if (const AstExprLocal* local = classDecl->exprName->as<AstExprLocal>())
+                            {
+                                localStack.push_back(local->local);
+                                localMap[local->local->name] = local->local;
+                            }
+                        }
+                        else
+                        {
+                            localStack.push_back(classDecl->localName);
+                            localMap[classDecl->localName->name] = classDecl->localName;
+                        }
+
                         if (classDecl->location.containsClosed(cursorPos))
                         {
                             AstExprFunction* currentMethod = nullptr;

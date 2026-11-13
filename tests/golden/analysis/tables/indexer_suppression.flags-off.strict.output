@@ -1,0 +1,2 @@
+./analysis/tables/indexer_suppression.luau(7,33): TypeError: Expected this to be '{string}', but got '{ read [any]: string }'; 
+the indexer is read-only in the latter type, but the former type requires a read-write indexer

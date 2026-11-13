@@ -15,6 +15,7 @@
 #include <optional>
 
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAGVARIABLE(LuauDoNotCrashOnRecursiveSetType)
 
 namespace Luau
 {
@@ -24,24 +25,67 @@ bool inConditional(const TypeContext& context)
     return context == TypeContext::Condition;
 }
 
+namespace
+{
+
+struct OccursCheck : IterativeTypeVisitor
+{
+    TypeId needle;
+    bool found = false;
+
+    explicit OccursCheck(TypeId needle)
+        : IterativeTypeVisitor("OccursCheck", /* skipBoundTypes */ true)
+        , needle(needle)
+    {
+        LUAU_ASSERT((is<BlockedType, PendingExpansionType>(needle)));
+    }
+
+    bool visit(TypeId ty) override
+    {
+        found |= ty == needle;
+        return false;
+    }
+
+    bool visit(TypeId, const UnionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId, const IntersectionType&) override
+    {
+        return true;
+    }
+};
+
+} // namespace
+
 bool occursCheck(TypeId needle, TypeId haystack)
 {
-    LUAU_ASSERT(get<BlockedType>(needle) || get<PendingExpansionType>(needle));
-    haystack = follow(haystack);
-
-    auto checkHaystack = [needle](TypeId haystack)
+    if (FFlag::LuauDoNotCrashOnRecursiveSetType)
     {
-        return occursCheck(needle, haystack);
-    };
+        OccursCheck oc{needle};
+        oc.run(haystack);
+        return oc.found;
+    }
+    else
+    {
+        LUAU_ASSERT(get<BlockedType>(needle) || get<PendingExpansionType>(needle));
+        haystack = follow(haystack);
 
-    if (needle == haystack)
-        return true;
-    else if (auto ut = get<UnionType>(haystack))
-        return std::any_of(begin(ut), end(ut), checkHaystack);
-    else if (auto it = get<IntersectionType>(haystack))
-        return std::any_of(begin(it), end(it), checkHaystack);
+        auto checkHaystack = [needle](TypeId haystack)
+        {
+            return occursCheck(needle, haystack);
+        };
 
-    return false;
+        if (needle == haystack)
+            return true;
+        else if (auto ut = get<UnionType>(haystack))
+            return std::any_of(begin(ut), end(ut), checkHaystack);
+        else if (auto it = get<IntersectionType>(haystack))
+            return std::any_of(begin(it), end(it), checkHaystack);
+
+        return false;
+    }
 }
 
 std::optional<TypeId> findMetatableEntry(

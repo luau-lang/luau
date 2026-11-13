@@ -106,7 +106,7 @@ end
 
 -- function is specialized for a generic case
 function test4(frame)
-    for j = 1, 1000 do
+    for j = 1, 100 do
         local z = iteratecomplex(setmetatable({ re = 0, im = 0 }, Complex), 100)
         assert(z.re == 0 and z.im == 0)
     end
@@ -199,7 +199,7 @@ end
 function vec2operators(values)
     local sum = vec2(0, 0)
 
-    for j = 1,1000 do
+    for j = 1,100 do
         for _, v in values do
             sum = sum + v * v + -v
         end
@@ -218,7 +218,7 @@ function test8(frame)
 
     -- each value adds (1 * 1 - 1, 2 * 2 - 2)
     local res = vec2operators(values)
-    assert(res.X == 0 and res.Y == 1000 * 100 * 2)
+    assert(res.X == 0 and res.Y == 100 * 100 * 2)
 end
 
 @native

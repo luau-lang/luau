@@ -829,6 +829,13 @@ void AssemblyBuilderA64::faddp(RegisterA64 dst, RegisterA64 src)
     placeR1("faddp", dst, src, 0b011'11110'0'0'11000'01101'10 | ((dst.kind == KindA64::d) << 12));
 }
 
+void AssemblyBuilderA64::faddp(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    CODEGEN_ASSERT(dst.kind == KindA64::q && src1.kind == KindA64::q && src2.kind == KindA64::q);
+
+    placeVR("faddp", dst, src1, src2, 0b1'01110'0'0'1, 0b11010'1);
+}
+
 void AssemblyBuilderA64::fmla(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
     // There is no scalar version of FMLA instruction

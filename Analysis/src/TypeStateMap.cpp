@@ -314,8 +314,6 @@ TypeId TypeStateMap::getDiscriminantOf(const NarrowingConstraint& constraint)
             discriminantTy = builtinTypes->stringType;
         else if (name == "number")
             discriminantTy = builtinTypes->numberType;
-        else if (name == "integer")
-            discriminantTy = builtinTypes->integerType;
         else if (name == "boolean")
             discriminantTy = builtinTypes->booleanType;
         else if (name == "thread")

@@ -118,9 +118,23 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     return name;
 }
 
+// a breakpoint is set by line in a function and in every function defined in it, so all of them are built first
+static void buildlazytree(lua_State* L, Proto* p)
+{
+    if (p->lazychunk)
+        luaV_buildlazyproto(L, p);
+
+    for (int i = 0; i < p->sizep; ++i)
+        buildlazytree(L, p->p[i]);
+}
+
 static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f, CallInfo* ci)
 {
     Closure* cl = NULL;
+
+    if (!ci && !f->isC && f->l.p->lazychunk && strpbrk(what, "sln"))
+        luaV_buildlazyproto(L, f->l.p);
+
     for (; *what; what++)
     {
         switch (*what)
@@ -551,7 +565,11 @@ int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
     const TValue* func = luaA_toobject(L, funcindex);
     api_check(L, ttisfunction(func) && !clvalue(func)->isC);
 
-    Proto* p = FFlag::LuauSkipDebugLocked ? getlatestproto(clvalue(func)->l.p) : clvalue(func)->l.p;
+    // a build can run Luau code that reallocates the stack, so func is not used past this point
+    Closure* cl = clvalue(func);
+    buildlazytree(L, cl->l.p);
+
+    Proto* p = FFlag::LuauSkipDebugLocked ? getlatestproto(cl->l.p) : cl->l.p;
 
     // set the breakpoint to the next closest line with valid instructions
     int target = getnextline(p, line);

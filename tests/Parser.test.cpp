@@ -19,10 +19,8 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
 
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
@@ -834,19 +832,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, 1.0e-5);
     CHECK_EQ(str->list.data[4]->as<AstExprConstantNumber>()->value, 1.5e-5);
     CHECK_EQ(str->list.data[5]->as<AstExprConstantNumber>()->value, 12345.125);
-
-    if (FFlag::LuauIntegerType2)
-    {
-        stat = parse("return 1i, 1_000_000i");
-        REQUIRE(stat != nullptr);
-
-        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        CHECK(str->list.size == 2);
-        CHECK(str->list.data[0]->is<AstExprConstantInteger>());
-        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 1);
-        CHECK(str->list.data[1]->is<AstExprConstantInteger>());
-        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 1000000);
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
@@ -860,21 +845,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0xAB05);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 0xFFFF);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
-
-    if (FFlag::LuauIntegerType2)
-    {
-        stat = parse("return 0xabi, 0XAB05i, 0xff_ffi, 0x7fffffffffffffffi, 0x8000000000000000i, 0xffffffffffffffffi");
-        REQUIRE(stat != nullptr);
-
-        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        CHECK(str->list.size == 6);
-        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 0xab);
-        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 0xAB05);
-        CHECK_EQ(str->list.data[2]->as<AstExprConstantInteger>()->value, 0xFFFF);
-        CHECK_EQ(str->list.data[3]->as<AstExprConstantInteger>()->value, LLONG_MAX);
-        CHECK_EQ(str->list.data[4]->as<AstExprConstantInteger>()->value, LLONG_MIN);
-        CHECK_EQ(str->list.data[5]->as<AstExprConstantInteger>()->value, -1);
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
@@ -888,24 +858,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 42);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
-
-    if (FFlag::LuauIntegerType2)
-    {
-        AstStat* stat = parse(
-            "return 0b1i, 0b0i, 0b101010i, 0b111111111111111111111111111111111111111111111111111111111111111i, "
-            "0b1000000000000000000000000000000000000000000000000000000000000000i, 0b1111111111111111111111111111111111111111111111111111111111111111i"
-        );
-        REQUIRE(stat != nullptr);
-
-        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        CHECK(str->list.size == 6);
-        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 1);
-        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 0);
-        CHECK_EQ(str->list.data[2]->as<AstExprConstantInteger>()->value, 42);
-        CHECK_EQ(str->list.data[3]->as<AstExprConstantInteger>()->value, LLONG_MAX);
-        CHECK_EQ(str->list.data[4]->as<AstExprConstantInteger>()->value, LLONG_MIN);
-        CHECK_EQ(str->list.data[5]->as<AstExprConstantInteger>()->value, -1);
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
@@ -917,22 +869,9 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
     matchParseError("return 0x0x123", "Malformed number");
     matchParseError("return 0xffffffffffffffffffffllllllg", "Malformed number");
     matchParseError("return 0x0xffffffffffffffffffffffffffff", "Malformed number");
-    if (FFlag::LuauIntegerType2)
-    {
-        matchParseError("return 0x0xABCi", "Malformed integer");
-        matchParseError("return 0xABCMi", "Malformed integer");
-        matchParseError("return 0b250i", "Malformed integer");
-        matchParseError("return 0bbbbi", "Malformed integer");
-        matchParseError("return 0b0b1i", "Malformed integer");
-        matchParseError("return 123ii", "Malformed integer");
-        matchParseError("return 0xABii", "Malformed integer");
-
-        matchParseError("return 99999999999999999999i", "Integer overflow");
-        matchParseError("return 0xFFFFFFFFFFFFFFFFFFi", "Integer overflow");
-        matchParseError("return 0b10000000000000000000000000000000000000000000000000000000000000000i", "Integer overflow");
-        matchParseError("return 123ii", "Malformed integer");
-        matchParseError("return 0xABii", "Malformed integer");
-    }
+    matchParseError("return 1i", "Malformed number");
+    matchParseError("return 0xABi", "Malformed number");
+    matchParseError("return 0b1i", "Malformed number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
@@ -3339,7 +3278,7 @@ TEST_CASE_FIXTURE(Fixture, "class_declaration")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     ParseResult res = tryParse(R"(
-        class Point2
+        local class Point2
             public x: number
             public y: number
         end
@@ -3351,7 +3290,7 @@ TEST_CASE_FIXTURE(Fixture, "class_declaration")
     REQUIRE(2 == res.root->body.size);
     const AstStatClass* first = res.root->body.data[0]->as<AstStatClass>();
     REQUIRE(first);
-    CHECK(first->name->name == "Point2");
+    CHECK(first->localName->name == "Point2");
 
 
     REQUIRE(first->members.size == 2);
@@ -3374,7 +3313,7 @@ TEST_CASE_FIXTURE(Fixture, "class_declaration")
     const AstExprLocal* local = call->args.data[0]->as<AstExprLocal>();
     REQUIRE(local);
 
-    CHECK(local->local == first->name);
+    CHECK(local->local == first->localName);
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_parse_errors")
@@ -3444,11 +3383,11 @@ TEST_CASE_FIXTURE(Fixture, "class_extends_basic")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     ParseResult result = tryParse(R"(
-open class Animal
+local open class Animal
     public species: string
 end
 
-class Cat extends Animal
+local class Cat extends Animal
     public meowMult: number
 end
     )");
@@ -3472,7 +3411,7 @@ end
     const AstExprLocal* superLocal = super->as<AstExprLocal>();
     REQUIRE(superLocal);
 
-    CHECK(superLocal->local == animal->name);
+    CHECK(superLocal->local == animal->localName);
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_extends_same_name_refers_to_outer_binding")
@@ -3481,7 +3420,7 @@ TEST_CASE_FIXTURE(Fixture, "class_extends_same_name_refers_to_outer_binding")
 
     ParseResult result = tryParse(R"(
 local Foo = nil
-class Foo extends Foo
+local class Foo extends Foo
 end
     )");
 
@@ -3498,12 +3437,13 @@ end
     const AstExprLocal* superLocal = cls->super->as<AstExprLocal>();
     REQUIRE(superLocal);
     CHECK(superLocal->local == outer->vars.data[0]);
-    CHECK(superLocal->local != cls->name);
+    CHECK(superLocal->local != cls->localName);
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_exported_open")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag evs{FFlag::LuauExportValueSyntax, true};
 
     matchParseError(
         R"(
@@ -3511,7 +3451,7 @@ export open Animal
     public species: string
 end
         )",
-        "Incomplete statement: expected a class definition after 'open'"
+        "'export' must be followed by an identifier, 'function', or a class declaration"
     );
 
     matchParseError(
@@ -3540,7 +3480,7 @@ end
     const AstStatClass* animal = result.root->body.data[0]->as<AstStatClass>();
     REQUIRE(animal);
     CHECK(animal->super == nullptr);
-    CHECK(animal->exported);
+    CHECK(animal->declModifier == AstStatClass::DeclModifier::Export);
     CHECK(animal->open);
 }
 
@@ -3660,7 +3600,7 @@ TEST_CASE_FIXTURE(Fixture, "class_recovery_public_no_name_and_invalid_body_token
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     ParseResult result = tryParse(R"(
-class Foo
+local class Foo
     public propone
     function methodone()
     end
@@ -3680,7 +3620,7 @@ end
     REQUIRE_EQ(result.root->body.size, 1);
     const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
     REQUIRE(cls);
-    CHECK(cls->name->name == "Foo");
+    CHECK(cls->localName->name == "Foo");
 
     REQUIRE(cls->members.size == 3);
 
@@ -3749,11 +3689,11 @@ end
 TEST_CASE_FIXTURE(Fixture, "reassigned_class")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag exportFlag{FFlag::LuauExportValueSyntax, true};
+    ScopedFastFlag evs{FFlag::LuauExportValueSyntax, true};
 
     matchParseError(
         R"(
-class Animal end
+const class Animal end
 Animal = nil
         )",
         "Variable 'Animal' is constant and may not be reassigned" // const reassignment msg
@@ -3848,7 +3788,7 @@ TEST_CASE_FIXTURE(Fixture, "classes_can_interleave_methods_and_properties")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     ParseResult res = tryParse(R"(
-        class Student
+        local class Student
             public name: string
 
             function getname(self): string
@@ -3869,7 +3809,7 @@ TEST_CASE_FIXTURE(Fixture, "classes_can_interleave_methods_and_properties")
     REQUIRE(1 == res.root->body.size);
     const AstStatClass* cls = res.root->body.data[0]->as<AstStatClass>();
     REQUIRE(cls);
-    CHECK(cls->name->name == "Student");
+    CHECK(cls->localName->name == "Student");
 
     REQUIRE(cls->members.size == 4);
 
@@ -3927,32 +3867,28 @@ TEST_CASE_FIXTURE(Fixture, "large_classes_example")
     REQUIRE_EQ(result.errors.size(), 0);
 }
 
-TEST_CASE_FIXTURE(Fixture, "classes_only_work_at_top_level")
+TEST_CASE_FIXTURE(Fixture, "classes_can_be_non_top_level")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    matchParseError(
-        R"(
-            return function ()
-                class DynamicPlayer
-                    public level: number
-                end
-                return DynamicPlayer
+    ParseResult res = tryParse(R"(
+        return function ()
+            class DynamicPlayer
+                public level: number
             end
-        )",
-        "Cannot declare class 'DynamicPlayer' inside another statement or expression"
-    );
+            return DynamicPlayer
+        end
+    )");
+    REQUIRE(res.errors.empty());
 
-    matchParseError(
-        R"(
-            if math.random() > 0.5 then
-                class DynamicPlayer
-                    public level: number
-                end
+    res = tryParse(R"(
+        if math.random() > 0.5 then
+            class DynamicPlayer
+                public level: number
             end
-        )",
-        "Cannot declare class 'DynamicPlayer' inside another statement or expression"
-    );
+        end
+    )");
+    REQUIRE(res.errors.empty());
 }
 
 TEST_CASE_FIXTURE(Fixture, "classes_work_after_other_statements")
@@ -3964,7 +3900,7 @@ TEST_CASE_FIXTURE(Fixture, "classes_work_after_other_statements")
             print("I am a test case!")
         end
 
-        class Player
+        local class Player
             public health: number
         end
     )");
@@ -3974,7 +3910,7 @@ TEST_CASE_FIXTURE(Fixture, "classes_work_after_other_statements")
     REQUIRE(2 == res.root->body.size);
     const AstStatClass* cls = res.root->body.data[1]->as<AstStatClass>();
     REQUIRE(cls);
-    CHECK(cls->name->name == "Player");
+    CHECK(cls->localName->name == "Player");
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_is_still_contextual")
@@ -4007,28 +3943,24 @@ TEST_CASE_FIXTURE(Fixture, "class_self_cannot_be_annotated")
     );
 }
 
-TEST_CASE_FIXTURE(Fixture, "classes_cannot_be_shadowed_by_classes")
+TEST_CASE_FIXTURE(Fixture, "classes_can_be_shadowed_by_classes")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    matchParseError(
-        R"(
+    ParseResult result = tryParse(R"(
         class Foobar
         end
 
         class Foobar
         end
-    )",
-        "A class named 'Foobar' has already been declared in this module"
-    );
+    )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "classes_cannot_be_shadowed_by_classes_with_local_between")
+TEST_CASE_FIXTURE(Fixture, "classes_can_be_shadowed_by_classes_with_local_between")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    matchParseError(
-        R"(
+    ParseResult result = tryParse(R"(
         class Foobar
         end
 
@@ -4036,9 +3968,9 @@ TEST_CASE_FIXTURE(Fixture, "classes_cannot_be_shadowed_by_classes_with_local_bet
 
         class Foobar
         end
-    )",
-        "A class named 'Foobar' has already been declared in this module"
-    );
+    )");
+
+    CHECK(result.errors.empty());
 }
 
 TEST_CASE_FIXTURE(Fixture, "classes_can_be_shadowed_by_locals")
@@ -4087,10 +4019,7 @@ TEST_CASE_FIXTURE(Fixture, "classes_nested_and_repeated")
         end
     )");
 
-    // We only report one error per location, so even though "two" errors
-    // occur here (repeat name, nested), we'll only get one message.
-    REQUIRE(result.errors.size() == 1);
-    CHECK_EQ("Cannot declare class 'Foo' inside another statement or expression", result.errors[0].getMessage());
+    REQUIRE(result.errors.size() == 0);
 }
 
 TEST_CASE_FIXTURE(Fixture, "non_exported_class")
@@ -4109,7 +4038,7 @@ TEST_CASE_FIXTURE(Fixture, "non_exported_class")
 
     AstStatClass* classDecl = block->body.data[0]->as<AstStatClass>();
     REQUIRE(classDecl != nullptr);
-    CHECK(!classDecl->exported);
+    CHECK(classDecl->declModifier == AstStatClass::DeclModifier::None);
 }
 
 TEST_CASE_FIXTURE(Fixture, "export_class")
@@ -4128,7 +4057,506 @@ TEST_CASE_FIXTURE(Fixture, "export_class")
 
     AstStatClass* classDecl = block->body.data[0]->as<AstStatClass>();
     REQUIRE(classDecl != nullptr);
-    CHECK(classDecl->exported);
+    CHECK(classDecl->declModifier == AstStatClass::DeclModifier::Export);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_decl_modifiers")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::LuauExportValueSyntax, true}};
+
+    ParseResult result = tryParse(R"(
+        class Bare end
+        local class Local end
+        const class Const end
+        export class Exported end
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(4, result.root->body.size);
+
+    const AstStatClass* bare = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(bare);
+    CHECK(bare->declModifier == AstStatClass::DeclModifier::None);
+    CHECK(bare->exprName->is<AstExprGlobal>());
+    CHECK(bare->getName() == "Bare");
+
+    const AstStatClass* local = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(local);
+    CHECK(local->declModifier == AstStatClass::DeclModifier::Local);
+    CHECK(local->localName->name == "Local");
+    CHECK(!local->localName->isConst);
+    CHECK(!local->localName->isExported);
+
+    const AstStatClass* constant = result.root->body.data[2]->as<AstStatClass>();
+    REQUIRE(constant);
+    CHECK(constant->declModifier == AstStatClass::DeclModifier::Const);
+    CHECK(constant->localName->name == "Const");
+    CHECK(constant->localName->isConst);
+    CHECK(!constant->localName->isExported);
+
+    const AstStatClass* exported = result.root->body.data[3]->as<AstStatClass>();
+    REQUIRE(exported);
+    CHECK(exported->declModifier == AstStatClass::DeclModifier::Export);
+    CHECK(exported->localName->name == "Exported");
+    CHECK(exported->localName->isConst);
+    CHECK(exported->localName->isExported);
+}
+
+TEST_CASE_FIXTURE(Fixture, "open_class_with_each_decl_modifier")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::LuauExportValueSyntax, true}};
+
+    ParseResult result = tryParse(R"(
+        open class Bare end
+        local open class Local end
+        const open class Const end
+        export open class Exported end
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(4, result.root->body.size);
+
+    const AstStatClass::DeclModifier expected[] = {
+        AstStatClass::DeclModifier::None,
+        AstStatClass::DeclModifier::Local,
+        AstStatClass::DeclModifier::Const,
+        AstStatClass::DeclModifier::Export,
+    };
+
+    for (size_t i = 0; i < 4; ++i)
+    {
+        const AstStatClass* cls = result.root->body.data[i]->as<AstStatClass>();
+        REQUIRE(cls);
+        CHECK(cls->open);
+        CHECK(cls->declModifier == expected[i]);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_decl_location_includes_modifier")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string code = R"(
+        local open class Foo end
+        class Bar end
+    )";
+
+    ParseResult result = tryParse(code);
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(2, result.root->body.size);
+
+    const AstStatClass* foo = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(foo);
+    CHECK_EQ(stringAtLocation(code, foo->location), "local open class Foo end");
+    CHECK_EQ(stringAtLocation(code, foo->getNameLocation()), "Foo");
+
+    const AstStatClass* bar = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(bar);
+    CHECK_EQ(stringAtLocation(code, bar->location), "class Bar end");
+    CHECK_EQ(stringAtLocation(code, bar->getNameLocation()), "Bar");
+}
+
+TEST_CASE_FIXTURE(Fixture, "bare_class_assigns_to_existing_local")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        local Foo = nil
+        class Foo end
+
+        local class Bar end
+        class Bar end
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(4, result.root->body.size);
+
+    const AstStatLocal* fooLocal = result.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(fooLocal);
+    const AstStatClass* fooClass = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(fooClass);
+    const AstExprLocal* fooRef = fooClass->exprName->as<AstExprLocal>();
+    REQUIRE(fooRef);
+    CHECK(fooRef->local == fooLocal->vars.data[0]);
+    CHECK(!fooRef->upvalue);
+
+    const AstStatClass* barLocal = result.root->body.data[2]->as<AstStatClass>();
+    REQUIRE(barLocal);
+    const AstStatClass* barClass = result.root->body.data[3]->as<AstStatClass>();
+    REQUIRE(barClass);
+    const AstExprLocal* barRef = barClass->exprName->as<AstExprLocal>();
+    REQUIRE(barRef);
+    CHECK(barRef->local == barLocal->localName);
+}
+
+TEST_CASE_FIXTURE(Fixture, "bare_class_assigns_to_function_parameter_and_upvalue")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        local Outer
+        local function f(Param)
+            class Param end
+            class Outer end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(2, result.root->body.size);
+
+    const AstStatLocal* outerLocal = result.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(outerLocal);
+    const AstStatLocalFunction* fn = result.root->body.data[1]->as<AstStatLocalFunction>();
+    REQUIRE(fn);
+    REQUIRE_EQ(2, fn->func->body->body.size);
+
+    const AstStatClass* paramClass = fn->func->body->body.data[0]->as<AstStatClass>();
+    REQUIRE(paramClass);
+    const AstExprLocal* paramRef = paramClass->exprName->as<AstExprLocal>();
+    REQUIRE(paramRef);
+    CHECK(paramRef->local == fn->func->args.data[0]);
+    CHECK(!paramRef->upvalue);
+
+    const AstStatClass* outerClass = fn->func->body->body.data[1]->as<AstStatClass>();
+    REQUIRE(outerClass);
+    const AstExprLocal* outerRef = outerClass->exprName->as<AstExprLocal>();
+    REQUIRE(outerRef);
+    CHECK(outerRef->local == outerLocal->vars.data[0]);
+    CHECK(outerRef->upvalue);
+}
+
+TEST_CASE_FIXTURE(Fixture, "bare_class_cannot_reassign_constants")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::LuauExportValueSyntax, true}};
+
+    ParseResult result = matchParseError(
+        R"(
+const class Foo end
+class Foo end
+        )",
+        "Variable 'Foo' is constant and may not be reassigned"
+    );
+    REQUIRE_EQ(2, result.root->body.size);
+    const AstStatClass* reassigned = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(reassigned);
+    CHECK(reassigned->exprName->is<AstExprError>());
+
+    matchParseError(
+        R"(
+const Foo = 1
+class Foo end
+        )",
+        "Variable 'Foo' is constant and may not be reassigned"
+    );
+
+    matchParseError(
+        R"(
+export class Foo end
+class Foo end
+        )",
+        "Variable 'Foo' is constant and may not be reassigned"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "bare_class_cannot_assign_to_local_outside_type_function")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+local Foo = 1
+type function tf()
+    class Foo end
+    return types.any
+end
+        )",
+        "Type function cannot assign to outer local 'Foo'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_local_class_is_an_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::LuauExportValueSyntax, true}};
+
+    matchParseError(
+        R"(
+export local class Foo end
+        )",
+        "'export' must be followed by an identifier, 'function', or a class declaration; try removing 'local'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "local_class_is_lexically_scoped")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        do
+            local class Foo end
+            print(Foo)
+        end
+        print(Foo)
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(2, result.root->body.size);
+
+    const AstStatBlock* doBlock = result.root->body.data[0]->as<AstStatBlock>();
+    REQUIRE(doBlock);
+    REQUIRE_EQ(2, doBlock->body.size);
+
+    const AstStatClass* cls = doBlock->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+
+    const AstStatExpr* inner = doBlock->body.data[1]->as<AstStatExpr>();
+    REQUIRE(inner);
+    const AstExprCall* innerCall = inner->expr->as<AstExprCall>();
+    REQUIRE(innerCall);
+    REQUIRE_EQ(1, innerCall->args.size);
+    const AstExprLocal* innerRef = innerCall->args.data[0]->as<AstExprLocal>();
+    REQUIRE(innerRef);
+    CHECK(innerRef->local == cls->localName);
+
+    const AstStatExpr* outer = result.root->body.data[1]->as<AstStatExpr>();
+    REQUIRE(outer);
+    const AstExprCall* outerCall = outer->expr->as<AstExprCall>();
+    REQUIRE(outerCall);
+    REQUIRE_EQ(1, outerCall->args.size);
+    CHECK(outerCall->args.data[0]->is<AstExprGlobal>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "local_class_is_visible_inside_its_own_methods")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        local class Foo
+            function make()
+                return Foo
+            end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(1, result.root->body.size);
+
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    REQUIRE_EQ(1, cls->members.size);
+
+    const AstClassMethod* make = cls->members.data[0].get_if<AstClassMethod>();
+    REQUIRE(make);
+    REQUIRE_EQ(1, make->function->body->body.size);
+
+    const AstStatReturn* ret = make->function->body->body.data[0]->as<AstStatReturn>();
+    REQUIRE(ret);
+    REQUIRE_EQ(1, ret->list.size);
+    const AstExprLocal* ref = ret->list.data[0]->as<AstExprLocal>();
+    REQUIRE(ref);
+    CHECK(ref->local == cls->localName);
+    CHECK(ref->upvalue);
+}
+
+TEST_CASE_FIXTURE(Fixture, "local_class_can_shadow_local_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        local class Foo end
+        local class Foo end
+        print(Foo)
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(3, result.root->body.size);
+
+    const AstStatClass* first = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(first);
+    const AstStatClass* second = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(second);
+    CHECK(first->localName != second->localName);
+
+    const AstStatExpr* use = result.root->body.data[2]->as<AstStatExpr>();
+    REQUIRE(use);
+    const AstExprCall* call = use->expr->as<AstExprCall>();
+    REQUIRE(call);
+    REQUIRE_EQ(1, call->args.size);
+    const AstExprLocal* ref = call->args.data[0]->as<AstExprLocal>();
+    REQUIRE(ref);
+    CHECK(ref->local == second->localName);
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_in_nested_blocks")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        do
+            local class A end
+        end
+
+        while true do
+            const class B end
+            break
+        end
+
+        repeat
+            class C end
+        until true
+
+        for i = 1, 2 do
+            local open class D end
+        end
+
+        for _, v in {} do
+            class E end
+        end
+
+        if math.random() > 0.5 then
+            local class F end
+        elseif math.random() > 0.5 then
+            const class G end
+        else
+            class H end
+        end
+
+        local f = function()
+            local class I end
+            return I
+        end
+
+        local class Outer
+            function method(self)
+                local class Inner end
+                class Global end
+                return Inner
+            end
+        end
+    )");
+
+    CHECK(result.errors.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_class_must_be_top_level")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::LuauExportValueSyntax, true}};
+
+    matchParseError(
+        R"(
+do
+    export class Foo end
+end
+        )",
+        "'export' may only be applied to top-level statements"
+    );
+
+    matchParseError(
+        R"(
+local function f()
+    export class Foo end
+end
+        )",
+        "'export' may only be applied to top-level statements"
+    );
+
+    matchParseError(
+        R"(
+local class Outer
+    function method(self)
+        export class Inner end
+    end
+end
+        )",
+        "'export' may only be applied to top-level statements"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_const_class_is_an_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::LuauExportValueSyntax, true}};
+
+    ParseResult result = matchParseError(
+        R"(
+export const class Foo end
+        )",
+        "'export' must be followed by an identifier, 'function', or a class declaration; try removing 'const'"
+    );
+
+    // The class is still parsed for error recovery.
+    REQUIRE_EQ(1, result.root->body.size);
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    CHECK(cls->declModifier == AstStatClass::DeclModifier::Const);
+    CHECK(cls->localName->name == "Foo");
+}
+
+TEST_CASE_FIXTURE(Fixture, "duplicate_exported_class")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::LuauExportValueSyntax, true}};
+
+    matchParseError(
+        R"(
+export class Foo end
+export class Foo end
+        )",
+        "Duplicate exported identifier 'Foo'"
+    );
+
+    matchParseError(
+        R"(
+export const Foo = 1
+export class Foo end
+        )",
+        "Duplicate exported identifier 'Foo'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_and_open_are_contextual_after_local_and_const")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        local class: number = 1
+        local open = 2
+        local open, class = 3, 4
+        const class = 5
+        local open
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(5, result.root->body.size);
+
+    for (size_t i = 0; i < 5; ++i)
+        CHECK(result.root->body.data[i]->is<AstStatLocal>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "attributes_are_not_supported_on_local_classes")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = matchParseError(
+        R"(
+@native local class Foo end
+        )",
+        "Attributes are not supported on class declarations"
+    );
+
+    REQUIRE_EQ(1, result.root->body.size);
+    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    CHECK(cls->declModifier == AstStatClass::DeclModifier::Local);
+
+    result = matchParseError(
+        R"(
+@native const class Foo end
+        )",
+        "Attributes are not supported on class declarations"
+    );
+
+    REQUIRE_EQ(1, result.root->body.size);
+    cls = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(cls);
+    CHECK(cls->declModifier == AstStatClass::DeclModifier::Const);
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_private_property")
@@ -4288,6 +4716,41 @@ TEST_CASE_FIXTURE(Fixture, "class_private_access_in_nested_closure")
     const AstExprIndexName* index = innerReturn->list.data[0]->as<AstExprIndexName>();
     REQUIRE(index);
     CHECK(index->privateAccess);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_private_access_in_nested_class_super")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        local class Kass
+            private _cl
+            public function f(self)
+                class Mipha extends self._cl
+                end
+            end
+        end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE(result.root->body.size == 1);
+    const AstStatClass* outer = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(outer);
+    REQUIRE(outer->members.size == 2);
+
+    auto method = outer->members.data[1].get_if<AstClassMethod>();
+    REQUIRE(method);
+    REQUIRE(method->function->body->body.size == 1);
+
+    const AstStatClass* inner = method->function->body->body.data[0]->as<AstStatClass>();
+    REQUIRE(inner);
+    REQUIRE(inner->super);
+
+    const AstExprIndexName* super = inner->super->as<AstExprIndexName>();
+    REQUIRE(super);
+    CHECK(super->index == "_cl");
+    CHECK(super->privateAccess);
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_private_access_only_inside_method_body")
@@ -4533,92 +4996,6 @@ TEST_CASE_FIXTURE(Fixture, "type_pack_explicit_with_cst")
     CHECK_EQ(cstNode->closeParenthesesPosition, Position{0, 33});
     REQUIRE_EQ(cstNode->commaPositions.size, 1);
     CHECK_EQ(cstNode->commaPositions.data[0], Position{0, 22});
-}
-
-TEST_CASE_FIXTURE(Fixture, "valid_exact_table_types")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauParseExactTables, true},
-    };
-
-    ParseResult result = tryParse(R"(
-        type A = {}
-        type B = {x: number}
-        type C = {x: number, ...}
-        type D = {...}
-        type E = {[number]: boolean, ...}
-        type F = {number}
-        type G = {number, ...}
-    )");
-
-    AstStatBlock* block = result.root;
-    REQUIRE(7 == block->body.size);
-
-    auto alias0 = block->body.data[0]->as<AstStatTypeAlias>();
-    REQUIRE(alias0->type->as<AstTypeTable>());
-    CHECK(alias0->type->as<AstTypeTable>()->isExact);
-
-    auto alias1 = block->body.data[1]->as<AstStatTypeAlias>();
-    REQUIRE(alias1->type->as<AstTypeTable>());
-    CHECK(alias1->type->as<AstTypeTable>()->isExact);
-
-    auto alias2 = block->body.data[2]->as<AstStatTypeAlias>();
-    REQUIRE(alias2->type->as<AstTypeTable>());
-    CHECK(!alias2->type->as<AstTypeTable>()->isExact);
-
-    auto alias3 = block->body.data[3]->as<AstStatTypeAlias>();
-    REQUIRE(alias3->type->as<AstTypeTable>());
-    CHECK(!alias3->type->as<AstTypeTable>()->isExact);
-
-    auto alias4 = block->body.data[4]->as<AstStatTypeAlias>();
-    REQUIRE(alias4->type->as<AstTypeTable>());
-    CHECK(!alias4->type->as<AstTypeTable>()->isExact);
-
-    auto alias5 = block->body.data[5]->as<AstStatTypeAlias>();
-    REQUIRE(alias5->type->as<AstTypeTable>());
-    CHECK(alias5->type->as<AstTypeTable>()->isExact);
-
-    auto alias6 = block->body.data[6]->as<AstStatTypeAlias>();
-    REQUIRE(alias6->type->as<AstTypeTable>());
-    CHECK(!alias6->type->as<AstTypeTable>()->isExact);
-}
-
-TEST_CASE_FIXTURE(Fixture, "invalid_exact_table_types")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauParseExactTables, true},
-    };
-
-    ParseResult result = tryParse(R"(
-        type A = {read ...}
-    )");
-
-    CHECK(0 != result.errors.size());
-}
-
-TEST_CASE_FIXTURE(Fixture, "exact_table_type_ellipsis_must_be_last")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauParseExactTables, true},
-    };
-
-    ParseResult result = tryParse(R"(
-        type A = {..., x: number}
-    )");
-
-    CHECK(result.errors.size() == 1);
-
-    CHECK(Location({1, 21}, {1, 22}) == result.errors.at(0).getLocation());
-
-    REQUIRE(result.root);
-    REQUIRE(result.root->body.size == 1);
-
-    AstStatTypeAlias* alias = result.root->body.data[0]->as<AstStatTypeAlias>();
-    REQUIRE(alias);
-
-    AstTypeTable* table = alias->type->as<AstTypeTable>();
-    REQUIRE(table);
-    CHECK(!table->isExact);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_return_type_pack_with_cst_func_return")

@@ -25,10 +25,10 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingSkipUnreadReasoning)
 LUAU_FASTFLAGVARIABLE(LuauOnlyCheckWidthSubtypingForReadOnlyProperty)
 LUAU_FASTFLAGVARIABLE(LuauOneBitAssumedConstraintTracking)
+LUAU_FASTFLAGVARIABLE(LuauErrorSuppressionForIndexers)
 
 
 namespace Luau
@@ -1004,9 +1004,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
         result = isCovariantWith(env, p.first, p.second, scope);
-        bool tableIsMutable = p.first->state != TableState::Sealed;
-        if (FFlag::DebugLuauExactTableTypes && p.first->state == TableState::Exact)
-            tableIsMutable = false;
+        const bool tableIsMutable = p.first->state != TableState::Sealed;
 
         if (result.isSubtype && !p.first->indexer && p.second->indexer && tableIsMutable)
         {
@@ -2086,18 +2084,6 @@ SubtypingResult Subtyping::isCovariantWith(
         return {false};
     }
 
-    if (FFlag::DebugLuauExactTableTypes)
-    {
-        // Sealed </: Exact
-        // Unsealed <: Exact (but I guess we should seal it and make it exact?)
-
-        // Inexact tables are never subtypes of exact tables.
-        if (superTable->state == TableState::Exact && subTable->state != TableState::Exact)
-        {
-            return {false};
-        }
-    }
-
     // This is an unfortunately complicated state machine. Consider something like:
     //
     //  local function launderone(t: { propone: string }): { propone: any }
@@ -2211,23 +2197,6 @@ SubtypingResult Subtyping::isCovariantWith(
         }
     }
 
-    if (FFlag::DebugLuauExactTableTypes && superTable->state == TableState::Exact)
-    {
-        // We have already handled the inexact </: exact case.
-        LUAU_ASSERT(subTable->state == TableState::Exact);
-
-        if (subTable->indexer.has_value() != superTable->indexer.has_value())
-            return {false};
-
-        for (const auto& [name, subProp] : subTable->props)
-        {
-            // If the supertype table is exact, then every subtype table
-            // property must map to the supertype somewhere.
-            if (0 == superTable->props.count(name))
-                return {false};
-        }
-    }
-
     if (superTable->indexer)
     {
         if (subTable->indexer)
@@ -2235,10 +2204,15 @@ SubtypingResult Subtyping::isCovariantWith(
             // We say covariant here, but the implementation of
             // isCovariantWith() properly handles variance of the index
             // result type.
-            record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+            if (FFlag::LuauErrorSuppressionForIndexers)
+            {
+                record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+            }
+            else
+            {
+                record(isCovariantWith_DEPRECATED(env, *subTable->indexer, *superTable->indexer, scope));
+            }
         }
-        else if (subTable->state == TableState::Exact)
-            return {false};
         else if (subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table
@@ -2413,7 +2387,14 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         // NOTE: despite the name, this will internally check that the two
         // indexers are invariant with one another.
-        result.andAlso(isCovariantWith(env, *subExternType->indexer, *superTable->indexer, scope));
+        if (FFlag::LuauErrorSuppressionForIndexers)
+        {
+            result.andAlso(isCovariantWith(env, *subExternType->indexer, *superTable->indexer, scope));
+        }
+        else
+        {
+            result.andAlso(isCovariantWith_DEPRECATED(env, *subExternType->indexer, *superTable->indexer, scope));
+        }
     }
     else if (superTable->indexer && !subExternType->indexer)
     {
@@ -2593,11 +2574,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
     }
     else if (subPrim->type == PrimitiveType::Table)
     {
-        bool isSubtype = superTable->props.empty() && (!superTable->indexer.has_value() || superTable->state == TableState::Generic);
-
-        if (FFlag::DebugLuauExactTableTypes && superTable->state == TableState::Exact)
-            isSubtype = false;
-
+        const bool isSubtype = superTable->props.empty() && (!superTable->indexer.has_value() || superTable->state == TableState::Generic);
         return {isSubtype};
     }
 
@@ -2636,6 +2613,49 @@ SubtypingResult Subtyping::isCovariantWith(
 }
 
 SubtypingResult Subtyping::isCovariantWith(
+    SubtypingEnvironment& env,
+    const TableIndexer& subIndexer,
+    const TableIndexer& superIndexer,
+    NotNull<Scope> scope
+)
+{
+    if (subIndexer.isReadOnly && !superIndexer.isReadOnly)
+    {
+        return SubtypingResult{false}
+            .withBothComponent(TypePath::TypeField::IndexResult)
+            .withPropertyModifierViolation();
+    }
+
+    bool hasErrorSuppression = false;
+    bool shouldSuppressErrors = true;
+
+    SubtypingResult result{true};
+
+    auto record = [&](SubtypingResult subResult)
+    {
+        hasErrorSuppression |= subResult.isErrorSuppressing;
+        shouldSuppressErrors &= subResult.isSubtype || subResult.isErrorSuppressing;
+        result.andAlso(std::move(subResult));
+    };
+
+    record(isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup));
+
+    // Value-type variance: read-only super → covariant; read-write super → invariant.
+    if (superIndexer.isReadOnly)
+        record(
+            isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
+        );
+    else
+        record(
+            isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
+        );
+
+    result.isErrorSuppressing = hasErrorSuppression && shouldSuppressErrors;
+
+    return result;
+}
+
+SubtypingResult Subtyping::isCovariantWith_DEPRECATED(
     SubtypingEnvironment& env,
     const TableIndexer& subIndexer,
     const TableIndexer& superIndexer,

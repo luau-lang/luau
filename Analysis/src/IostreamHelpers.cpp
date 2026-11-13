@@ -326,20 +326,6 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UninitializedFieldAccess { " << (err.fieldName ? *err.fieldName : "self") << " }";
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
         stream << "ConstructorsShouldNotReturnAnything {}";
-    else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
-    {
-        stream << "CyclicClassInheritance { cycle = [";
-        bool first = true;
-        for (const Name& name : err.cycle)
-        {
-            if (first)
-                first = false;
-            else
-                stream << ", ";
-            stream << name;
-        }
-        stream << "] }";
-    }
     else if constexpr (std::is_same_v<T, InvalidClassExtension>)
         stream << "InvalidExtension { ctx = " << err.context << ", ty = " << toString(err.baseClass) << " }";
     else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
@@ -350,6 +336,8 @@ static void errorToString(std::ostream& stream, const T& err)
                << ", superName = " << err.superName << " }";
     else if constexpr (std::is_same_v<T, MissingConstructor>)
         stream << "MissingConstructor { className = " << err.className << ", superName = " << err.superName << " }";
+    else if constexpr (std::is_same_v<T, NotIterable>)
+        stream << "NotIterable { " << toString(err.ty) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

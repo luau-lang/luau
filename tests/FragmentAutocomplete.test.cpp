@@ -1673,8 +1673,6 @@ TEST_SUITE_BEGIN("FragmentAutocompleteTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_fragment_autocomplete")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -3095,8 +3093,6 @@ end)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_memory_isolation")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;

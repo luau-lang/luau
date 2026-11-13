@@ -4,6 +4,7 @@
 -- Handles the syscalls needed by statically-linked glibc programs.
 
 local Int = require("./integer")
+type integer = Int.Int64
 local CPU = require("./cpu")
 
 local Syscall = {}

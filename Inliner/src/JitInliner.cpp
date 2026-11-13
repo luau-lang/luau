@@ -28,7 +28,6 @@ LUAU_FASTINTVARIABLE(LuauJitInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauJitInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauJitInlineSmallFunSize, 128)
 LUAU_FASTINTVARIABLE(LuauJitInlineTooLongFunSize, 0xFFFF);
-LUAU_FASTFLAG(LuauCompileRefactorFeedback)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeFold)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeSlotAlloc)
 LUAU_FASTFLAGVARIABLE(DebugLuauBytecodeSlotAllocStats)
@@ -169,10 +168,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
             if (slot.callTarget.inst != kUnassignedPC)
                 pc = insnsPC[slot.callTarget.inst];
 
-            if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
-                slotId = bcb.addCallTargetSlot(pc);
-            else
-                slotId = bcb.addFbSlot_DEPRECATED(LFT_CALLTARGET, pc);
+            slotId = bcb.addCallTargetSlot(pc);
         }
         else if (slot.kind == LFT_CONSTRUCT)
         {

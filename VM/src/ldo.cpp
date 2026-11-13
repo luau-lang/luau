@@ -18,7 +18,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAGVARIABLE(LuauPcallErrorContinuationReentry)
 LUAU_FASTFLAGVARIABLE(LuauIsYieldableSimplify)
 
@@ -272,15 +271,14 @@ static void performcall(lua_State* L, StkId func, int nresults, bool preparereen
         }
         else
         {
-            ptrdiff_t basecioffset = FFlag::LuauFastpcall ? saveci(L, L->ci - 1) : 0;
+            ptrdiff_t basecioffset = saveci(L, L->ci - 1);
 
             luau_execute(L);
 
             // process continuations up to the caller frame
             // this is needed because even when 'preparereentry' is false, current thread might be yieldable
             // in that case, luau_execute might exit with unfinished C continuation frames (e.g. pcall)
-            if (FFlag::LuauFastpcall)
-                resume_continue(L, basecioffset);
+            resume_continue(L, basecioffset);
         }
 
         if (!oldactive)
@@ -296,31 +294,14 @@ bool luaD_performcally(lua_State* L, StkId func, int nresults)
 
     L->baseCcalls++; // Allow yielding across this C call
 
-    if (FFlag::LuauFastpcall)
-    {
-        L->ci->flags |= LUA_CALLINFO_OPYIELD;
+    L->ci->flags |= LUA_CALLINFO_OPYIELD;
 
-        performcall(L, func, nresults, /* preparereentry */ false);
+    performcall(L, func, nresults, /* preparereentry */ false);
 
-        if (L->status != LUA_OK)
-            return true;
+    if (L->status != LUA_OK)
+        return true;
 
-        L->ci->flags &= ~LUA_CALLINFO_OPYIELD;
-    }
-    else
-    {
-        ptrdiff_t cioffset = saveci(L, L->ci);
-
-        performcall(L, func, nresults, /* preparereentry */ false);
-
-        if (L->status != LUA_OK)
-        {
-            CallInfo* caller = restoreci(L, cioffset);
-
-            caller->flags |= LUA_CALLINFO_OPYIELD;
-            return true;
-        }
-    }
+    L->ci->flags &= ~LUA_CALLINFO_OPYIELD;
 
     L->baseCcalls--;
     L->nCcalls--;
@@ -503,7 +484,7 @@ int luaD_runfinalizers(lua_State* L, bool returnstatus)
 static void resume_continue(lua_State* L, ptrdiff_t basecioffset)
 {
     // unroll Luau/C combined stack, processing continuations
-    while ((L->status == LUA_OK || L->status == SCHEDULED_REENTRY) && L->ci > (FFlag::LuauFastpcall ? restoreci(L, basecioffset) : L->base_ci))
+    while ((L->status == LUA_OK || L->status == SCHEDULED_REENTRY) && L->ci > restoreci(L, basecioffset))
     {
         LUAU_ASSERT(L->baseCcalls == L->nCcalls);
 
@@ -516,7 +497,7 @@ static void resume_continue(lua_State* L, ptrdiff_t basecioffset)
             LUAU_ASSERT(cl->c.cont);
 
             // fast continuation path for the synthetic pcall/xpcall frame
-            if (FFlag::LuauFastpcall && (L->ci->flags & LUA_CALLINFO_PCALL) != 0)
+            if ((L->ci->flags & LUA_CALLINFO_PCALL) != 0)
             {
                 luau_pospcallsuccess(L);
                 continue;

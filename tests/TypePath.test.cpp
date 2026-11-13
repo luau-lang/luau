@@ -555,8 +555,6 @@ TEST_CASE_FIXTURE(TypePathFixture, "step_limit")
 
 TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "complex_chains")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     SUBCASE("add_metamethod_return_type")
     {
         TYPESOLVE_CODE(R"(
