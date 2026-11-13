@@ -45,9 +45,21 @@
 #define LUA_NORETURN __attribute__((__noreturn__))
 #endif
 
-// Can be used to reconfigure visibility/exports for public APIs
+// define LUA_API to override public api linkage and visibility
 #ifndef LUA_API
-#define LUA_API extern
+// use c linkage in c++ when requested
+// c declarations use plain extern
+#if defined(LUAU_EXTERN_C) && LUAU_EXTERN_C && defined(__cplusplus)
+#define LUA_API_LINKAGE extern "C"
+#else
+#define LUA_API_LINKAGE extern
+#endif
+
+#ifndef LUA_API_VISIBILITY
+#define LUA_API_VISIBILITY
+#endif
+
+#define LUA_API LUA_API_LINKAGE LUA_API_VISIBILITY
 #endif
 
 #define LUALIB_API LUA_API
