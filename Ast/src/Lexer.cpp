@@ -433,6 +433,22 @@ bool Lexer::isReserved(const std::string& word)
     return false;
 }
 
+bool Lexer::isName(std::string_view word)
+{
+    if (word.empty() || !(isAlpha(word[0]) || word[0] == '_'))
+        return false;
+
+    for (char ch : word)
+        if (!isAlpha(ch) && !isDigit(ch) && ch != '_')
+            return false;
+
+    for (const char* reserved : kReserved)
+        if (word == reserved)
+            return false;
+
+    return true;
+}
+
 LUAU_FORCEINLINE
 char Lexer::peekch() const
 {
