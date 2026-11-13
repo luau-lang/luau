@@ -4,6 +4,10 @@
 
 #include "lcommon.h"
 
+#include <string.h>
+
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeUtf8Len, false)
+
 #define MAXUNICODE 0x10FFFF
 
 #define iscont(p) ((*(p) & 0xC0) == 0x80)
@@ -55,6 +59,52 @@ static const char* utf8_decode(const char* o, int* val)
 }
 
 /*
+** Length of the UTF-8 sequence at 's', or 0 if it is invalid.
+** Accepts exactly the sequences that utf8_decode accepts (no overlong forms, surrogates or values above MAXUNICODE),
+** but does not compute the code point. Like utf8_decode, it never reads past the first byte that is not a continuation byte.
+*/
+static int utf8_seqlen(const unsigned char* s)
+{
+    unsigned int c = s[0];
+
+    if (c < 0x80)
+        return 1;
+
+    if (c < 0xC2) // continuation byte or overlong 2-byte form
+        return 0;
+
+    unsigned int c1 = s[1];
+
+    if (c < 0xE0)
+        return (c1 & 0xC0) == 0x80 ? 2 : 0;
+
+    // valid range of the second byte, narrowed to reject overlong forms, surrogates and values above MAXUNICODE
+    unsigned int lo = 0x80, hi = 0xBF;
+
+    if (c == 0xE0)
+        lo = 0xA0;
+    else if (c == 0xED)
+        hi = 0x9F;
+    else if (c == 0xF0)
+        lo = 0x90;
+    else if (c == 0xF4)
+        hi = 0x8F;
+    else if (c > 0xF4)
+        return 0;
+
+    if (c1 < lo || c1 > hi)
+        return 0;
+
+    if ((s[2] & 0xC0) != 0x80)
+        return 0;
+
+    if (c < 0xF0)
+        return 3;
+
+    return (s[3] & 0xC0) == 0x80 ? 4 : 0;
+}
+
+/*
 ** utf8len(s [, i [, j]]) --> number of characters that start in the
 ** range [i,j], or nil + current position if 's' is not well formed in
 ** that interval
@@ -68,6 +118,60 @@ static int utflen(lua_State* L)
     int posj = u_posrelat(luaL_optinteger(L, 3, -1), len);
     luaL_argcheck(L, 1 <= posi && --posi <= (int)len, 2, "initial position out of string");
     luaL_argcheck(L, --posj < (int)len, 3, "final position out of string");
+
+    if (DFFlag::LuauOptimizeUtf8Len)
+    {
+        const unsigned char* us = (const unsigned char*)s;
+
+        // ASCII bytes are always single characters, so count 8 of them at a time
+        // when a whole block of bytes inside [posi, posj] has no high bits set
+        while (posj - posi >= 7)
+        {
+            uint64_t block;
+            memcpy(&block, us + posi, sizeof(block));
+
+            if ((block & 0x8080808080808080ull) == 0)
+            {
+                posi += 8;
+                n += 8;
+                continue;
+            }
+
+            // validate characters one by one until we are past this block, so that text with
+            // many non-ASCII characters only pays for one block check per 8 bytes
+            int blockend = posi + 8;
+
+            do
+            {
+                int seqlen = utf8_seqlen(us + posi);
+                if (seqlen == 0)
+                {
+                    lua_pushnil(L);
+                    lua_pushinteger(L, posi + 1);
+                    return 2;
+                }
+                posi += seqlen;
+                n++;
+            } while (posi < blockend);
+        }
+
+        while (posi <= posj)
+        {
+            int seqlen = utf8_seqlen(us + posi);
+            if (seqlen == 0)
+            {
+                lua_pushnil(L);
+                lua_pushinteger(L, posi + 1);
+                return 2;
+            }
+            posi += seqlen;
+            n++;
+        }
+
+        lua_pushinteger(L, n);
+        return 1;
+    }
+
     while (posi <= posj)
     {
         const char* s1 = utf8_decode(s + posi, NULL);
