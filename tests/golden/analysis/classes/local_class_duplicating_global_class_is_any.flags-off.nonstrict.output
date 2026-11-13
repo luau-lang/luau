@@ -1,0 +1,2 @@
+./analysis/classes/local_class_duplicating_global_class_is_any.luau(7,1): TypeError: Redefinition of type 'Point', previously defined at line 2
+./analysis/classes/local_class_duplicating_global_class_is_any.luau(7,13): LocalShadow: Variable 'Point' shadows a global variable used at line 2

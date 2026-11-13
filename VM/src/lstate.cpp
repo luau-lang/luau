@@ -211,7 +211,6 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
     g->uvhead.u.open.prev = &g->uvhead;
     g->uvhead.u.open.next = &g->uvhead;
 
-
     g->ptrenckey[0] = 1;
 
     g->strt.saltmult = 0x9e3779b9u; // default string table salt provides additional Fibonacci hash mixing

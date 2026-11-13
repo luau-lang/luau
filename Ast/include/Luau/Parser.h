@@ -207,7 +207,11 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstStat* parseClassStat(const Location& start, bool exported, bool open);
+    AstStat* parseClassStat(const Location& start, AstStatClass::DeclModifier declModifier, bool open);
+
+    // True when the current lexeme begins a class declaration: `class Name` or `open class Name`. `class` and `open` are
+    // contextual keywords, so `local class = 5` must still parse as a binding list.
+    bool atClassKeyword();
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
@@ -569,7 +573,6 @@ private:
 
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashSet<AstName> classesWithinModule;
 
     std::vector<ParseError> parseErrors;
 

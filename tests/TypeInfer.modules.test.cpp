@@ -959,8 +959,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_194463_modify_bounds_of_visited_generic_regression")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     fileResolver.source["game/Container"] = R"(
         local Container = {}
 
@@ -1036,8 +1034,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1077,8 +1073,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs_multi")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1390,8 +1384,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_uses_binding_type")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag sffs[]{
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueSyntax, true},

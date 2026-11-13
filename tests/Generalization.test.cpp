@@ -406,8 +406,6 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(

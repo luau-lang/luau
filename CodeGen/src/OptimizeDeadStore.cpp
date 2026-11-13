@@ -10,6 +10,7 @@
 
 #include "lobject.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenExitSyncExpectedTag)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseTrackTagInvalidation)
 LUAU_FASTFLAG(LuauCodegenMarkUsed)
 
@@ -28,7 +29,6 @@ static bool isUnsafeToSink(IrCmd cmd)
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
-    case IrCmd::LOAD_INT64:
     case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
 
@@ -41,6 +41,8 @@ static bool isUnsafeToSink(IrCmd cmd)
     case IrCmd::BUFFER_READI64:
     case IrCmd::BUFFER_READF32:
     case IrCmd::BUFFER_READF64:
+    case IrCmd::BUFFER_READVECTOR:
+    case IrCmd::BUFFER_READF32X4:
 
     // Upvalue read: SET_UPVALUE to the same upvalue slot
     case IrCmd::GET_UPVALUE:
@@ -120,10 +122,6 @@ struct RemoveDeadStoreState
         case IrCmd::STORE_INT:
             value = OP_B(storeInst);
             kind = IrValueKind::Int;
-            break;
-        case IrCmd::STORE_INT64:
-            value = OP_B(storeInst);
-            kind = IrValueKind::Int64;
             break;
         case IrCmd::STORE_POINTER:
             value = OP_B(storeInst);
@@ -388,6 +386,9 @@ struct RemoveDeadStoreState
                     VmExitStoreInfo storeInfo;
 
                     storeInfo.reg = uint8_t(i);
+
+                    if (FFlag::LuauCodegenExitSyncExpectedTag && regInfo.tagInstIdx == kInvalidInstIdx)
+                        storeInfo.expectedTag = regInfo.knownTag;
 
                     auto recordStore = [&](uint32_t instIdx)
                     {
@@ -1045,7 +1046,6 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         }
         break;
     case IrCmd::STORE_DOUBLE:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_INT:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
@@ -1265,6 +1265,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::CHECK_GC:
     case IrCmd::CALL:
     case IrCmd::INVOKE_FASTPCALL:
+    case IrCmd::INVOKE_NAMECALL:
     case IrCmd::FORGLOOP_FALLBACK:
     case IrCmd::FALLBACK_GETGLOBAL:
     case IrCmd::FALLBACK_SETGLOBAL:
@@ -1329,6 +1330,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         // CALL directly executes a Luau function on the same native stack frame
     case IrCmd::CALL:
     case IrCmd::INVOKE_FASTPCALL:
+    case IrCmd::INVOKE_NAMECALL:
         // These instructions use lowering that is not aware of register allocator and demand no active values to exist
     case IrCmd::SETLIST:
     case IrCmd::FORGLOOP:
@@ -1453,6 +1455,8 @@ static void markDeadStoresInBlockChain(
                 case IrCmd::BUFFER_WRITEI64:
                 case IrCmd::BUFFER_WRITEF32:
                 case IrCmd::BUFFER_WRITEF64:
+                case IrCmd::BUFFER_WRITEVECTOR:
+                case IrCmd::BUFFER_WRITEF32X4:
                     state.remainingUses[OP_A(inst).index]--;
 
                     if (state.remainingUses[OP_A(inst).index] == 0)
@@ -1483,6 +1487,8 @@ static void markDeadStoresInBlockChain(
                     case IrCmd::BUFFER_WRITEI64:
                     case IrCmd::BUFFER_WRITEF32:
                     case IrCmd::BUFFER_WRITEF64:
+                    case IrCmd::BUFFER_WRITEVECTOR:
+                    case IrCmd::BUFFER_WRITEF32X4:
                         if (state.remainingUses[OP_A(inst).index] == 0)
                         {
                             IrInst& pointer = function.instOp(OP_A(inst));
@@ -1589,9 +1595,25 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
             }
         };
 
-        // Start with the store instruction we got
+        // Start with the store instructions we got
         for (auto& regStore : syncInfo.regStores)
         {
+            if (FFlag::LuauCodegenExitSyncExpectedTag && regStore.expectedTag != kUnknownTag)
+            {
+                for (auto& record : regStore.stores)
+                {
+                    IrCmd cmd = record.backup.cmd;
+                    bool partialStore = cmd == IrCmd::STORE_DOUBLE || cmd == IrCmd::STORE_INT || cmd == IrCmd::STORE_POINTER;
+
+                    // If it's only a partial store and could be used for a spill, restore the tag from the constant
+                    if (partialStore && function.findStoreLocationHint(record.instIdx))
+                    {
+                        storeInstructions.push_back({IrCmd::STORE_TAG, {build.vmReg(regStore.reg), build.constTag(regStore.expectedTag)}});
+                        break;
+                    }
+                }
+            }
+
             for (auto& record : regStore.stores)
             {
                 storeInstructions.push_back(record.backup);

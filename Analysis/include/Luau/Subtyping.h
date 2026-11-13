@@ -346,6 +346,14 @@ private:
         const TableIndexer& superIndexer,
         NotNull<Scope> scope
     );
+
+    SubtypingResult isCovariantWith_DEPRECATED(
+        SubtypingEnvironment& env,
+        const TableIndexer& subIndexer,
+        const TableIndexer& superIndexer,
+        NotNull<Scope> scope
+    );
+
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const Property& subProperty,

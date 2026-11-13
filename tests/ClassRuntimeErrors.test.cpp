@@ -12,7 +12,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauBytecodeCostModel)
 
 TEST_SUITE_BEGIN("ClassRuntimeErrorTests");
 
@@ -22,7 +21,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverrideInstanceMemberError"
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/classes/class_override_instance_member_error";
     runProtectedRequire(path);
@@ -35,7 +33,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassExtendsNonOpenParent")
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/classes/class_extends_non_open_parent";
     runProtectedRequire(path);
@@ -48,7 +45,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverridesComparisonMetametho
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/classes/class_override_eq";

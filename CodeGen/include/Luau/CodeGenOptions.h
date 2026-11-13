@@ -74,6 +74,9 @@ using HostUserdataNamecallHandler = bool (*)(
     int pcpos
 );
 
+using RuntimeBuildResultCallback = void (*)(void* context, const struct CompilationResult& result, const struct CompilationStats& stats);
+using RuntimeBuildLogCallback = void (*)(void* context, const std::string& message);
+
 struct HostIrHooks
 {
     // Suggest result type of a vector field access
@@ -138,6 +141,13 @@ struct CompilationOptions
     // When true, random NOP sleds are inserted between blocks to
     // make intra-function gadget offsets unpredictable.
     bool nopPadding = false;
+
+    // Callbacks for runtime build result and internal event log
+    RuntimeBuildResultCallback runtimeBuildResult = nullptr;
+    RuntimeBuildLogCallback runtimeBuildLog = nullptr;
+
+    // Custom userdata provided to the callbacks
+    void* runtimeBuildContext = nullptr;
 };
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);

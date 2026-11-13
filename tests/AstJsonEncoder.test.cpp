@@ -69,9 +69,6 @@ TEST_CASE("encode_constants")
     AstExprConstantNumber positiveInfinity{Location(), INFINITY};
     AstExprConstantNumber negativeInfinity{Location(), -INFINITY};
     AstExprConstantNumber nan{Location(), NAN};
-    AstExprConstantInteger intSmall{Location(), 42};
-    AstExprConstantInteger intNeg{Location(), -1};
-    AstExprConstantInteger intLarge{Location(), 0x7FFFFFFFFFFFFFFFLL};
 
     char escapeRaw[] = "a\x1d\0\\\"b";
     AstExprConstantString needsEscaping{Location(), {escapeRaw, sizeof(escapeRaw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
@@ -89,9 +86,6 @@ TEST_CASE("encode_constants")
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":Infinity})", toJson(&positiveInfinity));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":-Infinity})", toJson(&negativeInfinity));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":NaN})", toJson(&nan));
-    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":42})", toJson(&intSmall));
-    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":-1})", toJson(&intNeg));
-    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":9223372036854775807})", toJson(&intLarge));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"a\\u001d\\u0000\\\\\\\"b\"}", toJson(&needsEscaping));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"x\\b\\f\\n\\r\\ty\"}", toJson(&hasShorthands));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"e\xc3\xa9\xf0\x9f\x98\x80\"}", toJson(&hasUtf8));

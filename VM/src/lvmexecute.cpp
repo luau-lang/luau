@@ -20,7 +20,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
-LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAG(LuauRuntimeFeedback)
 
 // Disable c99-designator to avoid the warning in computed goto dispatch table
@@ -216,7 +215,7 @@ inline bool luau_skipstep(uint8_t op)
     return op == LOP_PREPVARARGS || op == LOP_BREAK;
 }
 
-static LUAU_NOINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
+LUAU_NOINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
 {
     CallInfo* ci = incr_ci(L);
 
@@ -239,10 +238,13 @@ static LUAU_NOINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
 // Batch addition of loop execution counter increments
 static void luau_addexeccount(Proto* p, double count)
 {
-    // Leaving room for regular counter hits to not overflow too fast
-    uint32_t space = UINT32_MAX / 4 - p->execcount;
+    if (count > 0.0)
+    {
+        // Leaving room for regular counter hits to not overflow too fast
+        uint32_t space = UINT32_MAX / 4 - p->execcount;
 
-    p->execcount += count < double(space) ? uint32_t(count) : space;
+        p->execcount += count < double(space) ? uint32_t(count) : space;
+    }
 }
 
 template<bool SingleStep>
@@ -1467,11 +1469,6 @@ reentry:
                         // need to invoke metamethods).
                         break;
 
-                    case LUA_TINTEGER:
-                        pc += lvalue(ra) == lvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        VM_ASSERT_PC(pc);
-                        VM_NEXT();
-
                     default:
                         LUAU_ASSERT(!"Unknown value type");
                         LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
@@ -1599,11 +1596,6 @@ reentry:
                         // For now, hit the slow path after the switch (we may
                         // need to invoke metamethods).
                         break;
-
-                    case LUA_TINTEGER:
-                        pc += lvalue(ra) != lvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        VM_ASSERT_PC(pc);
-                        VM_NEXT();
 
                     default:
                         LUAU_ASSERT(!"Unknown value type");
@@ -2879,15 +2871,26 @@ reentry:
             VM_CASE(LOP_NATIVECALL)
             {
                 Proto* p = L->ci->p;
+
+                // a lazy-load stub (luau_loadlazy): build the function, then enter it like LOP_CALL does
+                // stubs never have execdata and native functions always do; checking execdata avoids loading lazychunk on the native path
+                if (LUAU_UNLIKELY(!p->execdata))
+                {
+                    LUAU_ASSERT(p->lazychunk);
+
+                    VM_PROTECT(luaV_buildlazyproto(L, p));
+
+                    L->ci->savedpc = p->code;
+                    pc = SingleStep ? p->code : p->codeentry;
+                    k = p->k;
+                    VM_NEXT();
+                }
+
                 LUAU_ASSERT(p->execdata);
 
                 CallInfo* ci = L->ci;
 
-                if (FFlag::LuauFastpcall)
-                    ci->flags |= LUA_CALLINFO_NATIVE;
-                else
-                    ci->flags = LUA_CALLINFO_NATIVE;
-
+                ci->flags |= LUA_CALLINFO_NATIVE;
                 ci->savedpc = p->code;
 
 #if VM_HAS_NATIVE
@@ -3731,11 +3734,6 @@ reentry:
             VM_CASE(LOP_FASTPCALL)
             {
                 VM_CASE_INSTRUCTION insn = *pc++;
-
-                // even with compiler flag enabled, runtime can be safely disabled and will execute the fallback
-                if (!FFlag::LuauFastpcall)
-                    VM_NEXT();
-
                 VM_INTERRUPT();
 
                 int pfid = LUAU_INSN_A(insn);

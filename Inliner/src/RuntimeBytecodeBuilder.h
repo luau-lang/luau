@@ -31,8 +31,8 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
     std::vector<TValue*>& runtimeConstants;
     std::vector<Proto*>& protos;
 
-    explicit RuntimeBytecodeBuilder(lua_State* L, std::vector<TValue*>& constants, std::vector<Proto*>& protos, BytecodeEncoder* encoder = nullptr)
-        : BytecodeBuilder(encoder)
+    explicit RuntimeBytecodeBuilder(lua_State* L, std::vector<TValue*>& constants, std::vector<Proto*>& protos)
+        : BytecodeBuilder()
         , L(L)
         , runtimeConstants(constants)
         , protos(protos)
@@ -54,8 +54,6 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
             return LUA_TBOOLEAN;
         case Constant::Type_Number:
             return LUA_TNUMBER;
-        case Constant::Type_Integer:
-            return LUA_TINTEGER;
         case Constant::Type_Vectorf:
         case Constant::Type_Vectord:
             return LUA_TVECTOR;
@@ -116,9 +114,6 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
             break;
         case LUA_TNUMBER:
             formatAppend(result, "%.17g", nvalue(c));
-            break;
-        case LUA_TINTEGER:
-            formatAppend(result, "%lld", (long long)(int64_t)lvalue(c));
             break;
         case LUA_TVECTOR:
         {
@@ -206,9 +201,6 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
 
         CodeData result;
         result.code = insns;
-
-        if (encoder)
-            encoder->encode(result.code.data(), result.code.size());
 
         // Pack line info.
         int span = calcLinesSpan();

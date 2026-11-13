@@ -112,7 +112,6 @@ public:
     int tnil = parseTagName("tnil");
     int tboolean = parseTagName("tboolean");
     int tnumber = parseTagName("tnumber");
-    int tinteger = parseTagName("tinteger");
     int tvector = parseTagName("tvector");
     int tstring = parseTagName("tstring");
     int ttable = parseTagName("ttable");

@@ -24,7 +24,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauRefineNotNilWaitsForBlockedTarget)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
@@ -1308,27 +1307,24 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
 
-                if (FFlag::LuauRefineNotNilWaitsForBlockedTarget)
+                std::vector<TypeId> blocked;
+                for (TypeId ty : result.blockedTypes)
                 {
-                    std::vector<TypeId> blocked;
-                    for (TypeId ty : result.blockedTypes)
-                    {
-                        if (is<BlockedType, PendingExpansionType>(follow(ty)))
-                            blocked.push_back(ty);
-                    }
-
-                    if (auto ut = get<UnionType>(follow(target)))
-                    {
-                        for (TypeId option : ut)
-                        {
-                            if (isBlockedOrUnsolvedType(follow(option)))
-                                blocked.push_back(option);
-                        }
-                    }
-
-                    if (!blocked.empty())
-                        return {nullptr, std::move(blocked)};
+                    if (is<BlockedType, PendingExpansionType>(follow(ty)))
+                        blocked.push_back(ty);
                 }
+
+                if (auto ut = get<UnionType>(follow(target)))
+                {
+                    for (TypeId option : ut)
+                    {
+                        if (isBlockedOrUnsolvedType(follow(option)))
+                            blocked.push_back(option);
+                    }
+                }
+
+                if (!blocked.empty())
+                    return {nullptr, std::move(blocked)};
 
                 return {result.result, {}};
             }
