@@ -6,6 +6,7 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <cstring>
 #include <string>
 
 using namespace Luau;
@@ -418,10 +419,30 @@ TEST_CASE("write_whole_numbers")
     1000000,
     -100000000000000,
     99999999999999.5,
-    1e+15,
+    1000000000000000,
     vector.create(10, 20, 300),
 }
 )");
+}
+
+TEST_CASE("write_vector_components_read_back_through_doubles")
+{
+    // The shortest float representation of this component, 7.038531e-26, reads back as a different float when it's read
+    // as a double first, as Luau does.
+    uint32_t bits = 0x15ae43fd;
+    float component;
+    memcpy(&component, &bits, sizeof(component));
+
+    Table table;
+    CHECK(table.append(Vector{component, 0.1f, 0.0f}));
+
+    std::string source = *write(table).source;
+    INFO(source);
+    CHECK(source.find("vector.create(7.038530691851209e-26, 0.1, 0)") != std::string::npos);
+
+    Table copy = readOk(source);
+    const Vector& read = get<Vector>(copy, 1.0);
+    CHECK(memcmp(&read.x, &component, sizeof(component)) == 0);
 }
 
 TEST_CASE("write_numbers_and_strings_round_trip")

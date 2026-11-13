@@ -5,12 +5,12 @@
 #include "Luau/Common.h"
 #include "Luau/HashUtil.h"
 #include "Luau/Lexer.h"
+#include "Luau/NumPrint.h"
 #include "Luau/Parser.h"
 #include "Luau/StringUtils.h"
 
 #include <cmath>
 #include <limits>
-#include <stdio.h>
 #include <stdlib.h>
 #include <type_traits>
 #include <utility>
@@ -274,58 +274,10 @@ static Value toValue(Key key)
     );
 }
 
-// Matches what the lexer accepts as a name, which is always ASCII, regardless of locale.
-static bool isNameStart(char c)
-{
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-}
-
-static bool isName(const std::string& string)
-{
-    if (string.empty() || !isNameStart(string[0]))
-        return false;
-
-    for (char c : string)
-        if (!isNameStart(c) && !(c >= '0' && c <= '9'))
-            return false;
-
-    return !Lexer::isReserved(string);
-}
-
 struct Writer
 {
     std::string out;
     bool tooDeep = false;
-
-    // Writes the shortest number that reads back as exactly the same value.
-    template<typename T>
-    void writeNumber(T number)
-    {
-        if (std::isnan(number))
-            out += "math.nan";
-        else if (std::isinf(number))
-            out += number > 0 ? "math.huge" : "-math.huge";
-        else if (number == std::floor(number) && std::fabs(number) < 1e15)
-        {
-            // Whole numbers are written out in full, as %g would switch to an exponent for values like 100.
-            char buffer[32];
-            snprintf(buffer, sizeof(buffer), "%.0f", double(number));
-            out += buffer;
-        }
-        else
-        {
-            // Any number with no more than digits10 significant digits reads back exactly when written with that many,
-            // and %g drops trailing zeros, so the search can start there.
-            char buffer[32];
-            for (int precision = std::numeric_limits<T>::digits10; precision <= std::numeric_limits<T>::max_digits10; precision++)
-            {
-                snprintf(buffer, sizeof(buffer), "%.*g", precision, double(number));
-                if (T(strtod(buffer, nullptr)) == number)
-                    break;
-            }
-            out += buffer;
-        }
-    }
 
     void writePrimitive(bool boolean)
     {
@@ -334,62 +286,55 @@ struct Writer
 
     void writePrimitive(double number)
     {
-        writeNumber(number);
+        if (std::isnan(number))
+            out += "math.nan";
+        else if (std::isinf(number))
+            out += number > 0 ? "math.huge" : "-math.huge";
+        else
+        {
+            char buffer[LUAI_MAXNUM2STR];
+            out.append(buffer, luai_num2str(buffer, number));
+        }
+    }
+
+    void writeComponent(float component)
+    {
+        if (std::isnan(component) || std::isinf(component))
+            return writePrimitive(double(component));
+
+        // Luau reads number literals as doubles before narrowing them to floats, which rounds a few of the shortest float
+        // representations to a neighbouring float. Those are written as doubles instead, which always read back exactly.
+        char buffer[LUAI_MAXNUM2STR];
+        char* end = luai_num2strf(buffer, component);
+        *end = 0;
+
+        if (float(strtod(buffer, nullptr)) != component)
+            end = luai_num2str(buffer, double(component));
+
+        out.append(buffer, end);
     }
 
     void writePrimitive(const Vector& vector)
     {
         out += "vector.create(";
-        writeNumber(vector.x);
+        writeComponent(vector.x);
         out += ", ";
-        writeNumber(vector.y);
+        writeComponent(vector.y);
         out += ", ";
-        writeNumber(vector.z);
+        writeComponent(vector.z);
         out += ")";
     }
 
     void writePrimitive(const std::string& string)
     {
         out += '"';
-
-        for (unsigned char c : string)
-        {
-            switch (c)
-            {
-            case '"':
-                out += "\\\"";
-                break;
-            case '\\':
-                out += "\\\\";
-                break;
-            case '\n':
-                out += "\\n";
-                break;
-            case '\r':
-                out += "\\r";
-                break;
-            case '\t':
-                out += "\\t";
-                break;
-            default:
-                if (c < ' ' || c == 127)
-                {
-                    // Always three digits, so a digit that follows isn't read as part of the escape.
-                    char buffer[8];
-                    snprintf(buffer, sizeof(buffer), "\\%03d", c);
-                    out += buffer;
-                }
-                else
-                    out += char(c);
-            }
-        }
-
+        out += escape(string);
         out += '"';
     }
 
     void writeKey(const Key& key)
     {
-        if (const std::string* name = key.get_if<std::string>(); name && isName(*name))
+        if (const std::string* name = key.get_if<std::string>(); name && Lexer::isName(*name))
             out += *name;
         else
         {
