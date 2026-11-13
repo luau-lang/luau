@@ -249,6 +249,10 @@ const char* getLuauOpcodeName(LuauOpcode cmd)
         return "CONSTRUCT";
     case LOP_FINCONSTRUCT:
         return "FINCONSTRUCT";
+    case LOP_GETPRIVATEFIELD:
+        return "GETPRIVATEFIELD";
+    case LOP_SETPRIVATEFIELD:
+        return "SETPRIVATEFIELD";
     default:
         LUAU_ASSERT(!"Unsupported opcode");
         return "unknown";
@@ -356,9 +360,6 @@ void toString(ToStringContext& ctx, BcFunction<BcVmConst>& function, const BcVmC
     case BcVmConstKind::Closure:
         // TODO: detailed mode
         append(ctx.result, "%u", data.valueClosure);
-        break;
-    case BcVmConstKind::Integer:
-        append(ctx.result, "%lld", (long long)data.valueInteger);
         break;
     case BcVmConstKind::ClassShape:
         const BytecodeBuilder::ClassShape& cs = function.classShapes[data.valueClassShape];

@@ -11,10 +11,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
-LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
 namespace
 {
@@ -301,7 +299,6 @@ local p = Point
 
 TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_unknown_value")
 {
-    ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
     CheckResult result = check(R"(
 class Point
     public x
@@ -319,7 +316,7 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("Point", toString(requireTypeAtPosition({7, 18})));
     CHECK_EQ(
-        "((userdata & ~Point) | boolean | buffer | function | integer | number | string | table | thread)?", toString(requireTypeAtPosition({9, 18}))
+        "((userdata & ~Point) | boolean | buffer | function | number | string | table | thread)?", toString(requireTypeAtPosition({9, 18}))
     );
 }
 
@@ -532,7 +529,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
             return f.bar
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(Foo) -> number | string", toString(requireType("getbar")));
@@ -540,8 +537,6 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
 
 TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         class Foo
             public bar: number | string
@@ -555,7 +550,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
             return Foo(tbl)
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("({ bar: number }) -> Foo", toString(requireType("ofnumbertbl")));
@@ -1063,8 +1058,6 @@ TEST_CASE_FIXTURE(ClassesFixture, "method_calls_on_fully_initialized_instances_a
 
 TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
 {
-    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
-
     CheckResult result = check(R"(
         class Foo
             public values: {number}
@@ -1083,8 +1076,6 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
 
 TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_arguments")
 {
-    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
-
     CheckResult result = check(R"(
         class Foo
             public x: number
@@ -1105,50 +1096,120 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_
     CHECK(13 == result.errors[0].location.begin.line);
 }
 
-TEST_CASE_FIXTURE(ClassesFixture, "class_methods_should_be_annotated_except_for_self")
-{
-    CheckResult result = check(R"(
-        class Foo
-            public x: number
-
-            function __init(self, x)
-                self.x = x
-            end
-
-            function double(this)
-                return Foo(this.x * 2)
-            end
-
-            function double2(self): Foo
-                return Foo(self.x * 2)
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    CHECK_ERROR_IS(result.errors.at(0), TypeAnnotationRequired);
-    // We can't figure out the multiplication
-    CHECK_ERROR_IS(result.errors.at(1), UninhabitedTypeFunction);
-    CHECK_ERROR_IS(result.errors.at(2), TypeAnnotationRequired);
-
-    CHECK(4 == result.errors.at(0).location.begin.line);
-    CHECK(9 == result.errors.at(1).location.begin.line);
-    CHECK(8 == result.errors.at(2).location.begin.line);
-}
-
 TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_duplicate_class_definition")
 {
     CheckResult result = check(R"(
         class l0
         end
+        local first = l0
         class l0
         end
+        local second = l0
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<SyntaxError>(result.errors[0]);
+    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+    CHECK_EQ("l0", err->name);
+    REQUIRE(err->previousLocation);
+    CHECK_EQ(Location{{1, 8}, {2, 11}}, *err->previousLocation);
+
+    TypeId firstType = requireType("first");
+    TypeId secondType = requireType("second");
+
+    CHECK(get<AnyType>(follow(firstType)));
+    CHECK(get<AnyType>(follow(secondType)));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "duplicate_local_classes_are_both_any")
+{
+    CheckResult result = check(R"(
+        local class l0
+        end
+        local first = l0
+        local class l0
+        end
+        local second = l0
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("l0", err->name);
+
+    CHECK(get<AnyType>(requireType("first")));
+    CHECK(get<AnyType>(requireType("second")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "local_class_duplicating_global_class_makes_both_any")
+{
+    CheckResult result = check(R"(
+        class l0
+        end
+        local first = l0
+        local class l0
+        end
+        local second = l0
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
+
+    CHECK(get<AnyType>(requireType("first")));
+    CHECK(get<AnyType>(requireType("second")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_shadowed_in_nested_block_is_not_a_duplicate")
+{
+    CheckResult result = check(R"(
+        local class l0
+        end
+        local outer = l0
+        do
+            local class l0
+            end
+            local _ = l0
+        end
+        local after = l0
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId outerTy = requireType("outer");
+    TypeId innerTy = follow(requireTypeAtPosition({7, 22}));
+    TypeId afterTy = requireType("after");
+
+    CHECK(get<ExternType>(outerTy));
+    CHECK(get<ExternType>(innerTy));
+    CHECK(outerTy != innerTy);
+    CHECK(outerTy == afterTy);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "duplicate_classes_in_nested_block_do_not_affect_shadowed_class")
+{
+    CheckResult result = check(R"(
+        local class l0
+        end
+        do
+            local class l0
+            end
+            local _ = l0
+            local class l0
+            end
+            local _ = l0
+        end
+        local after = l0
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
+    REQUIRE(err);
+    REQUIRE(err->previousLocation);
+    CHECK_EQ(Location{{4, 12}, {5, 15}}, *err->previousLocation);
+
+    CHECK(get<AnyType>(follow(requireTypeAtPosition({6, 22}))));
+    CHECK(get<AnyType>(follow(requireTypeAtPosition({9, 22}))));
+    CHECK(get<ExternType>(requireType("after")));
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "repeat_props")
@@ -1215,32 +1276,13 @@ TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_self_referential_class_definition")
 {
     CheckResult result = check(R"(
         class l0
-            public _:typeof(l0)
+            public l1:typeof(l0)
         end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId l0 = requireType("l0");
     CHECK(is<ExternType>(l0));
-}
-
-TEST_CASE_FIXTURE(ClassesFixture, "instantiate_duplicate_class")
-{
-    CheckResult result = check(
-        R"(
-class l0
-end
-class l0
-end
-_ = l0 {  }
-)"
-    );
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    auto err = get<SyntaxError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
-    REQUIRE(get<UnknownSymbol>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "prop_with_typeof_reassigned_class")
@@ -1253,15 +1295,14 @@ TEST_CASE_FIXTURE(ClassesFixture, "prop_with_typeof_reassigned_class")
 class Animal end
 Animal = nil
 class l0
-public _:typeof(Animal)
+public l1:typeof(Animal)
 end
 )"
     );
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<SyntaxError>(result.errors[0]);
+    auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("Variable 'Animal' is constant and may not be reassigned", err->message);
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "class_that_shadows_a_type_alias")
@@ -1447,6 +1488,65 @@ TEST_CASE_FIXTURE(ClassesFixture, "writes_to_unknown_class_instance_properties_a
     REQUIRE(pav3);
     CHECK(pav3->key == "__index");
     CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_oct_20")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        class C
+            function m()
+                type function t(x)
+                    return x._hello
+                end
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_oct_21")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+        export class l0
+        end
+        local l0 = l0
+        export class l0 extends l0
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_assigning_to_local_extends_that_local")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+local A = 1
+class A extends A
+end
+    )"));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_assigning_to_const")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+const function l0()
+end
+class l0
+end
+    )"));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_extends_and_shadows")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+local open class Foo 
+    public a: number 
+end
+do 
+    local class Foo extends Foo 
+        public b: number 
+    end
+    local x = Foo{b=1}
+    local s: string = x.zzz 
+end
+    )"));
 }
 
 TEST_SUITE_END();

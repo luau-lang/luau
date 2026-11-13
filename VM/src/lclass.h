@@ -21,6 +21,8 @@ LUAI_FUNC LuauClass* luaR_newclass(
     TString** offsettomember,
     uint32_t numberofinstancemembers,
     uint32_t numberofstaticmembers,
+    uint8_t numberofprivatefields,
+    uint8_t numberofprivatemethods,
     LuaTable* envt
 );
 
@@ -30,9 +32,14 @@ LUAI_FUNC LuauClass* luaR_newclass(
 LUAI_FUNC LuauClass* luaR_inheritclass(lua_State* L, const LuauClass* child, LuauClass* parent);
 
 /**
- * Add a new class member to `classobject` named `name` and with value `value`.
+ * Add a new public static class member to `classobject` named `name` and with value `value`.
  */
-LUAI_FUNC void luaR_addclassmember(lua_State* L, LuauClass* classobject, TString* name, TValue* value);
+LUAI_FUNC void luaR_addpublicstaticmember(lua_State* L, LuauClass* classobject, TString* name, TValue* value);
+
+/**
+ * Add a new private static class member to `classobject` at the specified private index and with value `value`.
+ */
+LUAI_FUNC void luaR_addprivatestaticmember(lua_State* L, LuauClass* classobject, uint8_t pindex, TValue* value);
 
 LUAI_FUNC void luaR_freeclass(lua_State* L, LuauClass* classobject, lua_Page* page);
 
@@ -58,9 +65,22 @@ LUAI_FUNC void luaR_tryconstructobject(lua_State* L, StkId target, StkId maybecl
 
 LUAI_FUNC void luaR_freeobject(lua_State* L, LuauObject* classinstance, lua_Page* page);
 
-#define luaR_checkoffsetinbounds(inst, offset) (offset < (inst)->lclass->numberofallmembers)
+LUAI_FUNC bool luaR_isinstance(const LuauObject* inst, const LuauClass* cls);
+
+LUAI_FUNC bool luaR_issubclass(const LuauClass* child, const LuauClass* ancestor);
+
+#define luaR_offsettomemberlength(cls) ((cls)->numberofmembers - static_cast<uint32_t>((cls)->numberofprivatestaticmembers))
+
+#define luaR_checkpublicmemberoffset(inst, offset) \
+    (offset < luaR_offsettomemberlength((inst)->lclass) && (inst)->lclass->offsettomember[offset] != NULL)
+
+// Number of static members, including this class's private ones.
+#define luaR_numstaticmembers(cls) ((cls)->numberofmembers - (cls)->numberofinstancemembers)
+
+// Private static members are addressed by index and live in the last luaR_numprivatestaticmembers slots of staticmembers.
+#define luaR_privatestaticmember(cls, pindex) (LUAU_ASSERT((pindex) < (cls)->numberofprivatestaticmembers), &(cls)->privatestaticmembers[pindex])
 
 #define luaR_lookupmemberatoffset(inst, offset) \
-    (LUAU_ASSERT(luaR_checkoffsetinbounds(inst, offset)), \
+    (LUAU_ASSERT(luaR_checkpublicmemberoffset(inst, offset)), \
      offset < (inst)->lclass->numberofinstancemembers ? &(inst)->members[offset] \
                                                       : &(inst)->lclass->staticmembers[offset - inst->lclass->numberofinstancemembers])

@@ -88,8 +88,6 @@ const char* getTagName(uint8_t tag)
         return "tclass";
     case LUA_TOBJECT:
         return "tobject";
-    case LUA_TINTEGER:
-        return "tinteger";
     default:
         CODEGEN_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();
@@ -110,8 +108,6 @@ const char* getCmdName(IrCmd cmd)
         return "LOAD_DOUBLE";
     case IrCmd::LOAD_INT:
         return "LOAD_INT";
-    case IrCmd::LOAD_INT64:
-        return "LOAD_INT64";
     case IrCmd::LOAD_FLOAT:
         return "LOAD_FLOAT";
     case IrCmd::LOAD_TVALUE:
@@ -136,8 +132,6 @@ const char* getCmdName(IrCmd cmd)
         return "STORE_DOUBLE";
     case IrCmd::STORE_INT:
         return "STORE_INT";
-    case IrCmd::STORE_INT64:
-        return "STORE_INT64";
     case IrCmd::STORE_VECTOR:
         return "STORE_VECTOR";
     case IrCmd::STORE_TVALUE:
@@ -338,6 +332,8 @@ const char* getCmdName(IrCmd cmd)
         return "FLOAT_TO_VEC";
     case IrCmd::TAG_VECTOR:
         return "TAG_VECTOR";
+    case IrCmd::UNTAG_VECTOR:
+        return "UNTAG_VECTOR";
     case IrCmd::TRUNCATE_UINT:
         return "TRUNCATE_UINT";
     case IrCmd::ADJUST_STACK_TO_REG:
@@ -352,6 +348,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_FASTCALL_RES";
     case IrCmd::INVOKE_FASTPCALL:
         return "INVOKE_FASTPCALL";
+    case IrCmd::INVOKE_NAMECALL:
+        return "INVOKE_NAMECALL";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
     case IrCmd::DO_LEN:
@@ -404,6 +402,8 @@ const char* getCmdName(IrCmd cmd)
         return "INTERRUPT";
     case IrCmd::CHECK_GC:
         return "CHECK_GC";
+    case IrCmd::UPDATE_COUNTERS:
+        return "UPDATE_COUNTERS";
     case IrCmd::BARRIER_OBJ:
         return "BARRIER_OBJ";
     case IrCmd::BARRIER_TABLE_BACK:
@@ -540,6 +540,14 @@ const char* getCmdName(IrCmd cmd)
         return "BUFFER_READI64";
     case IrCmd::BUFFER_WRITEI64:
         return "BUFFER_WRITEI64";
+    case IrCmd::BUFFER_READVECTOR:
+        return "BUFFER_READVECTOR";
+    case IrCmd::BUFFER_WRITEVECTOR:
+        return "BUFFER_WRITEVECTOR";
+    case IrCmd::BUFFER_READF32X4:
+        return "BUFFER_READF32X4";
+    case IrCmd::BUFFER_WRITEF32X4:
+        return "BUFFER_WRITEF32X4";
     case IrCmd::JUMP_CMP_PROTOID:
         return "JUMP_CMP_PROTOID";
     }
@@ -615,9 +623,6 @@ uint8_t parseTagName(std::string_view name)
 
     if (name == "tnumber")
         return LUA_TNUMBER;
-
-    if (name == "tinteger")
-        return LUA_TINTEGER;
 
     if (name == "tvector")
         return LUA_TVECTOR;
@@ -701,10 +706,6 @@ static void appendVmConstant(std::string& result, Proto* proto, int index)
             append(result, "nan");
         else
             append(result, "%.17g", constant.value.n);
-    }
-    else if (constant.tt == LUA_TINTEGER)
-    {
-        append(result, "%lldi", (long long)constant.value.l);
     }
     else if (constant.tt == LUA_TSTRING)
     {
@@ -858,8 +859,6 @@ const char* getBytecodeTypeName(uint8_t type, const char* const* userdataTypes)
         return "boolean";
     case LBC_TYPE_NUMBER:
         return "number";
-    case LBC_TYPE_INTEGER:
-        return "integer";
     case LBC_TYPE_STRING:
         return "string";
     case LBC_TYPE_TABLE:
@@ -1049,6 +1048,44 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
             append(ctx.result, "\n");
         }
     }
+
+    if (inst.cmd == IrCmd::UPDATE_COUNTERS)
+    {
+        const IrCounterSet& counterSet = ctx.counterSets[ctx.constants[OP_A(inst).index].valueUint];
+
+        append(ctx.result, "   ; counters: ");
+
+        bool comma = false;
+
+        for (const IrEntryCounter& counter : counterSet.counters)
+        {
+            if (comma)
+                append(ctx.result, ", ");
+            comma = true;
+
+            toString(ctx, counter.operand);
+
+            switch (counter.kind)
+            {
+            case CodeGenCounter::VmRegTagMismatch:
+                append(ctx.result, " tag");
+                break;
+            case CodeGenCounter::VmRegUserdataTag:
+                append(ctx.result, " userdata");
+                break;
+            default:
+                CODEGEN_ASSERT(!"unknown counter kind");
+                break;
+            }
+
+            append(ctx.result, " at pcpos %u", counter.pcpos);
+
+            if (counter.expectedTag != kUnknownTag)
+                append(ctx.result, " (%s expected)", getTagName(counter.expectedTag));
+        }
+
+        append(ctx.result, "\n");
+    }
 }
 
 void toStringDetailed(
@@ -1142,7 +1179,7 @@ void toStringDetailed(
 std::string toString(IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -1259,7 +1296,7 @@ static void appendBlocks(IrToStringContext& ctx, const IrFunction& function, boo
 std::string toDot(const IrFunction& function, bool includeInst)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1301,7 +1338,7 @@ std::string toDot(const IrFunction& function, bool includeInst)
 std::string toDotCfg(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1324,7 +1361,7 @@ std::string toDotCfg(const IrFunction& function)
 std::string toDotDjGraph(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
 

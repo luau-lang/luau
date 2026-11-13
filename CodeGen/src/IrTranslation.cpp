@@ -12,10 +12,9 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenInteger3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
-LUAU_FASTFLAG(LuauFastpcallInterrupt)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAG(LuauCodegenRuntimeFeedback)
+LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataDirect)
 
 namespace Luau
 {
@@ -51,6 +50,91 @@ static IrOp getInitializedFallback(IrBuilder& build, IrOp& fallback, int pcpos)
         fallback = build.fallbackBlock(pcpos);
 
     return fallback;
+}
+
+static void recordTagMismatchCounter(IrBuilder& build, IrCounterSet& counterSet, IrOp op, uint32_t pcpos, uint8_t expectedTag)
+{
+    IrEntryCounter counter;
+    counter.kind = CodeGenCounter::VmRegTagMismatch;
+    counter.operand = op;
+    counter.pcpos = pcpos;
+    counter.expectedTag = expectedTag;
+
+    counterSet.counters.push_back(counter);
+}
+
+static void recordFallbackTagMismatch(IrBuilder& build, IrOp fallback, IrOp op, uint32_t pcpos, uint8_t expectedTag)
+{
+    if (build.function.recordFeedback && fallback.kind != IrOpKind::None)
+        recordTagMismatchCounter(build, build.getBlockCounterSet(fallback), op, pcpos, expectedTag);
+}
+
+static void recordUserdataTagCounter(IrBuilder& build, IrCounterSet& counterSet, IrOp op, uint32_t pcpos)
+{
+    IrEntryCounter counter;
+    counter.kind = CodeGenCounter::VmRegUserdataTag;
+    counter.operand = op;
+    counter.pcpos = pcpos;
+
+    counterSet.counters.push_back(counter);
+}
+
+static void recordFallbackUserdataTag(IrBuilder& build, IrOp fallback, IrOp op, uint32_t pcpos)
+{
+    if (build.function.recordFeedback && fallback.kind != IrOpKind::None)
+        recordUserdataTagCounter(build, build.getBlockCounterSet(fallback), op, pcpos);
+}
+
+// On the main execution path, this places a recording of both the register tag and userdata tag
+static void recordUserdataTag(IrBuilder& build, int reg, int pcpos)
+{
+    if (!build.function.recordFeedback)
+        return;
+
+    IrCounterSet& counterSet = build.addUpdateCounters();
+
+    recordTagMismatchCounter(build, counterSet, build.vmReg(uint8_t(reg)), pcpos, LUA_TUSERDATA);
+    recordUserdataTagCounter(build, counterSet, build.vmReg(uint8_t(reg)), pcpos);
+}
+
+static LuauBytecodeType getRecordedVmRegType(IrBuilder& build, uint8_t bcType, int pcpos, int reg)
+{
+    if (bcType != LBC_TYPE_ANY || reg == -1)
+        return LBC_TYPE_ANY;
+
+    return getTagFeedback(build.function, pcpos, reg);
+}
+
+static void checkUserdataWithFeedback(IrBuilder& build, const BytecodeUserdataFeedback& feedback, IrOp fallback, int pcpos)
+{
+    build.loadAndCheckTag(build.vmReg(feedback.reg), LUA_TUSERDATA, fallback);
+    recordFallbackTagMismatch(build, fallback, build.vmReg(feedback.reg), pcpos, LUA_TUSERDATA);
+
+    IrOp udata = build.inst(IrCmd::LOAD_POINTER, build.vmReg(feedback.reg));
+    build.inst(IrCmd::CHECK_USERDATA_TAG, udata, build.constInt(feedback.tag), fallback);
+    recordFallbackUserdataTag(build, fallback, build.vmReg(feedback.reg), pcpos);
+}
+
+static bool isGenericArithFeedback(LuauBytecodeType recorded)
+{
+    return recorded != LBC_TYPE_ANY && recorded != LBC_TYPE_NUMBER && recorded != LBC_TYPE_VECTOR;
+}
+
+static void checkArithOperandTag(IrBuilder& build, IrOp& fallback, int reg, uint8_t tag, uint8_t type, int pcpos)
+{
+    CODEGEN_ASSERT(tag == LUA_TNUMBER || tag == LUA_TVECTOR);
+
+    IrOp tagOp = build.inst(IrCmd::LOAD_TAG, build.vmReg(reg));
+
+    if (type == (tag == LUA_TNUMBER ? LBC_TYPE_NUMBER : LBC_TYPE_VECTOR))
+    {
+        build.inst(IrCmd::CHECK_TAG, tagOp, build.constTag(tag), build.vmExit(pcpos));
+    }
+    else
+    {
+        build.inst(IrCmd::CHECK_TAG, tagOp, build.constTag(tag), getInitializedFallback(build, fallback, pcpos));
+        recordFallbackTagMismatch(build, fallback, build.vmReg(reg), pcpos, tag);
+    }
 }
 
 static IrOp loadDoubleOrConstant(IrBuilder& build, IrOp arg)
@@ -107,11 +191,6 @@ static void translateInstLoadConstant(IrBuilder& build, int ra, int k)
     {
         build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(protok.value.b));
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
-    }
-    else if (FFlag::LuauCodegenInteger3 && protok.tt == LUA_TINTEGER)
-    {
-        build.inst(IrCmd::STORE_INT64, build.vmReg(ra), build.constInt64(protok.value.l));
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TINTEGER));
     }
     else if (protok.tt == LUA_TNUMBER)
     {
@@ -204,25 +283,6 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
 
         build.beginBlock(fallback);
     }
-    // fast-path: integer (when both operands are expected to be an integer or are unknown)
-    else if (FFlag::LuauCodegenInteger3 && FFlag::LuauCodegenIntegerCompare && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
-             isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
-    {
-        IrOp fallback = build.fallbackBlock(pcpos);
-
-        IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
-        build.inst(IrCmd::CHECK_TAG, ta, build.constTag(LUA_TINTEGER), fallback);
-
-        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TINTEGER), fallback);
-
-        IrOp va = build.inst(IrCmd::LOAD_INT64, build.vmReg(ra));
-        IrOp vb = build.inst(IrCmd::LOAD_INT64, build.vmReg(rb));
-
-        build.inst(IrCmd::JUMP_CMP_INT64, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
-
-        build.beginBlock(fallback);
-    }
 
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
 
@@ -270,49 +330,6 @@ void translateInstJumpIfEqShortcut(IrBuilder& build, const Instruction* pc, int 
             IrCmd::CMP_SPLIT_TVALUE,
             build.constTag(LUA_TNUMBER),
             build.constTag(LUA_TNUMBER),
-            va,
-            vb,
-            build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal)
-        );
-
-        build.inst(IrCmd::STORE_INT, build.vmReg(rr), result);
-        build.inst(IrCmd::STORE_TAG, build.vmReg(rr), build.constTag(LUA_TBOOLEAN));
-        build.inst(IrCmd::JUMP, next);
-
-        // If we don't need a fallback, we are done
-        if (fallback.kind == IrOpKind::None)
-            return;
-
-        // Otherwise, start the fallback block
-        // Note that if the number fast-path is not taken at all code that would have been in the fallback is actually the main path
-        build.beginBlock(fallback);
-    }
-    else if (FFlag::LuauCodegenInteger3 && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
-             isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
-    {
-        IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
-        build.inst(
-            IrCmd::CHECK_TAG,
-            ta,
-            build.constTag(LUA_TINTEGER),
-            bcTypes.a == LBC_TYPE_INTEGER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
-        );
-
-        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-        build.inst(
-            IrCmd::CHECK_TAG,
-            tb,
-            build.constTag(LUA_TINTEGER),
-            bcTypes.b == LBC_TYPE_INTEGER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
-        );
-
-        IrOp va = build.inst(IrCmd::LOAD_INT64, build.vmReg(ra));
-        IrOp vb = build.inst(IrCmd::LOAD_INT64, build.vmReg(rb));
-
-        IrOp result = build.inst(
-            IrCmd::CMP_SPLIT_TVALUE,
-            build.constTag(LUA_TINTEGER),
-            build.constTag(LUA_TINTEGER),
             va,
             vb,
             build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal)
@@ -629,12 +646,26 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
+    LuauBytecodeType recordedA = FFlag::LuauCodegenRuntimeFeedback ? getRecordedVmRegType(build, bcTypes.a, pcpos, rb) : LBC_TYPE_ANY;
+    LuauBytecodeType recordedB = FFlag::LuauCodegenRuntimeFeedback ? getRecordedVmRegType(build, bcTypes.b, pcpos, rc) : LBC_TYPE_ANY;
+
+    bool vectorA = bcTypes.a == LBC_TYPE_VECTOR || (FFlag::LuauCodegenRuntimeFeedback && recordedA == LBC_TYPE_VECTOR);
+    bool vectorB = bcTypes.b == LBC_TYPE_VECTOR || (FFlag::LuauCodegenRuntimeFeedback && recordedB == LBC_TYPE_VECTOR);
+
     // Special fast-paths for vectors, matching the cases we have in VM
-    if (bcTypes.a == LBC_TYPE_VECTOR && bcTypes.b == LBC_TYPE_VECTOR &&
+    if ((FFlag::LuauCodegenRuntimeFeedback ? vectorA && vectorB : bcTypes.a == LBC_TYPE_VECTOR && bcTypes.b == LBC_TYPE_VECTOR) &&
         (tm == TM_ADD || tm == TM_SUB || tm == TM_MUL || tm == TM_DIV || tm == TM_IDIV))
     {
-        build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
-        build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+        if (FFlag::LuauCodegenRuntimeFeedback)
+        {
+            checkArithOperandTag(build, fallback, rb, LUA_TVECTOR, bcTypes.a, pcpos);
+            checkArithOperandTag(build, fallback, rc, LUA_TVECTOR, bcTypes.b, pcpos);
+        }
+        else
+        {
+            build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+            build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+        }
 
         if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
@@ -717,21 +748,37 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
 
             build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
         }
+
+        if (FFlag::LuauCodegenRuntimeFeedback)
+            translateBinaryNumericFallbackIfRequired(build, fallback, ra, opb, opc, tm, pcpos);
+
         return;
     }
-    else if (!isUserdataBytecodeType(bcTypes.a) && bcTypes.b == LBC_TYPE_VECTOR && (tm == TM_MUL || tm == TM_DIV || tm == TM_IDIV))
+    else if (!isUserdataBytecodeType(bcTypes.a) &&
+             (FFlag::LuauCodegenRuntimeFeedback ? !isGenericArithFeedback(recordedA) && vectorB : bcTypes.b == LBC_TYPE_VECTOR) &&
+             (tm == TM_MUL || tm == TM_DIV || tm == TM_IDIV))
     {
-        if (rb != -1)
+        if (FFlag::LuauCodegenRuntimeFeedback)
         {
-            build.inst(
-                IrCmd::CHECK_TAG,
-                build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)),
-                build.constTag(LUA_TNUMBER),
-                bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
-            );
-        }
+            if (rb != -1)
+                checkArithOperandTag(build, fallback, rb, LUA_TNUMBER, bcTypes.a, pcpos);
 
-        build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+            checkArithOperandTag(build, fallback, rc, LUA_TVECTOR, bcTypes.b, pcpos);
+        }
+        else
+        {
+            if (rb != -1)
+            {
+                build.inst(
+                    IrCmd::CHECK_TAG,
+                    build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)),
+                    build.constTag(LUA_TNUMBER),
+                    bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+                );
+            }
+
+            build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+        }
 
         if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
@@ -787,18 +834,30 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         translateBinaryNumericFallbackIfRequired(build, fallback, ra, opb, opc, tm, pcpos);
         return;
     }
-    else if (bcTypes.a == LBC_TYPE_VECTOR && !isUserdataBytecodeType(bcTypes.b) && (tm == TM_MUL || tm == TM_DIV || tm == TM_IDIV))
+    else if ((FFlag::LuauCodegenRuntimeFeedback ? vectorA && !isUserdataBytecodeType(bcTypes.b) && !isGenericArithFeedback(recordedB)
+                                                : bcTypes.a == LBC_TYPE_VECTOR && !isUserdataBytecodeType(bcTypes.b)) &&
+             (tm == TM_MUL || tm == TM_DIV || tm == TM_IDIV))
     {
-        build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
-
-        if (rc != -1)
+        if (FFlag::LuauCodegenRuntimeFeedback)
         {
-            build.inst(
-                IrCmd::CHECK_TAG,
-                build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)),
-                build.constTag(LUA_TNUMBER),
-                bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
-            );
+            checkArithOperandTag(build, fallback, rb, LUA_TVECTOR, bcTypes.a, pcpos);
+
+            if (rc != -1)
+                checkArithOperandTag(build, fallback, rc, LUA_TNUMBER, bcTypes.b, pcpos);
+        }
+        else
+        {
+            build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+
+            if (rc != -1)
+            {
+                build.inst(
+                    IrCmd::CHECK_TAG,
+                    build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)),
+                    build.constTag(LUA_TNUMBER),
+                    bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+                );
+            }
         }
 
         if constexpr (LUA_VECTOR_DOUBLE == 1)
@@ -856,38 +915,108 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         return;
     }
 
+    // If we recorded a userdata at this position, we can do a fast path or record a detailed userdata type counter (or nothing)
+    if (FFlag::LuauCodegenRuntimeFeedback && (recordedA == LBC_TYPE_USERDATA || recordedB == LBC_TYPE_USERDATA) && build.hostHooks.userdataMetamethod)
+    {
+        auto feedbackA = recordedA == LBC_TYPE_USERDATA ? getUserdataFeedback(build.function, pcpos, rb) : std::nullopt;
+        auto feedbackB = recordedB == LBC_TYPE_USERDATA ? getUserdataFeedback(build.function, pcpos, rc) : std::nullopt;
+
+        bool specializedA = recordedA != LBC_TYPE_USERDATA || (feedbackA && feedbackA->type != LBC_TYPE_ANY);
+        bool specializedB = recordedB != LBC_TYPE_USERDATA || (feedbackB && feedbackB->type != LBC_TYPE_ANY);
+
+        if (specializedA && specializedB)
+        {
+            fallback = build.fallbackBlock(pcpos);
+
+            if (feedbackA)
+                checkUserdataWithFeedback(build, *feedbackA, fallback, pcpos);
+
+            if (feedbackB && rc != rb)
+                checkUserdataWithFeedback(build, *feedbackB, fallback, pcpos);
+
+            uint8_t typeA = feedbackA ? feedbackA->type : (vectorA ? LBC_TYPE_VECTOR : bcTypes.a);
+            uint8_t typeB = feedbackB ? feedbackB->type : (vectorB ? LBC_TYPE_VECTOR : bcTypes.b);
+
+            if (!build.hostHooks.userdataMetamethod(build, typeA, typeB, ra, opb, opc, tmToHostMetamethod(tm), pcpos))
+            {
+                build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+                build.inst(IrCmd::DO_ARITH, build.vmReg(ra), opb, opc, build.constInt(tm));
+            }
+
+            translateBinaryNumericFallbackIfRequired(build, fallback, ra, opb, opc, tm, pcpos);
+            return;
+        }
+
+        if (recordedA == LBC_TYPE_USERDATA && !feedbackA)
+            recordUserdataTag(build, rb, pcpos);
+
+        if (recordedB == LBC_TYPE_USERDATA && !feedbackB && rc != rb)
+            recordUserdataTag(build, rc, pcpos);
+    }
+
     if (isUserdataBytecodeType(bcTypes.a) || isUserdataBytecodeType(bcTypes.b))
     {
-        if (build.hostHooks.userdataMetamethod &&
-            build.hostHooks.userdataMetamethod(build, bcTypes.a, bcTypes.b, ra, opb, opc, tmToHostMetamethod(tm), pcpos))
-            return;
+        if (FFlag::LuauCodegenRuntimeFeedback)
+        {
+            uint8_t typeA = vectorA ? LBC_TYPE_VECTOR : bcTypes.a;
+            uint8_t typeB = vectorB ? LBC_TYPE_VECTOR : bcTypes.b;
+
+            if (build.hostHooks.userdataMetamethod &&
+                build.hostHooks.userdataMetamethod(build, typeA, typeB, ra, opb, opc, tmToHostMetamethod(tm), pcpos))
+                return;
+        }
+        else
+        {
+            if (build.hostHooks.userdataMetamethod &&
+                build.hostHooks.userdataMetamethod(build, bcTypes.a, bcTypes.b, ra, opb, opc, tmToHostMetamethod(tm), pcpos))
+                return;
+        }
 
         build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
         build.inst(IrCmd::DO_ARITH, build.vmReg(ra), opb, opc, build.constInt(tm));
         return;
     }
 
-    // fast-path: number
-    if (rb != -1)
+    if (FFlag::LuauCodegenRuntimeFeedback && (isGenericArithFeedback(recordedA) || isGenericArithFeedback(recordedB)))
     {
-        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-        build.inst(
-            IrCmd::CHECK_TAG,
-            tb,
-            build.constTag(LUA_TNUMBER),
-            bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
-        );
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(IrCmd::DO_ARITH, build.vmReg(ra), opb, opc, build.constInt(tm));
+        return;
     }
 
-    if (rc != -1 && rc != rb)
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
-        IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
-        build.inst(
-            IrCmd::CHECK_TAG,
-            tc,
-            build.constTag(LUA_TNUMBER),
-            bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
-        );
+        // fast-path: number
+        if (rb != -1)
+            checkArithOperandTag(build, fallback, rb, LUA_TNUMBER, bcTypes.a, pcpos);
+
+        if (rc != -1 && rc != rb)
+            checkArithOperandTag(build, fallback, rc, LUA_TNUMBER, bcTypes.b, pcpos);
+    }
+    else
+    {
+        // fast-path: number
+        if (rb != -1)
+        {
+            IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+            build.inst(
+                IrCmd::CHECK_TAG,
+                tb,
+                build.constTag(LUA_TNUMBER),
+                bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+            );
+        }
+
+        if (rc != -1 && rc != rb)
+        {
+            IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
+            build.inst(
+                IrCmd::CHECK_TAG,
+                tc,
+                build.constTag(LUA_TNUMBER),
+                bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+            );
+        }
     }
 
     IrOp vb = loadDoubleOrConstant(build, opb);
@@ -998,9 +1127,15 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
 
-    if (bcTypes.a == LBC_TYPE_VECTOR)
+    IrOp fallback;
+    LuauBytecodeType recordedA = FFlag::LuauCodegenRuntimeFeedback ? getRecordedVmRegType(build, bcTypes.a, pcpos, rb) : LBC_TYPE_ANY;
+
+    if (bcTypes.a == LBC_TYPE_VECTOR || (FFlag::LuauCodegenRuntimeFeedback && recordedA == LBC_TYPE_VECTOR))
     {
-        build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+        if (FFlag::LuauCodegenRuntimeFeedback)
+            checkArithOperandTag(build, fallback, rb, LUA_TVECTOR, bcTypes.a, pcpos);
+        else
+            build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
 
         if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
@@ -1024,6 +1159,10 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
             va = build.inst(IrCmd::TAG_VECTOR, va);
             build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), va);
         }
+
+        if (FFlag::LuauCodegenRuntimeFeedback)
+            translateBinaryNumericFallbackIfRequired(build, fallback, ra, build.vmReg(rb), build.vmReg(rb), TM_UNM, pcpos);
+
         return;
     }
 
@@ -1038,15 +1177,53 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback;
+    // If we recorded a userdata at this position, we can do a fast path or record a detailed userdata type counter (or nothing)
+    if (FFlag::LuauCodegenRuntimeFeedback && recordedA == LBC_TYPE_USERDATA && build.hostHooks.userdataMetamethod)
+    {
+        auto feedback = getUserdataFeedback(build.function, pcpos, rb);
 
-    IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(
-        IrCmd::CHECK_TAG,
-        tb,
-        build.constTag(LUA_TNUMBER),
-        bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
-    );
+        if (feedback && feedback->type != LBC_TYPE_ANY)
+        {
+            fallback = build.fallbackBlock(pcpos);
+
+            checkUserdataWithFeedback(build, *feedback, fallback, pcpos);
+
+            if (!build.hostHooks.userdataMetamethod(build, feedback->type, bcTypes.b, ra, build.vmReg(rb), {}, tmToHostMetamethod(TM_UNM), pcpos))
+            {
+                build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+                build.inst(IrCmd::DO_ARITH, build.vmReg(ra), build.vmReg(rb), build.vmReg(rb), build.constInt(TM_UNM));
+            }
+
+            translateBinaryNumericFallbackIfRequired(build, fallback, ra, build.vmReg(rb), build.vmReg(rb), TM_UNM, pcpos);
+            return;
+        }
+
+        if (!feedback)
+            recordUserdataTag(build, rb, pcpos);
+    }
+
+    // If we recorded a type that doesn't have any fast paths, place the 'fallback' operation as the main one
+    if (FFlag::LuauCodegenRuntimeFeedback && isGenericArithFeedback(recordedA))
+    {
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(IrCmd::DO_ARITH, build.vmReg(ra), build.vmReg(rb), build.vmReg(rb), build.constInt(TM_UNM));
+        return;
+    }
+
+    if (FFlag::LuauCodegenRuntimeFeedback)
+    {
+        checkArithOperandTag(build, fallback, rb, LUA_TNUMBER, bcTypes.a, pcpos);
+    }
+    else
+    {
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(
+            IrCmd::CHECK_TAG,
+            tb,
+            build.constTag(LUA_TNUMBER),
+            bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+        );
+    }
 
     // fast-path: number
     IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
@@ -1057,7 +1234,11 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
     if (ra != rb)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    if (fallback.kind != IrOpKind::None)
+    if (FFlag::LuauCodegenRuntimeFeedback)
+    {
+        translateBinaryNumericFallbackIfRequired(build, fallback, ra, build.vmReg(rb), build.vmReg(rb), TM_UNM, pcpos);
+    }
+    else if (fallback.kind != IrOpKind::None)
     {
         IrOp next = build.blockAtInst(pcpos + 1);
         FallbackStreamScope scope(build, fallback, next);
@@ -1188,8 +1369,6 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
         if (protok.tt == LUA_TNUMBER)
             builtinArgs = build.constDouble(protok.value.n);
-        else if (FFlag::LuauCodegenInteger3 && protok.tt == LUA_TINTEGER)
-            builtinArgs = build.constInt64(protok.value.l);
     }
 
     IrOp builtinArg3 = customParams ? customArg3 : build.vmReg(ra + 3);
@@ -1278,8 +1457,7 @@ std::optional<IrOp> translateFastPcall(IrBuilder& build, const Instruction* pc, 
 
     IrOp fallback = build.fallbackBlock(pcpos);
 
-    if (FFlag::LuauFastpcallInterrupt)
-        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+    build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
     build.checkSafeEnv(pcpos + getOpLength(opcode));
@@ -1763,12 +1941,68 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     uint32_t aux = LUAU_INSN_OP(*pc) == LOP_GETUDATAKS ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+    LuauBytecodeType recordedType = FFlag::LuauCodegenRuntimeFeedback ? getRecordedVmRegType(build, bcTypes.a, pcpos, rb) : LBC_TYPE_ANY;
+
+    // If we recorded a userdata at this position, we can do a fast path or record a detailed userdata type counter (or nothing)
+    if (FFlag::LuauCodegenRuntimeFeedback && recordedType == LBC_TYPE_USERDATA && build.hostHooks.userdataAccess)
+    {
+        auto feedback = getUserdataFeedback(build.function, pcpos, rb);
+
+        if (feedback && feedback->type != LBC_TYPE_ANY)
+        {
+            IrOp fallback = build.fallbackBlock(pcpos);
+
+            checkUserdataWithFeedback(build, *feedback, fallback, pcpos);
+
+            TString* str = gco2ts(build.function.proto->k[aux].value.gc);
+            const char* field = getstr(str);
+
+            if (!build.hostHooks.userdataAccess(build, feedback->type, field, str->len, ra, rb, pcpos))
+                build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+
+            IrOp next = build.blockAtInst(pcpos + 2);
+            FallbackStreamScope scope(build, fallback, next);
+
+            build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+            build.inst(IrCmd::JUMP, next);
+            return;
+        }
+
+        if (!feedback)
+            recordUserdataTag(build, rb, pcpos);
+    }
+
+    // If we recorded a type that doesn't have any fast paths, place the 'fallback' operation as the main one
+    if (FFlag::LuauCodegenRuntimeFeedback && recordedType != LBC_TYPE_ANY && recordedType != LBC_TYPE_VECTOR && recordedType != LBC_TYPE_TABLE)
+    {
+        build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+        return;
+    }
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
 
-    if (bcTypes.a == LBC_TYPE_VECTOR)
+    if (bcTypes.a == LBC_TYPE_VECTOR || (FFlag::LuauCodegenRuntimeFeedback && recordedType == LBC_TYPE_VECTOR))
     {
-        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+        IrOp fallback;
+
+        if (FFlag::LuauCodegenRuntimeFeedback)
+        {
+            if (bcTypes.a == LBC_TYPE_VECTOR)
+            {
+                build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+            }
+            else
+            {
+                fallback = build.fallbackBlock(pcpos);
+
+                build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TVECTOR), fallback);
+                recordFallbackTagMismatch(build, fallback, build.vmReg(rb), pcpos, LUA_TVECTOR);
+            }
+        }
+        else
+        {
+            build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
+        }
 
         TString* str = gco2ts(build.function.proto->k[aux].value.gc);
         const char* field = getstr(str);
@@ -1825,10 +2059,29 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         }
         else
         {
-            if (build.hostHooks.vectorAccess && build.hostHooks.vectorAccess(build, field, str->len, ra, rb, pcpos))
-                return;
+            if (FFlag::LuauCodegenRuntimeFeedback)
+            {
+                if (!build.hostHooks.vectorAccess || !build.hostHooks.vectorAccess(build, field, str->len, ra, rb, pcpos))
+                {
+                    build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+                }
+            }
+            else
+            {
+                if (build.hostHooks.vectorAccess && build.hostHooks.vectorAccess(build, field, str->len, ra, rb, pcpos))
+                    return;
+
+                build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+            }
+        }
+
+        if (FFlag::LuauCodegenRuntimeFeedback && fallback.kind != IrOpKind::None)
+        {
+            IrOp next = build.blockAtInst(pcpos + 2);
+            FallbackStreamScope scope(build, fallback, next);
 
             build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+            build.inst(IrCmd::JUMP, next);
         }
 
         return;
@@ -1855,6 +2108,9 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
+    if (FFlag::LuauCodegenRuntimeFeedback && bcTypes.a != LBC_TYPE_TABLE)
+        recordFallbackTagMismatch(build, fallback, build.vmReg(rb), pcpos, LUA_TTABLE);
+
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
     IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, vb, build.constUint(pcpos), build.vmConst(aux));
@@ -1880,8 +2136,10 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     uint32_t aux = LUAU_INSN_OP(*pc) == LOP_SETUDATAKS ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+    LuauBytecodeType recordedType = FFlag::LuauCodegenRuntimeFeedback ? getRecordedVmRegType(build, bcTypes.a, pcpos, rb) : LBC_TYPE_ANY;
 
-    if (FFlag::DebugLuauUserDefinedClassesRuntime && bcTypes.a == LBC_TYPE_OBJECT)
+    if ((FFlag::DebugLuauUserDefinedClassesRuntime && bcTypes.a == LBC_TYPE_OBJECT) ||
+        (FFlag::LuauCodegenRuntimeFeedback && recordedType != LBC_TYPE_ANY && recordedType != LBC_TYPE_TABLE))
     {
         build.inst(IrCmd::FALLBACK_SETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
         return;
@@ -1900,6 +2158,9 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp fallback = build.fallbackBlock(pcpos);
 
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
+
+    if (FFlag::LuauCodegenRuntimeFeedback && bcTypes.a != LBC_TYPE_TABLE)
+        recordFallbackTagMismatch(build, fallback, build.vmReg(rb), pcpos, LUA_TTABLE);
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
@@ -2003,19 +2264,199 @@ void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos)
     }
 }
 
+static void translateNamecallFallback_DEPRECATED(IrBuilder& build, const Instruction* pc, int pcpos, uint32_t aux, IrOp fallback)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+
+    IrOp next = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LOP_NAMECALL)));
+    FallbackStreamScope scope(build, fallback, next);
+
+    build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+    build.inst(IrCmd::JUMP, next);
+}
+
+// Fast-paths skip both namecall and call, so their fallback needs both performed
+static void translateNamecallFallbackWithCall_DEPRECATED(IrBuilder& build, const Instruction* pc, int pcpos, uint32_t aux, IrOp fallback)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+
+    Instruction call = pc[2];
+    int callra = LUAU_INSN_A(call);
+    int nparams = LUAU_INSN_B(call) - 1;
+    int nresults = LUAU_INSN_C(call) - 1;
+
+    int callpc = pcpos + getOpLength(LuauOpcode(LOP_NAMECALL));
+    int nextpc = callpc + getOpLength(LuauOpcode(LUAU_INSN_OP(call)));
+
+    IrOp next = build.blockAtInst(nextpc);
+    FallbackStreamScope scope(build, fallback, next);
+
+    build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+    build.inst(IrCmd::INTERRUPT, build.constUint(callpc));
+    build.inst(IrCmd::SET_SAVEDPC, build.constUint(nextpc));
+    build.inst(IrCmd::CALL, build.vmReg(callra), build.constInt(nparams), build.constInt(nresults));
+    build.inst(IrCmd::JUMP, next);
+}
+
+// Returns true for the full sequence and false for a sequence that still needs a call
+static bool emitNamecallSequence(IrBuilder& build, bool isUdata, int pcpos, int ra, int rb, uint32_t aux, int nparams, int nresults)
+{
+    if (isUdata)
+    {
+        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+        build.inst(
+            IrCmd::INVOKE_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.constInt(nparams), build.constInt(nresults)
+        );
+        return true;
+    }
+    else
+    {
+        build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+        return false;
+    }
+}
+
+static void emitNamecallFallback(
+    IrBuilder& build,
+    bool isUdata,
+    int callpc,
+    int nextpc,
+    int pcpos,
+    int ra,
+    int rb,
+    uint32_t aux,
+    int nparams,
+    int nresults,
+    IrOp fallback
+)
+{
+    IrOp next = build.blockAtInst(isUdata ? nextpc : callpc);
+    FallbackStreamScope scope(build, fallback, next);
+
+    emitNamecallSequence(build, isUdata, pcpos, ra, rb, aux, nparams, nresults);
+    build.inst(IrCmd::JUMP, next);
+}
+
+static void emitNamecallFallbackFull(
+    IrBuilder& build,
+    bool isUdata,
+    int callpc,
+    int nextpc,
+    int pcpos,
+    int callra,
+    int ra,
+    int rb,
+    uint32_t aux,
+    int nparams,
+    int nresults,
+    IrOp fallback
+)
+{
+    IrOp next = build.blockAtInst(nextpc);
+    FallbackStreamScope scope(build, fallback, next);
+
+    if (!emitNamecallSequence(build, isUdata, pcpos, ra, rb, aux, nparams, nresults))
+    {
+        build.inst(IrCmd::INTERRUPT, build.constUint(callpc));
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(nextpc));
+        build.inst(IrCmd::CALL, build.vmReg(callra), build.constInt(nparams), build.constInt(nresults));
+    }
+
+    build.inst(IrCmd::JUMP, next);
+}
+
 bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
 
-    // TODO: we keep the table access lowering for speculative userdata access instructions until a later date
-    uint32_t aux = LUAU_INSN_OP(*pc) == LOP_NAMECALLUDATA ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
+    bool isUdata = LUAU_INSN_OP(*pc) == LOP_NAMECALLUDATA;
+    uint32_t aux = isUdata ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
+
+    Instruction call = pc[2];
+    CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALLFB || LUAU_INSN_OP(call) == LOP_CALL);
+
+    int callra = LUAU_INSN_A(call);
+    int nparams = LUAU_INSN_B(call) - 1;
+    int nresults = LUAU_INSN_C(call) - 1;
+
+    int callpc = pcpos + getOpLength(LuauOpcode(LOP_NAMECALL));
+    int nextpc = callpc + getOpLength(LuauOpcode(LUAU_INSN_OP(call)));
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+    LuauBytecodeType recordedType = FFlag::LuauCodegenRuntimeFeedback ? getRecordedVmRegType(build, bcTypes.a, pcpos, rb) : LBC_TYPE_ANY;
 
-    if (bcTypes.a == LBC_TYPE_VECTOR)
+    // If we recorded a userdata at this position, we can do a fast path or record a detailed userdata type counter (or nothing)
+    if (FFlag::LuauCodegenRuntimeFeedback && recordedType == LBC_TYPE_USERDATA && build.hostHooks.userdataNamecall)
     {
-        build.loadAndCheckTag(build.vmReg(rb), LUA_TVECTOR, build.vmExit(pcpos));
+        auto feedback = getUserdataFeedback(build.function, pcpos, rb);
+
+        if (feedback && feedback->type != LBC_TYPE_ANY)
+        {
+            IrOp fallback = build.fallbackBlock(pcpos);
+            checkUserdataWithFeedback(build, *feedback, fallback, pcpos);
+
+            TString* str = gco2ts(build.function.proto->k[aux].value.gc);
+            const char* field = getstr(str);
+
+            if (build.hostHooks.userdataNamecall(build, feedback->type, field, str->len, callra, rb, nparams, nresults, pcpos))
+            {
+                if (FFlag::LuauCodegenUserdataDirect)
+                    emitNamecallFallbackFull(build, isUdata, callpc, nextpc, pcpos, callra, ra, rb, aux, nparams, nresults, fallback);
+                else
+                    translateNamecallFallbackWithCall_DEPRECATED(build, pc, pcpos, aux, fallback);
+                return true;
+            }
+
+            if (FFlag::LuauCodegenUserdataDirect)
+            {
+                bool full = emitNamecallSequence(build, isUdata, pcpos, ra, rb, aux, nparams, nresults);
+                emitNamecallFallback(build, isUdata, callpc, nextpc, pcpos, ra, rb, aux, nparams, nresults, fallback);
+                return full;
+            }
+            else
+            {
+                build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+                translateNamecallFallback_DEPRECATED(build, pc, pcpos, aux, fallback);
+                return false;
+            }
+        }
+
+        if (!feedback)
+            recordUserdataTag(build, rb, pcpos);
+    }
+
+    // If we recorded a type that doesn't have any fast paths, place the 'fallback' operation as the main one
+    if (FFlag::LuauCodegenRuntimeFeedback && recordedType != LBC_TYPE_ANY && recordedType != LBC_TYPE_VECTOR && recordedType != LBC_TYPE_TABLE)
+    {
+        if (FFlag::LuauCodegenUserdataDirect)
+        {
+            return emitNamecallSequence(build, isUdata, pcpos, ra, rb, aux, nparams, nresults);
+        }
+        else
+        {
+            build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+            return false;
+        }
+    }
+
+    if (bcTypes.a == LBC_TYPE_VECTOR || (FFlag::LuauCodegenRuntimeFeedback && recordedType == LBC_TYPE_VECTOR))
+    {
+        IrOp fallback;
+
+        if (bcTypes.a == LBC_TYPE_VECTOR)
+        {
+            build.loadAndCheckTag(build.vmReg(rb), LUA_TVECTOR, build.vmExit(pcpos));
+        }
+        else if (FFlag::LuauCodegenRuntimeFeedback)
+        {
+            fallback = build.fallbackBlock(pcpos);
+
+            build.loadAndCheckTag(build.vmReg(rb), LUA_TVECTOR, fallback);
+            recordFallbackTagMismatch(build, fallback, build.vmReg(rb), pcpos, LUA_TVECTOR);
+        }
 
         if (build.hostHooks.vectorNamecall)
         {
@@ -2030,11 +2471,37 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
             const char* field = getstr(str);
 
             if (build.hostHooks.vectorNamecall(build, field, str->len, callra, rb, nparams, nresults, pcpos))
+            {
+                if (FFlag::LuauCodegenRuntimeFeedback && fallback.kind != IrOpKind::None)
+                {
+                    if (FFlag::LuauCodegenUserdataDirect)
+                        emitNamecallFallbackFull(build, isUdata, callpc, nextpc, pcpos, callra, ra, rb, aux, nparams, nresults, fallback);
+                    else
+                        translateNamecallFallbackWithCall_DEPRECATED(build, pc, pcpos, aux, fallback);
+                }
+
                 return true;
+            }
         }
 
-        build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
-        return false;
+        if (FFlag::LuauCodegenUserdataDirect)
+        {
+            bool full = emitNamecallSequence(build, isUdata, pcpos, ra, rb, aux, nparams, nresults);
+
+            if (FFlag::LuauCodegenRuntimeFeedback && fallback.kind != IrOpKind::None)
+                emitNamecallFallback(build, isUdata, callpc, nextpc, pcpos, ra, rb, aux, nparams, nresults, fallback);
+
+            return full;
+        }
+        else
+        {
+            build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+
+            if (FFlag::LuauCodegenRuntimeFeedback && fallback.kind != IrOpKind::None)
+                translateNamecallFallback_DEPRECATED(build, pc, pcpos, aux, fallback);
+
+            return false;
+        }
     }
 
     if (isUserdataBytecodeType(bcTypes.a))
@@ -2057,16 +2524,49 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
                 return true;
         }
 
-        build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
-        return false;
+        if (FFlag::LuauCodegenUserdataDirect)
+        {
+            return emitNamecallSequence(build, isUdata, pcpos, ra, rb, aux, nparams, nresults);
+        }
+        else
+        {
+            build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+            return false;
+        }
     }
 
     IrOp next = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LOP_NAMECALL)));
     IrOp fallback = build.fallbackBlock(pcpos);
+    IrOp nonTableFallback = fallback;
     IrOp firstFastPathSuccess = build.block(IrBlockKind::Internal);
     IrOp secondFastPath = build.block(IrBlockKind::Internal);
 
-    build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
+    if (FFlag::LuauCodegenUserdataDirect)
+    {
+        if (bcTypes.a == LBC_TYPE_TABLE)
+        {
+            build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, build.vmExit(pcpos));
+        }
+        else
+        {
+            // If we are lowering LOP_NAMECALLUDATA, generate a separate fallback block on a tag miss
+            if (isUdata)
+                nonTableFallback = build.fallbackBlock(pcpos);
+
+            build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, nonTableFallback);
+
+            if (FFlag::LuauCodegenRuntimeFeedback)
+                recordFallbackTagMismatch(build, nonTableFallback, build.vmReg(rb), pcpos, LUA_TTABLE);
+        }
+    }
+    else
+    {
+        build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
+
+        if (FFlag::LuauCodegenRuntimeFeedback && bcTypes.a != LBC_TYPE_TABLE)
+            recordFallbackTagMismatch(build, fallback, build.vmReg(rb), pcpos, LUA_TTABLE);
+    }
+
     IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
     CODEGEN_ASSERT(build.function.proto);
@@ -2107,12 +2607,28 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::JUMP, next);
 
     build.beginBlock(fallback);
+
     build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
     build.inst(IrCmd::JUMP, next);
 
     build.beginBlock(next);
 
-    return false;
+    if (FFlag::LuauCodegenUserdataDirect)
+    {
+        build.inst(IrCmd::INTERRUPT, build.constUint(callpc));
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(nextpc));
+        build.inst(IrCmd::CALL, build.vmReg(callra), build.constInt(nparams), build.constInt(nresults));
+
+        // If we have a separate fallback for non-table path, generate a second fallback with a full namecall invoke
+        if (fallback != nonTableFallback)
+            emitNamecallFallbackFull(build, isUdata, callpc, nextpc, pcpos, callra, ra, rb, aux, nparams, nresults, nonTableFallback);
+
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 void translateInstAndX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c)

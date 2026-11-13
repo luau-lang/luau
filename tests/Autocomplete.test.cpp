@@ -24,6 +24,8 @@ LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
 
 using namespace Luau;
@@ -2148,7 +2150,6 @@ return {a = a, b = b}
     )";
 
     CheckResult result = getFrontend().check("Module/A");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(
@@ -2184,7 +2185,6 @@ return {a = a, b = b}
     )";
 
     CheckResult result = getFrontend().check("Module/A");
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(
@@ -5879,9 +5879,10 @@ TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
         Bar.@1
     )");
 
+    // Both definitions of the duplicated class are bound to any, so neither one's members are offered.
     auto ac = autocomplete('1');
-    CHECK(ac.entryMap.count("new") > 0);
     CHECK(ac.entryMap.count("make") == 0);
+    CHECK(ac.entryMap.count("new") == 0);
 
     ac = autocomplete('2');
     CHECK(ac.entryMap.count("hmm") > 0);
@@ -5889,9 +5890,7 @@ TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
 
     ac = autocomplete('3');
 
-    // FIXME CLI-204201: It would be a nice-to-have if autocomplete inside
-    // erroneous classes still worked as expected.
-    CHECK(ac.entryMap.count("huh") == 0);
+    CHECK(ac.entryMap.count("huh") > 0);
     CHECK(ac.entryMap.count("hmm") == 0);
 }
 
@@ -6255,6 +6254,261 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_function_statement_with_index_2")
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("abs"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_binding_is_in_scope_in_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        local t = {}
+        while local x = t do
+            @1
+        end
+        @2
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("x"));
+
+    ac = autocomplete('2');
+    CHECK(!ac.entryMap.count("x"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_const_binding_is_in_scope_in_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        local t = {}
+        while const x = t do
+            @1
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("x"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        local t = {foo = 1, bar = 2}
+        while local x = t do
+            x.@1
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_optional_binding_is_in_scope_in_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        type Test = {name: string, age: number}
+        local function getTester(): Test? return nil end
+        local function sample()
+            while local myTest = getTester() do
+                @1
+            end
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("myTest"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_optional_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        type Test = {name: string, age: number}
+        local function getTester(): Test? return nil end
+        local function sample()
+            while local myTest = getTester() do
+                myTest.@1
+            end
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("name"));
+    CHECK(ac.entryMap.count("age"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_optional_binding_member_completion_in_call_arg")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        type Test = {name: string, age: number}
+        local function getTester(): Test? return nil end
+        local function sample()
+            while local myTest = getTester() do
+                print(myTest.@1)
+            end
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("name"));
+    CHECK(ac.entryMap.count("age"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_value_offers_expression_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        local thing = {}
+        while local x = @1 do
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("thing"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_value_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        local t = {foo = 1, bar = 2}
+        while local x = t.@1 do
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_annotation_correctly_suggests_types")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    check(R"(
+        local one = 4
+        local two = "hello"
+        while local x: number = o@1 do
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("one"));
+    CHECK(ac.entryMap["one"].typeCorrect == TypeCorrectKind::Correct);
+    CHECK(ac.entryMap["two"].typeCorrect == TypeCorrectKind::None);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_condition_start_offers_local_and_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalSyntax, true}};
+
+    check(R"(
+        while @1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("local"));
+    CHECK(ac.entryMap.count("const"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_condition_partial_name_offers_local_and_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalSyntax, true}};
+
+    check(R"(
+        while l@1 do
+        end
+        while c@2
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("local"));
+    CHECK(ac.entryMap.count("const"));
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("local"));
+    CHECK(ac.entryMap.count("const"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_condition_subexpression_does_not_offer_local_or_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalSyntax, true}};
+
+    check(R"(
+        local x = true
+        while x and @1 do
+        end
+        while not @2 do
+        end
+    )");
+
+    for (char marker : {'1', '2'})
+    {
+        auto ac = autocomplete(marker);
+        CHECK(!ac.entryMap.count("local"));
+        CHECK(!ac.entryMap.count("const"));
+    }
+}
+
+TEST_CASE_FIXTURE(ACFixture, "while_local_value_does_not_offer_local_or_const")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}, {FFlag::LuauExperimentalIfLocalSyntax, true}
+    };
+
+    check(R"(
+        while local x = @1 do
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(!ac.entryMap.count("local"));
+    CHECK(!ac.entryMap.count("const"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_and_elseif_condition_start_offers_local_and_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalSyntax, true}};
+
+    check(R"(
+        if l@1 then
+        elseif l@2 then
+        end
+        if @3
+    )");
+
+    for (char marker : {'1', '2', '3'})
+    {
+        auto ac = autocomplete(marker);
+        CHECK(ac.entryMap.count("local"));
+        CHECK(ac.entryMap.count("const"));
+    }
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_local_value_does_not_offer_local_or_const")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}, {FFlag::LuauExperimentalWhileLocalSyntax, true}
+    };
+
+    check(R"(
+        if local x = @1 then
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(!ac.entryMap.count("local"));
+    CHECK(!ac.entryMap.count("const"));
 }
 
 TEST_SUITE_END();

@@ -26,10 +26,7 @@
 LUAU_FASTINTVARIABLE(DebugLuauTypeFunctionRuntimeHeapLimit, 0)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauIntegerType2)
 
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 
 namespace Luau
@@ -365,7 +362,7 @@ std::optional<TypeFunctionError> checkResultForError(lua_State* L, const char* t
                 Location{}, RuntimeError{format("'%s' type function errored at runtime: %s", typeFunctionName, lua_tostring(L, -1))}
             };
 
-        const char* tname = FFlag::LuauUdtfFixTypeNameTypo ? luaL_typename(L, -1) : lua_typename(L, -1);
+        const char* tname = luaL_typename(L, -1);
         return TypeFunctionError{
             Location{}, RuntimeError{format("'%s' type function errored at runtime: raised an error of type %s", typeFunctionName, tname)}
         };
@@ -440,8 +437,6 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
         return "boolean";
     else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && n->type == TypeFunctionPrimitiveType::Type::Number)
         return "number";
-    else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && (FFlag::LuauIntegerType2 && (n->type == TypeFunctionPrimitiveType::Type::Integer)))
-        return "integer";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::String)
         return "string";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Thread)
@@ -516,15 +511,6 @@ static int createBoolean(lua_State* L)
 static int createNumber(lua_State* L)
 {
     allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Number});
-
-    return 1;
-}
-
-// Luau: `type.integer`
-// Returns the type instance representing integer
-static int createInteger(lua_State* L)
-{
-    allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Integer});
 
     return 1;
 }
@@ -1966,14 +1952,6 @@ void registerTypesLibrary(lua_State* L)
         lua_setfield(L, -2, l->name);
     }
 
-    // `integer` is only nameable in type annotations when the flag is on, so only expose a
-    // constructor for it under the same condition
-    if (FFlag::LuauIntegerType2)
-    {
-        createInteger(L);
-        lua_setfield(L, -2, "integer");
-    }
-
     lua_pop(L, 1);
 }
 
@@ -2669,9 +2647,6 @@ private:
             case TypeFunctionPrimitiveType::Number:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Number));
                 break;
-            case TypeFunctionPrimitiveType::Integer:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Integer));
-                break;
             case TypeFunctionPrimitiveType::String:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
                 break;
@@ -2874,8 +2849,7 @@ private:
 
         f2->argTypes = shallowClone(f1->argTypes);
         f2->retTypes = shallowClone(f1->retTypes);
-        if (FFlag::LuauTypeFunctionSerializeArgNames)
-            f2->argNames = f1->argNames;
+        f2->argNames = f1->argNames;
     }
 
     void cloneChildren(TypeFunctionExternType* c1, TypeFunctionExternType* c2)

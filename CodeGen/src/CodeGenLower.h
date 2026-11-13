@@ -42,6 +42,10 @@ inline void gatherFunctionsHelper(
     const bool root
 )
 {
+    // lazy-load stubs (luau_loadlazy) have no code yet; they run interpreted once built
+    if (proto->lazychunk)
+        return;
+
     if (results.size() <= size_t(proto->bytecodeid))
         results.resize(proto->bytecodeid + 1);
 
@@ -104,7 +108,9 @@ inline bool lowerImpl(
     bool outputEnabled = options.includeAssembly || options.includeIr;
 
     std::string emptyLog;
-    IrToStringContext ctx{logger ? logger->text : emptyLog, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{
+        logger ? logger->text : emptyLog, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.counterSets, function.proto
+    };
 
     // We use this to skip outlined fallback blocks from IR/asm text output
     size_t textSize = ctx.result.length();

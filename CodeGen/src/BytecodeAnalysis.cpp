@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <array>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenFastcallAnalysisLimit)
+
 namespace Luau
 {
 namespace CodeGen
@@ -219,8 +221,6 @@ static uint8_t getBytecodeConstantTag(Proto* proto, unsigned ki)
         return LBC_TYPE_USERDATA;
     case LUA_TNUMBER:
         return LBC_TYPE_NUMBER;
-    case LUA_TINTEGER:
-        return LBC_TYPE_INTEGER;
     case LUA_TVECTOR:
         return LBC_TYPE_VECTOR;
     case LUA_TSTRING:
@@ -507,16 +507,20 @@ static void applyBuiltinCall(LuauBuiltinFunction bfid, BytecodeTypes& types)
         types.b = LBC_TYPE_NUMBER;
         types.c = LBC_TYPE_NUMBER;
         break;
-    case LBF_BUFFER_READINTEGER:
-        types.result = LBC_TYPE_INTEGER;
+    case LBF_BUFFER_READVECTORF32X2:
+    case LBF_BUFFER_READVECTORF32X3:
+    case LBF_BUFFER_READVECTORF32X4:
+        types.result = LBC_TYPE_VECTOR;
         types.a = LBC_TYPE_BUFFER;
         types.b = LBC_TYPE_NUMBER;
         break;
-    case LBF_BUFFER_WRITEINTEGER:
+    case LBF_BUFFER_WRITEVECTORF32X2:
+    case LBF_BUFFER_WRITEVECTORF32X3:
+    case LBF_BUFFER_WRITEVECTORF32X4:
         types.result = LBC_TYPE_NIL;
         types.a = LBC_TYPE_BUFFER;
         types.b = LBC_TYPE_NUMBER;
-        types.c = LBC_TYPE_INTEGER;
+        types.c = LBC_TYPE_VECTOR;
         break;
     case LBF_TABLE_INSERT:
         types.result = LBC_TYPE_NIL;
@@ -596,77 +600,6 @@ static void applyBuiltinCall(LuauBuiltinFunction bfid, BytecodeTypes& types)
     case LBF_MATH_ISFINITE:
         types.result = LBC_TYPE_BOOLEAN;
         types.a = LBC_TYPE_NUMBER;
-        break;
-    case LBF_INTEGER_NEG:
-    case LBF_INTEGER_BSWAP:
-    case LBF_INTEGER_BNOT:
-    case LBF_INTEGER_COUNTLZ:
-    case LBF_INTEGER_COUNTRZ:
-        types.result = LBC_TYPE_INTEGER;
-        types.a = LBC_TYPE_INTEGER;
-        break;
-
-    case LBF_INTEGER_MIN:
-    case LBF_INTEGER_MAX:
-    case LBF_INTEGER_BAND:
-    case LBF_INTEGER_BOR:
-    case LBF_INTEGER_BXOR:
-        types.a = LBC_TYPE_INTEGER;
-        types.b = LBC_TYPE_INTEGER;
-        types.c = LBC_TYPE_INTEGER; // We can mark optional arguments
-        types.result = LBC_TYPE_INTEGER;
-        break;
-
-    case LBF_INTEGER_ADD:
-    case LBF_INTEGER_SUB:
-    case LBF_INTEGER_MUL:
-    case LBF_INTEGER_DIV:
-    case LBF_INTEGER_IDIV:
-    case LBF_INTEGER_REM:
-    case LBF_INTEGER_UDIV:
-    case LBF_INTEGER_UREM:
-    case LBF_INTEGER_MOD:
-    case LBF_INTEGER_LSHIFT:
-    case LBF_INTEGER_LROTATE:
-    case LBF_INTEGER_RROTATE:
-    case LBF_INTEGER_RSHIFT:
-    case LBF_INTEGER_ARSHIFT:
-        types.a = LBC_TYPE_INTEGER;
-        types.b = LBC_TYPE_INTEGER;
-        types.result = LBC_TYPE_INTEGER;
-        break;
-    case LBF_INTEGER_CLAMP:
-    case LBF_INTEGER_EXTRACT:
-        types.a = LBC_TYPE_INTEGER;
-        types.b = LBC_TYPE_INTEGER;
-        types.c = LBC_TYPE_INTEGER;
-        types.result = LBC_TYPE_INTEGER;
-        break;
-    case LBF_INTEGER_BTEST:
-        types.a = LBC_TYPE_INTEGER;
-        types.b = LBC_TYPE_INTEGER;
-        types.c = LBC_TYPE_INTEGER; // We can mark optional arguments
-        types.result = LBC_TYPE_BOOLEAN;
-        break;
-    case LBF_INTEGER_LT:
-    case LBF_INTEGER_LE:
-    case LBF_INTEGER_GT:
-    case LBF_INTEGER_GE:
-    case LBF_INTEGER_ULT:
-    case LBF_INTEGER_ULE:
-    case LBF_INTEGER_UGT:
-    case LBF_INTEGER_UGE:
-        types.a = LBC_TYPE_INTEGER;
-        types.b = LBC_TYPE_INTEGER;
-        types.result = LBC_TYPE_BOOLEAN;
-        break;
-    case LBF_INTEGER_TONUMBER:
-        types.a = LBC_TYPE_INTEGER;
-        types.result = LBC_TYPE_NUMBER;
-        break;
-    case LBF_INTEGER_CREATE:
-        types.a = LBC_TYPE_NUMBER;
-        types.result = LBC_TYPE_INTEGER;
         break;
     }
 }
@@ -1242,11 +1175,31 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                 CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
                 int ra = LUAU_INSN_A(call);
 
-                applyBuiltinCall(LuauBuiltinFunction(bfid), bcType);
+                if (FFlag::LuauCodegenFastcallAnalysisLimit)
+                {
+                    int nparams = LUAU_INSN_B(call) - 1;
 
-                regTags[ra + 1] = bcType.a;
-                regTags[ra + 2] = bcType.b;
-                regTags[ra + 3] = bcType.c;
+                    applyBuiltinCall(LuauBuiltinFunction(bfid), bcType);
+
+                    // Argument registers are not annotated for variadic number of arguments
+                    if (nparams >= 1)
+                        regTags[ra + 1] = bcType.a;
+
+                    if (nparams >= 2)
+                        regTags[ra + 2] = bcType.b;
+
+                    if (nparams >= 3)
+                        regTags[ra + 3] = bcType.c;
+                }
+                else
+                {
+                    applyBuiltinCall(LuauBuiltinFunction(bfid), bcType);
+
+                    regTags[ra + 1] = bcType.a;
+                    regTags[ra + 2] = bcType.b;
+                    regTags[ra + 3] = bcType.c;
+                }
+
                 regTags[ra] = bcType.result;
 
                 refineRegType(bcTypeInfo, ra, i, bcType.result);
@@ -1514,6 +1467,8 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_NEWCLASS:
             case LOP_NEWCLASSMEMBER:
             case LOP_FASTPCALL:
+            case LOP_GETPRIVATEFIELD:
+            case LOP_SETPRIVATEFIELD:
                 break;
             case LOP_CONSTRUCT:
             {
@@ -1526,6 +1481,8 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                 break;
             }
             case LOP_FINCONSTRUCT:
+                break;
+            case LOP_CMPPROTO:
                 break;
             default:
                 CODEGEN_ASSERT(!"Unknown instruction");

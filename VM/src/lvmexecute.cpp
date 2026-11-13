@@ -20,8 +20,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
-LUAU_FASTFLAG(LuauFastpcall)
-LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
 
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
@@ -126,7 +125,7 @@ LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
         VM_DISPATCH_OP(LOP_IDIVK), VM_DISPATCH_OP(LOP_GETUDATAKS), VM_DISPATCH_OP(LOP_SETUDATAKS), VM_DISPATCH_OP(LOP_NAMECALLUDATA), \
         VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO), VM_DISPATCH_OP(LOP_FASTPCALL), \
-        VM_DISPATCH_OP(LOP_NEWCLASS), VM_DISPATCH_OP(LOP_CONSTRUCT), VM_DISPATCH_OP(LOP_FINCONSTRUCT),
+        VM_DISPATCH_OP(LOP_NEWCLASS), VM_DISPATCH_OP(LOP_CONSTRUCT), VM_DISPATCH_OP(LOP_FINCONSTRUCT), VM_DISPATCH_OP(LOP_GETPRIVATEFIELD), VM_DISPATCH_OP(LOP_SETPRIVATEFIELD),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -216,7 +215,7 @@ inline bool luau_skipstep(uint8_t op)
     return op == LOP_PREPVARARGS || op == LOP_BREAK;
 }
 
-static LUAU_NOINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
+LUAU_NOINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
 {
     CallInfo* ci = incr_ci(L);
 
@@ -234,6 +233,18 @@ static LUAU_NOINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
 
     LUAU_ASSERT(ci->top <= L->stack_last);
     LUAU_ASSERT(ttisfunction(ci->func));
+}
+
+// Batch addition of loop execution counter increments
+static void luau_addexeccount(Proto* p, double count)
+{
+    if (count > 0.0)
+    {
+        // Leaving room for regular counter hits to not overflow too fast
+        uint32_t space = UINT32_MAX / 4 - p->execcount;
+
+        p->execcount += count < double(space) ? uint32_t(count) : space;
+    }
 }
 
 template<bool SingleStep>
@@ -654,7 +665,7 @@ reentry:
                         // to the class member with the same name.
                         uint8_t slot = LUAU_INSN_C(insn);
                         LuauObject* inst = objectvalue(rb);
-                        if (LUAU_LIKELY(slot < inst->lclass->numberofallmembers && tsvalue(kv) == inst->lclass->offsettomember[slot]))
+                        if (LUAU_LIKELY(slot < luaR_offsettomemberlength(inst->lclass) && tsvalue(kv) == inst->lclass->offsettomember[slot]))
                         {
                             setobj2s(L, ra, luaR_lookupmemberatoffset(inst, slot));
                             VM_NEXT();
@@ -1011,7 +1022,7 @@ reentry:
                     {
                         uint8_t slot = LUAU_INSN_C(insn);
                         LuauObject* inst = objectvalue(rb);
-                        if (slot < inst->lclass->numberofallmembers && tsvalue(kv) == inst->lclass->offsettomember[slot])
+                        if (slot < luaR_offsettomemberlength(inst->lclass) && tsvalue(kv) == inst->lclass->offsettomember[slot])
                         {
                             // note: order of copies allows rb to alias ra+1 or ra
                             setobj2s(L, ra + 1, rb);
@@ -1090,6 +1101,9 @@ reentry:
                 if (!ccl->isC)
                 {
                     Proto* p = ccl->l.p;
+
+                    if (FFlag::LuauRuntimeFeedback)
+                        p->execcount++;
 
                     // fill unused parameters with nil
                     StkId argi = L->top;
@@ -1193,6 +1207,9 @@ reentry:
                 if (!ccl->isC)
                 {
                     Proto* p = ccl->l.p;
+
+                    if (FFlag::LuauRuntimeFeedback)
+                        p->execcount++;
 
                     if (feedback_slot != LUAU_INSN_FBSLOT_SEALED)
                     {
@@ -1452,11 +1469,6 @@ reentry:
                         // need to invoke metamethods).
                         break;
 
-                    case LUA_TINTEGER:
-                        pc += lvalue(ra) == lvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        VM_ASSERT_PC(pc);
-                        VM_NEXT();
-
                     default:
                         LUAU_ASSERT(!"Unknown value type");
                         LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
@@ -1584,11 +1596,6 @@ reentry:
                         // For now, hit the slow path after the switch (we may
                         // need to invoke metamethods).
                         break;
-
-                    case LUA_TINTEGER:
-                        pc += lvalue(ra) != lvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        VM_ASSERT_PC(pc);
-                        VM_NEXT();
 
                     default:
                         LUAU_ASSERT(!"Unknown value type");
@@ -2528,7 +2535,18 @@ reentry:
                 double idx = nvalue(ra + 2);
 
                 // Note: make sure the loop condition is exactly the same between this and LOP_FORNLOOP so that we handle NaN/etc. consistently
-                pc += (step > 0 ? idx <= limit : limit <= idx) ? 0 : LUAU_INSN_D(insn);
+                if (FFlag::LuauRuntimeFeedback)
+                {
+                    if (step > 0 ? idx <= limit : limit <= idx)
+                        luau_addexeccount(L->ci->p, (limit - idx) / step + 1);
+                    else
+                        pc += LUAU_INSN_D(insn);
+                }
+                else
+                {
+                    pc += (step > 0 ? idx <= limit : limit <= idx) ? 0 : LUAU_INSN_D(insn);
+                }
+
                 VM_ASSERT_PC(pc);
                 VM_NEXT();
             }
@@ -2614,6 +2632,9 @@ reentry:
                         }
                         else if (ttistable(ra))
                         {
+                            if (FFlag::LuauRuntimeFeedback)
+                                luau_addexeccount(L->ci->p, hvalue(ra)->sizearray + sizenode(hvalue(ra)));
+
                             // set up registers for builtin iteration
                             setobj2s(L, ra + 1, ra);
                             setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2665,6 +2686,9 @@ reentry:
                         }
                         else if (ttistable(ra))
                         {
+                            if (FFlag::LuauRuntimeFeedback)
+                                luau_addexeccount(L->ci->p, hvalue(ra)->sizearray + sizenode(hvalue(ra)));
+
                             // set up registers for builtin iteration
                             setobj2s(L, ra + 1, ra);
                             setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2760,6 +2784,9 @@ reentry:
                 }
                 else
                 {
+                    if (FFlag::LuauRuntimeFeedback)
+                        L->ci->p->execcount++;
+
                     // note: it's safe to push arguments past top for complicated reasons (see top of the file)
                     setobj2s(L, ra + 3 + 2, ra + 2);
                     setobj2s(L, ra + 3 + 1, ra + 1);
@@ -2797,6 +2824,9 @@ reentry:
                 // fast-path: ipairs/inext
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
                 {
+                    if (FFlag::LuauRuntimeFeedback)
+                        luau_addexeccount(L->ci->p, hvalue(ra + 1)->sizearray);
+
                     setnilvalue(ra);
                     // ra+1 is already the table
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2820,6 +2850,9 @@ reentry:
                 // fast-path: pairs/next
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
                 {
+                    if (FFlag::LuauRuntimeFeedback)
+                        luau_addexeccount(L->ci->p, hvalue(ra + 1)->sizearray + sizenode(hvalue(ra + 1)));
+
                     setnilvalue(ra);
                     // ra+1 is already the table
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
@@ -2838,15 +2871,26 @@ reentry:
             VM_CASE(LOP_NATIVECALL)
             {
                 Proto* p = L->ci->p;
+
+                // a lazy-load stub (luau_loadlazy): build the function, then enter it like LOP_CALL does
+                // stubs never have execdata and native functions always do; checking execdata avoids loading lazychunk on the native path
+                if (LUAU_UNLIKELY(!p->execdata))
+                {
+                    LUAU_ASSERT(p->lazychunk);
+
+                    VM_PROTECT(luaV_buildlazyproto(L, p));
+
+                    L->ci->savedpc = p->code;
+                    pc = SingleStep ? p->code : p->codeentry;
+                    k = p->k;
+                    VM_NEXT();
+                }
+
                 LUAU_ASSERT(p->execdata);
 
                 CallInfo* ci = L->ci;
 
-                if (FFlag::LuauFastpcall)
-                    ci->flags |= LUA_CALLINFO_NATIVE;
-                else
-                    ci->flags = LUA_CALLINFO_NATIVE;
-
+                ci->flags |= LUA_CALLINFO_NATIVE;
                 ci->savedpc = p->code;
 
 #if VM_HAS_NATIVE
@@ -2980,6 +3024,9 @@ reentry:
                 VM_INTERRUPT();
                 VM_CHECK_GC(L);
                 VM_CASE_INSTRUCTION insn = *pc++;
+
+                if (FFlag::LuauRuntimeFeedback)
+                    L->ci->p->execcount++;
 
                 pc += LUAU_INSN_D(insn);
                 VM_ASSERT_PC(pc);
@@ -3642,15 +3689,24 @@ reentry:
 
             VM_CASE(LOP_NEWCLASSMEMBER)
             {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
                 VM_CASE_INSTRUCTION insn = *pc++;
                 uint32_t aux = *pc++;
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* membername = VM_KV(aux);
-                LUAU_ASSERT(ttisstring(membername));
-                LUAU_ASSERT(LUAU_INSN_B(insn) == 0);
+                uint8_t visibility = LuauClassMemberVisibility(LUAU_INSN_B(insn));
+                LUAU_ASSERT(visibility == LuauClassMemberVisibility::LCMV_PUBLIC || visibility == LuauClassMemberVisibility::LCMV_PRIVATE);
                 VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
                 VM_PROTECT_PC();
-                luaR_addclassmember(L, classvalue(ra), tsvalue(membername), rc);
+                if (visibility == LuauClassMemberVisibility::LCMV_PUBLIC)
+                {
+                    TValue* membername = VM_KV(aux);
+                    luaR_addpublicstaticmember(L, classvalue(ra), tsvalue(membername), rc);
+                }
+                else
+                {
+                    uint8_t pindex = LUAU_INSN_AUX_A(aux);
+                    luaR_addprivatestaticmember(L, classvalue(ra), pindex, rc);
+                }
                 VM_NEXT();
             }
 
@@ -3678,13 +3734,7 @@ reentry:
             VM_CASE(LOP_FASTPCALL)
             {
                 VM_CASE_INSTRUCTION insn = *pc++;
-
-                // even with compiler flag enabled, runtime can be safely disabled and will execute the fallback
-                if (!FFlag::LuauFastpcall)
-                    VM_NEXT();
-
-                if (FFlag::LuauFastpcallInterrupt)
-                    VM_INTERRUPT();
+                VM_INTERRUPT();
 
                 int pfid = LUAU_INSN_A(insn);
                 int skip = LUAU_INSN_C(insn);
@@ -3752,6 +3802,7 @@ reentry:
 
             VM_CASE(LOP_NEWCLASS)
             {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
                 VM_CASE_INSTRUCTION insn = *pc++;
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
                 uint8_t super = LUAU_INSN_B(insn);
@@ -3819,6 +3870,107 @@ reentry:
                     pc += skip + 1;
                     VM_ASSERT_PC(pc);
                 }
+
+                VM_NEXT();
+            }
+
+            VM_CASE(LOP_GETPRIVATEFIELD)
+            {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
+
+                VM_CASE_INSTRUCTION insn = *pc++;
+                uint32_t aux = *pc++;
+
+                VM_PROTECT_PC();
+
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+                if (LUAU_UNLIKELY(!(ttisobject(rb) || ttisclass(rb))))
+                    luaG_typeerror(L, rb, "access private field of");
+
+                TValue* clsuv = VM_UV(LUAU_INSN_C(insn));
+                TValue* clsv = ttisupval(clsuv) ? upvalue(clsuv)->v : clsuv;
+                if (LUAU_UNLIKELY(!ttisclass(clsv)))
+                    luaG_typeerror(L, clsv, "verify object is an instance of");
+
+                LuauClass* cls = classvalue(clsv);
+
+                if (ttisobject(rb))
+                {
+                    LuauObject* inst = objectvalue(rb);
+
+                    if (!luaR_isinstance(inst, cls))
+                        luaG_runerror(L, "attempt to illegally access private field");
+
+                    if (LUAU_INSN_AUX_STATIC(aux))
+                    {
+                        uint8_t pindex = LUAU_INSN_AUX_A(aux);
+                        // If namecall flag is set, put class instance/object into register after target
+                        if (LUAU_INSN_AUX_NAMECALL(aux))
+                            setobj2s(L, ra + 1, rb);
+                        setobj2s(L, ra, luaR_privatestaticmember(cls, pindex));
+                    }
+                    else
+                    {
+                        uint32_t pindex = LUAU_INSN_AUX_A(aux) + cls->ownprivatefieldsstart;
+                        LUAU_ASSERT(pindex < inst->numberofmembers);
+                        // If namecall flag is set, put class instance/object into register after target
+                        if (LUAU_INSN_AUX_NAMECALL(aux))
+                            setobj2s(L, ra + 1, rb);
+                        setobj2s(L, ra, &inst->members[pindex]);
+                    }
+                }
+                else
+                {
+                    LuauClass* srccls = classvalue(rb);
+
+                    if (LUAU_UNLIKELY(!luaR_issubclass(srccls, cls)))
+                        luaG_runerror(L, "attempt to illegally access private field of a class");
+                    if (LUAU_UNLIKELY(!LUAU_INSN_AUX_STATIC(aux)))
+                        luaG_runerror(L, "attempt to access private instance field of a class");
+
+                    uint8_t pindex = LUAU_INSN_AUX_A(aux);
+                    // If namecall flag is set, put class instance/object into register after target
+                    if (LUAU_INSN_AUX_NAMECALL(aux))
+                        setobj2s(L, ra + 1, rb);
+                    setobj2s(L, ra, luaR_privatestaticmember(cls, pindex));
+                }
+
+                VM_NEXT();
+            }
+
+            VM_CASE(LOP_SETPRIVATEFIELD)
+            {
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClassesRuntime);
+
+                VM_CASE_INSTRUCTION insn = *pc++;
+                uint32_t aux = *pc++;
+
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+
+                VM_PROTECT_PC();
+
+                if (!ttisobject(rb))
+                    luaG_typeerror(L, rb, "assign private field of");
+
+                TValue* clsuv = VM_UV(LUAU_INSN_C(insn));
+                TValue* clsv = ttisupval(clsuv) ? upvalue(clsuv)->v : clsuv;
+                if (!ttisclass(clsv))
+                    luaG_typeerror(L, clsv, "assign private field of");
+
+                LuauObject* inst = objectvalue(rb);
+                LuauClass* cls = classvalue(clsv);
+
+                if (!luaR_isinstance(inst, cls))
+                    luaG_runerror(L, "attempt to assign private field of an object with a different class");
+
+                uint32_t pindex = (aux & 0xffu) + cls->ownprivatefieldsstart;
+                LUAU_ASSERT(pindex < inst->numberofmembers);
+
+                setobj2class(L, &inst->members[pindex], ra);
+                luaC_barrier(L, inst, ra);
 
                 VM_NEXT();
             }
@@ -3902,6 +4054,9 @@ int luau_precall(lua_State* L, StkId func, int nresults)
     if (!ccl->isC)
     {
         Proto* p = ccl->l.p;
+
+        if (FFlag::LuauRuntimeFeedback)
+            p->execcount++;
 
         // fill unused parameters with nil
         StkId argi = L->top;

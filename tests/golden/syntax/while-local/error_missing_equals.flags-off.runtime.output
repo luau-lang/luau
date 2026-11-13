@@ -1,0 +1,2 @@
+./syntax/while-local/error_missing_equals.luau:1: Expected identifier when parsing expression, got 'local'
+stacktrace:

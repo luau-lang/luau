@@ -302,8 +302,6 @@ end
 return m
 )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -655,9 +653,7 @@ return ReactShallowRenderer
 
     CheckResult result = check(R"(
 local ReactShallowRenderer = require(game.A);
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
@@ -688,9 +684,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
 
     CheckResult result = check(R"(
         local _ = require(game.A);
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type")
@@ -749,8 +743,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type"
         local _ = require(game.A);
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -780,8 +772,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
 
         return Cache
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -849,8 +839,6 @@ return wrapper(test2, 1, "")
     )";
 
     CheckResult result = getFrontend().check("game/B");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -971,8 +959,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_194463_modify_bounds_of_visited_generic_regression")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     fileResolver.source["game/Container"] = R"(
         local Container = {}
 
@@ -1048,8 +1034,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1089,8 +1073,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs_multi")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1147,13 +1129,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
-
-    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
-
-    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1287,12 +1265,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
 
     CheckResult aResult = getFrontend().check("game/A");
 
-    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
 
-    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1325,12 +1301,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
 
     CheckResult aResult = getFrontend().check("game/A");
 
-    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
 
-    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1410,8 +1384,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_uses_binding_type")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag sffs[]{
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueSyntax, true},

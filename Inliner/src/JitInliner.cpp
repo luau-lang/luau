@@ -28,10 +28,11 @@ LUAU_FASTINTVARIABLE(LuauJitInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauJitInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauJitInlineSmallFunSize, 128)
 LUAU_FASTINTVARIABLE(LuauJitInlineTooLongFunSize, 0xFFFF);
-LUAU_FASTFLAG(LuauCompileRefactorFeedback)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeFold)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeSlotAlloc)
 LUAU_FASTFLAGVARIABLE(DebugLuauBytecodeSlotAllocStats)
+LUAU_FASTFLAG(LuauRuntimeFeedback)
+LUAU_FASTFLAG(LuauSkipDebugLocked)
 
 using namespace Luau::Bytecode;
 
@@ -167,10 +168,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
             if (slot.callTarget.inst != kUnassignedPC)
                 pc = insnsPC[slot.callTarget.inst];
 
-            if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
-                slotId = bcb.addCallTargetSlot(pc);
-            else
-                slotId = bcb.addFbSlot_DEPRECATED(LFT_CALLTARGET, pc);
+            slotId = bcb.addCallTargetSlot(pc);
         }
         else if (slot.kind == LFT_CONSTRUCT)
         {
@@ -245,6 +243,9 @@ Proto* createInlinedProto(lua_State* L, Proto* caller, Proto* target, RuntimeBcF
     p->codeentry = p->code;
     p->bytecodeid = caller->bytecodeid;
     p->cost = caller->cost;
+
+    if (FFlag::LuauRuntimeFeedback || FFlag::LuauSkipDebugLocked)
+        p->execflags = caller->execflags;
 
     uint32_t feedbackvecsize = caller->feedbackvecsize + target->feedbackvecsize;
     p->feedbackvec = luaM_newarray(L, feedbackvecsize, FeedbackVectorSlot, L->activememcat);
@@ -421,12 +422,24 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
     if (caller->env->safeenv == 0 || target->env->safeenv == 0)
         return nullptr;
 
-    if (isEnvDependentOrUsesSelect(targetProto, caller->env != target->env))
-        return nullptr;
+    if (!FFlag::LuauSkipDebugLocked)
+    {
+        if (isEnvDependentOrUsesSelect(targetProto, caller->env != target->env))
+            return nullptr;
+    }
 
     // pick the latest optimized version for inlining
     while (targetProto->optimized != nullptr)
         targetProto = targetProto->optimized;
+
+    if (FFlag::LuauSkipDebugLocked)
+    {
+        if (((callerProto->execflags | targetProto->execflags) & PEF_DEBUGLOCKED) != 0)
+            return nullptr;
+
+        if (isEnvDependentOrUsesSelect(targetProto, caller->env != target->env))
+            return nullptr;
+    }
 
     if (callerProto->sizecode > FInt::LuauJitInlineTooLongFunSize || targetProto->sizecode > FInt::LuauJitInlineTooLongFunSize)
         return nullptr;

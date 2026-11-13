@@ -1032,36 +1032,9 @@ struct ErrorConverter
             return "Access to 'self' before all of its fields have been initialized";
     }
 
-    std::string operator()(const TypeAnnotationRequired& err) const
-    {
-        ToStringOptions opts;
-        opts.functionTypeArguments = true;
-        opts.ignoreSyntheticName = true;
-        auto tos = toStringDetailed(err.inferredTy, opts);
-        if (!tos.invalid && !tos.truncated && !tos.error)
-            return "Type annotation required here.  Consider " + tos.name;
-        else
-            return "Type annotation required here.  Unable to infer the type of this function.";
-    }
-
     std::string operator()(const ConstructorsShouldNotReturnAnything&) const
     {
         return "Class constructors should not return anything.";
-    }
-
-    std::string operator()(const CyclicClassInheritance& e) const
-    {
-        std::string s = "Cyclic class inheritance detected: ";
-        bool first = true;
-        for (const Name& name : e.cycle)
-        {
-            if (first)
-                first = false;
-            else
-                s += " -> ";
-            s += name;
-        }
-        return s;
     }
 
     std::string operator()(const InvalidClassExtension& e) const
@@ -1097,6 +1070,16 @@ struct ErrorConverter
     std::string operator()(const IllegalClassPropertyOverride& e) const
     {
         return "Illegal override of property '" + e.property + "' on class '" + e.className + "' inherited from superclass '" + e.superName + "'";
+    }
+
+    std::string operator()(const MissingConstructor& e) const
+    {
+        return "'" + e.className + "' inherits a constructor from '" + e.superName + "', so it needs to define one too";
+    }
+
+    std::string operator()(const NotIterable& e) const
+    {
+        return "`" + toString(e.ty) + "` is not iterable";
     }
 };
 
@@ -1330,11 +1313,6 @@ bool FunctionExitsWithoutReturning::operator==(const FunctionExitsWithoutReturni
     return expectedReturnType == rhs.expectedReturnType;
 }
 
-bool CyclicClassInheritance::operator==(const CyclicClassInheritance& rhs) const
-{
-    return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
-}
-
 bool InvalidClassExtension::operator==(const InvalidClassExtension& rhs) const
 {
     return context == rhs.context && baseClass == rhs.baseClass;
@@ -1349,6 +1327,17 @@ bool IllegalClassPropertyOverride::operator==(const IllegalClassPropertyOverride
 {
     return property == rhs.property && className == rhs.className && superName == rhs.superName;
 }
+
+bool MissingConstructor::operator==(const MissingConstructor& rhs) const
+{
+    return className == rhs.className && superName == rhs.superName;
+}
+
+bool NotIterable::operator==(const NotIterable& rhs) const
+{
+    return ty == rhs.ty;
+}
+
 
 int TypeError::code() const
 {
@@ -1567,11 +1556,6 @@ bool UnappliedTypeFunction::operator==(const UnappliedTypeFunction& rhs) const
 bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
 {
     return function == rhs.function && arguments == rhs.arguments;
-}
-
-bool TypeAnnotationRequired::operator==(const TypeAnnotationRequired& rhs) const
-{
-    return inferredTy == rhs.inferredTy;
 }
 
 bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) const
@@ -1842,14 +1826,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
     {
     }
-    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
-    {
-        e.inferredTy = clone(e.inferredTy);
-    }
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
-    {
-    }
-    else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
     {
     }
     else if constexpr (std::is_same_v<T, InvalidClassExtension>)
@@ -1861,6 +1838,13 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
     {
+    }
+    else if constexpr (std::is_same_v<T, MissingConstructor>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, NotIterable>)
+    {
+        e.ty = clone(e.ty);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

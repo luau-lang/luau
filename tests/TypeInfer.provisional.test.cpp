@@ -21,9 +21,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
@@ -70,29 +68,13 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|integer|string|thread|buffer|table)=a
-            end
-        end
-    )";
-
-    const std::string expectedWithNewSolver_NOINTEGER =
-        R"(
-        function f(a:{fn:()->(unknown,...unknown)}): ()
-            if type(a) == 'boolean' then
-                local a1:{fn:()->(unknown,...unknown)}&boolean=a
-            elseif a.fn() then
                 local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|string|thread|buffer|table)=a
             end
         end
     )";
 
     if (!FFlag::DebugLuauForceOldSolver)
-    {
-        if (FFlag::LuauIntegerType2)
-            CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
-        else
-            CHECK_EQ(expectedWithNewSolver_NOINTEGER, decorateWithTypes(code));
-    }
+        CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
     else
         CHECK_EQ(expected, decorateWithTypes(code));
 }
@@ -173,8 +155,6 @@ TEST_CASE_FIXTURE(Fixture, "weirditer_should_not_loop_forever")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -191,8 +171,6 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
         f(3, 2, 1, 0)
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -200,8 +178,6 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 // For now, infer it as just a free table.
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_table")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -415,8 +391,6 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
         local s2s: (string) -> string = id
     )");
 
-    ignoreMissingAnnotations(result);
-
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
@@ -507,8 +481,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
             index += 1
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -851,8 +823,6 @@ Expected this to be exactly 'number', but got 'number?')";
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -887,8 +857,6 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions_of_tab
             return options.variable
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1074,8 +1042,6 @@ end
 
     CheckResult result = getFrontend().check("Module/Map");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1179,8 +1145,6 @@ TEST_CASE_FIXTURE(Fixture, "luau_roact_useState_nilable_state_1")
             b(nil :: ScriptConnection?)
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1306,8 +1270,6 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
 #if 0
     // This #if block describes what should happen.
     LUAU_CHECK_NO_ERRORS(result);
@@ -1372,8 +1334,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_indexer_satisfies_reading_property")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // We would like this code to have _no_ errors, but it requires one of:
@@ -1430,9 +1390,7 @@ TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
         )
             return t[true]
         end
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typechecking")
@@ -1456,8 +1414,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
         -- this should work because they should match with the left-right dog variant with optionals!
         bark{ [molly] = { left = laika }, [draco] = { right = cindy } }
     )");
-
-    ignoreMissingAnnotations(result);
 
 
     // FIXME(CLI-178738): This should actually be no errors.
@@ -1524,7 +1480,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
     CheckResult results = check(R"(

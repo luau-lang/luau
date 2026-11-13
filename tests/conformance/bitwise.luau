@@ -56,6 +56,12 @@ for i = -50, 50 do
   assert(bit32.lrotate(0x89abcdef, i) == bit32.lrotate(0x89abcdef, i%32))
 end
 
+local function lrotateregression1(x: number)
+  local y = bit32.bxor(x, 0x12345)
+  return bit32.lrotate(y, y)
+end
+assert(lrotateregression1(noinline(0)) == 0x2468a0)
+
 assert(bit32.lshift(0x12345678, 4) == 0x23456780)
 assert(bit32.lshift(0x12345678, 8) == 0x34567800)
 assert(bit32.lshift(0x12345678, -4) == 0x01234567)

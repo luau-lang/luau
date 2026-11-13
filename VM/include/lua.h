@@ -78,7 +78,6 @@ enum lua_Type
 
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
-    LUA_TINTEGER,
 
     // When vector components are 'float', vector fits into the TValue
 #if LUA_VECTOR_DOUBLE == 0
@@ -159,7 +158,6 @@ LUA_API void lua_xpush(lua_State* from, lua_State* to, int idx);
 
 LUA_API int lua_isnumber(lua_State* L, int idx);
 LUA_API int lua_isstring(lua_State* L, int idx);
-LUA_API int lua_isinteger64(lua_State* L, int idx);
 LUA_API int lua_iscfunction(lua_State* L, int idx);
 LUA_API int lua_isLfunction(lua_State* L, int idx);
 LUA_API int lua_isuserdata(lua_State* L, int idx);
@@ -175,7 +173,6 @@ LUA_API int lua_tointegerx(lua_State* L, int idx, int* isnum);
 LUA_API unsigned lua_tounsignedx(lua_State* L, int idx, int* isnum);
 LUA_API const LUA_VECTOR_TYPE* lua_tovector(lua_State* L, int idx);
 LUA_API int lua_toboolean(lua_State* L, int idx);
-LUA_API int64_t lua_tointeger64(lua_State* L, int idx, int* isinteger);
 LUA_API const char* lua_tolstring(lua_State* L, int idx, size_t* len);
 LUA_API const char* lua_tostringatom(lua_State* L, int idx, int* atom);
 LUA_API const char* lua_tolstringatom(lua_State* L, int idx, size_t* len, int* atom);
@@ -198,7 +195,6 @@ LUA_API const void* lua_topointer(lua_State* L, int idx);
 LUA_API void lua_pushnil(lua_State* L);
 LUA_API void lua_pushnumber(lua_State* L, double n);
 LUA_API void lua_pushinteger(lua_State* L, int n);
-LUA_API void lua_pushinteger64(lua_State* L, int64_t n);
 LUA_API void lua_pushunsigned(lua_State* L, unsigned n);
 #if LUA_VECTOR_SIZE == 4
 LUA_API void lua_pushvector(lua_State* L, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z, LUA_VECTOR_TYPE w);
@@ -256,6 +252,18 @@ LUA_API int lua_setfenv(lua_State* L, int idx);
 ** `load' and `call' functions (load and run Luau bytecode)
 */
 LUA_API int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env);
+// Same result as luau_load, but every function other than the main one is built on its first access, so functions that never run save
+// memory. Takes ownership of owner: data must stay valid and unchanged until release(owner) is called, when no unbuilt function of the
+// chunk is left (possibly before luau_loadlazy returns). release may be NULL.
+LUA_API int luau_loadlazy(
+    lua_State* L,
+    const char* chunkname,
+    const char* data,
+    size_t size,
+    int env,
+    void* owner,
+    void (*release)(void* owner)
+);
 LUA_API void lua_call(lua_State* L, int nargs, int nresults);
 LUA_API int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc);
 LUA_API int lua_cpcall(lua_State* L, lua_CFunction func, void* ud);
@@ -386,7 +394,9 @@ LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 // 1. Cycle reset (markref == NULL): clear accumulated information about marked
 //      native objects.
 // 2. Mark phase (markref != NULL): embedder must call markref for each new ref
-//      that is reachable from a marked native object.
+//      that is reachable from a marked native object and return nonzero if it
+//      made any progress. The GC propagates marks and repeatedly calls again
+//      until the embedder returns zero.
 //
 // Together, these are used to implement a fixed-point reachability algorithm
 // across both heaps.
@@ -397,7 +407,7 @@ LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 typedef void (*lua_UserdataMark)(lua_State* L, void* ud);
 LUA_API void lua_setuserdatamark(lua_State* L, int tag, lua_UserdataMark markfn);
 typedef void (*lua_EmbedderMark)(lua_State* L, int ref);
-typedef void (*lua_EmbedderGc)(lua_State* L, lua_EmbedderMark markref);
+typedef int (*lua_EmbedderGc)(lua_State* L, lua_EmbedderMark markref);
 LUA_API void lua_setembeddergc(lua_State* L, lua_EmbedderGc fn);
 
 // APIs for interacting with embedder-managed weak references.
@@ -466,7 +476,6 @@ LUA_API void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, 
 LUA_API void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z);
 #endif
 LUA_API void lua_userdatadirectfield_setboolean(void* result, int b);
-LUA_API void lua_userdatadirectfield_setinteger64(void* result, int64_t n);
 LUA_API void lua_userdatadirectfield_setnil(void* result);
 
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
@@ -512,7 +521,6 @@ LUA_API int lua_unref(lua_State* L, int ref);
 #define lua_islightuserdata(L, n) (lua_type(L, (n)) == LUA_TLIGHTUSERDATA)
 #define lua_isnil(L, n) (lua_type(L, (n)) == LUA_TNIL)
 #define lua_isboolean(L, n) (lua_type(L, (n)) == LUA_TBOOLEAN)
-#define lua_isinteger64(L, n) (lua_type(L, (n)) == LUA_TINTEGER)
 #define lua_isvector(L, n) (lua_type(L, (n)) == LUA_TVECTOR)
 #define lua_isthread(L, n) (lua_type(L, (n)) == LUA_TTHREAD)
 #define lua_isbuffer(L, n) (lua_type(L, (n)) == LUA_TBUFFER)

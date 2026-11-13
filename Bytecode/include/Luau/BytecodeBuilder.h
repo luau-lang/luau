@@ -22,14 +22,6 @@ static const uint32_t kMaxClosureCount = 1 << 15;
 
 static const int kMaxJumpDistance = 1 << 23;
 
-class BytecodeEncoder
-{
-public:
-    virtual ~BytecodeEncoder() {}
-
-    virtual void encode(uint32_t* data, size_t count) = 0;
-};
-
 class BytecodeBuilder
 {
 public:
@@ -63,11 +55,14 @@ public:
     struct ClassShape
     {
         int32_t className;
+        uint8_t numPrivateInstanceProps = 0;
+        uint8_t numPrivateStaticProps = 0;
+        // We only keep names for public properties. Private fields are indexed by their statically determined offsets
         std::vector<int32_t> propertyNames;
         std::vector<int32_t> methodNames;
     };
 
-    BytecodeBuilder(BytecodeEncoder* encoder = 0);
+    BytecodeBuilder();
     virtual ~BytecodeBuilder() = default;
 
     uint32_t beginFunction(uint8_t numparams, bool isvararg = false);
@@ -78,7 +73,6 @@ public:
     int32_t addConstantNil();
     int32_t addConstantBoolean(bool value);
     int32_t addConstantNumber(double value);
-    int32_t addConstantInteger(int64_t value);
     int32_t addConstantVectorf(float x, float y, float z, float w);
     int32_t addConstantVectord(double x, double y, double z, double w);
     int32_t addConstantString(StringRef value);
@@ -86,8 +80,6 @@ public:
     int32_t addConstantTable(const TableShape& shape);
     int32_t addConstantClosure(uint32_t fid);
 
-    uint32_t addFbSlot_DEPRECATED(LuauFeedbackType t);
-    uint32_t addFbSlot_DEPRECATED(LuauFeedbackType t, uint32_t pc);
     uint32_t addCallTargetSlot(uint32_t pc);
     uint32_t addConstructSlot(uint32_t shapecid);
 
@@ -209,7 +201,6 @@ protected:
             Type_Nil,
             Type_Boolean,
             Type_Number,
-            Type_Integer,
             Type_Vectorf,
             Type_Vectord,
             Type_String,
@@ -224,7 +215,6 @@ protected:
         {
             bool valueBoolean;
             double valueNumber;
-            int64_t valueInteger64;
             float valueVectorf[4];
             double valueVectord[4];
             unsigned int valueString; // index into string table
@@ -358,7 +348,6 @@ protected:
     };
 
     std::vector<FeedbackSlot> fbSlots;
-    std::vector<uint32_t> fbSlots_DEPRECATED;
 
     bool hasLongJumps = false;
 
@@ -382,7 +371,6 @@ protected:
     std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;
     std::string debugRemarkBuffer;
 
-    BytecodeEncoder* encoder = nullptr;
     std::string bytecode;
 
     uint32_t dumpFlags = 0;

@@ -70,6 +70,8 @@ inline bool isLayoutBarrier(LuauOpcode op)
     case LOP_GETVARARGS:
     case LOP_CAPTURE:
     case LOP_CLOSEUPVALS:
+    // NEWCLASS writes A before reading its superclass from B, so the two must not share a slot
+    case LOP_NEWCLASS:
         return true;
     default:
         return false;
@@ -248,6 +250,16 @@ struct SlotAllocator
             reserve(operand);
         }
 
+        if (instruction.op == LOP_CALL || instruction.op == LOP_CALLFB)
+        {
+            // fixed calls write every encoded result even when no projection reads it
+            // inlining only materializes used projections
+            std::optional<int> results = immediate(instruction, 1);
+            if (std::optional<uint16_t> base = inheritedSlot(instructionOp); base && results && *results > 0)
+                for (uint32_t slot = *base; slot < std::min<uint32_t>(*base + uint32_t(*results), inheritedFrame); ++slot)
+                    reserve(slot);
+        }
+
         if (instruction.op == LOP_FORNPREP)
         {
             // numeric for uses four consecutive slots starting at the instruction result
@@ -258,10 +270,19 @@ struct SlotAllocator
 
         if (instruction.op == LOP_FORGLOOP && !instruction.ops.empty())
         {
-            // the generic for fast paths store a key/value pair to A+3/A+4 even for one variable, beyond the projections the graph has
+            // the generic-for fast paths store a key/value pair to A+3/A+4 even for one variable
+            // larger loops also write every encoded result through A+2+vars
             if (std::optional<uint16_t> base = inheritedSlot(instruction.ops[0]))
-                for (uint32_t slot = *base; slot < std::min<uint32_t>(*base + 5, inheritedFrame); ++slot)
+            {
+                std::optional<int> vars = immediate(instruction, 4);
+                if (!vars || *vars < 1)
+                    // per Compiler.cpp, "note that we reserve at least 2 variables; this allows our fast path to assume that we need 2 variables instead of 1 or 2"
+                    vars = 2;
+
+                uint32_t width = std::max<uint32_t>(5, uint32_t(*vars) + 3);
+                for (uint32_t slot = *base; slot < std::min<uint32_t>(*base + width, inheritedFrame); ++slot)
                     reserve(slot);
+            }
         }
 
         bool openProducer = isProducer(instruction);

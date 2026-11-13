@@ -1,0 +1,4 @@
+Block 0 (entry "Entry Block"):
+  local x-0 = <expr>
+  local y-0 = <expr>
+  x-1 = <expr>

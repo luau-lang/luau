@@ -137,6 +137,10 @@ private:
     // while exp do block end
     AstStat* parseWhile();
 
+    // while `local' binding `=' exp do block end -- parses an entire `while local`.
+    // `start` is the location of the already-consumed `while` keyword; the current lexeme is `local`.
+    AstStat* parseWhileLocalCondition(const Location& start);
+
     // repeat block until exp
     AstStat* parseRepeat();
 
@@ -203,7 +207,11 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstStat* parseClassStat(const Location& start, bool exported, bool open);
+    AstStat* parseClassStat(const Location& start, AstStatClass::DeclModifier declModifier, bool open);
+
+    // True when the current lexeme begins a class declaration: `class Name` or `open class Name`. `class` and `open` are
+    // contextual keywords, so `local class = 5` must still parse as a binding list.
+    bool atClassKeyword();
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
@@ -559,9 +567,12 @@ private:
     std::vector<Function> functionStack;
     size_t typeFunctionDepth = 0;
 
+    // True while parsing the body of a class method, which is the only context where `._x` / `:_x` denotes a private member access. Set exclusively
+    // by parseClassStat.
+    bool inClassMethodBody = false;
+
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashSet<AstName> classesWithinModule;
 
     std::vector<ParseError> parseErrors;
 

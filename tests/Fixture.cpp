@@ -34,11 +34,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
 
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
-
-LUAU_FASTFLAGVARIABLE(DebugLuauForceExactTables)
-LUAU_FASTFLAGVARIABLE(DebugLuauRunFailingExactTableTests)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -774,19 +769,6 @@ void Fixture::limitStackSize(size_t size)
     dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, (int)(addressSpaceSize - size));
 }
 
-void Fixture::ignoreMissingAnnotations(CheckResult& result)
-{
-    auto it = std::remove_if(
-        result.errors.begin(),
-        result.errors.end(),
-        [](const TypeError& err)
-        {
-            return get<TypeAnnotationRequired>(err);
-        }
-    );
-    result.errors.erase(it, result.errors.end());
-}
-
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)
 {
@@ -1065,8 +1047,6 @@ doctest::String toString(TableState state)
         return "TableState::Free";
     case TableState::Generic:
         return "TableState::Generic";
-    case TableState::Exact:
-        return "TableState::Exact";
 
     default:
         LUAU_ASSERT(0);

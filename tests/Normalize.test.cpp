@@ -13,11 +13,9 @@
 #include <memory>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 using namespace Luau;
 
@@ -196,8 +194,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "union_and_intersection")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     check(R"(
         local a: {x: number}
         local b: {x: any}
@@ -252,8 +248,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_indexers_are_invariant")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "mismatched_indexers")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
@@ -517,14 +511,6 @@ struct NormalizeFixture : Fixture
     std::unique_ptr<Scope> globalScope = nullptr;
 };
 
-// TODO: Delete this fixture class when clipping DebugLuauExactTableTypes and DebugLuauParseExactTables.
-struct ExactTableNormalizationFixture : NormalizeFixture
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag sff1{FFlag::DebugLuauParseExactTables, true};
-    ScopedFastFlag sff2{FFlag::DebugLuauExactTableTypes, true};
-};
-
 TEST_SUITE_BEGIN("Normalize");
 
 TEST_CASE_FIXTURE(NormalizeFixture, "string_intersection_is_commutative")
@@ -761,107 +747,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
 {
-    if (FFlag::LuauIntegerType2)
-    {
-        CHECK("(boolean | buffer | integer | number | string | table | thread | userdata)?" == toString(normal(R"(
+    CHECK("(boolean | buffer | number | string | table | thread | userdata)?" == toString(normal(R"(
         Not<fun>
     )")));
-    }
-    else
-    {
-        CHECK("(boolean | buffer | number | string | table | thread | userdata)?" == toString(normal(R"(
-        Not<fun>
-    )")));
-    }
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_table_intersection")
-{
-    CHECK("{ x: number }" == toString(normal("{ x: number, ... } & { x: number }")));
-    CHECK("{ x: number }" == toString(normal("{ x: number } & { x: number, ... }")));
-    CHECK("never" == toString(normal("{ y: number, ... } & { x: number }")));
-    CHECK("never" == toString(normal("{ x: number } & { y: number }")));
-    CHECK("{ x: number }" == toString(normal("{ x: number? } & { x: number | string }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_table_with_read_only_property")
-{
-    CHECK("{ x: number }" == toString(normal("{ x: number } & { read x: number }")));
-    CHECK("{ x: number }" == toString(normal("{ x: number } & { write x: number }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_tables_with_nil_properties")
-{
-    CHECK("never" == toString(normal("{ } & { x: nil }")));
-    CHECK("never" == toString(normal("{ x: nil } & { }")));
-    CHECK("{ x: nil }" == toString(normal("{ x: nil } & { x: nil }")));
-    CHECK("never" == toString(normal("{ } & { x: number? }")));
-    CHECK("never" == toString(normal("{ x: nil } & { x: number }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "read_only_indexers_can_intersect")
-{
-    CHECK("{ [string]: number }" == toString(normal("{ read [string]: number } & { [string]: number | string }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_tables_with_indexers")
-{
-    CHECK("{ [string]: number, x: number }" == toString(normal("{ x: number, ... } & { x: number, [string]: number }")));
-    CHECK("{ [string]: number, x: number }" == toString(normal("{ x: number, y: number, ... } & { x: number, [string]: number }")));
-    CHECK("{ [string]: number }" == toString(normal("{ [string]: number } & { x: number | boolean, ... }")));
-    CHECK("never" == toString(normal("{ [string]: number } & { x: string, ... }")));
-    CHECK("{ x: number }" == toString(normal("{ x: number } & { [string]: number, ... }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_tables_with_matching_and_conflicting_indexers")
-{
-    CHECK("{ [string]: number }" == toString(normal("{ [string]: number } & { [string]: number }")));
-
-    CHECK("{ }" == toString(normal("{ [string]: number } & { [string]: string }")));
-    CHECK("{ }" == toString(normal("{ [string]: number, ... } & { [string]: string }")));
-    CHECK("{ }" == toString(normal("{ [string]: number } & { [string]: string, ... }")));
-    CHECK("{ }" == toString(normal("{ [string]: number, ... } & { [string]: string, ... }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "inexact_tables_with_props_and_conflicting_indexers")
-{
-    // Note that the result is exact here: The indexers are impossible to
-    // simultaneously satisfy and so the only values that can satisfy both interfaces
-    // is a table with just the one prop.
-    CHECK("{ a: number }" == toString(normal("{ a: number, [number]: boolean, ... } & { a: number, [number]: string, ... }")));
-    CHECK("never" == toString(normal("{ a: number, [number]: boolean, ... } & { a: string, [number]: string, ... }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_tables_with_props_and_conflicting_indexers")
-{
-    CHECK("{ a: number }" == toString(normal("{ a: number, [number]: boolean } & { a: number, [number]: string }")));
-    CHECK("never" == toString(normal("{ a: number, [number]: boolean } & { a: string, [number]: string }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "write_only_property_is_satisfied_by_writable_string_indexer")
-{
-    getBuiltins();
-    TypeId propertyTable = arena.addType(TableType{{{"x", Property::writeonly(builtinTypes->numberType)}}, std::nullopt, {}, TableState::Sealed});
-    TypeId indexerTable = arena.addType(TableType{{}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, {}, TableState::Sealed});
-    TypeId intersection = arena.addType(IntersectionType{{propertyTable, indexerTable}});
-
-    std::shared_ptr<const NormalizedType> normalized = normalize(intersection);
-    REQUIRE(normalized);
-    CHECK("{ [string]: number, ... }" == toString(typeFromNormal(*normalized)));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "read_only_property_intersects_with_string_indexer")
-{
-    TypeId n = normal("{ read x: string | boolean | nil, ... } & { [string]: string, ... }");
-
-    CHECK("{ [string]: string, ... }" == toString(n));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "write_only_property_and_read_only_string_indexer")
-{
-    TypeId n = normal("{ write x: string | boolean | nil, ... } & { read [string]: string, ... }");
-
-    CHECK("{ read [string]: string, write x: (boolean | string)?, ... }" == toString(n));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "split_read_write_property_must_satisfy_both_indexer_contracts")
@@ -878,41 +766,17 @@ TEST_CASE_FIXTURE(NormalizeFixture, "split_read_write_property_must_satisfy_both
     std::shared_ptr<const NormalizedType> normalized = normalize(intersection);
     REQUIRE(normalized);
 
-    if (FFlag::DebugLuauExactTableTypes)
-        CHECK("never" == toString(typeFromNormal(*normalized)));
-    else
-        CHECK("{ [string]: number, read x: number, write x: string }" == toString(typeFromNormal(*normalized)));
+    CHECK("{ [string]: number, read x: number, write x: string }" == toString(typeFromNormal(*normalized)));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "string_indexer_intersections")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauParseExactTables, false},
-        {FFlag::DebugLuauExactTableTypes, false},
-    };
-
     CHECK("{ [string]: number, x: number }" == toString(normal("{ x: number } & { [string]: number }")));
     CHECK("{ [string]: number, x: number, y: number }" == toString(normal("{ x: number, y: number } & { [string]: number }")));
     CHECK("{ [string]: number, x: string }" == toString(normal("{ x: string } & { [string]: number }")));
 
     // FIXME: This should be { [string]: number }
     CHECK("{ [string]: number, x: number? }" == toString(normal("{ x: number? } & { [string]: number }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "string_indexer_intersections_with_explicitly_inexact_tables")
-{
-    CHECK("{ [string]: number, ... }" == toString(normal("{ x: number, ... } & { [string]: number, ... }")));
-    CHECK("{ [string]: number, ... }" == toString(normal("{ x: number, y: number, ... } & { [string]: number, ... }")));
-    CHECK("never" == toString(normal("{ x: string, ... } & { [string]: number, ... }")));
-
-    // TODO?  A truer answer might be { [string]: number, write x: number?, ... }
-    CHECK("{ [string]: number, ... }" == toString(normal("{ x: number?, ... } & { [string]: number, ... }")));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "overlapping_inexact_indexers_are_uninhabited_due_to_variance")
-{
-    // Capturing this intersection exactly would require a split indexer { read [string]: string, write [string]: string | boolean | number }
-    CHECK("{ }" == toString(normal("{ [string | boolean]: string | boolean, ... } & { [string | number]: string | number, ... }")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
@@ -935,18 +799,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
-    if (FFlag::LuauIntegerType2)
-    {
-        CHECK("(buffer | function | integer | number | string | table | thread | userdata)?" == toString(normal(R"(
+    CHECK("(buffer | function | number | string | table | thread | userdata)?" == toString(normal(R"(
             Not<boolean>
         )")));
-    }
-    else
-    {
-        CHECK("(buffer | function | number | string | table | thread | userdata)?" == toString(normal(R"(
-            Not<boolean>
-        )")));
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_normalization")
@@ -986,8 +841,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
             return Cyclic
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1038,16 +891,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_extern_types_with_intersect
 {
     createSomeExternTypes(getFrontend());
     CHECK("Child" == toString(normal("(Child | Unrelated) & Child")));
-}
-
-TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metatable_is_top_or_bottom")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauParseExactTables, true},
-        {FFlag::DebugLuauExactTableTypes, true},
-    };
-
-    CHECK("setmetatable<{ ... }, *error-type*>" == toString(normal("Mt<{...}, any> & Mt<{...}, err>")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")
@@ -1115,34 +958,17 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_extern_types")
     createSomeExternTypes(getFrontend());
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
 
-    if (FFlag::LuauIntegerType2)
-    {
-        CHECK("((userdata & ~Child) | boolean | buffer | function | integer | number | string | table | thread)?" == toString(normal("Not<Child>")));
-        CHECK("never" == toString(normal("Not<Parent> & Child")));
-        CHECK(
-            "((userdata & ~Parent) | Child | boolean | buffer | function | integer | number | string | table | thread)?" ==
-            toString(normal("Not<Parent> | Child"))
-        );
-        CHECK("(boolean | buffer | function | integer | number | string | table | thread)?" == toString(normal("Not<cls>")));
-        CHECK(
-            "(Parent | Unrelated | boolean | buffer | function | integer | number | string | table | thread)?" ==
-            toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>"))
-        );
-    }
-    else
-    {
-        CHECK("((userdata & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
-        CHECK("never" == toString(normal("Not<Parent> & Child")));
-        CHECK(
-            "((userdata & ~Parent) | Child | boolean | buffer | function | number | string | table | thread)?" ==
-            toString(normal("Not<Parent> | Child"))
-        );
-        CHECK("(boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
-        CHECK(
-            "(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
-            toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>"))
-        );
-    }
+    CHECK("((userdata & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
+    CHECK("never" == toString(normal("Not<Parent> & Child")));
+    CHECK(
+        "((userdata & ~Parent) | Child | boolean | buffer | function | number | string | table | thread)?" ==
+        toString(normal("Not<Parent> | Child"))
+    );
+    CHECK("(boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
+    CHECK(
+        "(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
+        toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>"))
+    );
     CHECK("Child" == toString(normal("(Child | Unrelated) & Not<Unrelated>")));
 }
 
@@ -1158,28 +984,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "extern_types_and_never")
     CHECK("never" == toString(normal("Parent & never")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauParseExactTables, true},
-        {FFlag::DebugLuauExactTableTypes, true},
-    };
-
-    CHECK("table" == toString(normal("{} | tbl")));
-    if (FFlag::DebugLuauForceOldSolver)
-        CHECK("{ ... }" == toString(normal("{} & tbl")));
-    else
-        CHECK("{ }" == toString(normal("{} & tbl")));
-    CHECK("never" == toString(normal("number & tbl")));
-}
-
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
     CHECK(nullptr == toNormalizedType("Not<{}>", !FFlag::DebugLuauForceOldSolver ? 1 : 0));
-    if (FFlag::LuauIntegerType2)
-        CHECK("(boolean | buffer | function | integer | number | string | thread | userdata)?" == toString(normal("Not<tbl>")));
-    else
-        CHECK("(boolean | buffer | function | number | string | thread | userdata)?" == toString(normal("Not<tbl>")));
+    CHECK("(boolean | buffer | function | number | string | thread | userdata)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));
 }
 
@@ -1296,34 +1104,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_stack_overflow_2")
     CHECK(normalized);
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_with_optional_prop")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauParseExactTables, true},
-        {FFlag::DebugLuauExactTableTypes, true},
-    };
-
-    // { x: ~(false?) }
-    TypeId t1 = arena.addType(TableType{TableType::Props{{"x", getBuiltins()->truthyType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
-
-    // { x: number? }?
-    TypeId t2 = arena.addType(
-        UnionType{
-            {arena.addType(TableType{TableType::Props{{"x", getBuiltins()->optionalNumberType}}, std::nullopt, TypeLevel{}, TableState::Sealed}),
-             getBuiltins()->nilType}
-        }
-    );
-
-    TypeId intersection = arena.addType(IntersectionType{{t2, t1}});
-
-    auto norm = normalize(intersection);
-    REQUIRE(norm);
-
-    TypeId ty = typeFromNormal(*norm);
-    CHECK("{ x: number, ... }" == toString(ty));
-}
-
 TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
 {
     ScopedFastFlag sff[] = {
@@ -1385,33 +1165,116 @@ TEST_CASE_FIXTURE(NormalizeFixture, "normalize_class_against_union_of_tables")
     CHECK("never" == toString(normalized));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_table_and_truthy")
+TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauParseExactTables, true},
-        {FFlag::DebugLuauExactTableTypes, true},
-    };
+    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
 
-    TableType tt{{{"x", Property::rw(getBuiltins()->numberType)}}, std::nullopt, {}, TableState::Sealed};
-    TypeId tbl = arena.addType(std::move(tt));
+    IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
+    ib.add(getBuiltins()->numberType);
+    ib.add(arena.addType(
+        NegationType{arena.addType(
+            IntersectionType{{getBuiltins()->stringType, arena.addType(NegationType{arena.addType(SingletonType{StringSingleton{"foo"}})})}}
+        )}
+    ));
 
-    IntersectionBuilder ib{NotNull{&arena}, NotNull{builtinTypes}};
-    ib.add(builtinTypes->truthyType);
-    ib.add(tbl);
-
+    // number & ~(string & ~"foo") => number
     auto norm = normalize(ib.build());
     REQUIRE(norm);
     TypeId ty = typeFromNormal(*norm);
 
-    // This looks a little funky, because it is! You can think of this as being
-    // equivalent to ...
-    //
-    //  (userdata & { x: number }) | (table & { x: number })
-    //
-    // ... but Luau simplifies `table & { x: number }` to just mean `table`.
-    CHECK("(userdata & { x: number, ... }) | { x: number, ... }" == toString(ty));
+    CHECK("number" == toString(ty));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+
+    IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
+    ib.add(getBuiltins()->unknownType);
+    ib.add(arena.addType(
+        NegationType{arena.addType(
+            IntersectionType{{getBuiltins()->stringType, arena.addType(NegationType{arena.addType(SingletonType{StringSingleton{"foo"}})})}}
+        )}
+    ));
+
+    // unknown & ~(string & ~"foo") => ~(string & ~"foo")
+    auto norm = normalize(ib.build());
+    REQUIRE(norm);
+    TypeId ty = typeFromNormal(*norm);
+
+    CHECK("(\"foo\" | boolean | buffer | function | number | table | thread | userdata)?" == toString(ty));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_3")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+
+    IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
+    ib.add(getBuiltins()->neverType);
+    ib.add(arena.addType(
+        NegationType{arena.addType(
+            IntersectionType{{getBuiltins()->stringType, arena.addType(NegationType{arena.addType(SingletonType{StringSingleton{"foo"}})})}}
+        )}
+    ));
+
+    // never & ~(string & ~"foo") => never
+    auto norm = normalize(ib.build());
+    REQUIRE(norm);
+    TypeId ty = typeFromNormal(*norm);
+
+    CHECK("never" == toString(ty));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_4")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+
+    IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
+    auto fooTy = arena.addType(SingletonType{StringSingleton{"foo"}});
+    ib.add(fooTy);
+    ib.add(arena.addType(
+        NegationType{arena.addType(
+            IntersectionType{{getBuiltins()->stringType, arena.addType(NegationType{fooTy})}}
+        )}
+    ));
+
+    // "foo" & ~(string & ~"foo") => "foo"
+    auto norm = normalize(ib.build());
+    REQUIRE(norm);
+    TypeId ty = typeFromNormal(*norm);
+
+    CHECK("\"foo\"" == toString(ty));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_union_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
+    ib.add(getBuiltins()->numberType);
+    ib.add(arena.addType(
+        NegationType{arena.addType(
+            UnionType{{
+                getBuiltins()->stringType,
+                getBuiltins()->booleanType,
+            }}
+        )}
+    ));
+
+    // number & ~(string | boolean) => number
+    auto norm = normalize(ib.build());
+    REQUIRE(norm);
+    TypeId ty = typeFromNormal(*norm);
+
+    CHECK("number" == toString(ty));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")
@@ -1553,49 +1416,5 @@ _[_] ^= _(_(_))
     );
 }
 #endif
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_table_intersection_with_overlapping_indexers")
-{
-    // Two exact tables with indexers whose result types overlap but are not
-    // identical.  The intersection should be inhabited with an indexer whose
-    // result type is the intersection of the two.
-
-    std::shared_ptr<const NormalizedType> norm = toNormalizedType(R"(
-        { [number]: number | string } & { [number]: string | boolean }
-    )");
-
-    REQUIRE(norm);
-    CHECK(isInhabited(norm.get()));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_table_intersection_with_disjoint_indexers_is_never")
-{
-    // Two exact tables with indexers whose result types are disjoint.  The
-    // intersection should be uninhabited.
-
-    std::shared_ptr<const NormalizedType> norm = toNormalizedType(R"(
-        { [number]: number } & { [number]: string }
-    )");
-
-    REQUIRE(norm);
-    CHECK(isInhabited(norm.get()));
-
-    TypeId t = normalizer->typeFromNormal(*norm);
-    CHECK("{ }" == toString(t));
-}
-
-TEST_CASE_FIXTURE(ExactTableNormalizationFixture, "exact_table_intersection_with_equivalent_union_indexers")
-{
-    // Two exact tables with indexers whose result types are the same union but
-    // with members in different order.  The intersection should be inhabited
-    // and simplify to the original indexer.
-
-    std::shared_ptr<const NormalizedType> norm = toNormalizedType(R"(
-        { [number]: number | string } & { [number]: string | number }
-    )");
-
-    REQUIRE(norm);
-    CHECK(isInhabited(norm.get()));
-}
 
 TEST_SUITE_END();

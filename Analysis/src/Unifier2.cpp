@@ -26,7 +26,9 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAGVARIABLE(LuauInferReadOnlyIndexers)
+LUAU_FASTFLAGVARIABLE(LuauEarlyExitUnifierInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauDecomposeIntersectionOfFreeType)
+LUAU_FLAGVERSION(LuauDecomposeIntersectionOfFreeType, 2)
 
 namespace Luau
 {
@@ -543,6 +545,12 @@ template TypePackId Unifier2::instantiateWithBoundTypes(TypePackId ty);
 template<typename TID>
 TID Unifier2::instantiateWithBoundTypes(TID ty)
 {
+    // If `genericSubstitutions` and `genericPackSubstitutions` are both empty,
+    // then we don't need to do any instantiation for `ty`, we can return it
+    // immediately.
+    if (FFlag::LuauEarlyExitUnifierInstantiation && genericSubstitutions.empty() && genericPackSubstitutions.empty())
+        return ty;
+
     Replacer r{arena, NotNull{&genericSubstitutions}, NotNull{&genericPackSubstitutions}};
     if (auto newTy = r.substitute(ty))
         return *newTy;
@@ -835,25 +843,10 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
          * same indexer.
          */
 
-        if (FFlag::LuauDoNotLeakGenericsInIndexer)
-        {
-            subTable->indexer = TableIndexer{
-                instantiateWithBoundTypes(superTable->indexer->indexType),
-                instantiateWithBoundTypes(superTable->indexer->indexResultType),
-            };
-        }
-        else
-        {
-            TypeId indexType = superTable->indexer->indexType;
-            if (TypeId* subst = genericSubstitutions.find(indexType))
-                indexType = *subst;
-
-            TypeId indexResultType = superTable->indexer->indexResultType;
-            if (TypeId* subst = genericSubstitutions.find(indexResultType))
-                indexResultType = *subst;
-
-            subTable->indexer = TableIndexer{indexType, indexResultType};
-        }
+        subTable->indexer = TableIndexer{
+            instantiateWithBoundTypes(superTable->indexer->indexType),
+            instantiateWithBoundTypes(superTable->indexer->indexResultType),
+        };
 
         if (FFlag::LuauInferReadOnlyIndexers)
             subTable->indexer->isReadOnly = superTable->indexer->isReadOnly;

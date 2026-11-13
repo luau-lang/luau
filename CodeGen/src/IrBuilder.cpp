@@ -14,6 +14,8 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
 LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
+LUAU_FASTFLAG(LuauCodegenMarkUsed)
+LUAU_FASTFLAG(LuauCodegenRuntimeFeedback)
 
 namespace Luau
 {
@@ -81,9 +83,6 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
             break;
         case LBC_TYPE_NUMBER:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_INTEGER:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TINTEGER), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_STRING:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.vmExit(kVmExitEntryGuardPc));
@@ -239,6 +238,13 @@ void IrBuilder::buildFunctionIr(Proto* proto)
 
     // Now that all has been generated, compute use counts
     updateUseCounts(function);
+
+    if (FFlag::LuauCodegenCmpAnySideEffecting)
+    {
+        // Check that no instructions with a result have been generated without a use
+        for (IrInst& inst : function.instructions)
+            CODEGEN_ASSERT(inst.useCount != 0 || !hasResult(inst.cmd));
+    }
 }
 
 void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
@@ -672,6 +678,8 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     // operation then unconditionally exit to the VM.
     case LOP_NEWCLASSMEMBER:
     case LOP_NEWCLASS:
+    case LOP_GETPRIVATEFIELD:
+    case LOP_SETPRIVATEFIELD:
         inst(IrCmd::JUMP, vmExit(i));
         break;
 
@@ -750,6 +758,23 @@ void IrBuilder::beginBlock(IrOp block)
     target.sortkey = target.start;
 
     inTerminatedBlock = false;
+
+    if (FFlag::LuauCodegenRuntimeFeedback && target.counterSet != ~0u && !function.counterSets[target.counterSet].counters.empty())
+        inst(IrCmd::UPDATE_COUNTERS, constUint(target.counterSet));
+}
+
+IrCounterSet& IrBuilder::getBlockCounterSet(IrOp block)
+{
+    IrBlock& target = function.blockOp(block);
+    CODEGEN_ASSERT(target.start == ~0u && "block counters should only be reserved before building the block");
+
+    if (target.counterSet == ~0u)
+    {
+        target.counterSet = uint32_t(function.counterSets.size());
+        function.counterSets.emplace_back();
+    }
+
+    return function.counterSets[target.counterSet];
 }
 
 void IrBuilder::loadAndCheckTag(IrOp loc, uint8_t tag, IrOp fallback)
@@ -770,6 +795,16 @@ void IrBuilder::checkSafeEnv(int pcpos)
     }
 
     inst(IrCmd::CHECK_SAFE_ENV, vmExit(pcpos));
+}
+
+IrCounterSet& IrBuilder::addUpdateCounters()
+{
+    uint32_t index = uint32_t(function.counterSets.size());
+    function.counterSets.emplace_back();
+
+    inst(IrCmd::UPDATE_COUNTERS, constUint(index));
+
+    return function.counterSets[index];
 }
 
 void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
@@ -813,7 +848,8 @@ void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTermin
             IrInst clone = function.instructions[index];
 
             // Skip pseudo instructions to make clone more compact, but validate that they have no users
-            if (isPseudo(clone.cmd))
+            // Also keep instructions marking register liveness
+            if (isPseudo(clone.cmd) && (!FFlag::LuauCodegenMarkUsed || (clone.cmd != IrCmd::MARK_DEAD && clone.cmd != IrCmd::MARK_USED)))
             {
                 CODEGEN_ASSERT(clone.useCount == 0);
                 continue;

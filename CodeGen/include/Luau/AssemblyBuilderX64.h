@@ -116,6 +116,7 @@ public:
 
     void bsr(RegisterX64 dst, OperandX64 src);
     void bsf(RegisterX64 dst, OperandX64 src);
+    void bts(OperandX64 dst, RegisterX64 src);
     void bswap(RegisterX64 dst);
 
     // Code alignment

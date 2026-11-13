@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACLocalAutocompleteFix)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteIfSlurpsCond)
 LUAU_FASTFLAG(LuauSplitIceHandler)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -486,11 +487,22 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                     else if (auto classDecl = stat->as<AstStatClass>())
                     {
                         LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-                        // We need to include the class name as part of the
-                        // locals so that within the fragment the class name
-                        // is defined.
-                        localStack.push_back(classDecl->name);
-                        localMap[classDecl->name->name] = classDecl->name;
+                        // If it exists, we include the associated local as part of locals so that within the fragment the class name is defined
+
+                        if (classDecl->declModifier == AstStatClass::DeclModifier::None)
+                        {
+                            if (const AstExprLocal* local = classDecl->exprName->as<AstExprLocal>())
+                            {
+                                localStack.push_back(local->local);
+                                localMap[local->local->name] = local->local;
+                            }
+                        }
+                        else
+                        {
+                            localStack.push_back(classDecl->localName);
+                            localMap[classDecl->localName->name] = classDecl->localName;
+                        }
+
                         if (classDecl->location.containsClosed(cursorPos))
                         {
                             AstExprFunction* currentMethod = nullptr;
@@ -544,6 +556,17 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
             {
                 localStack.push_back(ifStat->conditionLocal);
                 localMap[ifStat->conditionLocal->name] = ifStat->conditionLocal;
+            }
+        }
+
+        // Add the `while local` binding to the local map if the cursor is in the body of the `AstStatWhile`
+        if (FFlag::LuauExperimentalWhileLocalAnalysis)
+        {
+            if (auto whileStat = node->as<AstStatWhile>();
+                whileStat && whileStat->conditionLocal && whileStat->body->location.containsClosed(cursorPos))
+            {
+                localStack.push_back(whileStat->conditionLocal);
+                localMap[whileStat->conditionLocal->name] = whileStat->conditionLocal;
             }
         }
     }

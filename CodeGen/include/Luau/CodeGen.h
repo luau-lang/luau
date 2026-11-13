@@ -47,6 +47,11 @@ struct ProtoCompilationFailure
 
     std::string debugname;
     int line = -1;
+
+    int bytecodeid = 0;
+    uint32_t funid = 0;
+
+    uint32_t irInstCount = 0; // Instruction count after the initial build
 };
 
 struct CompilationResult
@@ -71,6 +76,8 @@ struct CompilationStats
     uint32_t functionsTotal = 0;
     uint32_t functionsCompiled = 0;
     uint32_t functionsBound = 0;
+
+    double compilationTimeSec = 0.0;
 };
 
 bool isSupported();
@@ -126,6 +133,11 @@ void setNativeExecutionEnabled(lua_State* L, bool enabled);
 using UserdataRemapperCallback = uint8_t(void* context, const char* name, size_t nameLength);
 
 void setUserdataRemapper(lua_State* L, void* context, UserdataRemapperCallback cb);
+
+// Enables automatic runtime function recompilation with the specified compilation options
+// When promoteVmFunctions is enabled, recompilation also applies to functions running in the VM
+// 'userdataTypes' in options has to survive until all VMs using target CodeGenContext are closed
+void enableRuntimeCompilation(lua_State* L, const CompilationOptions& options, bool promoteVmFunctions);
 
 using ModuleId = std::array<uint8_t, 16>;
 

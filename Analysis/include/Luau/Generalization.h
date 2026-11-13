@@ -50,7 +50,7 @@ GeneralizationResult<TypePackId> generalizeTypePack(
     const GeneralizationParams<TypePackId>& params
 );
 
-void sealTable(NotNull<Scope> scope, TypeId ty, TableState targetState);
+void sealTable(NotNull<Scope> scope, TypeId ty);
 
 
 /** Attempt to generalize a type.

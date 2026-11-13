@@ -62,7 +62,6 @@ TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
         end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("(string) -> string" == toString(requireType("f")));
 }

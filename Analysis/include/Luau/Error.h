@@ -619,26 +619,12 @@ struct UninitializedFieldAccess
     bool operator==(const UninitializedFieldAccess& rhs) const;
 };
 
-struct TypeAnnotationRequired
-{
-    TypeId inferredTy;
-
-    bool operator==(const TypeAnnotationRequired& rhs) const;
-};
-
 struct ConstructorsShouldNotReturnAnything
 {
     bool operator==(const ConstructorsShouldNotReturnAnything&) const
     {
         return true;
     }
-};
-
-struct CyclicClassInheritance
-{
-    std::vector<Name> cycle;
-
-    bool operator==(const CyclicClassInheritance& rhs) const;
 };
 
 struct InvalidClassExtension
@@ -672,6 +658,21 @@ struct IllegalClassPropertyOverride
     Name superName;
 
     bool operator==(const IllegalClassPropertyOverride& rhs) const;
+};
+
+struct MissingConstructor
+{
+    Name className;
+    Name superName;
+
+    bool operator==(const MissingConstructor& rhs) const;
+};
+
+struct NotIterable
+{
+    TypeId ty;
+
+    bool operator==(const NotIterable& rhs) const;
 };
 
 using TypeErrorData = Variant<
@@ -740,12 +741,12 @@ using TypeErrorData = Variant<
     TypeInstantiationCountMismatch,
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
-    TypeAnnotationRequired,
     ConstructorsShouldNotReturnAnything,
-    CyclicClassInheritance,
     InvalidClassExtension,
     IncompatibleClassMethodOverride,
-    IllegalClassPropertyOverride>;
+    IllegalClassPropertyOverride,
+    MissingConstructor,
+    NotIterable>;
 
 struct TypeErrorSummary
 {

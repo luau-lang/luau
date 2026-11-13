@@ -1,0 +1,12 @@
+Block 0 (entry "Entry Block") -> [B1]:
+  local x-0 = <expr>
+Block 1 (condition "while-loop condition") -> [B2, B3]:
+  x-1 = join(x-0, x-2, x-3)
+Block 2 (linear "while-loop body") -> [B4, B5]:
+Block 3 (linear "while-loop exit"):
+  local w-0 = <expr>
+Block 4 (linear "then block") -> [B1]:
+  x-2 = <expr>
+Block 5 (linear "else block") -> [B6]:
+Block 6 (linear "merge") -> [B1]:
+  x-3 = <expr>

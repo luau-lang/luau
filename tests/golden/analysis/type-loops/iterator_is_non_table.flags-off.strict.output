@@ -1,0 +1,2 @@
+./analysis/type-loops/iterator_is_non_table.luau(2,17): TypeError: Cannot call a value of type boolean in union:
+  boolean | number

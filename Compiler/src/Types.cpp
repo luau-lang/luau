@@ -3,7 +3,6 @@
 
 #include "Luau/BytecodeBuilder.h"
 
-LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAGVARIABLE(LuauCompileResolveAliasChains)
 
 namespace Luau
@@ -26,8 +25,6 @@ static LuauBytecodeType getPrimitiveType(AstName name)
         return LBC_TYPE_BOOLEAN;
     else if (name == "number")
         return LBC_TYPE_NUMBER;
-    else if (name == "integer")
-        return LBC_TYPE_INTEGER;
     else if (name == "string")
         return LBC_TYPE_STRING;
     else if (name == "thread")
@@ -91,11 +88,11 @@ static LuauBytecodeType getType(
         // not primitive or alias or generic => host-provided, we assume userdata for now
         return LBC_TYPE_USERDATA;
     }
-    else if (const AstTypeTable* table = ty->as<AstTypeTable>())
+    else if (ty->is<AstTypeTable>())
     {
         return LBC_TYPE_TABLE;
     }
-    else if (const AstTypeFunction* func = ty->as<AstTypeFunction>())
+    else if (ty->is<AstTypeFunction>())
     {
         return LBC_TYPE_FUNCTION;
     }
@@ -129,7 +126,7 @@ static LuauBytecodeType getType(
 
         return LuauBytecodeType(type | (optional && (type != LBC_TYPE_ANY) ? LBC_TYPE_OPTIONAL_BIT : 0));
     }
-    else if (const AstTypeIntersection* inter = ty->as<AstTypeIntersection>())
+    else if (ty->is<AstTypeIntersection>())
     {
         return LBC_TYPE_ANY;
     }
@@ -137,7 +134,7 @@ static LuauBytecodeType getType(
     {
         return getType(group->type, generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
     }
-    else if (const AstTypeOptional* optional = ty->as<AstTypeOptional>())
+    else if (ty->is<AstTypeOptional>())
     {
         return LBC_TYPE_NIL;
     }
@@ -598,7 +595,8 @@ struct TypeMapVisitor : AstVisitor
         {
             if (AstExprGlobal* object = node->expr->as<AstExprGlobal>())
             {
-                if (LuauBytecodeType ty = LuauBytecodeType(libraryMemberTypeCb(object->name.value, node->index.value)); ty != LBC_TYPE_ANY)
+                if (LuauBytecodeType ty = LuauBytecodeType(libraryMemberTypeCb(object->name.value, node->index.value));
+                    ty != LBC_TYPE_ANY && ty != LBC_TYPE_INTEGER_DEPRECATED)
                 {
                     // TODO: 'resolvedExprs' is more limited than 'exprTypes' which limits full inference of more complex types that a user
                     // callback can return
@@ -609,9 +607,6 @@ struct TypeMapVisitor : AstVisitor
                         break;
                     case LBC_TYPE_NUMBER:
                         resolvedExprs[node] = &builtinTypes.numberType;
-                        break;
-                    case LBC_TYPE_INTEGER:
-                        resolvedExprs[node] = &builtinTypes.integerType;
                         break;
                     case LBC_TYPE_STRING:
                         resolvedExprs[node] = &builtinTypes.stringType;
@@ -735,13 +730,6 @@ struct TypeMapVisitor : AstVisitor
         return false;
     }
 
-    bool visit(AstExprConstantInteger* node) override
-    {
-        recordResolvedType(node, &builtinTypes.integerType);
-
-        return false;
-    }
-
     bool visit(AstExprConstantString* node) override
     {
         recordResolvedType(node, &builtinTypes.stringType);
@@ -803,7 +791,9 @@ struct TypeMapVisitor : AstVisitor
             case LBF_BUFFER_WRITEU32:
             case LBF_BUFFER_WRITEF32:
             case LBF_BUFFER_WRITEF64:
-            case LBF_BUFFER_WRITEINTEGER:
+            case LBF_BUFFER_WRITEVECTORF32X2:
+            case LBF_BUFFER_WRITEVECTORF32X3:
+            case LBF_BUFFER_WRITEVECTORF32X4:
                 break;
             case LBF_MATH_ABS:
             case LBF_MATH_ACOS:
@@ -894,60 +884,10 @@ struct TypeMapVisitor : AstVisitor
             case LBF_VECTOR_MIN:
             case LBF_VECTOR_MAX:
             case LBF_VECTOR_LERP:
+            case LBF_BUFFER_READVECTORF32X2:
+            case LBF_BUFFER_READVECTORF32X3:
+            case LBF_BUFFER_READVECTORF32X4:
                 recordResolvedType(node, &builtinTypes.vectorType);
-                break;
-
-            case LBF_INTEGER_ADD:
-            case LBF_INTEGER_SUB:
-            case LBF_INTEGER_MOD:
-            case LBF_INTEGER_MUL:
-            case LBF_INTEGER_DIV:
-            case LBF_INTEGER_IDIV:
-            case LBF_INTEGER_UDIV:
-            case LBF_INTEGER_REM:
-            case LBF_INTEGER_UREM:
-            case LBF_INTEGER_MAX:
-            case LBF_INTEGER_MIN:
-            case LBF_INTEGER_BAND:
-            case LBF_INTEGER_BOR:
-            case LBF_INTEGER_BNOT:
-            case LBF_INTEGER_BXOR:
-            case LBF_INTEGER_LSHIFT:
-            case LBF_INTEGER_RSHIFT:
-            case LBF_INTEGER_ARSHIFT:
-            case LBF_INTEGER_LROTATE:
-            case LBF_INTEGER_RROTATE:
-            case LBF_INTEGER_EXTRACT:
-            case LBF_INTEGER_COUNTLZ:
-            case LBF_INTEGER_COUNTRZ:
-            case LBF_INTEGER_BSWAP:
-            case LBF_INTEGER_CLAMP:
-            case LBF_INTEGER_NEG:
-            case LBF_INTEGER_CREATE:
-            case LBF_BUFFER_READINTEGER:
-                if (!FFlag::LuauIntegerFastcalls)
-                    return true;
-                recordResolvedType(node, &builtinTypes.integerType);
-                break;
-
-            case LBF_INTEGER_TONUMBER:
-                if (!FFlag::LuauIntegerFastcalls)
-                    return true;
-                recordResolvedType(node, &builtinTypes.numberType);
-                break;
-
-            case LBF_INTEGER_LT:
-            case LBF_INTEGER_LE:
-            case LBF_INTEGER_GT:
-            case LBF_INTEGER_GE:
-            case LBF_INTEGER_ULT:
-            case LBF_INTEGER_ULE:
-            case LBF_INTEGER_UGT:
-            case LBF_INTEGER_UGE:
-            case LBF_INTEGER_BTEST:
-                if (!FFlag::LuauIntegerFastcalls)
-                    return true;
-                recordResolvedType(node, &builtinTypes.booleanType);
                 break;
             }
         }

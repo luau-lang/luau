@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
@@ -66,10 +67,6 @@ enum class IrCmd : uint8_t
     // A: Rn
     LOAD_INT,
 
-    // Load an int64 from TValue
-    // A: Rn
-    LOAD_INT64,
-
     // Load a float field from vector (use FLOAT_TO_NUM to convert to double)
     // A: Rn or Kn
     // B: int (offset from the start of TValue)
@@ -130,11 +127,6 @@ enum class IrCmd : uint8_t
     // A: Rn
     // B: int
     STORE_INT,
-
-    // Store an int64 into TValue
-    // A: Rn
-    // B: int64
-    STORE_INT64,
 
     // Store a vector into TValue
     // When optional 'E' tag is present, it is written out to the TValue as well
@@ -348,7 +340,8 @@ enum class IrCmd : uint8_t
     ABS_VEC,
 
     // Compute dot product between two vectors as a float number (use FLOAT_TO_NUM to convert to double)
-    // A, B: TValue (vector)
+    // A, B: TValue
+    // C: int (component count, 3 or 4)
     DOT_VEC,
 
     // Extract a component of a vector (use FLOAT_TO_NUM to convert to double)
@@ -547,6 +540,10 @@ enum class IrCmd : uint8_t
     // A: TValue
     TAG_VECTOR,
 
+    // Clear the fourth lane to be zero, preserving X/Y/Z components
+    // A: TValue (vector)
+    UNTAG_VECTOR,
+
     // Clear high register bits of an unsigned integer register. Used to sanitize value of 'producesDirtyHighRegisterBits' instructions.
     // A: uint
     TRUNCATE_UINT,
@@ -593,6 +590,17 @@ enum class IrCmd : uint8_t
     // C: int (argument count or -1 to use all arguments up to stack top)
     // D: int (result count or -1 to preserve all results and adjust stack top)
     INVOKE_FASTPCALL,
+
+    // Call an object method (namecall lookup and the call itself)
+    // - if function yields, performs a yield
+    // - if a target Luau function needs to run, switches execution to it
+    // - continues if the target call resolved immediately
+    // A: unsigned int (pcpos)
+    // B: Rn (argument/result start)
+    // C: Rn (object)
+    // D: int (argument count or -1 to use all arguments up to stack top)
+    // E: int (result count or -1 to preserve all results and adjust stack top)
+    INVOKE_NAMECALL,
 
     // Fallback functions
 
@@ -761,6 +769,10 @@ enum class IrCmd : uint8_t
 
     // Check and run GC assist if necessary
     CHECK_GC,
+
+    // Update runtime counters from the counter set
+    // A: unsigned int (counter set index)
+    UPDATE_COUNTERS,
 
     // Handle GC write barrier (forward)
     // A: pointer (GCObject)
@@ -998,81 +1010,124 @@ enum class IrCmd : uint8_t
     // A: Rn (level)
     FINDUPVAL,
 
-    // Read i8 (sign-extended to int) from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read i8 (sign-extended to int) from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READI8,
 
-    // Read u8 (zero-extended to int) from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read u8 (zero-extended to int) from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READU8,
 
-    // Write i8/u8 value (int argument is truncated) to buffer storage at specified offset
-    // A: pointer (buffer)
+    // Write i8/u8 value (int argument is truncated) to memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
     // C: int (value)
+    // D: tag (storage kind)
     BUFFER_WRITEI8,
 
-    // Read i16 (sign-extended to int) from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read i16 (sign-extended to int) from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READI16,
 
-    // Read u16 (zero-extended to int) from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read u16 (zero-extended to int) from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READU16,
 
-    // Write i16/u16 value (int argument is truncated) to buffer storage at specified offset
-    // A: pointer (buffer)
+    // Write i16/u16 value (int argument is truncated) to memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
     // C: int (value)
+    // D: tag (storage kind)
     BUFFER_WRITEI16,
 
-    // Read i32 value from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read i32 value from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READI32,
 
-    // Write i32/u32 value to buffer storage at specified offset
-    // A: pointer (buffer)
+    // Write i32/u32 value to memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
     // C: int (value)
+    // D: tag (storage kind)
     BUFFER_WRITEI32,
 
-    // Read float value (use FLOAT_TO_NUM to convert to double) from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read float value (use FLOAT_TO_NUM to convert to double) from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READF32,
 
-    // Write float value (use NUM_TO_FLOAT to convert from double) to buffer storage at specified offset
-    // A: pointer (buffer)
+    // Write float value (use NUM_TO_FLOAT to convert from double) to memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
     // C: float (value)
+    // D: tag (storage kind)
     BUFFER_WRITEF32,
 
-    // Read double value from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read double value from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READF64,
 
-    // Write double value to buffer storage at specified offset
-    // A: pointer (buffer)
+    // Write double value to memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
     // C: double (value)
+    // D: tag (storage kind)
     BUFFER_WRITEF64,
 
-    // Read int64 value from buffer storage at specified offset
-    // A: pointer (buffer)
+    // Read int64 value from memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
+    // C: tag (storage kind)
     BUFFER_READI64,
 
-    // Write i64/u64 value to buffer storage at specified offset
-    // A: pointer (buffer)
+    // Write i64/u64 value to memory storage at specified offset
+    // A: pointer (buffer/userdata)
     // B: int (offset)
     // C: int64 (value)
+    // D: tag (storage kind)
     BUFFER_WRITEI64,
+
+    // Read 'count' (2 or 3) contiguous f32 values from buffer storage into a vector value; unused lanes are zeroed
+    // A: pointer (buffer or userdata)
+    // B: int (offset)
+    // C: tag (LUA_TBUFFER or LUA_TUSERDATA)
+    // D: int (component count)
+    // Produces a vector value in a single SIMD register; combine with TAG_VECTOR before storing
+    BUFFER_READVECTOR,
+
+    // Write 'count' (2 or 3) contiguous f32 values from a vector value to buffer storage
+    // A: pointer (buffer or userdata)
+    // B: int (offset)
+    // C: TValue (vector, only the lower 'count' f32 lanes are written)
+    // D: tag (LUA_TBUFFER or LUA_TUSERDATA)
+    // E: int (component count)
+    BUFFER_WRITEVECTOR,
+
+    // Read 4 packed floats from memory storage at specified offset
+    // A: pointer (buffer/userdata)
+    // B: int (offset)
+    // C: tag (storage kind)
+    BUFFER_READF32X4,
+
+    // Write 4 packed floats value to memory storage at specified offset
+    // A: pointer (buffer/userdata)
+    // B: int (offset)
+    // C: TValue (value)
+    // D: tag (storage kind)
+    BUFFER_WRITEF32X4,
 
     // Perform a conditional jump based on the result of Proto ID comparison
     // A: closure pointer
@@ -1348,6 +1403,20 @@ struct IrInstEq
     }
 };
 
+struct IrEntryCounter
+{
+    CodeGenCounter kind = CodeGenCounter::VmRegTagMismatch;
+    IrOp operand;
+    uint32_t pcpos = ~0u;
+
+    uint8_t expectedTag = kUnknownTag; // tag expected by fast path falling back to this counter
+};
+
+struct IrCounterSet
+{
+    SmallVector<IrEntryCounter, 4> counters;
+};
+
 enum class IrBlockKind : uint8_t
 {
     Bytecode,
@@ -1383,6 +1452,8 @@ struct IrBlock
     uint32_t startpc = kBlockNoStartPc;
 
     Label label;
+
+    uint32_t counterSet = ~0u;
 };
 
 struct BytecodeMapping
@@ -1425,6 +1496,44 @@ struct BytecodeTypeInfo
     std::vector<uint32_t> regTypeOffsets;
 };
 
+// VM register tag that was recorded at the bytecode instruction at runtime
+struct BytecodeTagFeedback
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint8_t tag = 0;
+
+    bool operator==(const BytecodeTagFeedback& rhs) const
+    {
+        return pcpos == rhs.pcpos && reg == rhs.reg && tag == rhs.tag;
+    }
+};
+
+struct BytecodeUserdataFeedback
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint8_t tag = 0;             // Runtime tag
+    uint8_t type = LBC_TYPE_ANY; // Bytecode type
+
+    bool operator==(const BytecodeUserdataFeedback& rhs) const
+    {
+        return pcpos == rhs.pcpos && reg == rhs.reg && tag == rhs.tag && type == rhs.type;
+    }
+};
+
+// Feedback recorded about the function at runtime
+struct BytecodeFeedback
+{
+    std::vector<BytecodeTagFeedback> tags;               // Sorted by pcpos
+    std::vector<BytecodeUserdataFeedback> userdataTypes; // Sorted by pcpos
+
+    bool operator==(const BytecodeFeedback& rhs) const
+    {
+        return tags == rhs.tags && userdataTypes == rhs.userdataTypes;
+    }
+};
+
 struct ValueRestoreLocation
 {
     IrOp op;                                  // Operand representing the location (Rn/Kn)
@@ -1450,6 +1559,7 @@ struct VmExitStoreRecord
 struct VmExitStoreInfo
 {
     uint8_t reg = 0;
+    uint8_t expectedTag = kUnknownTag;
     SmallVector<VmExitStoreRecord, 2> stores;
 };
 
@@ -1495,6 +1605,9 @@ struct IrFunction
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
     BytecodeTypeInfo bcTypeInfo;         // Bytecode type information with additional inferences
 
+    std::vector<IrCounterSet> counterSets;
+    BytecodeFeedback feedback;
+
     VmEnvironmentInfo envInfo;
 
     Proto* proto = nullptr;
@@ -1504,7 +1617,9 @@ struct IrFunction
 
     LoweringStats* stats = nullptr;
 
-    bool recordCounters = false; // Taken from CompilationOptions for easy access
+    // Taken from CompilationOptions for easy access
+    bool recordCounters = false;
+    bool recordFeedback = false;
 
     uint64_t jitRngState = 0; // PCG32 state for NOP padding; seeded per-function in lowerFunction
 

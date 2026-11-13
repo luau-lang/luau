@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Bytecode.h"
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeOps.h"
@@ -654,10 +655,13 @@ struct BytecodeGraphSerializer
             break;
 
         case LOP_NEWCLASSMEMBER:
+        {
             LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-            bcb.emitABC(LOP_NEWCLASSMEMBER, getRegInput(insn, 0), 0, getRegInput(insn, 1));
-            bcb.emitAux(getVmConstInputAux(insn, 2));
-            break;
+            int32_t flags = getImmInt(insn, 1);
+            bcb.emitABC(LOP_NEWCLASSMEMBER, getRegInput(insn, 0), flags, getRegInput(insn, 2));
+            bcb.emitAux(flags & 0x1 ? getImmImport(insn, 3) : getVmConstInputAux(insn, 3));
+        }
+        break;
 
         case LOP_CMPPROTO:
             recordJump(insn, 2);
@@ -687,6 +691,22 @@ struct BytecodeGraphSerializer
 
         case LOP_FINCONSTRUCT:
             bcb.emitABC(LOP_FINCONSTRUCT, getRegInput(insn, 0), 0, getImmInt(insn, 1));
+            break;
+
+        case LOP_GETPRIVATEFIELD:
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+            bcb.emitABC(LOP_GETPRIVATEFIELD, getRegister(insnOp), getRegInput(insn, 0), getUpvalInput(insn, 1));
+
+            bcb.emitAux(getImmImport(insn, 2));
+            break;
+
+        case LOP_SETPRIVATEFIELD:
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+            bcb.emitABC(LOP_SETPRIVATEFIELD, getRegInput(insn, 0), getRegInput(insn, 1), getUpvalInput(insn, 2));
+
+            bcb.emitAux(getImmImport(insn, 3));
             break;
 
         case LOP__COUNT:

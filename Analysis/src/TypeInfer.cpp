@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -218,7 +219,6 @@ TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, 
     , reusableInstantiation(TxnLog::empty(), nullptr, builtinTypes, {}, nullptr)
     , nilType(builtinTypes->nilType)
     , numberType(builtinTypes->numberType)
-    , integerType(builtinTypes->integerType)
     , stringType(builtinTypes->stringType)
     , booleanType(builtinTypes->booleanType)
     , threadType(builtinTypes->threadType)
@@ -409,7 +409,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
     }
     else if (FFlag::DebugLuauUserDefinedClasses && program.is<AstStatClass>())
     {
-        reportError(program.as<AstStatClass>()->name->location, GenericError{"class keyword is illegal here"});
+        reportError(program.as<AstStatClass>()->location, GenericError{"class keyword is illegal here"});
         return ControlFlow::None;
     }
     else
@@ -717,7 +717,7 @@ WithPredicate<TypeId> TypeChecker::checkLocalBinding(
     std::optional<TypeId> expectedType
 )
 {
-    LUAU_ASSERT(FFlag::LuauExperimentalIfLocalAnalysis);
+    LUAU_ASSERT(FFlag::LuauExperimentalIfLocalAnalysis || FFlag::LuauExperimentalWhileLocalAnalysis);
     LUAU_ASSERT(local);
 
     TypeId lhs = nullptr;
@@ -796,9 +796,20 @@ ErrorVec TypeChecker::canUnify(TypePackId subTy, TypePackId superTy, const Scope
 
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatWhile& statement)
 {
-    WithPredicate<TypeId> result = checkExpr(scope, *statement.condition);
+    std::optional<TypeId> expectedType = std::nullopt;
+    if (FFlag::LuauExperimentalWhileLocalAnalysis && statement.conditionLocal && statement.conditionLocal->annotation)
+        expectedType.emplace(resolveType(scope, *statement.conditionLocal->annotation));
+
+    WithPredicate<TypeId> result = checkExpr(scope, *statement.condition, expectedType);
 
     ScopePtr whileScope = childScope(scope, statement.body->location);
+
+    if (FFlag::LuauExperimentalWhileLocalAnalysis && statement.conditionLocal != nullptr)
+    {
+        WithPredicate<TypeId> bindingPred = checkLocalBinding(scope, whileScope, statement.conditionLocal, result, expectedType);
+        resolve(bindingPred.predicates, whileScope, true);
+    }
+
     resolve(result.predicates, whileScope, true);
     check(whileScope, *statement.body);
 
@@ -1952,8 +1963,6 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     }
     else if (expr.is<AstExprConstantNumber>())
         result = WithPredicate{numberType};
-    else if (expr.is<AstExprConstantInteger>())
-        result = WithPredicate{integerType};
     else if (auto a = expr.as<AstExprLocal>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprGlobal>())
@@ -6599,8 +6608,6 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
         return refine(isString, stringType);
     else if (typeguardP.kind == "number")
         return refine(isNumber, numberType);
-    else if (typeguardP.kind == "integer")
-        return refine(isInteger, integerType);
     else if (typeguardP.kind == "boolean")
         return refine(isBoolean, booleanType);
     else if (typeguardP.kind == "thread")

@@ -2045,8 +2045,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_types")
 
 TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursive_type")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     // Module A: exports a recursive type and a component that uses it.
@@ -2075,8 +2073,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursi
     )";
 
     CheckResult result = getFrontend().check("game/Gui/Modules/B");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

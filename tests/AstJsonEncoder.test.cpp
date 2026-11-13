@@ -15,6 +15,8 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 struct JsonEncoderFixture
 {
@@ -67,9 +69,6 @@ TEST_CASE("encode_constants")
     AstExprConstantNumber positiveInfinity{Location(), INFINITY};
     AstExprConstantNumber negativeInfinity{Location(), -INFINITY};
     AstExprConstantNumber nan{Location(), NAN};
-    AstExprConstantInteger intSmall{Location(), 42};
-    AstExprConstantInteger intNeg{Location(), -1};
-    AstExprConstantInteger intLarge{Location(), 0x7FFFFFFFFFFFFFFFLL};
 
     char escapeRaw[] = "a\x1d\0\\\"b";
     AstExprConstantString needsEscaping{Location(), {escapeRaw, sizeof(escapeRaw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
@@ -87,9 +86,6 @@ TEST_CASE("encode_constants")
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":Infinity})", toJson(&positiveInfinity));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":-Infinity})", toJson(&negativeInfinity));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":NaN})", toJson(&nan));
-    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":42})", toJson(&intSmall));
-    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":-1})", toJson(&intNeg));
-    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":9223372036854775807})", toJson(&intLarge));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"a\\u001d\\u0000\\\\\\\"b\"}", toJson(&needsEscaping));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"x\\b\\f\\n\\r\\ty\"}", toJson(&hasShorthands));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"e\xc3\xa9\xf0\x9f\x98\x80\"}", toJson(&hasUtf8));
@@ -406,6 +402,42 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile")
 
     std::string_view expected =
         R"({"type":"AstStatWhile","location":"0,0 - 0,17","condition":{"type":"AstExprConstantBool","location":"0,6 - 0,10","value":true},"body":{"type":"AstStatBlock","location":"0,13 - 0,14","hasEnd":true,"body":[]},"hasDo":true})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("while local x = y do end");
+
+    std::string_view expected =
+        R"({"type":"AstStatWhile","location":"0,0 - 0,24","condition":{"type":"AstExprGlobal","location":"0,16 - 0,17","global":"y"},"body":{"type":"AstStatBlock","location":"0,20 - 0,21","hasEnd":true,"body":[]},"hasDo":true,"conditionLocal":{"luauType":null,"name":"x","isConst":false,"type":"AstLocal","location":"0,12 - 0,13"}})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_local_type")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("while local x: number = y do end");
+
+    std::string_view expected =
+        R"({"type":"AstStatWhile","location":"0,0 - 0,32","condition":{"type":"AstExprGlobal","location":"0,24 - 0,25","global":"y"},"body":{"type":"AstStatBlock","location":"0,28 - 0,29","hasEnd":true,"body":[]},"hasDo":true,"conditionLocal":{"luauType":{"type":"AstTypeReference","location":"0,15 - 0,21","name":"number","nameLocation":"0,15 - 0,21","parameters":[]},"name":"x","isConst":false,"type":"AstLocal","location":"0,12 - 0,13"}})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile_while_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}, {FFlag::LuauExperimentalWhileLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("while const x = y do end");
+
+    std::string_view expected =
+        R"({"type":"AstStatWhile","location":"0,0 - 0,24","condition":{"type":"AstExprGlobal","location":"0,16 - 0,17","global":"y"},"body":{"type":"AstStatBlock","location":"0,20 - 0,21","hasEnd":true,"body":[]},"hasDo":true,"conditionLocal":{"luauType":null,"name":"x","isConst":true,"type":"AstLocal","location":"0,12 - 0,13"}})";
 
     CHECK(toJson(statement) == expected);
 }

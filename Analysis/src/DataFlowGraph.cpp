@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -387,23 +388,6 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatBlock* b)
 
 ControlFlow DataFlowGraphBuilder::visitBlockWithoutChildScope(AstStatBlock* b)
 {
-    // Classes are hoisted and so can be referred to before their declaration.
-    // Before we do anything, quickly zip through any classes and preallocate
-    // DefIds for them.
-    if (FFlag::DebugLuauUserDefinedClasses)
-    {
-        for (AstStat* stat : b->body)
-        {
-            if (auto d = stat->as<AstStatClass>())
-            {
-                DefId def = defArena->freshCell(d->name, d->name->location);
-                graph.localDefs[d->name] = def;
-                currentScope()->bindings[d->name] = def;
-                captures[d->name].allVersions.push_back(def);
-            }
-        }
-    }
-
     std::optional<ControlFlow> firstControlFlow;
     for (AstStat* stat : b->body)
     {
@@ -538,6 +522,17 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatWhile* w)
     {
         PushScope ps{scopeStack, whileScope};
         visitExpr(w->condition);
+
+        if (FFlag::LuauExperimentalWhileLocalAnalysis && w->conditionLocal)
+        {
+            DefId def = defArena->freshCell(w->conditionLocal, w->conditionLocal->location, false);
+            if (w->conditionLocal->annotation)
+                visitType(w->conditionLocal->annotation);
+            graph.localDefs[w->conditionLocal] = def;
+            whileScope->bindings[w->conditionLocal] = def;
+            captures[w->conditionLocal].allVersions.push_back(def);
+        }
+
         cf = visit(w->body);
     }
 
@@ -892,8 +887,19 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatClass* d)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 
+    // In `class A extends A`, the second `A` should refer to existing names, so we visit it first
     if (d->super)
         visitExpr(d->super);
+
+    if (d->declModifier == AstStatClass::DeclModifier::None)
+        visitLValue(d->exprName, defArena->freshCell(Symbol{}, d->exprName->location));
+    else
+    {
+        DefId def = defArena->freshCell(d->localName, d->localName->location);
+        graph.localDefs[d->localName] = def;
+        currentScope()->bindings[d->localName] = def;
+        captures[d->localName].allVersions.push_back(def);
+    }
 
     for (const auto& member : d->members)
     {
@@ -948,8 +954,6 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
         else if (auto c = e->as<AstExprConstantBool>())
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantNumber>())
-            return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
-        else if (auto c = e->as<AstExprConstantInteger>())
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantString>())
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok

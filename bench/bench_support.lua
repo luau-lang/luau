@@ -4,7 +4,43 @@ local bench = {}
 bench.runs = 20
 bench.extraRuns = 4
 
+-- bench.py passes LUAU_BENCH_ONLY=<n> and LUAU_BENCH_RUNS=<n> when measuring with external process-wide CPU counters.
+-- Hosts that share _G across scripts can set them as globals; the Luau CLI passes them as program args, which only
+-- top-level scripts receive (see the end of this file).
+local function parseNamedArgs(args)
+    local named = {}
+    for _, arg in ipairs(args) do
+        local name, value = string.match(arg, "^([%w_]+)=(.*)$")
+        if name then
+            named[name] = value
+        end
+    end
+    return named
+end
+
+-- 1-based index of the only runCode call to execute, so that files with several benchmarks can be measured one at a
+-- time; other calls just print their description, and 0 executes none
+local counterOnly = tonumber(_G.LUAU_BENCH_ONLY)
+
+-- Exact run count for each runCode call, with no extra runs, so that counter totals cover a known number of runs
+local counterRuns = tonumber(_G.LUAU_BENCH_RUNS)
+
+local runCodeCount = 0
+
+function bench.setCounterOptions(args)
+    local named = parseNamedArgs(args)
+    counterOnly = tonumber(named.LUAU_BENCH_ONLY)
+    counterRuns = tonumber(named.LUAU_BENCH_RUNS)
+end
+
 function bench.runCode(f, description)
+    runCodeCount = runCodeCount + 1
+
+    if counterOnly and counterOnly ~= runCodeCount then
+        print("|><|"..description.."||_||")
+        return
+    end
+
     -- Under Callgrind, run the test only once and measure just the execution cost
     if callgrind and callgrind("running") then
         if collectgarbage then collectgarbage() end
@@ -16,8 +52,10 @@ function bench.runCode(f, description)
     end
 
     local timeTable = {}
+    local runs = counterRuns or bench.runs
+    local extraRuns = counterRuns and 0 or bench.extraRuns
 
-    for i = 1,bench.runs + bench.extraRuns do
+    for i = 1,runs + extraRuns do
         -- try to run GC if it's available
         if collectgarbage then
             pcall(function()
@@ -41,7 +79,7 @@ function bench.runCode(f, description)
 
     table.sort(timeTable)
 
-    for i = 1,bench.extraRuns do
+    for i = 1,extraRuns do
         table.remove(timeTable, #timeTable)
     end
 
@@ -98,6 +136,14 @@ function bench.runScriptCodeUnderActor(scriptInstance, f, description)
         actor.Parent = workspace
         return false
     end
+end
+
+-- Under the Luau CLI, bench.py runs this file as a top-level script before the test file, since only top-level scripts
+-- receive program args. `bench` here is then a separate instance from the one the test file requires, so the args are
+-- forwarded to that cached module instance.
+local programArgs = { ... }
+if parseNamedArgs(programArgs).LUAU_BENCH_ONLY then
+    require("./bench_support").setCounterOptions(programArgs)
 end
 
 return bench

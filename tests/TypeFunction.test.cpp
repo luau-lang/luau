@@ -15,7 +15,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 struct TypeFunctionFixture : Fixture
@@ -209,8 +208,6 @@ TEST_CASE_FIXTURE(Fixture, "add_function_at_work")
         local c = add("foo", 1)
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "add<number, string>");
@@ -292,8 +289,6 @@ TEST_CASE_FIXTURE(Fixture, "internal_functions_raise_errors")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
         toString(result.errors[0]) ==
@@ -319,8 +314,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_be_shadowed")
             return a + b
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -902,8 +895,6 @@ local function Use(Mode)
 end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1066,8 +1057,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_metatable_should_not_crash_index")
         type IndexFromT = index<typeof(t), "p">
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ("Type 't' does not have key 'p'", toString(result.errors[0]));
     CHECK_EQ("Property '\"p\"' does not exist on type 't'", toString(result.errors[1]));
@@ -1075,8 +1064,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_metatable_should_not_crash_index")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_generic_types")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1431,8 +1418,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_len_type_function_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1451,8 +1436,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable_2")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1477,8 +1460,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatable_with_metatable_metamethod")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1975,8 +1956,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation_with_defaults")
 
 TEST_CASE_FIXTURE(Fixture, "cli_184124_recursive_restraint_violation_from_devforum")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type TypeA<A... = ()> = { Func: (self: TypeA<A...>, func: (A...) -> ()) -> () }
         type TypeB<A = any> = { Value: TypeA<TypeB<A>> }
@@ -2081,7 +2060,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
         local t: any = {}
         local _b = access<<"Member1">>(t, "Member1")
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireType("_b")));
@@ -2124,14 +2103,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
-    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_ERROR_COUNT(3, aResult);
 
     CheckResult bResult = check(R"(
         local Test = require(game.A);
         local x = Test.get("hello", "world")
     )");
-    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     CHECK(toString(requireType("x")) == "*error-type*");
@@ -2140,8 +2117,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_negation_of_nontestable_type_doesnt_crash_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
 
     CheckResult result = check(R"(
         type function tf()
@@ -2160,8 +2135,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
-
     CheckResult result = check(R"(
         type function mknot()
             return types.negationof(types.unionof(types.newfunction(), types.number))
@@ -2179,8 +2152,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt_crash_3")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
 
     CheckResult result = check(R"(
         type function tf()

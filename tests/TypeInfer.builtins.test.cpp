@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
+LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -73,8 +74,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_ch
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_check")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         type Map<K, V> = { [K]: V }
         local map: Map<string, number> = { ["foo"] = 1, ["bar"] = 2, ["baz"] = 3 }
@@ -136,8 +135,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
         local function p(a: number, b: number) return a < b end
         table.sort(t, p)
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -202,8 +199,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_checks_for_numbers")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"LUA(
         local b = bit32
     )LUA");
@@ -383,8 +378,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         type A = {tag: "A", x: number}
         type B = {tag: "B", y: string}
@@ -429,8 +422,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local t = table.pack(1, "foo", true)
     )");
@@ -441,8 +432,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_variadic")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
 --!strict
 function f(): (string, ...number)
@@ -458,8 +447,6 @@ local t = table.pack(f())
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local t = table.pack(1, 2, true)
     )");
@@ -470,8 +457,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local t = table.pack("a", "b", "c")
     )");
@@ -545,6 +530,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_a_type")
     CHECK("buffer" == toString(requireType("b")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_vector_functions_have_vector_types")
+{
+    ScopedFastFlag bufferVectorLibrary{FFlag::DebugLuauBufferVectorLibrary, true};
+
+    CheckResult result = check(R"(
+        local b = buffer.create(24)
+        local v2 = buffer.readvectorf32x2(b, 0)
+        local v3 = buffer.readvectorf32x3(b, 0)
+        buffer.writevectorf32x2(b, 0, vector.create(1, 2))
+        buffer.writevectorf32x3(b, 0, vector.create(1, 2, 3))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("vector" == toString(requireType("v2")));
+    CHECK("vector" == toString(requireType("v3")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
 {
     CheckResult result = check(R"(
@@ -559,8 +561,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
         local x, y = coroutine.resume(co, 1, 2)
         local answer = coroutine.resume(co, 3)
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -610,8 +610,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_types_inference")
             return string.format("%f %d %s", a, b, c)
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(number, number, string) -> string", toString(requireType("f")));
@@ -669,8 +667,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier_type_constr
             return x
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(string) -> string", toString(requireType("f")));
@@ -1110,8 +1106,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1140,8 +1134,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types3")
             return x
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1442,8 +1434,6 @@ local function f(x: string)
 end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1703,7 +1693,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
             end
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1747,8 +1737,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break")
         return Immutable
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1763,8 +1751,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break_2")
             return new
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

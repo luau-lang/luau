@@ -157,9 +157,6 @@ std::optional<bool> BcVmConstImpl::eq(const BcOp& lhsOp, const BcOp& rhsOp) cons
         if (lhs.kind != rhs.kind)
             return false;
 
-        if (lhs.kind == BcVmConstKind::Integer && rhs.kind == BcVmConstKind::Integer)
-            return lhs.valueInteger == rhs.valueInteger;
-
         if (lhs.kind == BcVmConstKind::String && rhs.kind == BcVmConstKind::String)
             return lhs.valueString == rhs.valueString;
     }

@@ -20,8 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
-
 namespace Luau
 {
 
@@ -160,9 +158,6 @@ private:
                 break;
             case PrimitiveType::Number:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Number));
-                break;
-            case PrimitiveType::Integer:
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Integer));
                 break;
             case PrimitiveType::String:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
@@ -415,16 +410,13 @@ private:
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
 
-        if (FFlag::LuauTypeFunctionSerializeArgNames)
+        f2->argNames.reserve(f1->argNames.size());
+        for (const auto& argName : f1->argNames)
         {
-            f2->argNames.reserve(f1->argNames.size());
-            for (const auto& argName : f1->argNames)
-            {
-                if (argName)
-                    f2->argNames.emplace_back(argName->name);
-                else
-                    f2->argNames.emplace_back();
-            }
+            if (argName)
+                f2->argNames.emplace_back(argName->name);
+            else
+                f2->argNames.emplace_back();
         }
     }
 
@@ -698,9 +690,6 @@ private:
                 break;
             case TypeFunctionPrimitiveType::Type::Number:
                 target = state->ctx->builtins->numberType;
-                break;
-            case TypeFunctionPrimitiveType::Type::Integer:
-                target = state->ctx->builtins->integerType;
                 break;
             case TypeFunctionPrimitiveType::Type::String:
                 target = state->ctx->builtins->stringType;
@@ -1028,16 +1017,13 @@ private:
         if (f2->retTypes)
             f1->retTypes = shallowDeserialize(f2->retTypes);
 
-        if (FFlag::LuauTypeFunctionSerializeArgNames)
+        f1->argNames.reserve(f2->argNames.size());
+        for (const auto& name : f2->argNames)
         {
-            f1->argNames.reserve(f2->argNames.size());
-            for (const auto& name : f2->argNames)
-            {
-                if (name)
-                    f1->argNames.emplace_back(FunctionArgument{*name, {}});
-                else
-                    f1->argNames.emplace_back();
-            }
+            if (name)
+                f1->argNames.emplace_back(FunctionArgument{*name, {}});
+            else
+                f1->argNames.emplace_back();
         }
     }
 
