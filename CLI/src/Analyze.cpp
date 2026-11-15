@@ -333,7 +333,7 @@ struct CliConfigResolver : Luau::ConfigResolver
             if (std::optional<std::string> contents = readFile(*luauConfigPath))
             {
                 Luau::ConfigOptions::AliasOptions aliasOpts;
-                aliasOpts.configLocation = *configPath;
+                aliasOpts.configLocation = *luauConfigPath;
                 aliasOpts.overwriteAliases = true;
 
                 Luau::InterruptCallbacks callbacks;
