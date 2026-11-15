@@ -627,13 +627,6 @@ struct ConstructorsShouldNotReturnAnything
     }
 };
 
-struct CyclicClassInheritance
-{
-    std::vector<Name> cycle;
-
-    bool operator==(const CyclicClassInheritance& rhs) const;
-};
-
 struct InvalidClassExtension
 {
     enum Context
@@ -749,7 +742,6 @@ using TypeErrorData = Variant<
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
     ConstructorsShouldNotReturnAnything,
-    CyclicClassInheritance,
     InvalidClassExtension,
     IncompatibleClassMethodOverride,
     IllegalClassPropertyOverride,

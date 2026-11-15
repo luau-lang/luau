@@ -344,7 +344,6 @@ enum class ConstantNumberParseResult
     Malformed,
     BinOverflow,
     HexOverflow,
-    IntOverflow,
 };
 
 class AstExprConstantNumber : public AstExpr
@@ -360,18 +359,6 @@ public:
     ConstantNumberParseResult parseResult;
 };
 
-class AstExprConstantInteger : public AstExpr
-{
-public:
-    LUAU_RTTI(AstExprConstantInteger)
-
-    AstExprConstantInteger(const Location& location, int64_t value, ConstantNumberParseResult parseResult = ConstantNumberParseResult::Ok);
-
-    void visit(AstVisitor* visitor) override;
-
-    int64_t value;
-    ConstantNumberParseResult parseResult;
-};
 class AstExprConstantString : public AstExpr
 {
 public:
@@ -1198,15 +1185,40 @@ class AstStatClass : public AstStat
 public:
     LUAU_RTTI(AstStatClass)
 
-    AstLocal* name;
+    // Neither functions nor classes currently support `export const` declarations, so we use an enum here
+    enum class DeclModifier
+    {
+        None,
+        Local,
+        Const,
+        Export
+    };
+
+    // exprName is populated if declModifier is None, otherwise localName is populated
+    union
+    {
+        AstExpr* exprName;
+        AstLocal* localName;
+    };
     AstExpr* super;
     AstArray<AstClassMember> members;
-    bool exported;
+    DeclModifier declModifier;
     bool open;
 
-    AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported, bool open);
+    AstStatClass(
+        const Location& location,
+        AstExpr* exprName,
+        AstLocal* localName,
+        AstExpr* super,
+        AstArray<AstClassMember> members,
+        DeclModifier declModifier,
+        bool open
+    );
 
     void visit(AstVisitor* visitor) override;
+
+    AstName getName() const;
+    Location getNameLocation() const;
 };
 
 struct AstTableIndexer
@@ -1296,13 +1308,12 @@ class AstTypeTable : public AstType
 public:
     LUAU_RTTI(AstTypeTable)
 
-    AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer = nullptr, bool isExact = false);
+    AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer = nullptr);
 
     void visit(AstVisitor* visitor) override;
 
     AstArray<AstTableProp> props;
     AstTableIndexer* indexer;
-    bool isExact = false;
 };
 
 class AstTypeFunction : public AstType
@@ -1554,10 +1565,6 @@ public:
         return visit(static_cast<AstExpr*>(node));
     }
     virtual bool visit(class AstExprConstantNumber* node)
-    {
-        return visit(static_cast<AstExpr*>(node));
-    }
-    virtual bool visit(class AstExprConstantInteger* node)
     {
         return visit(static_cast<AstExpr*>(node));
     }

@@ -42,6 +42,10 @@ inline void gatherFunctionsHelper(
     const bool root
 )
 {
+    // lazy-load stubs (luau_loadlazy) have no code yet; they run interpreted once built
+    if (proto->lazychunk)
+        return;
+
     if (results.size() <= size_t(proto->bytecodeid))
         results.resize(proto->bytecodeid + 1);
 

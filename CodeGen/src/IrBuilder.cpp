@@ -15,7 +15,7 @@
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
 LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
 LUAU_FASTFLAG(LuauCodegenMarkUsed)
-LUAU_FASTFLAG(LuauRuntimeFeedback)
+LUAU_FASTFLAG(LuauCodegenRuntimeFeedback)
 
 namespace Luau
 {
@@ -83,9 +83,6 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
             break;
         case LBC_TYPE_NUMBER:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_INTEGER:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TINTEGER), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_STRING:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.vmExit(kVmExitEntryGuardPc));
@@ -762,7 +759,7 @@ void IrBuilder::beginBlock(IrOp block)
 
     inTerminatedBlock = false;
 
-    if (FFlag::LuauRuntimeFeedback && target.counterSet != ~0u && !function.counterSets[target.counterSet].counters.empty())
+    if (FFlag::LuauCodegenRuntimeFeedback && target.counterSet != ~0u && !function.counterSets[target.counterSet].counters.empty())
         inst(IrCmd::UPDATE_COUNTERS, constUint(target.counterSet));
 }
 

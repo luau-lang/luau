@@ -1000,8 +1000,6 @@ std::optional<LoweringResult> CFGBuilder::lowerExpr(LoweringExprContext& ctx, As
         return std::nullopt;
     else if (auto num = expr->as<AstExprConstantNumber>())
         return std::nullopt;
-    else if (auto intExpr = expr->as<AstExprConstantInteger>())
-        return std::nullopt;
     else if (auto str = expr->as<AstExprConstantString>())
         return std::nullopt;
     else if (auto local = expr->as<AstExprLocal>())

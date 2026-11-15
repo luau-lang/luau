@@ -1947,8 +1947,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTabl
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedAttributeOnFunctionInCompositeTable2")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LintResult result = lint(R"(

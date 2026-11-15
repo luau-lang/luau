@@ -55,7 +55,6 @@ LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768) // 32 K
 // Per-block IR instruction limit
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenInteger3)
 
 namespace Luau
 {
