@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauParseEntryReportsTrailingToken)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -258,7 +259,7 @@ ParseNodeResult<Node> Parser::runParse(const char* buffer, size_t bufferSize, As
         Node* expr = f(p);
         size_t lines = p.lexer.current().location.end.line + (bufferSize > 0 && buffer[bufferSize - 1] != '\n');
 
-        Lexeme eof = p.lexer.next();
+        Lexeme eof = FFlag::LuauParseEntryReportsTrailingToken ? p.lexer.current() : p.lexer.next();
         if (eof.type != Lexeme::Eof)
         {
             expr = nullptr;

@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauParseEntryReportsTrailingToken)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -6749,6 +6750,115 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_name")
     auto returnPack = fun->returnTypes->as<AstTypePackExplicit>();
     REQUIRE(returnPack);
     REQUIRE(1 == returnPack->typeList.types.size);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_expr_reports_single_trailing_token")
+{
+    ScopedFastFlag sff{FFlag::LuauParseEntryReportsTrailingToken, true};
+
+    std::string code = "1 2";
+    Allocator allocator;
+    AstNameTable names{allocator};
+
+    ParseNodeResult<AstExpr> result = Parser::parseExpr(code.data(), code.size(), names, allocator);
+
+    CHECK(result.root == nullptr);
+    REQUIRE_EQ(result.errors.size(), 1);
+    CHECK_EQ(result.errors[0].getMessage(), "Expected end of file");
+    CHECK_EQ(result.errors[0].getLocation(), Location({0, 2}, {0, 3}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_expr_reports_trailing_token_at_first_extra_token")
+{
+    ScopedFastFlag sff{FFlag::LuauParseEntryReportsTrailingToken, true};
+
+    std::string code = "1 2 3";
+    Allocator allocator;
+    AstNameTable names{allocator};
+
+    ParseNodeResult<AstExpr> result = Parser::parseExpr(code.data(), code.size(), names, allocator);
+
+    REQUIRE_EQ(result.errors.size(), 1);
+    CHECK_EQ(result.errors[0].getLocation(), Location({0, 2}, {0, 3}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_reports_single_trailing_token")
+{
+    ScopedFastFlag sff{FFlag::LuauParseEntryReportsTrailingToken, true};
+
+    std::string code = "number 5";
+    Allocator allocator;
+    AstNameTable names{allocator};
+
+    ParseNodeResult<AstType> result = Parser::parseType(code.data(), code.size(), names, allocator);
+
+    CHECK(result.root == nullptr);
+    REQUIRE_EQ(result.errors.size(), 1);
+    CHECK_EQ(result.errors[0].getMessage(), "Expected end of file");
+    CHECK_EQ(result.errors[0].getLocation(), Location({0, 7}, {0, 8}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_expr_accepts_trailing_whitespace")
+{
+    ScopedFastFlag sff{FFlag::LuauParseEntryReportsTrailingToken, true};
+
+    for (const std::string& code : {std::string("1 "), std::string("1\n")})
+    {
+        Allocator allocator;
+        AstNameTable names{allocator};
+
+        ParseNodeResult<AstExpr> result = Parser::parseExpr(code.data(), code.size(), names, allocator);
+
+        CHECK(result.errors.empty());
+        CHECK(result.root != nullptr);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_expr_empty_input_is_not_a_trailing_token_error")
+{
+    ScopedFastFlag sff{FFlag::LuauParseEntryReportsTrailingToken, true};
+
+    std::string code = "";
+    Allocator allocator;
+    AstNameTable names{allocator};
+
+    ParseNodeResult<AstExpr> result = Parser::parseExpr(code.data(), code.size(), names, allocator);
+
+    CHECK(result.root != nullptr);
+    REQUIRE_EQ(result.errors.size(), 1);
+    CHECK_NE(result.errors[0].getMessage(), "Expected end of file");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_expr_reports_unfinished_comment_as_trailing_token")
+{
+    ScopedFastFlag sff{FFlag::LuauParseEntryReportsTrailingToken, true};
+
+    // BrokenComment reaches the parser as a lexeme
+    std::string code = "1 --[[ c";
+    Allocator allocator;
+    AstNameTable names{allocator};
+
+    ParseNodeResult<AstExpr> result = Parser::parseExpr(code.data(), code.size(), names, allocator);
+
+    CHECK(result.root == nullptr);
+    REQUIRE_EQ(result.errors.size(), 1);
+    CHECK_EQ(result.errors[0].getMessage(), "Expected end of file");
+    CHECK_EQ(result.errors[0].getLocation(), Location({0, 2}, {0, 8}));
+}
+
+// Clip with LuauParseEntryReportsTrailingToken
+TEST_CASE_FIXTURE(Fixture, "parse_expr_single_trailing_token_unreported_with_flag_off")
+{
+    ScopedFastFlag sff{FFlag::LuauParseEntryReportsTrailingToken, false};
+
+    std::string code = "1 2";
+    Allocator allocator;
+    AstNameTable names{allocator};
+
+    ParseNodeResult<AstExpr> result = Parser::parseExpr(code.data(), code.size(), names, allocator);
+
+    CHECK(result.errors.empty());
+    CHECK(result.root != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
