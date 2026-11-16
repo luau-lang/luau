@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauTypeGroupInTypeArgumentsLocation)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -4996,6 +4997,68 @@ TEST_CASE_FIXTURE(Fixture, "type_pack_explicit_with_cst")
     CHECK_EQ(cstNode->closeParenthesesPosition, Position{0, 33});
     REQUIRE_EQ(cstNode->commaPositions.size, 1);
     CHECK_EQ(cstNode->commaPositions.data[0], Position{0, 22});
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_group_in_type_arguments_location_includes_parentheses")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeGroupInTypeArgumentsLocation, true};
+
+    std::pair<std::string, std::string_view> cases[] = {
+        {"type T = G<(string | number)?>", "(string | number)"},
+        {"type T = G<(A) | B>", "(A)"},
+        {"type T = G<(A) & B>", "(A)"},
+    };
+
+    for (const auto& [source, expected] : cases)
+    {
+        CAPTURE(source);
+
+        ParseResult result = parseEx(source);
+        REQUIRE(result.root);
+
+        auto typeAlias = result.root->body.data[0]->as<AstStatTypeAlias>();
+        REQUIRE(typeAlias);
+        auto reference = typeAlias->type->as<AstTypeReference>();
+        REQUIRE(reference);
+        REQUIRE_EQ(reference->parameters.size, 1);
+
+        AstType* parameter = reference->parameters.data[0].type;
+        REQUIRE(parameter);
+        AstType* first = nullptr;
+        if (auto unionTy = parameter->as<AstTypeUnion>())
+            first = unionTy->types.data[0];
+        else if (auto intersectionTy = parameter->as<AstTypeIntersection>())
+            first = intersectionTy->types.data[0];
+        REQUIRE(first);
+
+        auto group = first->as<AstTypeGroup>();
+        REQUIRE(group);
+        CHECK_EQ(stringAtLocation(source, group->location), expected);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_group_in_explicit_type_arguments_location_includes_parentheses")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeGroupInTypeArgumentsLocation, true};
+
+    std::string source = "local x = f<<(string | number)?>>()";
+
+    ParseResult result = parseEx(source);
+    REQUIRE(result.root);
+
+    AstStatLocal* local = result.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(local);
+    AstExprCall* call = local->values.data[0]->as<AstExprCall>();
+    REQUIRE(call);
+    AstExprInstantiate* instantiate = call->func->as<AstExprInstantiate>();
+    REQUIRE(instantiate);
+    REQUIRE_EQ(instantiate->typeArguments.size, 1);
+
+    auto unionTy = instantiate->typeArguments.data[0].type->as<AstTypeUnion>();
+    REQUIRE(unionTy);
+    auto group = unionTy->types.data[0]->as<AstTypeGroup>();
+    REQUIRE(group);
+    CHECK_EQ(stringAtLocation(source, group->location), "(string | number)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_return_type_pack_with_cst_func_return")

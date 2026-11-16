@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauTypeGroupInTypeArgumentsLocation)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -4920,7 +4921,9 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams(Position* openingPosition, TempV
                         // parenthesized type.
                         auto parenthesizedType = explicitTypePack->typeList.types.data[0];
 
-                        AstTypeGroup* typeGroup = allocator.alloc<AstTypeGroup>(parenthesizedType->location, parenthesizedType);
+                        Location groupLocation =
+                            FFlag::LuauTypeGroupInTypeArgumentsLocation ? Location(begin, lexer.previousLocation()) : parenthesizedType->location;
+                        AstTypeGroup* typeGroup = allocator.alloc<AstTypeGroup>(groupLocation, parenthesizedType);
 
                         if (options.storeCstData)
                         {
