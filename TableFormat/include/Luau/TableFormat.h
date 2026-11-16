@@ -1,20 +1,20 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
 #include "Luau/ParseResult.h"
-#include "Luau/Variant.h"
 
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+struct lua_State;
+
 // Reads and writes the Luau Table format (`.table`): a subset of Luau that holds a single table of strings, booleans,
 // numbers, vectors and nested tables, all written out literally.
 //
-// Deserializing parses the source and never evaluates it, so no Luau VM is involved. Well-formed files produce exactly the
-// values a Luau VM would wherever the VM can evaluate them (Luau's own limits, such as register counts, can prevent
+// Deserializing parses the source and never evaluates it. Well-formed files produce exactly the values a Luau VM would
+// from running the same file, wherever the VM can evaluate them (Luau's own limits, such as register counts, can prevent
 // that), and malformed files are always rejected. Serializing always produces well-formed files.
 namespace Luau::TableFormat
 {
@@ -22,121 +22,31 @@ namespace Luau::TableFormat
 // How deeply tables can nest, counting the root table as 1. Deeper files are malformed, and deeper tables can't be serialized.
 constexpr size_t kMaxDepth = 255;
 
-struct Vector
-{
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
-};
-
-// Anything that can be a key: every kind of value except tables, which have referential identity in Luau.
-// Keys compare as they do in Luau, so 1 and 1.0 are the same key, as are 0 and -0. NaN is never a valid key, and nor is
-// a vector containing NaN.
-struct Key : Variant<bool, double, std::string, Vector>
-{
-    using Variant::Variant;
-
-    Key(const char* string)
-        : Variant(std::string(string))
-    {
-    }
-};
-
-struct KeyHash
-{
-    size_t operator()(const Key& key) const;
-};
-
-struct KeyEqual
-{
-    bool operator()(const Key& lhs, const Key& rhs) const;
-};
-
-struct Value;
-struct Entry;
-
-// A table with an array part, whose values have the implicit keys 1, 2, 3 and so on, and a map part, whose values have
-// explicit keys. Each key appears at most once across both parts, and the array part has no holes.
-class Table
-{
-public:
-    Table() = default;
-
-    // Copying and destroying don't recurse, so deeply nested tables can't overflow the stack.
-    Table(const Table& other);
-    Table(Table&& other) noexcept;
-    Table& operator=(const Table& other);
-    Table& operator=(Table&& other) noexcept;
-    ~Table();
-
-    const std::vector<Value>& getArray() const
-    {
-        return arrayPart;
-    }
-
-    // In insertion order, which is also the order they're written in.
-    const std::vector<Entry>& getMap() const
-    {
-        return mapPart;
-    }
-
-    // Finds the value for a key in either part.
-    const Value* find(const Key& key) const;
-    Value* find(const Key& key);
-
-    // Adds a value to the end of the array part. Fails if its implicit key is already in the map part.
-    [[nodiscard]] bool append(Value value);
-
-    // Adds a value to the map part. Fails if the key is invalid or already present in either part.
-    [[nodiscard]] bool insert(Key key, Value value);
-
-    // Erases a key from either part. To keep the array part free of holes, only its last value can be erased. Erasing
-    // from the map part takes time proportional to its size, unless the key is the last one in it.
-    [[nodiscard]] bool erase(const Key& key);
-
-private:
-    std::vector<Value> arrayPart;
-    std::vector<Entry> mapPart;
-    DenseHashMap<Key, size_t, KeyHash, KeyEqual> mapIndex;
-};
-
-struct Value : Variant<bool, double, std::string, Vector, Table>
-{
-    using Variant::Variant;
-
-    Value(const char* string)
-        : Variant(std::string(string))
-    {
-    }
-};
-
-struct Entry
-{
-    Key key;
-    Value value;
-};
-
 struct DeserializeResult
 {
-    // Present only if the source was well-formed.
-    std::optional<Table> table;
+    // Empty if the source was well-formed.
     std::vector<ParseError> errors;
 };
 
-// Reads the table in a Luau Table file.
-DeserializeResult deserialize(std::string_view source);
+// Reads the table in a Luau Table file and pushes it onto the stack. If the source is malformed, pushes nothing and
+// returns why.
+DeserializeResult deserialize(lua_State* L, std::string_view source);
 
 struct SerializeResult
 {
-    // Present only if the table could be written, which it can be unless it nests more deeply than kMaxDepth.
+    // Present only if the table could be serialized.
     std::optional<std::string> source;
-    // Why the table couldn't be written, if it couldn't.
+    // Why the table couldn't be serialized, if it couldn't.
     std::string error;
 };
 
-// Writes a table as a Luau Table file in minimal form, with no whitespace, no `return` and no trailing separators:
-// {"a",name="x",[true]={1,2}}. The array part comes first, then the map part in insertion order, so identical tables are
-// always written identically. The output reads back as an identical table, except that NaN payloads aren't preserved.
-SerializeResult serialize(const Table& table);
+// Writes the table at a stack index as a Luau Table file in minimal form, with no whitespace, no `return` and no trailing
+// separators: {"a",[true]={1,2},name="x"}. Its array part comes first, from 1 up to the first nil, then its other keys,
+// sorted: booleans, numbers, strings and vectors, each in ascending order. So tables with the same contents are always
+// written identically. Tables are read with raw access, ignoring metatables.
+//
+// Fails for values a Luau Table file can't hold: functions, userdata, buffers, threads, integers, tables used as keys,
+// tables that contain themselves, tables nested more deeply than kMaxDepth, and vectors that aren't three floats.
+SerializeResult serialize(lua_State* L, int idx);
 
 } // namespace Luau::TableFormat

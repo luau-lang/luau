@@ -3,15 +3,16 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
-#include "Luau/HashUtil.h"
 #include "Luau/Lexer.h"
 #include "Luau/NumPrint.h"
 #include "Luau/Parser.h"
 #include "Luau/StringUtils.h"
 
+#include "lua.h"
+
+#include <algorithm>
 #include <cmath>
 #include <limits>
-#include <type_traits>
 #include <utility>
 
 namespace Luau::TableFormat
@@ -25,210 +26,13 @@ static std::string depthError()
     return format("Exceeded the maximum table nesting depth of %zu", kMaxDepth);
 }
 
-static bool isValidKey(const Key& key)
+static void pushVector(lua_State* L, float x, float y, float z)
 {
-    if (const double* number = key.get_if<double>())
-        return !std::isnan(*number);
-    if (const Vector* vector = key.get_if<Vector>())
-        return !std::isnan(vector->x) && !std::isnan(vector->y) && !std::isnan(vector->z);
-    return true;
-}
-
-// Returns where a key falls in the array part, if it does.
-static std::optional<size_t> arrayIndex(const Key& key, size_t arraySize)
-{
-    const double* number = key.get_if<double>();
-    if (!number || !(*number >= 1.0 && *number <= double(arraySize)) || *number != std::floor(*number))
-        return std::nullopt;
-
-    return size_t(*number) - 1;
-}
-
-// 0 and -0 are equal, so they must hash equally too.
-template<typename T>
-static size_t hashNumber(T number)
-{
-    return std::hash<T>{}(number == 0 ? T(0) : number);
-}
-
-size_t KeyHash::operator()(const Key& key) const
-{
-    if (const bool* boolean = key.get_if<bool>())
-        return std::hash<bool>{}(*boolean);
-    if (const double* number = key.get_if<double>())
-        return hashNumber(*number);
-    if (const std::string* string = key.get_if<std::string>())
-        return std::hash<std::string>{}(*string);
-
-    const Vector* vector = key.get_if<Vector>();
-    LUAU_ASSERT(vector);
-
-    size_t seed = hashNumber(vector->x);
-    hashCombine(seed, hashNumber(vector->y));
-    hashCombine(seed, hashNumber(vector->z));
-    return seed;
-}
-
-bool KeyEqual::operator()(const Key& lhs, const Key& rhs) const
-{
-    if (lhs.index() != rhs.index())
-        return false;
-
-    if (const bool* boolean = lhs.get_if<bool>())
-        return *boolean == *rhs.get_if<bool>();
-    if (const double* number = lhs.get_if<double>())
-        return *number == *rhs.get_if<double>();
-    if (const std::string* string = lhs.get_if<std::string>())
-        return *string == *rhs.get_if<std::string>();
-
-    const Vector* a = lhs.get_if<Vector>();
-    const Vector* b = rhs.get_if<Vector>();
-    LUAU_ASSERT(a && b);
-
-    return a->x == b->x && a->y == b->y && a->z == b->z;
-}
-
-Table::Table(const Table& other)
-{
-    // Copying a nested table recursively would recurse once per level of nesting, so instead we copy one table at a
-    // time, leaving each nested table empty and queueing it to be filled in. Reserving both parts up front keeps the
-    // queued tables in place.
-    std::vector<std::pair<const Table*, Table*>> pending = {{&other, this}};
-
-    while (!pending.empty())
-    {
-        auto [from, to] = pending.back();
-        pending.pop_back();
-
-        to->arrayPart.reserve(from->arrayPart.size());
-        for (const Value& value : from->arrayPart)
-        {
-            if (const Table* nested = value.get_if<Table>())
-                pending.push_back({nested, to->arrayPart.emplace_back(Table()).get_if<Table>()});
-            else
-                to->arrayPart.push_back(value);
-        }
-
-        to->mapPart.reserve(from->mapPart.size());
-        for (const Entry& entry : from->mapPart)
-        {
-            if (const Table* nested = entry.value.get_if<Table>())
-                pending.push_back({nested, to->mapPart.emplace_back(Entry{entry.key, Table()}).value.get_if<Table>()});
-            else
-                to->mapPart.push_back(entry);
-        }
-
-        to->mapIndex = from->mapIndex;
-    }
-}
-
-Table::Table(Table&& other) noexcept = default;
-
-Table& Table::operator=(const Table& other)
-{
-    if (this != &other)
-        *this = Table(other);
-
-    return *this;
-}
-
-Table& Table::operator=(Table&& other) noexcept
-{
-    // `other` may be nested inside this table, so it has to be moved out before this table's contents are destroyed.
-    Table moved(std::move(other));
-    arrayPart.swap(moved.arrayPart);
-    mapPart.swap(moved.mapPart);
-    std::swap(mapIndex, moved.mapIndex);
-    return *this;
-}
-
-Table::~Table()
-{
-    // Destroying nested tables would recurse once per level of nesting too, so instead we move them out into a list
-    // and destroy them one at a time, each after its own nested tables have been moved out.
-    std::vector<Table> pending;
-
-    auto takeNested = [&pending](Table& table)
-    {
-        for (Value& value : table.arrayPart)
-            if (Table* nested = value.get_if<Table>())
-                pending.push_back(std::move(*nested));
-
-        for (Entry& entry : table.mapPart)
-            if (Table* nested = entry.value.get_if<Table>())
-                pending.push_back(std::move(*nested));
-    };
-
-    takeNested(*this);
-
-    while (!pending.empty())
-    {
-        Table table = std::move(pending.back());
-        pending.pop_back();
-        takeNested(table);
-    }
-}
-
-const Value* Table::find(const Key& key) const
-{
-    if (std::optional<size_t> index = arrayIndex(key, arrayPart.size()))
-        return &arrayPart[*index];
-
-    const size_t* position = mapIndex.find(key);
-    return position ? &mapPart[*position].value : nullptr;
-}
-
-Value* Table::find(const Key& key)
-{
-    return const_cast<Value*>(std::as_const(*this).find(key));
-}
-
-bool Table::append(Value value)
-{
-    if (mapIndex.contains(Key(double(arrayPart.size() + 1))))
-        return false;
-
-    arrayPart.push_back(std::move(value));
-    return true;
-}
-
-bool Table::insert(Key key, Value value)
-{
-    if (!isValidKey(key) || arrayIndex(key, arrayPart.size()) || !mapIndex.try_insert(key, mapPart.size()).second)
-        return false;
-
-    mapPart.push_back(Entry{std::move(key), std::move(value)});
-    return true;
-}
-
-bool Table::erase(const Key& key)
-{
-    if (std::optional<size_t> index = arrayIndex(key, arrayPart.size()))
-    {
-        if (*index != arrayPart.size() - 1)
-            return false;
-
-        arrayPart.pop_back();
-        return true;
-    }
-
-    const size_t* found = mapIndex.find(key);
-    if (!found)
-        return false;
-
-    size_t position = *found;
-    mapIndex.erase(key);
-    mapPart.erase(mapPart.begin() + position);
-
-    // Erasing the last entry is common enough (and cheap enough) to skip renumbering the rest.
-    if (position != mapPart.size())
-    {
-        for (auto& [_, later] : mapIndex)
-            if (later > position)
-                later--;
-    }
-
-    return true;
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, x, y, z, 0);
+#else
+    lua_pushvector(L, x, y, z);
+#endif
 }
 
 static bool isGlobalMember(AstExpr* expr, const char* global, const char* member)
@@ -262,28 +66,23 @@ static std::optional<double> readNumber(AstExpr* expr)
     return std::nullopt;
 }
 
-static Value toValue(Key key)
-{
-    return visit(
-        [](auto& primitive) -> Value
-        {
-            return std::move(primitive);
-        },
-        key
-    );
-}
-
+// Writes values from the stack, failing at the first one a Luau Table file can't hold.
 struct Writer
 {
+    lua_State* L;
     std::string out;
-    bool tooDeep = false;
+    std::string error;
 
-    void writePrimitive(bool boolean)
+    // The tables being written, outermost first, to detect tables that contain themselves.
+    std::vector<const void*> path;
+
+    bool fail(std::string message)
     {
-        out += boolean ? "true" : "false";
+        error = std::move(message);
+        return false;
     }
 
-    void writePrimitive(double number)
+    void writeNumber(double number)
     {
         if (std::isnan(number))
             out += "math.nan";
@@ -296,115 +95,259 @@ struct Writer
         }
     }
 
-    void writeComponent(float component)
+    bool writeComponent(LUA_VECTOR_TYPE component)
     {
-        if (std::isnan(component) || std::isinf(component))
-            return writePrimitive(double(component));
+        float narrowed = float(component);
+        if (!std::isnan(component) && double(narrowed) != double(component))
+            return fail("Cannot serialize a vector component that isn't a float");
 
-        char buffer[LUAI_MAXNUM2STR];
-        out.append(buffer, luai_num2strf(buffer, component));
-    }
-
-    void writePrimitive(const Vector& vector)
-    {
-        out += "vector.create(";
-        writeComponent(vector.x);
-        out += ',';
-        writeComponent(vector.y);
-        out += ',';
-        writeComponent(vector.z);
-        out += ')';
-    }
-
-    void writePrimitive(const std::string& string)
-    {
-        out += '"';
-        out += escape(string);
-        out += '"';
-    }
-
-    void writeKey(const Key& key)
-    {
-        if (const std::string* name = key.get_if<std::string>(); name && Lexer::isName(*name))
-            out += *name;
+        if (std::isnan(narrowed) || std::isinf(narrowed))
+            writeNumber(double(narrowed));
         else
         {
-            out += '[';
-            writeKeyValue(key);
-            out += ']';
+            char buffer[LUAI_MAXNUM2STR];
+            out.append(buffer, luai_num2strf(buffer, narrowed));
         }
 
-        out += '=';
+        return true;
     }
 
-    void writeKeyValue(const Key& key)
+    bool writeVector(int idx)
     {
-        visit(
-            [this](const auto& primitive)
-            {
-                writePrimitive(primitive);
-            },
-            key
-        );
+        const LUA_VECTOR_TYPE* v = lua_tovector(L, idx);
+
+#if LUA_VECTOR_SIZE == 4
+        if (v[3] != 0)
+            return fail("Cannot serialize a vector with a nonzero fourth component");
+#endif
+
+        out += "vector.create(";
+        for (int i = 0; i < 3; i++)
+        {
+            if (i != 0)
+                out += ',';
+            if (!writeComponent(v[i]))
+                return false;
+        }
+        out += ')';
+        return true;
     }
 
-    void writeValue(const Value& value, size_t depth)
+    void writeString(int idx)
     {
-        visit(
-            [&](const auto& alternative)
+        size_t length = 0;
+        const char* data = lua_tolstring(L, idx, &length);
+        out += '"';
+        out += escape(std::string_view(data, length));
+        out += '"';
+    }
+
+    // Writes anything that can be a key: a boolean, number, string or vector.
+    bool writePrimitive(int idx)
+    {
+        switch (lua_type(L, idx))
+        {
+        case LUA_TBOOLEAN:
+            out += lua_toboolean(L, idx) ? "true" : "false";
+            return true;
+        case LUA_TNUMBER:
+            writeNumber(lua_tonumber(L, idx));
+            return true;
+        case LUA_TSTRING:
+            writeString(idx);
+            return true;
+        case LUA_TVECTOR:
+            return writeVector(idx);
+        default:
+            return fail(format("Cannot serialize a value of type %s", lua_typename(L, lua_type(L, idx))));
+        }
+    }
+
+    bool writeValue(int idx, size_t depth)
+    {
+        if (lua_istable(L, idx))
+            return writeTable(idx, depth + 1);
+
+        return writePrimitive(idx);
+    }
+
+    bool writeKey(int idx)
+    {
+        if (lua_istable(L, idx))
+            return fail("Cannot use a table as a key");
+
+        if (lua_type(L, idx) == LUA_TSTRING)
+        {
+            size_t length = 0;
+            const char* data = lua_tolstring(L, idx, &length);
+            if (Lexer::isName(std::string_view(data, length)))
             {
-                if constexpr (std::is_same_v<std::decay_t<decltype(alternative)>, Table>)
-                    writeTable(alternative, depth + 1);
-                else
-                    writePrimitive(alternative);
-            },
-            value
-        );
+                out.append(data, length);
+                out += '=';
+                return true;
+            }
+        }
+
+        out += '[';
+        if (!writePrimitive(idx))
+            return false;
+        out += "]=";
+        return true;
     }
 
     // The root table has a depth of 1.
-    void writeTable(const Table& table, size_t depth)
+    bool writeTable(int idx, size_t depth)
     {
+        idx = lua_absindex(L, idx);
+
         if (depth > kMaxDepth)
-        {
-            tooDeep = true;
-            return;
-        }
+            return fail(depthError());
+
+        const void* table = lua_topointer(L, idx);
+        if (std::find(path.begin(), path.end(), table) != path.end())
+            return fail("Cannot serialize a table that contains itself");
+
+        path.push_back(table);
+        lua_rawcheckstack(L, 4);
 
         out += '{';
         bool first = true;
 
-        for (const Value& value : table.getArray())
+        // The array part: from 1 up to the first nil.
+        int arrayLength = 0;
+        while (lua_rawgeti(L, idx, arrayLength + 1) != LUA_TNIL)
         {
             if (!std::exchange(first, false))
                 out += ',';
 
-            writeValue(value, depth);
+            bool written = writeValue(-1, depth);
+            lua_pop(L, 1);
+            if (!written)
+                return false;
+
+            arrayLength++;
+        }
+        lua_pop(L, 1);
+
+        // Every other key, collected so they can be written in a fixed order rather than iteration order.
+        struct SortedKey
+        {
+            int rank; // booleans, numbers, strings, vectors
+            double number = 0;
+            std::string string;
+            float vector[3] = {};
+            int slot = 0;
+        };
+
+        std::vector<SortedKey> keys;
+        lua_createtable(L, 0, 0);
+        int slots = lua_gettop(L);
+
+        lua_pushnil(L);
+        while (lua_next(L, idx))
+        {
+            lua_pop(L, 1);
+
+            int type = lua_type(L, -1);
+            if (type == LUA_TNUMBER)
+            {
+                double number = lua_tonumber(L, -1);
+                if (number >= 1 && number <= arrayLength && number == std::floor(number))
+                    continue;
+            }
+
+            SortedKey key;
+            switch (type)
+            {
+            case LUA_TBOOLEAN:
+                key.rank = 0;
+                key.number = lua_toboolean(L, -1);
+                break;
+            case LUA_TNUMBER:
+                key.rank = 1;
+                key.number = lua_tonumber(L, -1);
+                break;
+            case LUA_TSTRING:
+            {
+                key.rank = 2;
+                size_t length = 0;
+                const char* data = lua_tolstring(L, -1, &length);
+                key.string.assign(data, length);
+                break;
+            }
+            case LUA_TVECTOR:
+            {
+                key.rank = 3;
+                const LUA_VECTOR_TYPE* v = lua_tovector(L, -1);
+                for (int i = 0; i < 3; i++)
+                    key.vector[i] = float(v[i]);
+                break;
+            }
+            default:
+                lua_pop(L, 2);
+                return fail(
+                    type == LUA_TTABLE ? "Cannot use a table as a key" : format("Cannot use a value of type %s as a key", lua_typename(L, type))
+                );
+            }
+
+            key.slot = int(keys.size()) + 1;
+            lua_pushvalue(L, -1);
+            lua_rawseti(L, slots, key.slot);
+            keys.push_back(std::move(key));
         }
 
-        for (const Entry& entry : table.getMap())
+        std::sort(
+            keys.begin(),
+            keys.end(),
+            [](const SortedKey& a, const SortedKey& b)
+            {
+                if (a.rank != b.rank)
+                    return a.rank < b.rank;
+                if (a.rank == 2)
+                    return a.string < b.string;
+                if (a.rank == 3)
+                    return std::lexicographical_compare(a.vector, a.vector + 3, b.vector, b.vector + 3);
+                return a.number < b.number;
+            }
+        );
+
+        for (const SortedKey& key : keys)
         {
             if (!std::exchange(first, false))
                 out += ',';
 
-            writeKey(entry.key);
-            writeValue(entry.value, depth);
+            lua_rawgeti(L, slots, key.slot);
+            lua_pushvalue(L, -1);
+            lua_rawget(L, idx);
+
+            bool written = writeKey(-2) && writeValue(-1, depth);
+            lua_pop(L, 2);
+            if (!written)
+            {
+                lua_pop(L, 1);
+                return false;
+            }
         }
 
+        lua_pop(L, 1);
+        path.pop_back();
         out += '}';
+        return true;
     }
 };
 
-static std::string describeKey(const Key& key)
+static std::string describeKey(lua_State* L, int idx)
 {
-    Writer writer;
-    writer.writeKeyValue(key);
+    Writer writer{L};
+    writer.writePrimitive(idx);
     return std::move(writer.out);
 }
 
-// Walks the AST of a parsed file, accepting only what the Luau Table format allows.
+// Walks the AST of a parsed file, accepting only what the Luau Table format allows, and pushes the values it reads.
+// Each read function pushes exactly one value if it succeeds, and nothing if it fails.
 struct Reader
 {
+    lua_State* L;
     std::vector<ParseError>& errors;
 
     void report(const Location& location, std::string message)
@@ -418,37 +361,51 @@ struct Reader
             errors.emplace_back(location, format("Reached error limit (%zu)", kMaxErrors));
     }
 
-    std::optional<Key> readPrimitive(AstExpr* expr)
+    bool readPrimitive(AstExpr* expr)
     {
         if (AstExprConstantBool* boolean = expr->as<AstExprConstantBool>())
-            return boolean->value;
+        {
+            lua_pushboolean(L, boolean->value);
+            return true;
+        }
+
         if (AstExprConstantString* string = expr->as<AstExprConstantString>())
-            return std::string(string->value.data, string->value.size);
+        {
+            lua_pushlstring(L, string->value.data, string->value.size);
+            return true;
+        }
+
         if (std::optional<double> number = readNumber(expr))
-            return *number;
+        {
+            lua_pushnumber(L, *number);
+            return true;
+        }
 
         if (AstExprInterpString* string = expr->as<AstExprInterpString>())
         {
             if (string->expressions.size == 0)
-                return std::string(string->strings.data[0].data, string->strings.data[0].size);
+            {
+                lua_pushlstring(L, string->strings.data[0].data, string->strings.data[0].size);
+                return true;
+            }
 
             report(expr->location, "Cannot use string interpolation in Luau Table");
-            return std::nullopt;
+            return false;
         }
 
         if (AstExprCall* call = expr->as<AstExprCall>(); call && isGlobalMember(call->func, "vector", "create"))
             return readVector(call);
 
         report(expr->location, "Luau Table only allows literal strings, booleans, numbers, vectors and tables");
-        return std::nullopt;
+        return false;
     }
 
-    std::optional<Key> readVector(AstExprCall* call)
+    bool readVector(AstExprCall* call)
     {
         if (call->args.size != 2 && call->args.size != 3)
         {
             report(call->location, "vector.create must be given 2 or 3 numbers");
-            return std::nullopt;
+            return false;
         }
 
         float components[3] = {};
@@ -465,73 +422,112 @@ struct Reader
             }
         }
 
-        if (!valid)
-            return std::nullopt;
+        if (valid)
+            pushVector(L, components[0], components[1], components[2]);
 
-        return Vector{components[0], components[1], components[2]};
+        return valid;
     }
 
-    std::optional<Key> readKey(AstExpr* expr)
+    bool readKey(AstExpr* expr)
     {
         if (expr->is<AstExprTable>())
         {
             report(expr->location, "Cannot use a table as a key");
-            return std::nullopt;
+            return false;
         }
 
-        std::optional<Key> key = readPrimitive(expr);
-        if (key && !isValidKey(*key))
+        if (!readPrimitive(expr))
+            return false;
+
+        bool isNaN = false;
+        if (lua_type(L, -1) == LUA_TNUMBER)
+            isNaN = std::isnan(lua_tonumber(L, -1));
+        else if (lua_type(L, -1) == LUA_TVECTOR)
         {
-            report(expr->location, "Cannot use NaN as a key");
-            return std::nullopt;
+            const LUA_VECTOR_TYPE* v = lua_tovector(L, -1);
+            isNaN = std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2]);
         }
 
-        return key;
+        if (isNaN)
+        {
+            lua_pop(L, 1);
+            report(expr->location, "Cannot use NaN as a key");
+            return false;
+        }
+
+        return true;
     }
 
-    std::optional<Value> readValue(AstExpr* expr, size_t depth)
+    bool readValue(AstExpr* expr, size_t depth)
     {
         if (AstExprTable* table = expr->as<AstExprTable>())
             return readTable(table, depth + 1);
 
-        if (std::optional<Key> primitive = readPrimitive(expr))
-            return toValue(std::move(*primitive));
-
-        return std::nullopt;
+        return readPrimitive(expr);
     }
 
-    Table readTable(AstExprTable* expr, size_t depth)
+    bool readTable(AstExprTable* expr, size_t depth)
     {
-        Table table;
-
         if (depth > kMaxDepth)
         {
             report(expr->location, depthError());
-            return table;
+            return false;
         }
+
+        int listItems = 0;
+        for (const AstExprTable::Item& item : expr->items)
+            listItems += item.kind == AstExprTable::Item::Kind::List;
+
+        lua_rawcheckstack(L, 4);
+        lua_createtable(L, listItems, int(expr->items.size) - listItems);
+        int table = lua_gettop(L);
+        int arrayLength = 0;
 
         for (const AstExprTable::Item& item : expr->items)
         {
-            std::optional<Value> value = readValue(item.value, depth);
-
             if (item.kind == AstExprTable::Item::Kind::List)
             {
-                if (value && !table.append(std::move(*value)))
-                    report(item.value->location, "Duplicate key " + describeKey(double(table.getArray().size() + 1)));
+                int key = ++arrayLength;
+                if (!readValue(item.value, depth))
+                    continue;
 
+                if (lua_rawgeti(L, table, key) != LUA_TNIL)
+                {
+                    lua_pop(L, 2);
+                    lua_pushnumber(L, key);
+                    report(item.value->location, "Duplicate key " + describeKey(L, -1));
+                    lua_pop(L, 1);
+                    continue;
+                }
+
+                lua_pop(L, 1);
+                lua_rawseti(L, table, key);
                 continue;
             }
 
             // `name = value` keys are constant strings, so they read like any other key.
-            std::optional<Key> key = readKey(item.key);
+            bool hasKey = readKey(item.key);
+            bool hasValue = readValue(item.value, depth);
 
-            // Keys that get this far are valid, so insert only fails for duplicates. The key is moved into insert, so it's
-            // read again to describe it.
-            if (key && value && !table.insert(std::move(*key), std::move(*value)))
-                report(item.key->location, "Duplicate key " + describeKey(*readKey(item.key)));
+            if (!hasKey || !hasValue)
+            {
+                lua_pop(L, int(hasKey) + int(hasValue));
+                continue;
+            }
+
+            lua_pushvalue(L, -2);
+            if (lua_rawget(L, table) != LUA_TNIL)
+            {
+                report(item.key->location, "Duplicate key " + describeKey(L, -3));
+                lua_pop(L, 3);
+                continue;
+            }
+
+            lua_pop(L, 1);
+            lua_rawset(L, table);
         }
 
-        return table;
+        return true;
     }
 };
 
@@ -623,7 +619,7 @@ static AstExprTable* parseRoot(std::string_view source, AstNameTable& names, All
     return table;
 }
 
-DeserializeResult deserialize(std::string_view source)
+DeserializeResult deserialize(lua_State* L, std::string_view source)
 {
     Allocator allocator;
     AstNameTable names(allocator);
@@ -642,19 +638,27 @@ DeserializeResult deserialize(std::string_view source)
     if (!root)
         return result;
 
-    Table table = Reader{result.errors}.readTable(root, 1);
-    if (result.errors.empty())
-        result.table = std::move(table);
+    int top = lua_gettop(L);
+    Reader{L, result.errors}.readTable(root, 1);
+
+    if (!result.errors.empty())
+        lua_settop(L, top);
 
     return result;
 }
 
-SerializeResult serialize(const Table& table)
+SerializeResult serialize(lua_State* L, int idx)
 {
-    Writer writer;
-    writer.writeTable(table, 1);
-    if (writer.tooDeep)
-        return {std::nullopt, depthError()};
+    if (!lua_istable(L, idx))
+        return {std::nullopt, "Expected a table"};
+
+    int top = lua_gettop(L);
+    Writer writer{L};
+    bool written = writer.writeTable(idx, 1);
+    lua_settop(L, top);
+
+    if (!written)
+        return {std::nullopt, std::move(writer.error)};
 
     return {std::move(writer.out), {}};
 }

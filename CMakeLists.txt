@@ -144,7 +144,7 @@ target_link_libraries(Luau.Require PUBLIC Luau.Config Luau.VM)
 
 target_compile_features(Luau.TableFormat PUBLIC cxx_std_17)
 target_include_directories(Luau.TableFormat PUBLIC TableFormat/include)
-target_link_libraries(Luau.TableFormat PUBLIC Luau.Ast)
+target_link_libraries(Luau.TableFormat PUBLIC Luau.Ast Luau.VM)
 
 target_include_directories(isocline PUBLIC extern/isocline/include)
 
@@ -318,7 +318,7 @@ if(LUAU_BUILD_TESTS)
     target_compile_options(Luau.UnitTest PRIVATE ${LUAU_OPTIONS})
     target_compile_definitions(Luau.UnitTest PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY DOCTEST_CONFIG_USE_STD_HEADERS)
     target_include_directories(Luau.UnitTest PRIVATE extern)
-    target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Bytecode Luau.Compiler Luau.CodeGen Luau.TableFormat)
+    target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Bytecode Luau.Compiler Luau.CodeGen)
 
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
     target_compile_definitions(Luau.Conformance PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY DOCTEST_CONFIG_USE_STD_HEADERS)
@@ -389,8 +389,8 @@ foreach(LIB Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.CodeGen Luau.V
         if(LIB MATCHES "Ast|Compiler" AND DEPENDS MATCHES "Analysis|Config")
             message(FATAL_ERROR ${LIB} " is a compiler component but it depends on one of the analysis components")
         endif()
-        if(LIB MATCHES "TableFormat" AND DEPENDS MATCHES "Analysis|Config|Compiler|CodeGen|VM")
-            message(FATAL_ERROR ${LIB} " is a data format component but it depends on components other than Ast")
+        if(LIB MATCHES "TableFormat" AND DEPENDS MATCHES "Analysis|Config|Compiler|CodeGen")
+            message(FATAL_ERROR ${LIB} " is a data format component but it depends on components other than Ast and VM")
         endif()
     endif()
 endforeach()
