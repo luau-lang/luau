@@ -5009,8 +5009,10 @@ TEST_CASE_FIXTURE(Fixture, "type_group_in_type_arguments_location_includes_paren
         {"type T = G<(A) & B>", "(A)"},
     };
 
-    for (const auto& [source, expected] : cases)
+    for (const auto& testCase : cases)
     {
+        const std::string& source = testCase.first;
+        std::string_view expected = testCase.second;
         CAPTURE(source);
 
         ParseResult result = parseEx(source);
