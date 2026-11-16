@@ -424,13 +424,18 @@ Lexeme Lexer::lookahead()
     return result;
 }
 
-bool Lexer::isReserved(const std::string& word)
+bool Lexer::isReserved(std::string_view word)
 {
     for (int i = Lexeme::Reserved_BEGIN; i < Lexeme::Reserved_END; ++i)
         if (word == kReserved[i - Lexeme::Reserved_BEGIN])
             return true;
 
     return false;
+}
+
+bool Lexer::isName(std::string_view word)
+{
+    return !word.empty() && !isDigit(word[0]) && isIdentifier(word) && !isReserved(word);
 }
 
 LUAU_FORCEINLINE

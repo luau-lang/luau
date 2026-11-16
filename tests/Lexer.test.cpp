@@ -427,4 +427,15 @@ TEST_CASE("lexer_determines_string_block_depth_2")
     CHECK_EQ(lexeme.getBlockDepth(), 2);
 }
 
+TEST_CASE("is_name")
+{
+    CHECK(Lexer::isName("_A1_b2"));
+    CHECK(Lexer::isName("continue")); // contextual keywords are names
+
+    CHECK(!Lexer::isName(""));
+    CHECK(!Lexer::isName("1a"));
+    CHECK(!Lexer::isName("end"));
+    CHECK(!Lexer::isName("caf\xc3\xa9"));
+}
+
 TEST_SUITE_END();

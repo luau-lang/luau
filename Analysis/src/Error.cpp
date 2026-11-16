@@ -4,6 +4,7 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/FileResolver.h"
+#include "Luau/Lexer.h"
 #include "Luau/NotNull.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
@@ -20,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauKeyNamesMatchLexer)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -812,7 +814,8 @@ struct ErrorConverter
 
     std::string operator()(const PropertyAccessViolation& e) const
     {
-        const std::string stringKey = isIdentifier(e.key) ? e.key : "\"" + e.key + "\"";
+        bool isName = FFlag::LuauKeyNamesMatchLexer ? Lexer::isName(e.key) : isIdentifier(e.key);
+        const std::string stringKey = isName ? e.key : "\"" + e.key + "\"";
         const std::string kind = getTableType(e.table) ? "table" : "type";
 
         switch (e.context)
