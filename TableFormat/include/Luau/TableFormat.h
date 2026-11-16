@@ -41,9 +41,9 @@ struct SerializeResult
 };
 
 // Writes the table at a stack index as a Luau Table file in minimal form, with no whitespace, no `return` and no trailing
-// separators: {"a",[true]={1,2},name="x"}. Its array part comes first, from 1 up to the first nil, then its other keys,
-// sorted: booleans, numbers, strings and vectors, each in ascending order. So tables with the same contents are always
-// written identically. Tables are read with raw access, ignoring metatables.
+// separators: {"a",name="x",[true]={1,2}}. Its array part comes first, from 1 up to the first nil, then its other keys in
+// iteration order, so tables with the same contents can be written with their keys in different orders. Tables are read
+// with raw access, ignoring metatables.
 //
 // Fails for values a Luau Table file can't hold: functions, userdata, buffers, threads, integers, tables used as keys,
 // tables that contain themselves, tables nested more deeply than kMaxDepth, and vectors that aren't three floats.

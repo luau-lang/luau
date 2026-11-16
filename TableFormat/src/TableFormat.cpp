@@ -176,6 +176,17 @@ struct Writer
         if (lua_istable(L, idx))
             return fail("Cannot use a table as a key");
 
+        switch (lua_type(L, idx))
+        {
+        case LUA_TBOOLEAN:
+        case LUA_TNUMBER:
+        case LUA_TSTRING:
+        case LUA_TVECTOR:
+            break;
+        default:
+            return fail(format("Cannot use a value of type %s as a key", lua_typename(L, lua_type(L, idx))));
+        }
+
         if (lua_type(L, idx) == LUA_TSTRING)
         {
             size_t length = 0;
@@ -229,107 +240,29 @@ struct Writer
         }
         lua_pop(L, 1);
 
-        // Every other key, collected so they can be written in a fixed order rather than iteration order.
-        struct SortedKey
-        {
-            int rank; // booleans, numbers, strings, vectors
-            double number = 0;
-            std::string string;
-            float vector[3] = {};
-            int slot = 0;
-        };
-
-        std::vector<SortedKey> keys;
-        lua_createtable(L, 0, 0);
-        int slots = lua_gettop(L);
-
+        // Every other key, in iteration order.
         lua_pushnil(L);
         while (lua_next(L, idx))
         {
-            lua_pop(L, 1);
-
-            int type = lua_type(L, -1);
-            if (type == LUA_TNUMBER)
+            if (lua_type(L, -2) == LUA_TNUMBER)
             {
-                double number = lua_tonumber(L, -1);
+                double number = lua_tonumber(L, -2);
                 if (number >= 1 && number <= arrayLength && number == std::floor(number))
+                {
+                    lua_pop(L, 1);
                     continue;
+                }
             }
 
-            SortedKey key;
-            switch (type)
-            {
-            case LUA_TBOOLEAN:
-                key.rank = 0;
-                key.number = lua_toboolean(L, -1);
-                break;
-            case LUA_TNUMBER:
-                key.rank = 1;
-                key.number = lua_tonumber(L, -1);
-                break;
-            case LUA_TSTRING:
-            {
-                key.rank = 2;
-                size_t length = 0;
-                const char* data = lua_tolstring(L, -1, &length);
-                key.string.assign(data, length);
-                break;
-            }
-            case LUA_TVECTOR:
-            {
-                key.rank = 3;
-                const LUA_VECTOR_TYPE* v = lua_tovector(L, -1);
-                for (int i = 0; i < 3; i++)
-                    key.vector[i] = float(v[i]);
-                break;
-            }
-            default:
-                lua_pop(L, 2);
-                return fail(
-                    type == LUA_TTABLE ? "Cannot use a table as a key" : format("Cannot use a value of type %s as a key", lua_typename(L, type))
-                );
-            }
-
-            key.slot = int(keys.size()) + 1;
-            lua_pushvalue(L, -1);
-            lua_rawseti(L, slots, key.slot);
-            keys.push_back(std::move(key));
-        }
-
-        std::sort(
-            keys.begin(),
-            keys.end(),
-            [](const SortedKey& a, const SortedKey& b)
-            {
-                if (a.rank != b.rank)
-                    return a.rank < b.rank;
-                if (a.rank == 2)
-                    return a.string < b.string;
-                if (a.rank == 3)
-                    return std::lexicographical_compare(a.vector, a.vector + 3, b.vector, b.vector + 3);
-                return a.number < b.number;
-            }
-        );
-
-        for (const SortedKey& key : keys)
-        {
             if (!std::exchange(first, false))
                 out += ',';
 
-            lua_rawgeti(L, slots, key.slot);
-            lua_pushvalue(L, -1);
-            lua_rawget(L, idx);
-
             bool written = writeKey(-2) && writeValue(-1, depth);
-            lua_pop(L, 2);
+            lua_pop(L, 1);
             if (!written)
-            {
-                lua_pop(L, 1);
                 return false;
-            }
         }
 
-        lua_pop(L, 1);
         path.pop_back();
         out += '}';
         return true;
