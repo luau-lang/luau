@@ -18,6 +18,7 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauParseRejectTrailingToken)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
@@ -6728,6 +6729,25 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
     auto err = parseResult.errors[0];
     CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '}'?");
     CHECK_EQ(err.getLocation(), Location({0, 17}, {0, 18}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_expr_and_type_reject_trailing_tokens")
+{
+    ScopedFastFlag sff{FFlag::LuauParseRejectTrailingToken, true};
+
+    Allocator allocator;
+    AstNameTable names{allocator};
+
+    std::string_view comment = "{} -- comment";
+    CHECK(Parser::parseExpr(comment.data(), comment.size(), names, allocator).errors.empty());
+
+    std::string_view expr = "{} 5";
+    std::vector<ParseError> errors = Parser::parseExpr(expr.data(), expr.size(), names, allocator).errors;
+    REQUIRE(errors.size() == 1);
+    CHECK_EQ(errors[0].getLocation(), Location({0, 3}, {0, 4}));
+
+    std::string_view type = "number string";
+    CHECK(Parser::parseType(type.data(), type.size(), names, allocator).errors.size() == 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_name")
