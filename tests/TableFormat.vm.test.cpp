@@ -93,7 +93,7 @@ static void checkMatchesVm(const std::string& source)
 {
     INFO(source);
 
-    ReadResult result = read(source);
+    DeserializeResult result = deserialize(source);
     REQUIRE_MESSAGE(result.errors.empty(), result.errors[0].getMessage());
     REQUIRE(result.table);
 
@@ -113,7 +113,7 @@ static void checkMatchesVm(const std::string& source)
 
 TEST_SUITE_BEGIN("TableFormatVm");
 
-TEST_CASE_FIXTURE(TableFormatFixture, "read_matches_vm")
+TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_matches_vm")
 {
     checkMatchesVm(kTableFormatRfcExample);
     checkMatchesVm(R"({ 'a', [[b]], `c`, "\x00\255\u{10FFFF}", 0x7fffffffffffffff, 1e-320, -0, 0.1 })");
@@ -130,7 +130,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "depth_limit_matches_vm")
     CHECK(compile("return {" + deepest + "}").front() == 0); // a compile error
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "write_matches_vm")
+TEST_CASE_FIXTURE(TableFormatFixture, "serialize_matches_vm")
 {
     Table table;
     for (double n : kTableFormatRoundTripNumbers)
@@ -140,7 +140,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "write_matches_vm")
     for (const std::string& s : kTableFormatRoundTripStrings)
         CHECK(table.insert(s, s));
 
-    WriteResult written = write(table);
+    SerializeResult written = serialize(table);
     REQUIRE(written.source);
     checkMatchesVm(*written.source);
 }

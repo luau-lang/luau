@@ -13,13 +13,13 @@
 // Reads and writes the Luau Table format (`.table`): a subset of Luau that holds a single table of strings, booleans,
 // numbers, vectors and nested tables, all written out literally.
 //
-// Reading parses the source and never evaluates it, so no Luau VM is involved. Well-formed files produce exactly the
+// Deserializing parses the source and never evaluates it, so no Luau VM is involved. Well-formed files produce exactly the
 // values a Luau VM would wherever the VM can evaluate them (Luau's own limits, such as register counts, can prevent
-// that), and malformed files are always rejected. Writing always produces well-formed files.
+// that), and malformed files are always rejected. Serializing always produces well-formed files.
 namespace Luau::TableFormat
 {
 
-// How deeply tables can nest, counting the root table as 1. Deeper files are malformed, and deeper tables can't be written.
+// How deeply tables can nest, counting the root table as 1. Deeper files are malformed, and deeper tables can't be serialized.
 constexpr size_t kMaxDepth = 255;
 
 struct Vector
@@ -116,16 +116,17 @@ struct Entry
     Value value;
 };
 
-struct ReadResult
+struct DeserializeResult
 {
     // Present only if the source was well-formed.
     std::optional<Table> table;
     std::vector<ParseError> errors;
 };
 
-ReadResult read(std::string_view source);
+// Reads the table in a Luau Table file.
+DeserializeResult deserialize(std::string_view source);
 
-struct WriteResult
+struct SerializeResult
 {
     // Present only if the table could be written, which it can be unless it nests more deeply than kMaxDepth.
     std::optional<std::string> source;
@@ -133,9 +134,9 @@ struct WriteResult
     std::string error;
 };
 
-// Writes a well-formed file holding just the table, without `return`. It reads back as an identical table, except that
-// NaN payloads aren't preserved. The output is formatted consistently, so identical tables (with their map parts in the
-// same order) are written identically.
-WriteResult write(const Table& table);
+// Writes a table as a Luau Table file in minimal form, with no whitespace, no `return` and no trailing separators:
+// {"a",name="x",[true]={1,2}}. The array part comes first, then the map part in insertion order, so identical tables are
+// always written identically. The output reads back as an identical table, except that NaN payloads aren't preserved.
+SerializeResult serialize(const Table& table);
 
 } // namespace Luau::TableFormat

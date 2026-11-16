@@ -309,11 +309,11 @@ struct Writer
     {
         out += "vector.create(";
         writeComponent(vector.x);
-        out += ", ";
+        out += ',';
         writeComponent(vector.y);
-        out += ", ";
+        out += ',';
         writeComponent(vector.z);
-        out += ")";
+        out += ')';
     }
 
     void writePrimitive(const std::string& string)
@@ -334,7 +334,7 @@ struct Writer
             out += ']';
         }
 
-        out += " = ";
+        out += '=';
     }
 
     void writeKeyValue(const Key& key)
@@ -362,12 +362,7 @@ struct Writer
         );
     }
 
-    void indent(size_t depth)
-    {
-        out.append(depth * 4, ' ');
-    }
-
-    // The root table has a depth of 1, and its entries are indented once.
+    // The root table has a depth of 1.
     void writeTable(const Table& table, size_t depth)
     {
         if (depth > kMaxDepth)
@@ -376,31 +371,27 @@ struct Writer
             return;
         }
 
-        if (table.getArray().empty() && table.getMap().empty())
-        {
-            out += "{}";
-            return;
-        }
-
-        out += "{\n";
+        out += '{';
+        bool first = true;
 
         for (const Value& value : table.getArray())
         {
-            indent(depth);
+            if (!std::exchange(first, false))
+                out += ',';
+
             writeValue(value, depth);
-            out += ",\n";
         }
 
         for (const Entry& entry : table.getMap())
         {
-            indent(depth);
+            if (!std::exchange(first, false))
+                out += ',';
+
             writeKey(entry.key);
             writeValue(entry.value, depth);
-            out += ",\n";
         }
 
-        indent(depth - 1);
-        out += "}";
+        out += '}';
     }
 };
 
@@ -632,12 +623,12 @@ static AstExprTable* parseRoot(std::string_view source, AstNameTable& names, All
     return table;
 }
 
-ReadResult read(std::string_view source)
+DeserializeResult deserialize(std::string_view source)
 {
     Allocator allocator;
     AstNameTable names(allocator);
 
-    ReadResult result;
+    DeserializeResult result;
 
     // The lexer treats a NUL byte as the end of the source, which would hide anything after it.
     if (size_t nul = source.find('\0'); nul != std::string_view::npos)
@@ -658,14 +649,13 @@ ReadResult read(std::string_view source)
     return result;
 }
 
-WriteResult write(const Table& table)
+SerializeResult serialize(const Table& table)
 {
     Writer writer;
     writer.writeTable(table, 1);
     if (writer.tooDeep)
         return {std::nullopt, depthError()};
 
-    writer.out += "\n";
     return {std::move(writer.out), {}};
 }
 

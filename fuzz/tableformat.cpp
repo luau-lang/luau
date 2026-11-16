@@ -15,20 +15,20 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
             flag->value = true;
     }
 
-    ReadResult result = read(std::string_view(reinterpret_cast<const char*>(Data), Size));
+    DeserializeResult result = deserialize(std::string_view(reinterpret_cast<const char*>(Data), Size));
     LUAU_ASSERT(result.table.has_value() == result.errors.empty());
 
     if (!result.table)
         return 0;
 
     // Anything that can be read can be written, and writing what was written reads back identically.
-    WriteResult written = write(*result.table);
+    SerializeResult written = serialize(*result.table);
     LUAU_ASSERT(written.source);
 
-    ReadResult reread = read(*written.source);
+    DeserializeResult reread = deserialize(*written.source);
     LUAU_ASSERT(reread.table);
 
-    WriteResult rewritten = write(*reread.table);
+    SerializeResult rewritten = serialize(*reread.table);
     LUAU_ASSERT(rewritten.source == written.source);
     return 0;
 }
