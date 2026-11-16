@@ -2,6 +2,8 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
+#include "Luau/NumPrint.h"
+
 #include <math.h>
 #include <cstdint>
 
@@ -124,11 +126,6 @@ inline double luai_lerpd(double a, double b, double t)
 #define luai_num2unsigned(i, n) ((i) = (unsigned)(long long)(n))
 #endif
 
-#define LUAI_MAXNUM2STR 48
-#define LUAI_MAXINT2STR 30
-
-LUAI_FUNC char* luai_num2str(char* buf, double n);
-LUAI_FUNC char* luai_int2str(char* buf, int64_t n);
 
 #define luai_str2num(s, p) strtod((s), (p))
 #define luai_str2long(s, p, base) strtoll((s), (p), base)

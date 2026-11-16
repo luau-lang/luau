@@ -8,6 +8,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
     Common/include/Luau/InsertionOrderedMap.h
+    Common/include/Luau/NumPrint.h
     Common/include/Luau/SmallVector.h
     Common/include/Luau/StringUtils.h
     Common/include/Luau/TimeTrace.h
@@ -15,6 +16,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/VecDeque.h
 
     Common/src/BytecodeWire.cpp
+    Common/src/NumPrint.cpp
     Common/src/StringUtils.cpp
     Common/src/TimeTrace.cpp
 )
@@ -399,7 +401,6 @@ target_sources(Luau.VM PRIVATE
     VM/src/linit.cpp
     VM/src/lmathlib.cpp
     VM/src/lmem.cpp
-    VM/src/lnumprint.cpp
     VM/src/lobject.cpp
     VM/src/loslib.cpp
     VM/src/lperf.cpp
