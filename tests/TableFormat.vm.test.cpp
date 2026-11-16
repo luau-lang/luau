@@ -113,7 +113,7 @@ static void checkMatchesVm(const std::string& source)
 
 TEST_SUITE_BEGIN("TableFormatVm");
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_matches_vm")
+TEST_CASE("deserialize_matches_vm")
 {
     checkMatchesVm(kTableFormatRfcExample);
     checkMatchesVm(R"({ 'a', [[b]], `c`, "\x00\255\u{10FFFF}", 0x7fffffffffffffff, 1e-320, -0, 0.1 })");
@@ -122,7 +122,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_matches_vm")
     checkMatchesVm(R"({ "\q\w\X41", '\%', `\!` })");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "depth_limit_matches_vm")
+TEST_CASE("depth_limit_matches_vm")
 {
     // The limit matches how deeply plain table constructors can nest in Luau.
     std::string deepest = tableFormatNested(kMaxDepth);
@@ -130,7 +130,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "depth_limit_matches_vm")
     CHECK(compile("return {" + deepest + "}").front() == 0); // a compile error
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "serialize_matches_vm")
+TEST_CASE("serialize_matches_vm")
 {
     Table table;
     for (double n : kTableFormatRoundTripNumbers)

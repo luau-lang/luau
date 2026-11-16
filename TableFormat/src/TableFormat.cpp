@@ -573,7 +573,7 @@ static AstExpr* parseExpr(std::string_view source, AstNameTable& names, Allocato
 {
     ParseNodeResult<AstExpr> result = Parser::parseExpr(source.data(), source.size(), names, allocator);
 
-    // A single `;` after the table is ignored, but the parser reports it as an error, so parse again without it.
+    // A single `;` after the table is ignored, so if the parser reports it as an error, parse again without it.
     if (result.errors.size() == 1)
     {
         Position position = result.errors[0].getLocation().begin;

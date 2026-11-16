@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TableFormat.h"
 
+#include "ScopedFlags.h"
 #include "TableFormatExamples.h"
 
 #include "doctest.h"
@@ -11,6 +12,8 @@
 
 using namespace Luau;
 using namespace Luau::TableFormat;
+
+LUAU_FASTFLAG(LuauParseRejectTrailingToken)
 
 static Table deserializeOk(const std::string& source)
 {
@@ -40,7 +43,7 @@ static const T& get(const Table& table, const Key& key)
 
 TEST_SUITE_BEGIN("TableFormat");
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_rfc_example")
+TEST_CASE("deserialize_rfc_example")
 {
     Table table = deserializeOk(kTableFormatRfcExample);
 
@@ -73,7 +76,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_rfc_example")
     CHECK(*table.getMap()[10].key.get_if<std::string>() == "limits");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_literals")
+TEST_CASE("deserialize_literals")
 {
     Table table = deserializeOk(R"({
         'single', "double", [[raw]], [==[raw ]] level]==], `backtick`,
@@ -99,7 +102,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_literals")
     CHECK(get<double>(table, 15.0) == HUGE_VAL);
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_blessed_names")
+TEST_CASE("deserialize_blessed_names")
 {
     Table table = deserializeOk("{ math.nan, math.huge, -math.huge, vector.create(1, 2), vector.create(-1, math.huge, math.nan) }");
 
@@ -115,7 +118,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_blessed_names")
     CHECK(std::isnan(three.z));
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_syntax_variations")
+TEST_CASE("deserialize_syntax_variations")
 {
     deserializeOk("{}");
     deserializeOk("return {}");
@@ -129,7 +132,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_syntax_variations")
     deserializeOk("{ [vector.create(1, 2, 3)] = 1, [vector.create(1, 2, 4)] = 2 }");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_rejects_malformed")
+TEST_CASE("deserialize_rejects_malformed")
 {
     // Evaluation of any kind.
     checkMalformed("{ a = 1 + 2 }");
@@ -180,11 +183,8 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_rejects_malformed")
     checkMalformed("1");
     checkMalformed("\"a\"");
     checkMalformed("{} {}");
-    checkMalformed("{} 5");
     checkMalformed(";");
     checkMalformed("; {}");
-    checkMalformed("{};;");
-    checkMalformed("{}; ;");
     checkMalformed("return {};;");
     checkMalformed("return; {}");
     checkMalformed("return {}, {}");
@@ -199,13 +199,23 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_rejects_malformed")
     checkMalformed(std::string("{ a = \"\0\" }", 12));
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_allows_unknown_escapes")
+TEST_CASE("deserialize_rejects_trailing_tokens")
+{
+    // Parser::parseExpr only rejects a single trailing token with this flag.
+    ScopedFastFlag sff{FFlag::LuauParseRejectTrailingToken, true};
+
+    checkMalformed("{} 5");
+    checkMalformed("{};;");
+    checkMalformed("{}; ;");
+}
+
+TEST_CASE("deserialize_allows_unknown_escapes")
 {
     // Luau reads an unknown escape as the character after the backslash.
     CHECK(get<std::string>(deserializeOk(R"({ "\q\w\X41", '\%', `\!` })"), 1.0) == "qwX41");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_allows_escaped_nul")
+TEST_CASE("deserialize_allows_escaped_nul")
 {
     CHECK(get<std::string>(deserializeOk("{ \"a\\0b\" }"), 1.0) == std::string("a\0b", 3));
 }
@@ -224,7 +234,7 @@ static Table nestedTable(size_t depth)
     return table;
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "depth_limit")
+TEST_CASE("depth_limit")
 {
     deserializeOk(tableFormatNested(kMaxDepth));
     checkMalformed(tableFormatNested(kMaxDepth + 1));
@@ -244,14 +254,14 @@ TEST_CASE_FIXTURE(TableFormatFixture, "depth_limit")
     CHECK(deeper.error == tooDeep.errors[0].getMessage());
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_reports_locations")
+TEST_CASE("deserialize_reports_locations")
 {
     DeserializeResult result = deserialize("{\n    a = 1,\n    b = x,\n}");
     REQUIRE(result.errors.size() == 1);
     CHECK(result.errors[0].getLocation().begin == Position{2, 8});
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_reports_duplicate_keys")
+TEST_CASE("deserialize_reports_duplicate_keys")
 {
     DeserializeResult result = deserialize("{ \"a\", [1] = 1, b = 1, [\"b\"] = 2, [vector.create(1, 2)] = 1, [vector.create(1, 2, 0)] = 2 }");
     REQUIRE(result.errors.size() == 3);
@@ -264,7 +274,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_reports_duplicate_keys")
     CHECK(implicit.errors[0].getMessage() == "Duplicate key 2");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_limits_errors")
+TEST_CASE("deserialize_limits_errors")
 {
     std::string source = "{";
     for (int i = 0; i < 1000; i++)
@@ -276,7 +286,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_limits_errors")
     CHECK(result.errors.back().getMessage() == "Reached error limit (100)");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "table_keys")
+TEST_CASE("table_keys")
 {
     Table table;
 
@@ -305,7 +315,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "table_keys")
     CHECK(!table.find(std::nan("")));
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "table_erase")
+TEST_CASE("table_erase")
 {
     Table table = deserializeOk("{ 1, 2, a = 1, b = 2, c = 3 }");
 
@@ -330,7 +340,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "table_erase")
     CHECK(table.append(true));
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "table_edit_in_place")
+TEST_CASE("table_edit_in_place")
 {
     Table table = deserializeOk("{ nested = { count = 1 } }");
 
@@ -341,7 +351,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "table_edit_in_place")
     CHECK(serialize(table).source == "{nested={count=2}}");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "table_copy_and_move")
+TEST_CASE("table_copy_and_move")
 {
     Table table = deserializeOk("{ a = { b = { 1, 2 } }, c = 3 }");
 
@@ -360,7 +370,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "table_copy_and_move")
     CHECK(get<double>(get<Table>(copy, "b"), 1.0) == 10);
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "table_deep_nesting_doesnt_overflow_stack")
+TEST_CASE("table_deep_nesting_doesnt_overflow_stack")
 {
     // Far deeper than can be read or written, to check that copying and destroying don't recurse.
     Table table = nestedTable(1000000);
@@ -369,7 +379,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "table_deep_nesting_doesnt_overflow_stack"
     CHECK(!serialize(copy).source);
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "serialize_format")
+TEST_CASE("serialize_format")
 {
     Table table = deserializeOk(R"({
         "a", true, {},
@@ -386,7 +396,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "serialize_format")
     CHECK(serialize(Table{}).source == "{}");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "serialize_names_are_ascii")
+TEST_CASE("serialize_names_are_ascii")
 {
     Table table;
     CHECK(table.insert("caf\xc3\xa9", 1.0));
@@ -395,14 +405,14 @@ TEST_CASE_FIXTURE(TableFormatFixture, "serialize_names_are_ascii")
     CHECK(serialize(table).source == "{[\"caf\xc3\xa9\"]=1,_x9=2}");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "serialize_whole_numbers")
+TEST_CASE("serialize_whole_numbers")
 {
     Table table = deserializeOk("{ 10, 100, 1e6, -1e14, 99999999999999.5, 1e15, vector.create(10, 20, 300) }");
 
     CHECK(serialize(table).source == "{10,100,1000000,-100000000000000,99999999999999.5,1000000000000000,vector.create(10,20,300)}");
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "serialize_minimal_output_reads_back")
+TEST_CASE("serialize_minimal_output_reads_back")
 {
     // Without spaces, a minus sign follows `=`, `,`, `{` and `(`, so check none of those lex as something else.
     Table table = deserializeOk("{ -1, -math.huge, a = -0, [-1] = -2.5, [vector.create(-1, -2, -3)] = { -1e-7 } }");
@@ -412,7 +422,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "serialize_minimal_output_reads_back")
     CHECK(serialize(deserializeOk(source)).source == source);
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "serialize_vector_components_read_back_through_doubles")
+TEST_CASE("serialize_vector_components_read_back_through_doubles")
 {
     // The shortest float representation of this component, 7.038531e-26, reads back as a different float when it's read
     // as a double first, as Luau does, so it's written with one more digit.
@@ -432,7 +442,7 @@ TEST_CASE_FIXTURE(TableFormatFixture, "serialize_vector_components_read_back_thr
     CHECK(memcmp(&read.x, &component, sizeof(component)) == 0);
 }
 
-TEST_CASE_FIXTURE(TableFormatFixture, "serialize_numbers_and_strings_round_trip")
+TEST_CASE("serialize_numbers_and_strings_round_trip")
 {
     Table table;
     for (double n : kTableFormatRoundTripNumbers)
