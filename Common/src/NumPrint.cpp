@@ -115,24 +115,16 @@ struct Decimal
     int k;
 };
 
-static Decimal schubfach(int exponent, uint64_t fraction)
+// Converts c*2^q to the shortest decimal in its rounding interval, where c has `precision` significant bits for normal numbers.
+// The same tables serve both doubles and floats, since floats need less precision than doubles throughout.
+static Decimal schubfach(uint64_t c, int q, int qmin, int precision)
 {
-    // Extract c & q such that c*2^q == |v|
-    uint64_t c = fraction;
-    int q = exponent - 1023 - 51;
-
-    if (exponent != 0) // normal numbers have implicit leading 1
-    {
-        c |= (1ull << 52);
-        q--;
-    }
-
     // 8.3. Fast path for integers
-    if (unsigned(-q) < 53 && (c & ((1ull << (-q)) - 1)) == 0)
+    if (unsigned(-q) < unsigned(precision) && (c & ((1ull << (-q)) - 1)) == 0)
         return {c >> (-q), 0};
 
     // 5. Rounding interval
-    int irr = (c == (1ull << 52) && q != -1074); // Qmin
+    int irr = (c == (1ull << (precision - 1)) && q != qmin);
     int out = int(c & 1);
 
     // 9.8.1. Boundaries for c
@@ -269,6 +261,8 @@ inline char* trimzero(char* end)
 #define fastmemcpy(dst, src, size, sizefast) (LUAU_ASSERT((size) <= sizefast), memcpy(dst, src, sizefast))
 #define fastmemset(dst, val, size, sizefast) (LUAU_ASSERT((size) <= sizefast), memset(dst, val, sizefast))
 
+static char* printdecimal(char* buf, Decimal d);
+
 char* luai_num2str(char* buf, double n)
 {
     // IEEE-754
@@ -296,8 +290,59 @@ char* luai_num2str(char* buf, double n)
         return buf + 1;
     }
 
-    // convert binary to decimal using Schubfach
-    Decimal d = schubfach(exponent, fraction);
+    // Extract c & q such that c*2^q == |v|; normal numbers have implicit leading 1
+    uint64_t c = exponent == 0 ? fraction : fraction | (1ull << 52);
+    int q = exponent == 0 ? -1074 : exponent - 1023 - 52;
+
+    return printdecimal(buf, schubfach(c, q, -1074, 53));
+}
+
+char* luai_num2strf(char* buf, float n)
+{
+    // IEEE-754
+    union
+    {
+        float v;
+        uint32_t bits;
+    } v = {n};
+    int sign = int(v.bits >> 31);
+    int exponent = int(v.bits >> 23) & 255;
+    uint64_t fraction = v.bits & ((1u << 23) - 1);
+
+    // specials
+    if (LUAU_UNLIKELY(exponent == 0xff))
+        return printspecial(buf, sign, fraction);
+
+    // sign bit
+    *buf = '-';
+    buf += sign;
+
+    // zero
+    if (exponent == 0 && fraction == 0)
+    {
+        buf[0] = '0';
+        return buf + 1;
+    }
+
+    // Extract c & q such that c*2^q == |v|; normal numbers have implicit leading 1
+    uint64_t c = exponent == 0 ? fraction : fraction | (1ull << 23);
+    int q = exponent == 0 ? -149 : exponent - 127 - 23;
+
+    // Luau reads number literals as doubles and narrows them to floats afterwards, so the output should read back the same
+    // way. The shortest representation of this magnitude, 7.038531e-26, doesn't: its significand is odd, so the ends of its
+    // rounding interval are excluded, and 7.038531e-26 is within half a double ulp of the lower end. Reading it as a double
+    // lands exactly on the midpoint between this float and its even neighbour, which then ties to the neighbour.
+    // 7.0385307e-26 is the shortest representation that reads back correctly both ways. The num2strf_all_floats test
+    // checks every float, and this is the only one that needs it.
+    if ((v.bits & 0x7fffffff) == 0x15ae43fd)
+        return printdecimal(buf, {70385307, -33});
+
+    return printdecimal(buf, schubfach(c, q, -149, 24));
+}
+
+// Prints a decimal in fixed point or scientific format, whichever suits its magnitude
+static char* printdecimal(char* buf, Decimal d)
+{
     LUAU_ASSERT(d.s < uint64_t(1e17));
 
     // print the decimal to a temporary buffer; we'll need to insert the decimal point and figure out the format
@@ -346,7 +391,7 @@ char* luai_num2str(char* buf, double n)
         {
             // no dot, zero padding
             fastmemcpy(buf, dec, declen, 17);
-            fastmemset(buf + declen, '0', dot - declen, 8);
+            fastmemset(buf + declen, '0', dot - declen, 16);
 
             return buf + dot;
         }
