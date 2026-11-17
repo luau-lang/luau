@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
 #include "Luau/DenseHash.h"
+#include "Luau/Lexer.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
 #include "Luau/TxnLog.h"
@@ -41,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
 LUAU_FASTFLAGVARIABLE(LuauBetterMetatableStringification)
+LUAU_FASTFLAGVARIABLE(LuauKeyNamesMatchLexer)
 
 namespace Luau
 {
@@ -407,7 +409,7 @@ struct TypeStringifier
 
     void emitKey(const std::string& name)
     {
-        if (isIdentifier(name))
+        if (FFlag::LuauKeyNamesMatchLexer ? Lexer::isName(name) : isIdentifier(name))
             state.emit(name);
         else
         {

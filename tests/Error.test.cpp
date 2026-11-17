@@ -7,6 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauKeyNamesMatchLexer)
 
 TEST_SUITE_BEGIN("ErrorTests");
 
@@ -14,6 +15,14 @@ TEST_CASE("TypeError_code_should_return_nonzero_code")
 {
     auto e = TypeError{{{0, 0}, {0, 1}}, UnknownSymbol{"Foo"}};
     CHECK_GE(e.code(), 1000);
+}
+
+TEST_CASE_FIXTURE(Fixture, "property_access_violation_quotes_keys_that_arent_names")
+{
+    ScopedFastFlag sff{FFlag::LuauKeyNamesMatchLexer, true};
+
+    TypeError error{{{0, 0}, {0, 1}}, PropertyAccessViolation{getBuiltins()->numberType, "end", PropertyAccessViolation::CannotWrite}};
+    CHECK_EQ("Property \"end\" of type 'number' is read-only", toString(error));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_names_show_instead_of_tables")
