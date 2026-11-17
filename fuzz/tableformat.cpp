@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
+#include <string>
 
 using namespace Luau::TableFormat;
 
@@ -72,10 +73,29 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
             flag->value = true;
     }
 
+    std::string_view source(reinterpret_cast<const char*>(Data), Size);
+
+    // Tokens cover any source exactly.
+    std::string joined;
+    for (const Token& token : tokenize(source))
+    {
+        for (const Trivia& trivia : token.leadingTrivia)
+            joined += trivia.text;
+        joined += token.text;
+        for (const Trivia& trivia : token.trailingTrivia)
+            joined += trivia.text;
+    }
+    LUAU_ASSERT(joined == source);
+
     lua_State* L = luaL_newstate();
 
-    DeserializeResult result = deserialize(L, std::string_view(reinterpret_cast<const char*>(Data), Size));
+    DeserializeResult result = deserialize(L, source);
     LUAU_ASSERT(lua_gettop(L) == (result.errors.empty() ? 1 : 0));
+
+    // Parsing accepts exactly what deserializing does.
+    Luau::Allocator allocator;
+    Luau::AstNameTable names(allocator);
+    LUAU_ASSERT(parse(source, names, allocator).errors.empty() == result.errors.empty());
 
     if (result.errors.empty())
     {
