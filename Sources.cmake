@@ -607,6 +607,7 @@ if(TARGET Luau.Conformance)
         tests/FeedbackVector.test.cpp
         tests/IrLowering.test.cpp
         tests/SharedCodeAllocator.test.cpp
+        tests/TableFormat.test.cpp
         tests/main.cpp)
 endif()
 
@@ -654,6 +655,14 @@ if(TARGET Luau.Require)
     Require/src/Require.cpp
     Require/src/RequireImpl.cpp
     Require/src/RequireNavigator.cpp)
+endif()
+
+if(TARGET Luau.TableFormat)
+    # Luau.TableFormat Sources
+    target_sources(Luau.TableFormat PRIVATE
+        TableFormat/include/Luau/TableFormat.h
+
+        TableFormat/src/TableFormat.cpp)
 endif()
 
 if(TARGET Luau.Web)
