@@ -2,6 +2,7 @@
 #include "Luau/TableFormat.h"
 
 #include "Luau/Compiler.h"
+#include "Luau/Cst.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -16,6 +17,7 @@
 
 using namespace Luau;
 using namespace Luau::TableFormat;
+using namespace std::literals;
 
 LUAU_FASTFLAG(LuauParseRejectTrailingToken)
 
@@ -99,6 +101,28 @@ static bool sameValue(lua_State* L, int a, int b)
     }
 }
 
+// The text of the source at a location.
+static std::string_view textAt(std::string_view source, const Location& location)
+{
+    auto offsetOf = [&](Position position)
+    {
+        size_t offset = 0;
+        for (unsigned line = 0; line < position.line; line++)
+            offset = source.find('\n', offset) + 1;
+        return offset + position.column;
+    };
+
+    size_t begin = offsetOf(location.begin);
+    return source.substr(begin, offsetOf(location.end) - begin);
+}
+
+static std::vector<ParseError> parseErrors(std::string_view source)
+{
+    Allocator allocator;
+    AstNameTable names(allocator);
+    return parse(source, names, allocator).errors;
+}
+
 struct TableFormatFixture
 {
     std::unique_ptr<lua_State, void (*)(lua_State*)> state{luaL_newstate(), lua_close};
@@ -126,6 +150,10 @@ struct TableFormatFixture
         REQUIRE_MESSAGE(result.errors.empty(), result.errors[0].getMessage());
         REQUIRE(lua_gettop(L) == top + 1);
         REQUIRE(lua_istable(L, -1));
+
+        // Parsing accepts exactly what deserializing does.
+        std::vector<ParseError> errors = parseErrors(source);
+        CHECK_MESSAGE(errors.empty(), errors[0].getMessage());
     }
 
     void checkMalformed(const std::string& source)
@@ -135,6 +163,7 @@ struct TableFormatFixture
         DeserializeResult result = deserialize(L, source);
         CHECK(!result.errors.empty());
         CHECK(lua_gettop(L) == top);
+        CHECK(!parseErrors(source).empty());
     }
 
     // Deserializing a well-formed file must produce what running it in a Luau VM does.
@@ -296,6 +325,25 @@ TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_reports_duplicate_keys")
     DeserializeResult implicit = deserialize(L, "{ [2] = 1, \"a\", \"b\" }");
     REQUIRE(implicit.errors.size() == 1);
     CHECK(implicit.errors[0].getMessage() == "Duplicate key 2");
+
+    // Parsing reports the same errors without a VM.
+    for (const char* source : {
+             "{ \"a\", [1] = 1, b = 1, [\"b\"] = 2, [vector.create(1, 2)] = 1, [vector.create(1, 2, 0)] = 2 }",
+             "{ [2] = 1, \"a\", \"b\" }",
+             "{ [100] = 1, [1e2] = 2, [0.1] = 1, [0.1] = 2, [-0] = 1, [0] = 2, [1e300] = 1, [1e300] = 2, [true] = 1, [true] = 2 }",
+             "{ [vector.create(0.5, -0, 1e20)] = 1, [vector.create(0.5, 0, 1e20)] = 2, [\"\\n\"] = 1, [\"\\n\"] = 2 }",
+         })
+    {
+        INFO(source);
+        std::vector<ParseError> deserialized = deserialize(L, source).errors;
+        std::vector<ParseError> parsed = parseErrors(source);
+        REQUIRE(parsed.size() == deserialized.size());
+        for (size_t i = 0; i < parsed.size(); i++)
+        {
+            CHECK(parsed[i].getMessage() == deserialized[i].getMessage());
+            CHECK(parsed[i].getLocation() == deserialized[i].getLocation());
+        }
+    }
 }
 
 TEST_CASE_FIXTURE(TableFormatFixture, "deserialize_limits_errors")
@@ -417,6 +465,183 @@ TEST_CASE_FIXTURE(TableFormatFixture, "serialize_numbers_and_strings_round_trip"
     )");
     checkRoundTrip();
     lua_pop(L, 1);
+}
+
+TEST_CASE("parse_returns_the_root_table")
+{
+    for (const char* source : {"{ 1 }", "return { 1 }", "-- a\nreturn { 1 }; -- b"})
+    {
+        INFO(source);
+        Allocator allocator;
+        AstNameTable names(allocator);
+        ParseNodeResult<AstExprTable> result = parse(source, names, allocator);
+        REQUIRE(result.root);
+        CHECK(textAt(source, result.root->location) == "{ 1 }");
+        CHECK(result.cstNodeMap.find(result.root));
+    }
+}
+
+TEST_CASE("parse_captures_comments")
+{
+    // Including the ones after a trailing `;`, which the parser doesn't see.
+    for (std::pair<const char*, const char*> test : {
+             std::pair{"-- a\n{ --[[b]] }", "-- a|--[[b]]|"},
+             std::pair{"-- a\n{ --[[b]] }; -- c\n--[==[d]==]", "-- a|--[[b]]|-- c|--[==[d]==]|"},
+             std::pair{"return --[[a]] {} --[[b]];", "--[[a]]|--[[b]]|"},
+         })
+    {
+        const char* source = test.first;
+        INFO(source);
+        Allocator allocator;
+        AstNameTable names(allocator);
+        ParseNodeResult<AstExprTable> result = parse(source, names, allocator);
+        REQUIRE(result.root);
+
+        std::string comments;
+        for (const Comment& comment : result.commentLocations)
+            comments += std::string(textAt(source, comment.location)) + "|";
+        CHECK(comments == test.second);
+    }
+}
+
+// Checks that the tokens of a source cover it exactly, in order, with locations that match their text.
+static std::vector<Token> checkTokenize(std::string_view source)
+{
+    INFO(source);
+    std::vector<Token> tokens = tokenize(source);
+    REQUIRE(!tokens.empty());
+    CHECK(tokens.back().type == Lexeme::Eof);
+    CHECK(tokens.back().text.empty());
+
+    std::string joined;
+    auto add = [&](std::string_view text, const Location& location)
+    {
+        CHECK(!text.empty());
+        CHECK(textAt(source, location) == text);
+        CHECK(text.data() == source.data() + joined.size()); // a view into the source
+        joined += text;
+    };
+
+    for (const Token& token : tokens)
+    {
+        for (const Trivia& trivia : token.leadingTrivia)
+            add(trivia.text, trivia.location);
+        if (token.type != Lexeme::Eof)
+            add(token.text, token.location);
+        for (const Trivia& trivia : token.trailingTrivia)
+            add(trivia.text, trivia.location);
+    }
+
+    CHECK(joined == source);
+    return tokens;
+}
+
+TEST_CASE("tokenize_round_trips")
+{
+    for (std::string_view source : {
+             ""sv,
+             " \n\t"sv,
+             std::string_view(kRfcExample),
+             "{\r\n\ta = 1,\r\n}\r\n"sv,
+             "--[[ unterminated"sv,
+             "\"unterminated\n{ a = 1 }"sv,
+             "{ `a{1}b{ { 2 } }c`, [==[\n]==], 0x1p4, ... } @ $ !"sv,
+             "{}\0garbage\n"sv,
+             "{ \"\0\" }"sv,
+             "\0"sv,
+         })
+        checkTokenize(source);
+}
+
+TEST_CASE("tokenize_splits_trivia")
+{
+    std::vector<Token> tokens = checkTokenize("a -- one\n\n  --[[two]] b --three");
+    REQUIRE(tokens.size() == 3);
+
+    auto describe = [](const std::vector<Trivia>& trivia)
+    {
+        std::string result;
+        for (const Trivia& item : trivia)
+            result += std::to_string(int(item.kind)) + ":" + std::string(item.text) + "|";
+        return result;
+    };
+
+    // Each token takes the trivia up to and including the end of its line, and the next token takes the rest.
+    CHECK(tokens[0].text == "a");
+    CHECK(describe(tokens[0].leadingTrivia) == "");
+    CHECK(describe(tokens[0].trailingTrivia) == "0: |1:-- one|0:\n|");
+    CHECK(tokens[1].text == "b");
+    CHECK(describe(tokens[1].leadingTrivia) == "0:\n|0:  |2:--[[two]]|0: |");
+    CHECK(describe(tokens[1].trailingTrivia) == "0: |1:--three|");
+    CHECK(describe(tokens[2].leadingTrivia) == "");
+
+    std::vector<Token> unlexed = checkTokenize("{} \n\0rest"sv);
+    REQUIRE(unlexed.size() == 3);
+    CHECK(describe(unlexed[1].trailingTrivia) == "0: \n|");
+    CHECK(describe(unlexed[2].leadingTrivia) == "3:\0rest|"s);
+}
+
+TEST_CASE("item_locations")
+{
+    std::string source = "{ 1, a = 2; [ \"b\" ] = { 3 } --[[x]] , 4 }";
+    Allocator allocator;
+    AstNameTable names(allocator);
+    ParseNodeResult<AstExprTable> result = parse(source, names, allocator);
+    REQUIRE(result.root);
+
+    std::vector<std::string_view> items;
+    for (size_t i = 0; i < result.root->items.size; i++)
+        items.push_back(textAt(source, itemLocation(*result.root, i, result.cstNodeMap)));
+
+    CHECK(items == std::vector<std::string_view>{"1,", "a = 2;", "[ \"b\" ] = { 3 } --[[x]] ,", "4"});
+}
+
+TEST_CASE("replace_edits_source")
+{
+    const std::string source = "-- settings\n{\n    a = 1, -- one\n    b = { 2 },\n}\n";
+    CHECK(replace(source, {}).source == source);
+
+    // Changing a value keeps the comments around it.
+    CHECK(replace(source, {{Location{{2, 8}, {2, 9}}, "100"}}).source == "-- settings\n{\n    a = 100, -- one\n    b = { 2 },\n}\n");
+
+    // Inserting and removing items.
+    CHECK(
+        replace(source, {{Location{{3, 14}, {3, 14}}, "\n    c = 3,"}, {Location{{2, 4}, {3, 4}}, ""}}).source ==
+        "-- settings\n{\n    b = { 2 },\n    c = 3,\n}\n"
+    );
+
+    // Replacing the whole source, up to the end of its last line.
+    CHECK(replace(source, {{Location{{0, 0}, {5, 0}}, "{}"}}).source == "{}");
+}
+
+TEST_CASE("replace_rejects_bad_replacements")
+{
+    const std::string source = "{\n    a = 1,\n}";
+
+    auto errors = [&](std::vector<Replacement> replacements)
+    {
+        ReplaceResult result = replace(source, replacements);
+        CHECK(!result.source);
+        return result.errors;
+    };
+
+    CHECK(errors({{Location{{1, 9}, {1, 8}}, "2"}})[0].getMessage() == "Replacement range is reversed");
+    CHECK(errors({{Location{{1, 8}, {1, 12}}, "2"}})[0].getMessage() == "Replacement is outside the source");
+    CHECK(errors({{Location{{3, 0}, {3, 0}}, "2"}})[0].getMessage() == "Replacement is outside the source");
+    CHECK(errors({{Location{{1, 4}, {1, 9}}, "b = 2"}, {Location{{1, 8}, {1, 9}}, "2"}})[0].getMessage() == "Replacement overlaps another");
+    CHECK(errors({{Location{{1, 8}, {1, 8}}, "2"}, {Location{{1, 8}, {1, 8}}, "3"}})[0].getMessage() == "Replacement overlaps another");
+
+    // Adjacent ranges don't overlap.
+    CHECK(
+        replace(source, {{Location{{1, 4}, {1, 5}}, "b"}, {Location{{1, 5}, {1, 5}}, "c"}, {Location{{1, 8}, {1, 9}}, "2"}}).source ==
+        "{\n    bc = 2,\n}"
+    );
+
+    // The result must be well-formed, and its errors are located in it.
+    std::vector<ParseError> malformed = errors({{Location{{1, 8}, {1, 9}}, "x"}});
+    REQUIRE(malformed.size() == 1);
+    CHECK(malformed[0].getLocation() == Location{{1, 8}, {1, 9}});
+    CHECK(!errors({{Location{{1, 4}, {1, 4}}, "a = 0, "}}).empty());
 }
 
 TEST_SUITE_END();

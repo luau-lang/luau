@@ -2,6 +2,8 @@
 #include "Luau/TableFormat.h"
 
 #include "Luau/Ast.h"
+#include "Luau/Cst.h"
+#include "Luau/HashUtil.h"
 #include "Luau/Lexer.h"
 #include "Luau/Parser.h"
 #include "Luau/StringUtils.h"
@@ -10,6 +12,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unordered_set>
 #include <utility>
 
 namespace Luau::TableFormat
@@ -21,6 +26,17 @@ constexpr size_t kMaxErrors = 100;
 static std::string depthError()
 {
     return format("Exceeded the maximum table nesting depth of %zu", kMaxDepth);
+}
+
+static void report(std::vector<ParseError>& errors, const Location& location, std::string message)
+{
+    if (errors.size() > kMaxErrors)
+        return;
+
+    errors.emplace_back(location, std::move(message));
+
+    if (errors.size() == kMaxErrors)
+        errors.emplace_back(location, format("Reached error limit (%zu)", kMaxErrors));
 }
 
 static void pushVector(lua_State* L, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z)
@@ -262,13 +278,7 @@ struct Reader
 
     void report(const Location& location, std::string message)
     {
-        if (errors.size() > kMaxErrors)
-            return;
-
-        errors.emplace_back(location, std::move(message));
-
-        if (errors.size() == kMaxErrors)
-            errors.emplace_back(location, format("Reached error limit (%zu)", kMaxErrors));
+        TableFormat::report(errors, location, std::move(message));
     }
 
     bool readPrimitive(AstExpr* expr)
@@ -420,13 +430,227 @@ struct Reader
     }
 };
 
-static size_t offsetOf(std::string_view source, Position position)
+// A key's identity, compared the way Luau compares table keys: numbers by value, so 0 and -0 are the same key, and vectors
+// by component.
+struct KeyId
 {
-    size_t offset = 0;
-    for (unsigned int line = 0; line < position.line; line++)
-        offset = source.find('\n', offset) + 1;
+    int type = LUA_TNIL;
+    double number = 0;
+    std::string_view string;
+    LUA_VECTOR_TYPE vector[3] = {};
 
-    return offset + position.column;
+    bool operator==(const KeyId& other) const
+    {
+        return type == other.type && number == other.number && string == other.string && vector[0] == other.vector[0] &&
+               vector[1] == other.vector[1] && vector[2] == other.vector[2];
+    }
+};
+
+struct KeyIdHash
+{
+    size_t operator()(const KeyId& key) const
+    {
+        // Adding 0 turns -0 into 0, since equal keys must hash equally.
+        size_t seed = std::hash<std::string_view>()(key.string);
+        for (double number : {key.number, double(key.vector[0]), double(key.vector[1]), double(key.vector[2])})
+            hashCombine(seed, std::hash<double>()(number + 0.0));
+        return seed;
+    }
+};
+
+// Writes a number as tostring does, without needing a VM: the shortest digits that read back as the same number, in fixed
+// notation unless the decimal point is far from them.
+static std::string formatNumber(double number)
+{
+    if (std::isnan(number))
+        return "math.nan";
+    if (std::isinf(number))
+        return number > 0 ? "math.huge" : "-math.huge";
+
+    char buffer[32];
+    for (int precision = 0; precision < 17; precision++)
+    {
+        snprintf(buffer, sizeof(buffer), "%.*e", precision, number);
+        if (strtod(buffer, nullptr) == number)
+            break;
+    }
+
+    std::string_view scientific = buffer;
+    bool negative = scientific[0] == '-';
+    size_t e = scientific.find('e');
+    int dot = atoi(buffer + e + 1) + 1;
+    if (dot < -5 || dot > 21)
+        return buffer;
+
+    std::string digits;
+    for (char c : scientific.substr(negative, e - negative))
+        if (c != '.')
+            digits += c;
+
+    std::string result = negative ? "-" : "";
+    if (dot <= 0)
+        result += "0." + std::string(-dot, '0') + digits;
+    else if (size_t(dot) >= digits.size())
+        result += digits + std::string(dot - digits.size(), '0');
+    else
+        result += digits.substr(0, dot) + "." + digits.substr(dot);
+
+    return result;
+}
+
+static std::string describeKey(const KeyId& key)
+{
+    switch (key.type)
+    {
+    case LUA_TBOOLEAN:
+        return key.number ? "true" : "false";
+    case LUA_TNUMBER:
+        return formatNumber(key.number);
+    case LUA_TSTRING:
+        return '"' + escape(key.string) + '"';
+    default:
+        return "vector.create(" + formatNumber(key.vector[0]) + "," + formatNumber(key.vector[1]) + "," + formatNumber(key.vector[2]) + ")";
+    }
+}
+
+// Checks a parsed file against what the Luau Table format allows, without a VM. Reader makes the same checks while it builds
+// Luau values.
+struct Validator
+{
+    std::vector<ParseError>& errors;
+
+    void report(const Location& location, std::string message)
+    {
+        TableFormat::report(errors, location, std::move(message));
+    }
+
+    std::optional<KeyId> checkPrimitive(AstExpr* expr)
+    {
+        if (AstExprConstantBool* boolean = expr->as<AstExprConstantBool>())
+            return KeyId{LUA_TBOOLEAN, double(boolean->value)};
+        if (AstExprConstantString* string = expr->as<AstExprConstantString>())
+            return KeyId{LUA_TSTRING, 0, std::string_view(string->value.data, string->value.size)};
+        if (std::optional<double> number = readNumber(expr))
+            return KeyId{LUA_TNUMBER, *number};
+
+        if (AstExprInterpString* string = expr->as<AstExprInterpString>())
+        {
+            if (string->expressions.size == 0)
+                return KeyId{LUA_TSTRING, 0, std::string_view(string->strings.data[0].data, string->strings.data[0].size)};
+
+            report(expr->location, "Cannot use string interpolation in Luau Table");
+            return std::nullopt;
+        }
+
+        if (AstExprCall* call = expr->as<AstExprCall>(); call && isGlobalMember(call->func, "vector", "create"))
+            return checkVector(call);
+
+        report(expr->location, "Luau Table only allows literal strings, booleans, numbers, vectors and tables");
+        return std::nullopt;
+    }
+
+    std::optional<KeyId> checkVector(AstExprCall* call)
+    {
+        if (call->args.size != 2 && call->args.size != 3)
+        {
+            report(call->location, "vector.create must be given 2 or 3 numbers");
+            return std::nullopt;
+        }
+
+        KeyId key{LUA_TVECTOR};
+        bool valid = true;
+
+        for (size_t i = 0; i < call->args.size; i++)
+        {
+            if (std::optional<double> number = readNumber(call->args.data[i]))
+                key.vector[i] = LUA_VECTOR_TYPE(*number);
+            else
+            {
+                report(call->args.data[i]->location, "vector.create must be given numbers");
+                valid = false;
+            }
+        }
+
+        return valid ? std::optional(key) : std::nullopt;
+    }
+
+    std::optional<KeyId> checkKey(AstExpr* expr)
+    {
+        if (expr->is<AstExprTable>())
+        {
+            report(expr->location, "Cannot use a table as a key");
+            return std::nullopt;
+        }
+
+        std::optional<KeyId> key = checkPrimitive(expr);
+        if (key && (std::isnan(key->number) || std::isnan(key->vector[0]) || std::isnan(key->vector[1]) || std::isnan(key->vector[2])))
+        {
+            report(expr->location, "Cannot use NaN as a key");
+            return std::nullopt;
+        }
+
+        return key;
+    }
+
+    bool checkValue(AstExpr* expr, size_t depth)
+    {
+        if (AstExprTable* table = expr->as<AstExprTable>())
+            return checkTable(table, depth + 1);
+
+        return checkPrimitive(expr).has_value();
+    }
+
+    bool checkTable(AstExprTable* expr, size_t depth)
+    {
+        if (depth > kMaxDepth)
+        {
+            report(expr->location, depthError());
+            return false;
+        }
+
+        std::unordered_set<KeyId, KeyIdHash> keys;
+        keys.reserve(expr->items.size);
+        double arrayLength = 0;
+
+        for (const AstExprTable::Item& item : expr->items)
+        {
+            // Positional items have implicit keys, and `name = value` keys are constant strings, read like any other key.
+            std::optional<KeyId> key = item.kind == AstExprTable::Item::Kind::List ? KeyId{LUA_TNUMBER, ++arrayLength} : checkKey(item.key);
+            bool hasValue = checkValue(item.value, depth);
+
+            if (key && hasValue && !keys.insert(*key).second)
+                report((item.key ? item.key : item.value)->location, "Duplicate key " + describeKey(*key));
+        }
+
+        return true;
+    }
+};
+
+// The offset of the start of each line, counting lines by '\n' as the lexer does.
+static std::vector<size_t> lineStarts(std::string_view source)
+{
+    std::vector<size_t> starts = {0};
+    for (size_t i = 0; i < source.size(); i++)
+        if (source[i] == '\n')
+            starts.push_back(i + 1);
+
+    return starts;
+}
+
+static Position positionAt(const std::vector<size_t>& starts, size_t offset)
+{
+    size_t line = std::upper_bound(starts.begin(), starts.end(), offset) - starts.begin() - 1;
+    return Position{unsigned(line), unsigned(offset - starts[line])};
+}
+
+static size_t offsetAt(const std::vector<size_t>& starts, Position position)
+{
+    return starts[position.line] + position.column;
+}
+
+static bool isComment(Lexeme::Type type)
+{
+    return type == Lexeme::Comment || type == Lexeme::BlockComment || type == Lexeme::BrokenComment;
 }
 
 // Whether the source from an offset onwards is a single `;`, which is ignored at the end of a file.
@@ -438,58 +662,88 @@ static bool isTrailingSemicolon(std::string_view source, size_t offset, Position
     return lexer.next().type == ';' && lexer.next().type == Lexeme::Eof;
 }
 
-static AstExpr* parseExpr(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+template<typename Root>
+static void takeParse(ParseNodeResult<AstExprTable>& result, Root& parsed)
 {
-    ParseNodeResult<AstExpr> result = Parser::parseExpr(source.data(), source.size(), names, allocator);
-
-    // A single `;` after the table is ignored, so if the parser reports it as an error, parse again without it.
-    if (result.errors.size() == 1)
-    {
-        Position position = result.errors[0].getLocation().begin;
-        size_t offset = offsetOf(source, position);
-
-        if (isTrailingSemicolon(source, offset, position, names))
-            result = Parser::parseExpr(source.data(), offset, names, allocator);
-    }
-
-    errors = std::move(result.errors);
-    return errors.empty() ? result.root : nullptr;
+    result.lines = parsed.lines;
+    result.hotcomments = std::move(parsed.hotcomments);
+    result.errors = std::move(parsed.errors);
+    result.cstNodeMap = std::move(parsed.cstNodeMap);
 }
 
-static AstExpr* parseReturn(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+static AstExpr* parseExpr(
+    std::string_view source,
+    AstNameTable& names,
+    Allocator& allocator,
+    const ParseOptions& options,
+    ParseNodeResult<AstExprTable>& result
+)
+{
+    ParseNodeResult<AstExpr> parsed = Parser::parseExpr(source.data(), source.size(), names, allocator, options);
+
+    // A single `;` after the table is ignored, so if the parser reports it as an error, parse again without it.
+    if (parsed.errors.size() == 1)
+    {
+        Position position = parsed.errors[0].getLocation().begin;
+        size_t offset = offsetAt(lineStarts(source), position);
+
+        if (isTrailingSemicolon(source, offset, position, names))
+            parsed = Parser::parseExpr(source.data(), offset, names, allocator, options);
+    }
+
+    takeParse(result, parsed);
+    return result.errors.empty() ? parsed.root : nullptr;
+}
+
+static AstExpr* parseReturn(
+    std::string_view source,
+    AstNameTable& names,
+    Allocator& allocator,
+    const ParseOptions& options,
+    ParseNodeResult<AstExprTable>& result
+)
 {
     // The parser already allows a single `;` after `return`.
-    ParseResult result = Parser::parse(source.data(), source.size(), names, allocator);
-    errors = std::move(result.errors);
-    if (!errors.empty())
+    ParseResult parsed = Parser::parse(source.data(), source.size(), names, allocator, options);
+    takeParse(result, parsed);
+    if (!result.errors.empty())
         return nullptr;
 
-    AstStatReturn* ret = result.root->body.size == 1 ? result.root->body.data[0]->as<AstStatReturn>() : nullptr;
+    AstStatReturn* ret = parsed.root->body.size == 1 ? parsed.root->body.data[0]->as<AstStatReturn>() : nullptr;
     if (!ret || ret->list.size != 1)
     {
-        errors.emplace_back(result.root->location, "Expected a single table after 'return'");
+        result.errors.emplace_back(parsed.root->location, "Expected a single table after 'return'");
         return nullptr;
     }
 
     return ret->list.data[0];
 }
 
-// Finds the root table: either the whole file, or the single value returned by the file.
-static AstExprTable* parseRoot(std::string_view source, AstNameTable& names, Allocator& allocator, std::vector<ParseError>& errors)
+// Parses the root table: either the whole file, or the single value returned by the file.
+static ParseNodeResult<AstExprTable> parseRoot(std::string_view source, AstNameTable& names, Allocator& allocator, const ParseOptions& options)
 {
+    ParseNodeResult<AstExprTable> result{};
+
+    // The lexer treats a NUL byte as the end of the source, which would hide anything after it.
+    if (size_t nul = source.find('\0'); nul != std::string_view::npos)
+    {
+        result.errors.emplace_back(Location{positionAt(lineStarts(source), nul), 1}, "NUL bytes must be escaped");
+        return result;
+    }
+
     Lexer lexer(source.data(), source.size(), names);
     lexer.setSkipComments(true);
 
-    AstExpr* root =
-        lexer.next().type == Lexeme::ReservedReturn ? parseReturn(source, names, allocator, errors) : parseExpr(source, names, allocator, errors);
+    AstExpr* root = lexer.next().type == Lexeme::ReservedReturn ? parseReturn(source, names, allocator, options, result)
+                                                                : parseExpr(source, names, allocator, options, result);
     if (!root)
-        return nullptr;
+        return result;
 
-    AstExprTable* table = root->as<AstExprTable>();
-    if (!table)
-        errors.emplace_back(root->location, "Expected a table");
+    result.root = root->as<AstExprTable>();
+    if (!result.root)
+        result.errors.emplace_back(root->location, "Expected a table");
 
-    return table;
+    return result;
 }
 
 DeserializeResult deserialize(lua_State* L, std::string_view source)
@@ -497,23 +751,14 @@ DeserializeResult deserialize(lua_State* L, std::string_view source)
     Allocator allocator;
     AstNameTable names(allocator);
 
-    DeserializeResult result;
+    ParseNodeResult<AstExprTable> parsed = parseRoot(source, names, allocator, {});
 
-    // The lexer treats a NUL byte as the end of the source, which would hide anything after it.
-    if (size_t nul = source.find('\0'); nul != std::string_view::npos)
-    {
-        std::string_view before = source.substr(0, nul);
-        Position position{unsigned(std::count(before.begin(), before.end(), '\n')), unsigned(nul - (before.rfind('\n') + 1))};
-        result.errors.emplace_back(Location{position, 1}, "NUL bytes must be escaped");
-        return result;
-    }
-
-    AstExprTable* root = parseRoot(source, names, allocator, result.errors);
-    if (!root)
+    DeserializeResult result{std::move(parsed.errors)};
+    if (!parsed.root)
         return result;
 
     int top = lua_gettop(L);
-    Reader{L, result.errors}.readTable(root, 1);
+    Reader{L, result.errors}.readTable(parsed.root, 1);
 
     if (!result.errors.empty())
         lua_settop(L, top);
@@ -535,6 +780,207 @@ SerializeResult serialize(lua_State* L, int idx)
         return {std::nullopt, std::move(writer.error)};
 
     return {std::move(writer.out), {}};
+}
+
+// Parses the root table and checks it, leaving the root unset if the file is malformed.
+static ParseNodeResult<AstExprTable> parseValid(std::string_view source, AstNameTable& names, Allocator& allocator, const ParseOptions& options)
+{
+    ParseNodeResult<AstExprTable> result = parseRoot(source, names, allocator, options);
+
+    if (result.root)
+        Validator{result.errors}.checkTable(result.root, 1);
+
+    if (!result.errors.empty())
+        result.root = nullptr;
+
+    return result;
+}
+
+ParseNodeResult<AstExprTable> parse(std::string_view source, AstNameTable& names, Allocator& allocator)
+{
+    ParseOptions options;
+    options.storeCstData = true;
+
+    ParseNodeResult<AstExprTable> result = parseValid(source, names, allocator, options);
+
+    // The parser drops comments after the last token it reads, and a trailing `;` is cut off before parsing, so take
+    // comments from the whole source instead.
+    Lexer lexer(source.data(), source.size(), names);
+    for (Lexeme lexeme = lexer.next(false, true); lexeme.type != Lexeme::Eof; lexeme = lexer.next(false, true))
+        if (isComment(lexeme.type))
+            result.commentLocations.push_back(Comment{lexeme.type, lexeme.location});
+
+    return result;
+}
+
+std::vector<Token> tokenize(std::string_view source)
+{
+    Allocator allocator;
+    AstNameTable names(allocator);
+
+    std::vector<size_t> starts = lineStarts(source);
+    auto locationOf = [&](size_t begin, size_t end)
+    {
+        return Location{positionAt(starts, begin), positionAt(starts, end)};
+    };
+
+    // The lexer stops at a NUL byte, so only what comes before one is lexed.
+    std::string_view lexed = source.substr(0, source.find('\0'));
+    Lexer lexer(lexed.data(), lexed.size(), names);
+
+    std::vector<Token> tokens;
+    std::vector<Trivia> trivia; // since the last token
+    size_t cursor = 0;
+
+    auto addWhitespace = [&](size_t end)
+    {
+        while (cursor < end)
+        {
+            size_t newline = source.substr(0, end).find('\n', cursor);
+            size_t pieceEnd = newline == std::string_view::npos ? end : newline + 1;
+            trivia.push_back(Trivia{Trivia::Kind::Whitespace, locationOf(cursor, pieceEnd), source.substr(cursor, pieceEnd - cursor)});
+            cursor = pieceEnd;
+        }
+    };
+
+    auto addToken = [&](Lexeme::Type type, const Location& location, size_t begin, size_t end)
+    {
+        // The previous token takes the trivia up to and including the first newline after it.
+        auto split = trivia.begin();
+        if (!tokens.empty())
+        {
+            split = std::find_if(
+                trivia.begin(),
+                trivia.end(),
+                [](const Trivia& item)
+                {
+                    return item.kind == Trivia::Kind::Whitespace && item.text.find('\n') != std::string_view::npos;
+                }
+            );
+            if (split != trivia.end())
+                ++split;
+
+            tokens.back().trailingTrivia.assign(trivia.begin(), split);
+        }
+
+        tokens.push_back(Token{type, location, source.substr(begin, end - begin), std::vector<Trivia>(split, trivia.end()), {}});
+        trivia.clear();
+        cursor = end;
+    };
+
+    for (Lexeme lexeme = lexer.next(false, true); lexeme.type != Lexeme::Eof; lexeme = lexer.next(false, true))
+    {
+        size_t begin = offsetAt(starts, lexeme.location.begin);
+        size_t end = offsetAt(starts, lexeme.location.end);
+        addWhitespace(begin);
+
+        if (isComment(lexeme.type))
+        {
+            Trivia::Kind kind = lexeme.type == Lexeme::Comment ? Trivia::Kind::SingleLineComment : Trivia::Kind::MultiLineComment;
+            trivia.push_back(Trivia{kind, lexeme.location, source.substr(begin, end - begin)});
+            cursor = end;
+        }
+        else
+            addToken(lexeme.type, lexeme.location, begin, end);
+    }
+
+    addWhitespace(lexed.size());
+    if (lexed.size() < source.size())
+        trivia.push_back(Trivia{Trivia::Kind::Unlexed, locationOf(lexed.size(), source.size()), source.substr(lexed.size())});
+
+    addToken(Lexeme::Eof, locationOf(source.size(), source.size()), source.size(), source.size());
+    return tokens;
+}
+
+Location itemLocation(const AstExprTable& table, size_t index, const CstNodeMap& cst)
+{
+    LUAU_ASSERT(index < table.items.size);
+    const AstExprTable::Item& item = table.items.data[index];
+
+    CstNode* const* node = cst.find(const_cast<AstExprTable*>(&table));
+    LUAU_ASSERT(node && (*node)->is<CstExprTable>());
+    const CstExprTable::Item& cstItem = (*node)->as<CstExprTable>()->items.data[index];
+
+    Position begin =
+        item.kind == AstExprTable::Item::Kind::General ? cstItem.indexerOpenPosition : (item.key ? item.key : item.value)->location.begin;
+
+    if (cstItem.separator == CstExprTable::Separator::Missing)
+        return Location{begin, item.value->location.end};
+
+    return Location{begin, Position{cstItem.separatorPosition.line, cstItem.separatorPosition.column + 1}};
+}
+
+ReplaceResult replace(std::string_view source, const std::vector<Replacement>& replacements)
+{
+    std::vector<size_t> starts = lineStarts(source);
+    ReplaceResult result;
+
+    auto checkedOffset = [&](Position position) -> std::optional<size_t>
+    {
+        if (position.line >= starts.size())
+            return std::nullopt;
+
+        size_t lineEnd = position.line + 1 < starts.size() ? starts[position.line + 1] - 1 : source.size();
+        if (offsetAt(starts, position) > lineEnd)
+            return std::nullopt;
+
+        return offsetAt(starts, position);
+    };
+
+    struct Range
+    {
+        size_t begin, end;
+        const Replacement* replacement;
+    };
+
+    std::vector<Range> ranges;
+    for (const Replacement& replacement : replacements)
+    {
+        std::optional<size_t> begin = checkedOffset(replacement.location.begin);
+        std::optional<size_t> end = checkedOffset(replacement.location.end);
+
+        if (!begin || !end)
+            result.errors.emplace_back(replacement.location, "Replacement is outside the source");
+        else if (*begin > *end)
+            result.errors.emplace_back(replacement.location, "Replacement range is reversed");
+        else
+            ranges.push_back(Range{*begin, *end, &replacement});
+    }
+
+    std::sort(
+        ranges.begin(),
+        ranges.end(),
+        [](const Range& a, const Range& b)
+        {
+            return a.begin < b.begin;
+        }
+    );
+
+    // Ranges overlap if they share any characters, or start at the same place, which includes two insertions at once.
+    for (size_t i = 1; i < ranges.size(); i++)
+        if (ranges[i].begin < ranges[i - 1].end || ranges[i].begin == ranges[i - 1].begin)
+            result.errors.emplace_back(ranges[i].replacement->location, "Replacement overlaps another");
+
+    if (!result.errors.empty())
+        return result;
+
+    std::string out;
+    size_t cursor = 0;
+    for (const Range& range : ranges)
+    {
+        out.append(source.substr(cursor, range.begin - cursor));
+        out += range.replacement->text;
+        cursor = range.end;
+    }
+    out.append(source.substr(cursor));
+
+    Allocator allocator;
+    AstNameTable names(allocator);
+    result.errors = parseValid(out, names, allocator, {}).errors;
+    if (result.errors.empty())
+        result.source = std::move(out);
+
+    return result;
 }
 
 } // namespace Luau::TableFormat
