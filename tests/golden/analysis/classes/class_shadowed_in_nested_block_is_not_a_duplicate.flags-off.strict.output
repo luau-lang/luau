@@ -1,0 +1,3 @@
+./analysis/classes/class_shadowed_in_nested_block_is_not_a_duplicate.luau(5,24): TypeError: Expected this to be 'string', but got 'Point'
+./analysis/classes/class_shadowed_in_nested_block_is_not_a_duplicate.luau(11,28): TypeError: Expected this to be 'number', but got 'Point'
+./analysis/classes/class_shadowed_in_nested_block_is_not_a_duplicate.luau(14,24): TypeError: Expected this to be 'string', but got 'Point'

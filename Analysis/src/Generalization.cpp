@@ -19,7 +19,6 @@
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauIterativeTypeSearcher)
 LUAU_FLAGVERSION(LuauIterativeTypeSearcher, 2)
 
@@ -1390,7 +1389,7 @@ GeneralizationResult<TypePackId> generalizeTypePack(
     return {tp, /*wasReplacedByGeneric*/ false};
 }
 
-void sealTable(NotNull<Scope> scope, TypeId ty, TableState targetState)
+void sealTable(NotNull<Scope> scope, TypeId ty)
 {
     TableType* tableTy = getMutable<TableType>(follow(ty));
     if (!tableTy)
@@ -1400,12 +1399,7 @@ void sealTable(NotNull<Scope> scope, TypeId ty, TableState targetState)
         return;
 
     if (tableTy->state == TableState::Unsealed || tableTy->state == TableState::Free)
-    {
-        if (FFlag::DebugLuauExactTableTypes)
-            tableTy->state = targetState;
-        else
-            tableTy->state = TableState::Sealed;
-    }
+        tableTy->state = TableState::Sealed;
 }
 
 std::optional<TypeId> generalize(
@@ -1485,14 +1479,7 @@ std::optional<TypeId> generalize(
             if (generalizationTarget && unsealedTableTy != *generalizationTarget)
                 continue;
 
-            TableState targetState = TableState::Sealed;
-            if (FFlag::DebugLuauExactTableTypes)
-            {
-                if (auto tt = get<TableType>(unsealedTableTy); tt && tt->state == TableState::Unsealed)
-                    targetState = TableState::Exact;
-            }
-
-            sealTable(scope, unsealedTableTy, targetState);
+            sealTable(scope, unsealedTableTy);
         }
 
         for (const auto& [freePackId, params] : ftwp.typePacks)
@@ -1574,14 +1561,7 @@ std::optional<TypeId> generalize(
             if (generalizationTarget && unsealedTableTy != *generalizationTarget)
                 continue;
 
-            TableState targetState = TableState::Sealed;
-            if (FFlag::DebugLuauExactTableTypes)
-            {
-                if (auto tt = get<TableType>(unsealedTableTy); tt && tt->state == TableState::Unsealed)
-                    targetState = TableState::Exact;
-            }
-
-            sealTable(scope, unsealedTableTy, targetState);
+            sealTable(scope, unsealedTableTy);
         }
 
         for (const auto& [freePackId, params] : fts.typePacks)

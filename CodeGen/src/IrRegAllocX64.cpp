@@ -683,10 +683,9 @@ OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, ValueRestoreLoca
     case IrValueKind::Unknown:
     case IrValueKind::None:
     case IrValueKind::Float:
+    case IrValueKind::Int64:
     case IrValueKind::Count:
         break;
-    case IrValueKind::Int64:
-        return restoreLocation.op.kind == IrOpKind::VmReg ? luauRegValueInt64(vmRegOp(op)) : luauConstantValue(vmConstOp(op));
     case IrValueKind::Tag:
         return op.kind == IrOpKind::VmReg ? luauRegTag(vmRegOp(op)) : luauConstantTag(vmConstOp(op));
     case IrValueKind::Int:

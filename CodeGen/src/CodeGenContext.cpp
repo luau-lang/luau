@@ -10,6 +10,7 @@
 #include "Luau/UnwindBuilder.h"
 #include "Luau/UnwindBuilderDwarf2.h"
 #include "Luau/UnwindBuilderWin.h"
+#include "Luau/StringUtils.h"
 
 #include "lapi.h"
 #include "ldo.h"
@@ -24,7 +25,7 @@
 
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
-LUAU_FASTFLAG(LuauRuntimeFeedback)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRuntimeFeedback)
 
 namespace Luau
 {
@@ -57,16 +58,16 @@ static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 // TODO: could be promoted to flags or compilation option fields
 
 // Number of counter hits after which the function might be rebuilt
-constexpr uint32_t kRebuildCounterHits = 100'000;
+constexpr uint32_t kRebuildCounterHits = 10'000;
 
 // Number of counter hits after which the recorded register information is considered to be reliable
-constexpr uint32_t kReliableFeedbackHits = 10'000;
+constexpr uint32_t kReliableFeedbackHits = 2'000;
 
 // Maximum number of times a single function can be rebuilt
 constexpr uint32_t kMaxFunctionRebuilds = 5;
 
 // Number of VM hits after which we will natively compile if promoteVmFunctions is enabled
-constexpr uint32_t kNativeCompilationHitThreshold = 100'000;
+constexpr uint32_t kNativeCompilationHitThreshold = 20'000;
 
 // From CodeGen.cpp
 static void* gPerfLogContext = nullptr;
@@ -127,7 +128,7 @@ static void logPerfFunctions(
 
         logPerfFunction(*protoIt, uintptr_t(header.entryOffsetOrAddress), uint32_t(header.nativeCodeSize));
 
-        if (FFlag::LuauRuntimeFeedback)
+        if (FFlag::LuauCodegenRuntimeFeedback)
             ++protoIt;
     }
 }
@@ -172,7 +173,7 @@ template<bool Release, typename NativeProtosVector>
 
         ++protosBound;
 
-        if (FFlag::LuauRuntimeFeedback)
+        if (FFlag::LuauCodegenRuntimeFeedback)
             ++protoIt;
     }
 
@@ -362,7 +363,7 @@ void SharedCodeGenContext::onCloseState(lua_State* L) noexcept
 {
     CODEGEN_ASSERT(L == L->global->mainthread);
 
-    if (FFlag::LuauRuntimeFeedback)
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
         // The lifetime of the SharedCodeGenContext is managed separately from the VMs that use it
         // When a VM is destroyed, only its runtime build data is removed
@@ -429,7 +430,7 @@ static void onCloseState(lua_State* L)
 
 static void onDestroyFunction(lua_State* L, Proto* proto)
 {
-    if (FFlag::LuauRuntimeFeedback)
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
         BaseCodeGenContext* codeGenContext = getCodeGenContext(L);
         VmCodeGenData& vmData = codeGenContext->getVmData(L->global->mainthread);
@@ -709,12 +710,12 @@ static void resetRecordedCounters(Proto* proto)
     }
 }
 
-static uint8_t getUserdataTagBytecodeType(lua_State* L, uint8_t utag)
+static uint8_t getUserdataTagBytecodeType(lua_State* L, uint8_t tag)
 {
-    if (utag >= LUA_UTAG_LIMIT || L->global->ecb.gettypemapping == nullptr)
+    if (tag >= LUA_UTAG_LIMIT || L->global->ecb.gettypemapping == nullptr)
         return LBC_TYPE_ANY;
 
-    LuaTable* mt = L->global->udatamt[utag];
+    LuaTable* mt = L->global->udatamt[tag];
 
     if (mt == nullptr)
         return LBC_TYPE_ANY;
@@ -727,6 +728,27 @@ static uint8_t getUserdataTagBytecodeType(lua_State* L, uint8_t utag)
     uint8_t type = L->global->ecb.gettypemapping(L, svalue(name), tsvalue(name)->len);
 
     return isCustomUserdataBytecodeType(type) ? type : LBC_TYPE_ANY;
+}
+
+static const char* getUserdataName(lua_State* L, uint8_t tag)
+{
+    if (tag == LUA_UTAG_LIMIT + 1)
+        return "proxy";
+
+    if (tag >= LUA_UTAG_LIMIT)
+        return "invalid tag";
+
+    LuaTable* mt = L->global->udatamt[tag];
+
+    if (mt == nullptr)
+        return "no name assigned";
+
+    const TValue* name = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
+
+    if (!ttisstring(name))
+        return "invalid name";
+
+    return svalue(name);
 }
 
 // Converts aggregated recorded history into bytecode feedback usable at translation time
@@ -782,6 +804,51 @@ static void computeFeedback(lua_State* L, const FunctionBuildHistory& history, B
     const std::vector<BytecodeFeedback>* feedback
 );
 
+static void logEventSimple(VmCodeGenData& vmData, Proto* p, const char* message)
+{
+    const char* name = p->debugname ? getstr(p->debugname) : "<anonymous>";
+    std::string full = format("%s:%d %s\n", name, p->linedefined, message);
+
+    vmData.options.runtimeBuildLog(vmData.options.runtimeBuildContext, full);
+}
+
+static void logEventFull(lua_State* L, VmCodeGenData& vmData, Proto* p, FunctionBuildHistory& history)
+{
+    const char* name = p->debugname ? getstr(p->debugname) : "<anonymous>";
+    std::string full = format("%s:%d rebuild %u/%u\n", name, p->linedefined, history.rebuildCount, kMaxFunctionRebuilds);
+
+    for (const auto& item : history.recordedTags)
+    {
+        formatAppend(full, "  line %d R%d tags={", luaG_getline(p, item.pcpos), item.reg);
+
+        bool comma = false;
+
+        for (int tag = 0; tag < LUA_T_COUNT; tag++)
+        {
+            if ((item.tagMask & (1 << tag)) == 0)
+                continue;
+
+            formatAppend(full, "%s%s", comma ? ", " : "", lua_typename(L, tag));
+            comma = true;
+        }
+
+        formatAppend(full, "} (%llu hits)\n", (unsigned long long)item.hits);
+    }
+
+    for (const auto& item : history.recordedUserdataTags)
+    {
+        int line = luaG_getline(p, item.pcpos);
+        unsigned long long hits = (unsigned long long)item.hits;
+
+        if (item.polymorphic)
+            full += format("  line %d R%d userdata tags polymorphic (%llu hits)\n", line, item.reg, hits);
+        else
+            full += format("  line %d R%d userdata tag %d (%s) (%llu hits)\n", line, item.reg, item.tag, getUserdataName(L, item.tag), hits);
+    }
+
+    vmData.options.runtimeBuildLog(vmData.options.runtimeBuildContext, full);
+}
+
 static void commitFunctions(lua_State* L)
 {
     BaseCodeGenContext* codeGenContext = getCodeGenContext(L);
@@ -830,6 +897,9 @@ static void commitFunctions(lua_State* L)
         // Reset history if it was recorded for a different form of the function
         if (history.sizecode != proto->sizecode)
         {
+            if (vmData.options.runtimeBuildLog)
+                logEventSimple(vmData, proto, "code size changed, resetting runtime feedback history");
+
             history.sizecode = proto->sizecode;
             history.recordedTags.clear();
             history.recordedUserdataTags.clear();
@@ -845,6 +915,18 @@ static void commitFunctions(lua_State* L)
         // Rebuilding with the same feedback would produce the same code
         if (feedback == history.lastFeedback)
             continue;
+
+        // Increase rebuild count immediately so that any errors in the process below don't skip an increment
+        ++history.rebuildCount;
+
+        if (vmData.options.runtimeBuildLog)
+            logEventFull(L, vmData, proto, history);
+
+        if (history.rebuildCount >= kMaxFunctionRebuilds)
+        {
+            proto->execflags |= PEF_EXECLOCKED;
+            vmData.buildHistory.erase(proto->funid);
+        }
 
         // Create a copy of the Proto so that already executing functions keep running old code
         struct CopyContext
@@ -875,11 +957,56 @@ static void commitFunctions(lua_State* L)
     if (builds.empty())
         return;
 
-    CompilationResult result = compileProtos({}, L, codeGenContext, buildProtos, vmData.options, nullptr, &buildFeedback);
+    if (vmData.options.runtimeBuildLog)
+        vmData.options.runtimeBuildLog(vmData.options.runtimeBuildContext, format("building %d proto(s)", int(buildProtos.size())));
 
-    // TODO: callback function for host telemetry recording
+    CompilationStats stats{};
+    CompilationResult result = compileProtos({}, L, codeGenContext, buildProtos, vmData.options, &stats, &buildFeedback);
+
+    DenseHashSet<uint32_t> failedFunctions;
+
+    for (const ProtoCompilationFailure& failure : result.protoFailures)
+    {
+        switch (failure.result)
+        {
+        case CodeGenCompilationResult::CodeGenOverflowInstructionLimit:
+            // Instruction limit can be hit for the whole batch, so we recheck individual limit here
+            if (failure.irInstCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+                failedFunctions.insert(failure.funid);
+            break;
+        case CodeGenCompilationResult::CodeGenOverflowBlockLimit:
+        case CodeGenCompilationResult::CodeGenOverflowBlockInstructionLimit:
+        case CodeGenCompilationResult::CodeGenLoweringFailure:
+            failedFunctions.insert(failure.funid);
+            break;
+        default:
+            break;
+        }
+    }
+
+    for (const PendingBuild& build : builds)
+    {
+        // Finalization failure cannot be attributed to a specific function, so lock the entire batch
+        if (result.result == CodeGenCompilationResult::CodeGenAssemblerFinalizationFailure || failedFunctions.contains(build.proto->funid))
+        {
+            build.proto->execflags |= PEF_EXECLOCKED;
+            vmData.buildHistory.erase(build.proto->funid);
+
+            if (vmData.options.runtimeBuildLog)
+                logEventSimple(vmData, build.proto, "failed to compile");
+        }
+    }
+
+    if (vmData.options.runtimeBuildResult)
+        vmData.options.runtimeBuildResult(vmData.options.runtimeBuildContext, result, stats);
+
     if (result.result != CodeGenCompilationResult::Success)
+    {
+        if (vmData.options.runtimeBuildLog)
+            vmData.options.runtimeBuildLog(vmData.options.runtimeBuildContext, format("batch failed to compile - status %d", int(result.result)));
+
         return;
+    }
 
     for (size_t i = 0; i < builds.size(); i++)
     {
@@ -894,19 +1021,15 @@ static void commitFunctions(lua_State* L)
         if (copy->execdata == nullptr)
             continue;
 
-        FunctionBuildHistory& history = vmData.buildHistory[proto->funid];
-
         copy->deoptimized = proto;
         proto->optimized = copy;
         luaC_objbarrier(L, proto, copy);
 
-        history.rebuildCount++;
-        history.lastFeedback = std::move(buildFeedback[i]);
-
-        if (history.rebuildCount >= kMaxFunctionRebuilds)
+        // Only update history for the functions which haven't reached a limit
+        if ((proto->execflags & PEF_EXECLOCKED) == 0)
         {
-            copy->execflags |= PEF_EXECLOCKED;
-            vmData.buildHistory.erase(proto->funid);
+            FunctionBuildHistory& history = vmData.buildHistory[proto->funid];
+            history.lastFeedback = std::move(buildFeedback[i]);
         }
     }
 }
@@ -950,7 +1073,7 @@ static void initializeExecutionCallbacks(lua_State* L, BaseCodeGenContext* codeG
     ecb->getmemorysize = getMemorySize;
     ecb->getcounterdata = getCounterData;
 
-    if (FFlag::LuauRuntimeFeedback)
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
         ecb->examinefunction = examineFunctionSafe;
         ecb->commitfunctions = commitFunctionsSafe;
@@ -975,7 +1098,7 @@ void create(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationCallb
     if (!codeGenContext->initHeaderFunctions())
         return;
 
-    if (FFlag::LuauRuntimeFeedback)
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
         // Reserve VM data
         codeGenContext->getVmData(L->global->mainthread);
@@ -986,7 +1109,7 @@ void create(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationCallb
 
 void create(lua_State* L, SharedCodeGenContext* codeGenContext)
 {
-    if (FFlag::LuauRuntimeFeedback)
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
         // Reserve VM data
         codeGenContext->getVmData(L->global->mainthread);
@@ -1039,6 +1162,7 @@ template<typename AssemblyBuilder>
     AssemblyBuilder& build,
     ModuleHelpers& helpers,
     Proto* proto,
+    uint32_t& irInstCount,
     uint32_t& totalIrInstCount,
     const CompilationOptions& options,
     CodeGenCompilationResult& result,
@@ -1048,7 +1172,7 @@ template<typename AssemblyBuilder>
 {
     IrBuilder ir(options.hooks, envInfo);
 
-    if (FFlag::LuauRuntimeFeedback)
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
         ir.function.recordFeedback = options.runtimeFeedback;
 
@@ -1058,15 +1182,30 @@ template<typename AssemblyBuilder>
 
     ir.buildFunctionIr(proto);
 
-    unsigned instCount = unsigned(ir.function.instructions.size());
-
-    if (totalIrInstCount + instCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+    if (FFlag::LuauCodegenRuntimeFeedback)
     {
-        result = CodeGenCompilationResult::CodeGenOverflowInstructionLimit;
-        return {};
-    }
+        irInstCount = uint32_t(ir.function.instructions.size());
 
-    totalIrInstCount += instCount;
+        if (totalIrInstCount + irInstCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+        {
+            result = CodeGenCompilationResult::CodeGenOverflowInstructionLimit;
+            return {};
+        }
+
+        totalIrInstCount += irInstCount;
+    }
+    else
+    {
+        unsigned instCount = unsigned(ir.function.instructions.size());
+
+        if (totalIrInstCount + instCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+        {
+            result = CodeGenCompilationResult::CodeGenOverflowInstructionLimit;
+            return {};
+        }
+
+        totalIrInstCount += instCount;
+    }
 
     AssemblyOptions assemblyOptions;
     assemblyOptions.compilationOptions = options;
@@ -1147,6 +1286,8 @@ template<typename AssemblyBuilder>
 {
     CODEGEN_ASSERT(feedbacks == nullptr || feedbacks->size() == protos.size());
 
+    double startTime = lua_clock();
+
 #if defined(CODEGEN_TARGET_A64)
     static unsigned int cpuFeatures = getCpuFeaturesA64();
     A64::AssemblyBuilderA64 build(/* logger= */ nullptr, cpuFeatures);
@@ -1172,7 +1313,7 @@ template<typename AssemblyBuilder>
     nativeProtos.reserve(protos.size());
 
     std::vector<Proto*> compiledProtos;
-    if (FFlag::LuauRuntimeFeedback)
+    if (FFlag::LuauCodegenRuntimeFeedback)
         compiledProtos.reserve(protos.size());
 
     uint32_t totalIrInstCount = 0;
@@ -1180,16 +1321,25 @@ template<typename AssemblyBuilder>
     for (size_t i = 0; i != protos.size(); ++i)
     {
         CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
+        uint32_t irInstCount = 0;
 
         const BytecodeFeedback* feedback = feedbacks ? &(*feedbacks)[i] : nullptr;
 
         NativeProtoExecDataPtr nativeExecData =
-            createNativeFunction(nullptr, build, helpers, protos[i], totalIrInstCount, options, protoResult, envInfo, feedback);
+            createNativeFunction(nullptr, build, helpers, protos[i], irInstCount, totalIrInstCount, options, protoResult, envInfo, feedback);
+
         if (nativeExecData != nullptr)
         {
             nativeProtos.push_back(std::move(nativeExecData));
-            if (FFlag::LuauRuntimeFeedback)
+            if (FFlag::LuauCodegenRuntimeFeedback)
                 compiledProtos.push_back(protos[i]);
+        }
+        else if (FFlag::LuauCodegenRuntimeFeedback)
+        {
+            Proto* p = protos[i];
+            const char* debugname = p->debugname ? getstr(p->debugname) : "";
+
+            compilationResult.protoFailures.push_back({protoResult, debugname, p->linedefined, p->bytecodeid, p->funid, irInstCount});
         }
         else
         {
@@ -1226,6 +1376,8 @@ template<typename AssemblyBuilder>
         stats->functionsCompiled += uint32_t(nativeProtos.size());
         stats->nativeCodeSizeBytes += build.code.size() * sizeof(build.code[0]);
         stats->nativeDataSizeBytes += build.data.size();
+
+        stats->compilationTimeSec = lua_clock() - startTime;
     }
 
     for (size_t i = 0; i < nativeProtos.size(); ++i)
@@ -1243,7 +1395,7 @@ template<typename AssemblyBuilder>
 
     const ModuleBindResult bindResult = codeGenContext->bindModule(
         moduleId,
-        !FFlag::LuauRuntimeFeedback || moduleId ? protos : compiledProtos,
+        !FFlag::LuauCodegenRuntimeFeedback || moduleId ? protos : compiledProtos,
         std::move(nativeProtos),
         reinterpret_cast<const uint8_t*>(build.data.data()),
         build.data.size(),

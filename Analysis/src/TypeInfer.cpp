@@ -219,7 +219,6 @@ TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, 
     , reusableInstantiation(TxnLog::empty(), nullptr, builtinTypes, {}, nullptr)
     , nilType(builtinTypes->nilType)
     , numberType(builtinTypes->numberType)
-    , integerType(builtinTypes->integerType)
     , stringType(builtinTypes->stringType)
     , booleanType(builtinTypes->booleanType)
     , threadType(builtinTypes->threadType)
@@ -410,7 +409,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
     }
     else if (FFlag::DebugLuauUserDefinedClasses && program.is<AstStatClass>())
     {
-        reportError(program.as<AstStatClass>()->name->location, GenericError{"class keyword is illegal here"});
+        reportError(program.as<AstStatClass>()->location, GenericError{"class keyword is illegal here"});
         return ControlFlow::None;
     }
     else
@@ -1964,8 +1963,6 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     }
     else if (expr.is<AstExprConstantNumber>())
         result = WithPredicate{numberType};
-    else if (expr.is<AstExprConstantInteger>())
-        result = WithPredicate{integerType};
     else if (auto a = expr.as<AstExprLocal>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprGlobal>())
@@ -6611,8 +6608,6 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
         return refine(isString, stringType);
     else if (typeguardP.kind == "number")
         return refine(isNumber, numberType);
-    else if (typeguardP.kind == "integer")
-        return refine(isInteger, integerType);
     else if (typeguardP.kind == "boolean")
         return refine(isBoolean, booleanType);
     else if (typeguardP.kind == "thread")

@@ -523,28 +523,6 @@ struct Printer
                 }
             }
         }
-        else if (const auto& a = expr.as<AstExprConstantInteger>())
-        {
-            if (const auto cstNode = lookupCstNode<CstExprConstantInteger>(a))
-            {
-                writer.literal(std::string_view(cstNode->value.data, cstNode->value.size));
-            }
-            else
-            {
-                if (a->value >= 0)
-                {
-                    char buffer[100];
-                    size_t len = snprintf(buffer, sizeof(buffer), "%lldi", (long long)a->value);
-                    writer.literal(std::string_view{buffer, len});
-                }
-                else
-                {
-                    char buffer[100];
-                    size_t len = snprintf(buffer, sizeof(buffer), "0x%llxi", (unsigned long long)a->value);
-                    writer.literal(std::string_view{buffer, len});
-                }
-            }
-        }
         else if (const auto& a = expr.as<AstExprConstantString>())
         {
             if (const auto cstNode = lookupCstNode<CstExprConstantString>(a))
@@ -901,6 +879,27 @@ struct Printer
             advance(Position{newPos.line, newPos.column - tokenLength});
         else
             advance(newPos);
+    }
+
+    void visualize(AstStatClass::DeclModifier modifier)
+    {
+        switch (modifier)
+        {
+        case AstStatClass::DeclModifier::None:
+            break;
+        case AstStatClass::DeclModifier::Export:
+            writer.keyword("export");
+            break;
+        case AstStatClass::DeclModifier::Local:
+            writer.keyword("local");
+            break;
+        case AstStatClass::DeclModifier::Const:
+            writer.keyword("const");
+            break;
+        default:
+            LUAU_ASSERT(!"Unknown class declaration modifier");
+            break;
+        }
     }
 
     void visualize(AstStat& program)
@@ -1381,9 +1380,20 @@ struct Printer
         }
         else if (const auto& c = program.as<AstStatClass>(); c && FFlag::DebugLuauUserDefinedClasses)
         {
+            visualize(c->declModifier);
+
+            if (c->open)
+                writer.keyword("open");
+
             writer.keyword("class");
-            writer.advance(c->name->location.begin);
-            writer.identifier(c->name->name.value);
+            if (c->declModifier == AstStatClass::DeclModifier::None)
+                visualize(*c->exprName);
+            else
+            {
+                writer.advance(c->localName->location.begin);
+                writer.identifier(c->localName->name.value);
+            }
+
             if (c->super)
             {
                 writer.keyword("extends");

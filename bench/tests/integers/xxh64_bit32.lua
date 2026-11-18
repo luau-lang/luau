@@ -101,7 +101,7 @@ function test()
 			local a4h, a4l = sub64(seedh, seedl, P1h, P1l)
 
 			while offset <= len - 32 do
-				-- read64: hi = readu32(off+4), lo = readu32(off) (both LE, matching readinteger)
+				-- read64: hi = readu32(off+4), lo = readu32(off) (both LE)
 				a1h, a1l = round(a1h, a1l, buffer.readu32(buf, offset + 4), buffer.readu32(buf, offset))
 				a2h, a2l = round(a2h, a2l, buffer.readu32(buf, offset + 12), buffer.readu32(buf, offset + 8))
 				a3h, a3l = round(a3h, a3l, buffer.readu32(buf, offset + 20), buffer.readu32(buf, offset + 16))

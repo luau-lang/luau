@@ -20,10 +20,10 @@
 
 LUAU_FASTFLAGVARIABLE(LuauGcTraceUdata)
 LUAU_FLAGVERSION(LuauGcTraceUdata, 5)
-LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcHeapShrinkFix, false)
 LUAU_FASTFLAGVARIABLE(LuauRuntimeFeedback)
+LUAU_FLAGVERSION(LuauRuntimeFeedback, 2)
 LUAU_FASTFLAG(LuauBufferSweep)
 LUAU_FASTFLAG(LuauLoadExplicitGcDisable)
 
@@ -423,7 +423,14 @@ static void traverseproto(global_State* g, Proto* f)
     if (f->deoptimized)
         markobject(g, f->deoptimized);
 
-    if (FFlag::LuauRuntimeFeedback && g->ecb.examinefunction)
+    if (f->lazychunk)
+    {
+        markobject(g, f->lazychunk->envt);
+        markobject(g, f->lazychunk->importenv);
+    }
+
+    // a lazy-load stub has no code to compile yet; it is examined once built
+    if (FFlag::LuauRuntimeFeedback && g->ecb.examinefunction && !f->lazychunk)
     {
         if ((f->execflags & PEF_EXECLOCKED) == 0)
             g->ecb.examinefunction(g->mainthread, f);
@@ -962,8 +969,7 @@ static void markroot(lua_State* L)
 
     markudatadirectfields(g);
 
-    if (FFlag::LuauFastpcall)
-        markfastpcalls(g);
+    markfastpcalls(g);
 
     markmt(g);
 
@@ -1059,8 +1065,7 @@ static size_t atomic(lua_State* L)
 
     markudatadirectfields(g); // mark direct field dispatch tables (again)
 
-    if (FFlag::LuauFastpcall)
-        markfastpcalls(g);
+    markfastpcalls(g);
 
     work += propagateall(g);
 

@@ -4,6 +4,7 @@
 -- Takes an ELF binary (as a string), argv, and an output callback, then runs the program.
 
 local Int = require("./integer")
+type integer = Int.Int64
 local MemMod = require("./memory")
 local CPU = require("./cpu")
 local ELF = require("./elf")

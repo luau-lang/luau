@@ -5879,9 +5879,10 @@ TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
         Bar.@1
     )");
 
+    // Both definitions of the duplicated class are bound to any, so neither one's members are offered.
     auto ac = autocomplete('1');
-    CHECK(ac.entryMap.count("new") > 0);
     CHECK(ac.entryMap.count("make") == 0);
+    CHECK(ac.entryMap.count("new") == 0);
 
     ac = autocomplete('2');
     CHECK(ac.entryMap.count("hmm") > 0);
@@ -5889,9 +5890,7 @@ TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
 
     ac = autocomplete('3');
 
-    // FIXME CLI-204201: It would be a nice-to-have if autocomplete inside
-    // erroneous classes still worked as expected.
-    CHECK(ac.entryMap.count("huh") == 0);
+    CHECK(ac.entryMap.count("huh") > 0);
     CHECK(ac.entryMap.count("hmm") == 0);
 }
 

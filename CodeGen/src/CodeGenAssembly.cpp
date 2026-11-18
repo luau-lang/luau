@@ -11,7 +11,7 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAG(LuauRuntimeFeedback)
+LUAU_FASTFLAG(LuauCodegenRuntimeFeedback)
 
 namespace Luau
 {
@@ -195,7 +195,7 @@ static std::string getAssemblyImpl(
     {
         IrBuilder ir(options.compilationOptions.hooks, envInfo);
 
-        if (FFlag::LuauRuntimeFeedback)
+        if (FFlag::LuauCodegenRuntimeFeedback)
         {
             ir.function.recordCounters = options.compilationOptions.recordCounters;
             ir.function.recordFeedback = options.compilationOptions.runtimeFeedback;

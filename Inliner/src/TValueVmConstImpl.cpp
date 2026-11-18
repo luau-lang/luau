@@ -262,9 +262,6 @@ std::optional<bool> TValueVmConstImpl::eq(const BcOp& lhsOp, const BcOp& rhsOp) 
         if (ttype(lhs) != ttype(rhs))
             return false;
 
-        if (ttisinteger(lhs))
-            return lvalue(lhs) == lvalue(rhs);
-
         if (ttisstring(lhs))
             return tsvalue(lhs) == tsvalue(rhs); // strings are interned
     }

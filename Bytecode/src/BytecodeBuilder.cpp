@@ -12,15 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
-LUAU_FASTFLAGVARIABLE(LuauCompileRefactorFeedback)
-LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
-LUAU_FASTFLAGVARIABLE(LuauCompileCallFbRemap)
-LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
-LUAU_FASTFLAGVARIABLE(LuauCompileFastpcall)
-LUAU_FLAGVERSION(LuauCompileFastpcall, 2)
 
 namespace Luau
 {
@@ -179,8 +172,7 @@ size_t BytecodeBuilder::TableShapeHash::operator()(const TableShape& v) const
     return hash;
 }
 
-BytecodeBuilder::BytecodeBuilder(BytecodeEncoder* encoder)
-    : encoder(encoder)
+BytecodeBuilder::BytecodeBuilder()
 {
     LUAU_ASSERT(stringTable.find(StringRef{"", 0}) == nullptr);
 
@@ -220,10 +212,7 @@ void BytecodeBuilder::clearState()
     protos.clear();
     jumps.clear();
 
-    if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
-        fbSlots.clear();
-    else
-        fbSlots_DEPRECATED.clear();
+    fbSlots.clear();
 
     tableShapes.clear();
 
@@ -260,9 +249,6 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
 
     // very approximate: 4 bytes per instruction for code, 1 byte for debug line, and 1-2 bytes for aux data like constants plus overhead
     func.data.reserve(32 + insns.size() * 7);
-
-    if (encoder)
-        encoder->encode(insns.data(), insns.size());
 
     writeFunction(func.data, currentFunction, flags, cost);
 
@@ -345,18 +331,6 @@ int32_t BytecodeBuilder::addConstantNumber(double value)
 
     ConstantKey k = {Constant::Type_Number};
     static_assert(sizeof(k.value) == sizeof(value), "Expecting double to be 64-bit");
-    memcpy(&k.value, &value, sizeof(value));
-
-    return addConstant(k, c);
-}
-
-int32_t BytecodeBuilder::addConstantInteger(int64_t value)
-{
-    Constant c = {Constant::Type_Integer};
-    c.valueInteger64 = value;
-
-    ConstantKey k = {Constant::Type_Integer};
-    static_assert(sizeof(k.value) == sizeof(value), "Expecting integer to be 64-bit");
     memcpy(&k.value, &value, sizeof(value));
 
     return addConstant(k, c);
@@ -455,25 +429,8 @@ int32_t BytecodeBuilder::addConstantClosure(uint32_t fid)
     return addConstant(k, c);
 }
 
-uint32_t BytecodeBuilder::addFbSlot_DEPRECATED(LuauFeedbackType t)
-{
-    LUAU_ASSERT(!FFlag::LuauCompileRefactorFeedback);
-    LUAU_ASSERT(t == LuauFeedbackType::LFT_CALLTARGET);
-    fbSlots_DEPRECATED.push_back(uint32_t(getInstructionCount()));
-    return uint32_t(fbSlots_DEPRECATED.size() - 1);
-}
-
-uint32_t BytecodeBuilder::addFbSlot_DEPRECATED(LuauFeedbackType t, uint32_t pc)
-{
-    LUAU_ASSERT(!FFlag::LuauCompileRefactorFeedback);
-    LUAU_ASSERT(t == LuauFeedbackType::LFT_CALLTARGET);
-    fbSlots_DEPRECATED.push_back(pc);
-    return uint32_t(fbSlots_DEPRECATED.size() - 1);
-}
-
 uint32_t BytecodeBuilder::addCallTargetSlot(uint32_t pc)
 {
-    LUAU_ASSERT(FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses);
     fbSlots.push_back({});
     fbSlots.back().kind = LFT_CALLTARGET;
     fbSlots.back().callTarget.pc = pc;
@@ -482,7 +439,6 @@ uint32_t BytecodeBuilder::addCallTargetSlot(uint32_t pc)
 
 uint32_t BytecodeBuilder::addConstructSlot(uint32_t shapecid)
 {
-    LUAU_ASSERT(FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses);
     fbSlots.push_back({});
     fbSlots.back().kind = LFT_CONSTRUCT;
     fbSlots.back().construct.shape = shapecid;
@@ -913,20 +869,6 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             writeDouble(ss, c.valueNumber);
             break;
 
-        case Constant::Type_Integer:
-            writeByte(ss, LBC_CONSTANT_INTEGER);
-            if (c.valueInteger64 < 0)
-            {
-                writeByte(ss, 1);
-                writeVarInt(ss, ~(uint64_t)c.valueInteger64 + 1);
-            }
-            else
-            {
-                writeByte(ss, 0);
-                writeVarInt(ss, c.valueInteger64);
-            }
-            break;
-
         case Constant::Type_Vectorf:
             writeByte(ss, LBC_CONSTANT_VECTOR);
             writeFloat(ss, c.valueVectorf[0]);
@@ -1053,29 +995,16 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
     if (FFlag::LuauEmitCallFeedback || FFlag::DebugLuauUserDefinedClasses)
     {
         // Feedback Slots
-        if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
+        writeVarInt(ss, fbSlots.size());
+
+        for (FeedbackSlot& slot : fbSlots)
         {
-            writeVarInt(ss, fbSlots.size());
+            writeByte(ss, slot.kind);
 
-            for (FeedbackSlot& slot : fbSlots)
-            {
-                writeByte(ss, slot.kind);
-
-                if (slot.kind == LFT_CALLTARGET)
-                    writeVarInt(ss, slot.callTarget.pc);
-                else if (slot.kind == LFT_CONSTRUCT)
-                    writeVarInt(ss, slot.construct.shape);
-            }
-        }
-        else
-        {
-            writeVarInt(ss, fbSlots_DEPRECATED.size());
-
-            for (uint32_t pc : fbSlots_DEPRECATED)
-            {
-                writeByte(ss, LFT_CALLTARGET);
-                writeVarInt(ss, pc);
-            }
+            if (slot.kind == LFT_CALLTARGET)
+                writeVarInt(ss, slot.callTarget.pc);
+            else if (slot.kind == LFT_CONSTRUCT)
+                writeVarInt(ss, slot.construct.shape);
         }
     }
     else
@@ -1468,21 +1397,10 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
         typedLocal.startpc = remap[typedLocal.startpc];
     }
 
-    if (FFlag::LuauCompileCallFbRemap)
+    for (FeedbackSlot& slot : fbSlots)
     {
-        if (FFlag::LuauCompileRefactorFeedback)
-        {
-            for (FeedbackSlot& slot : fbSlots)
-            {
-                if (slot.kind == LFT_CALLTARGET)
-                    slot.callTarget.pc = remap[slot.callTarget.pc];
-            }
-        }
-        else
-        {
-            for (uint32_t& pc : fbSlots_DEPRECATED)
-                pc = remap[pc];
-        }
+        if (slot.kind == LFT_CALLTARGET)
+            slot.callTarget.pc = remap[slot.callTarget.pc];
     }
 
     return remap;
@@ -1502,9 +1420,6 @@ uint8_t BytecodeBuilder::getVersion()
 {
     if (FFlag::DebugLuauUserDefinedClasses)
         return LBC_VERSION_CLASSES;
-
-    if (FFlag::LuauCompileFastpcall)
-        return 14;
 
     return LBC_VERSION_TARGET;
 }
@@ -1556,9 +1471,7 @@ void BytecodeBuilder::validateInstructions() const
 #define VCONST(v, kind) validateConst(v, Constant::Type_##kind)
 #define VCONSTANY(v) validateConst(v)
 #define VJUMP(v) LUAU_ASSERT(size_t(i + 1 + v) < insns.size() && insnvalid[i + 1 + v])
-#define VSLOT(v, k) \
-    (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses ? LUAU_ASSERT(unsigned(v) < fbSlots.size() && fbSlots[v].kind == (k)) \
-                                                                              : LUAU_ASSERT(unsigned(v) < fbSlots_DEPRECATED.size()))
+#define VSLOT(v, k) LUAU_ASSERT(unsigned(v) < fbSlots.size() && fbSlots[v].kind == (k))
 
     LUAU_ASSERT(currentFunction != ~0u);
 
@@ -2380,9 +2293,6 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
     case Constant::Type_Number:
         formatAppend(result, "%.17g", data.valueNumber);
         break;
-    case Constant::Type_Integer:
-        formatAppend(result, "%lld", (long long)(int64_t)data.valueInteger64);
-        break;
     case Constant::Type_Vectorf:
         // 3-vectors is the most common configuration, so truncate to three components if possible
         if (data.valueVectorf[3] == 0.0f)
@@ -3090,8 +3000,6 @@ static const char* getBaseTypeString(uint8_t type)
         return "boolean";
     case LBC_TYPE_NUMBER:
         return "number";
-    case LBC_TYPE_INTEGER:
-        return "integer";
     case LBC_TYPE_STRING:
         return "string";
     case LBC_TYPE_TABLE:
@@ -3202,29 +3110,18 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
             formatAppend(result, "\n");
         }
 
-        if (FFlag::LuauCompileRefactorFeedback || FFlag::DebugLuauUserDefinedClasses)
+        for (size_t i = 0; i < fbSlots.size(); ++i)
         {
-            for (size_t i = 0; i < fbSlots.size(); ++i)
-            {
-                const FeedbackSlot& data = fbSlots[i];
+            const FeedbackSlot& data = fbSlots[i];
 
-                switch (data.kind)
-                {
-                case LFT_CALLTARGET:
-                    formatAppend(result, "slot %d: call target at pc %u\n", int(i), data.callTarget.pc);
-                    break;
-                case LFT_CONSTRUCT:
-                    formatAppend(result, "slot %d: shape K%u\n", int(i), data.construct.shape);
-                    break;
-                }
-            }
-        }
-        else
-        {
-            for (size_t i = 0; i < fbSlots_DEPRECATED.size(); ++i)
+            switch (data.kind)
             {
-                uint32_t pc = fbSlots_DEPRECATED[i];
-                formatAppend(result, "slot %d: call target at pc %u\n", int(i), pc);
+            case LFT_CALLTARGET:
+                formatAppend(result, "slot %d: call target at pc %u\n", int(i), data.callTarget.pc);
+                break;
+            case LFT_CONSTRUCT:
+                formatAppend(result, "slot %d: shape K%u\n", int(i), data.construct.shape);
+                break;
             }
         }
     }

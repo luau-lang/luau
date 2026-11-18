@@ -21,7 +21,6 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
-    case IrCmd::LOAD_INT64:
     case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
         visitor.maybeUse(OP_A(inst)); // Argument can also be a VmConst
@@ -31,7 +30,6 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
@@ -164,15 +162,26 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
         break;
 
     case IrCmd::INVOKE_FASTPCALL:
-    {
         // For a call, 'result start' register is also the register where the target function is
         // For fast protected calls, function is setup by the instruction itself
         visitor.useRange(vmRegOp(OP_A(inst)) + 1, function.intOp(OP_C(inst)));
 
         visitor.defRange(vmRegOp(OP_A(inst)), function.intOp(OP_D(inst)));
         break;
-    }
+    case IrCmd::INVOKE_NAMECALL:
+        // Instruction combines NAMECALL (use(C); def(B, 2)) and CALL (use(B), use(B+1, D), def(B, E)) set into a single use followed by def
+        visitor.use(OP_C(inst));
 
+        if (function.intOp(OP_D(inst)) == -1)
+            visitor.useRange(vmRegOp(OP_B(inst)) + 2, -1);
+        else
+            visitor.useRange(vmRegOp(OP_B(inst)) + 2, function.intOp(OP_D(inst)) - 1);
+
+        if (function.intOp(OP_E(inst)) == -1)
+            visitor.defRange(vmRegOp(OP_B(inst)), -1);
+        else
+            visitor.defRange(vmRegOp(OP_B(inst)), function.intOp(OP_E(inst)) > 2 ? function.intOp(OP_E(inst)) : 2);
+        break;
     case IrCmd::FORGLOOP:
         // First register is not used by instruction, we check that it's still 'nil' with CHECK_TAG
         visitor.use(OP_A(inst), 1);

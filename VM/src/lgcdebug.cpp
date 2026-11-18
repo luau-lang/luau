@@ -138,6 +138,12 @@ static void validateproto(global_State* g, Proto* f)
     for (int i = 0; i < f->sizelocvars; i++)
         if (f->locvars[i].varname)
             validateobjref(g, obj2gco(f), obj2gco(f->locvars[i].varname));
+
+    if (f->lazychunk)
+    {
+        validateobjref(g, obj2gco(f), obj2gco(f->lazychunk->envt));
+        validateobjref(g, obj2gco(f), obj2gco(f->lazychunk->importenv));
+    }
 }
 
 static void validateclass(global_State* g, LuauClass* lco)

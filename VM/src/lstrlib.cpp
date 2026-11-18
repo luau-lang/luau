@@ -1107,9 +1107,8 @@ static int str_format(lua_State* L)
             case 'd':
             case 'i':
             {
-                long long value = lua_isinteger64(L, arg) ? luaL_checkinteger64(L, arg) : (int64_t)luaL_checknumber(L, arg);
                 addInt64Format(form, formatIndicator, formatItemSize);
-                snprintf(buff, sizeof(buff), form, value);
+                snprintf(buff, sizeof(buff), form, static_cast<long long>(luaL_checknumber(L, arg)));
                 break;
             }
             case 'o':
@@ -1117,17 +1116,9 @@ static int str_format(lua_State* L)
             case 'x':
             case 'X':
             {
-                uint64_t v;
-                if (lua_isinteger64(L, arg))
-                {
-                    v = luaL_checkinteger64(L, arg);
-                }
-                else
-                {
-                    double argValue = luaL_checknumber(L, arg);
-                    v = (argValue < 0) ? (unsigned long long)(long long)argValue : (unsigned long long)argValue;
-                }
+                double argValue = luaL_checknumber(L, arg);
                 addInt64Format(form, formatIndicator, formatItemSize);
+                unsigned long long v = (argValue < 0) ? (unsigned long long)(long long)argValue : (unsigned long long)argValue;
                 snprintf(buff, sizeof(buff), form, v);
                 break;
             }

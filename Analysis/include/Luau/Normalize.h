@@ -214,10 +214,6 @@ struct NormalizedType
     // This type is either never or number.
     TypeId numbers;
 
-    // The integer part of the type.
-    // This type is either never or integer.
-    TypeId integers;
-
     // The string part of the type.
     // This may be the `string` type, or a union of singletons.
     NormalizedStringType strings;
@@ -287,7 +283,6 @@ struct NormalizedType
     bool hasErrors() const;
     bool hasNils() const;
     bool hasNumbers() const;
-    bool hasIntegers() const;
     bool hasStrings() const;
     bool hasThreads() const;
     bool hasBuffers() const;
@@ -406,12 +401,6 @@ private:
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     bool hasStringIndexer(const TableType* tt);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet);
-    std::optional<TypeId> DEPRECATED_intersectionOfTables(
-        TypeId here,
-        TypeId there,
-        SeenTablePropPairs& seenTablePropPairs,
-        DenseHashSet<TypeId>& seenSet
-    );
     void intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSetTypes);
     void intersectTables(TypeIds& heres, const TypeIds& theres);
     std::optional<TypeId> intersectionOfFunctions(TypeId here, TypeId there);
