@@ -4,6 +4,7 @@
 -- Parses the ELF header and program headers, loads PT_LOAD segments into memory.
 
 local Int = require("./integer")
+type integer = Int.Int64
 local MemMod = require("./memory")
 
 local ELF = {}

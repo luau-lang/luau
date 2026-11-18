@@ -1593,4 +1593,222 @@ expectpass("subclasses can access private static methods of their base class", f
     BaseOther.create(DerivedOther) -- class access to private static `_secret` is allowed for derived class
 end)
 
+expectpass("nested shadowed private field", function() 
+    local class Outer
+        private _x
+
+        public function __init(self, x)
+            self._x = x
+        end
+
+        public function classer(self)
+            local class Inner
+                private _x
+
+                public function __init(self, x)
+                    self._x = x
+                end
+
+                public function get(self)
+                    return self._x
+                end
+            end
+            return Inner
+        end
+
+        public function classerCaller(self)
+            local innerInst = self:classer()(67)
+            assert(innerInst:get() == 67)
+        end
+
+        public function get(self)
+            return self._x
+        end
+    end
+
+    local outer = Outer(6)
+    local innerClass = outer:classer()
+    local innerInst = innerClass(7)
+    assert(outer:get() == 6)
+    assert(innerInst:get() == 7)
+    outer:classerCaller()
+end)
+
+expectpass("private methods capture upvalues normally", function()
+    local cat = "Mi"
+    local class Concat
+        private _cat
+
+        public function __init(self, cat)
+            self._cat = cat
+        end
+
+        public function concat(self)
+            return cat .. self._cat
+        end
+    end
+    local concat = Concat("pha")
+    assert(concat:concat() == "Mipha")
+end)
+
+expectpass("private field access on instance upvalue", function() 
+    local class Outer
+        private _x
+
+        public function __init(self, x)
+            self._x = x
+        end
+
+        public function classMaker(inst)
+            local class Inner
+                private _y
+
+                public function __init(self, y)
+                    self._y = y
+                end
+
+                public function doStuff(self)
+                    return self._y + inst._x
+                end
+            end
+            local innerInst = Inner(6)
+            return innerInst:doStuff()
+        end
+    end
+
+    local outerInst = Outer(7)
+    assert(outerInst:classMaker() == 13)
+end)
+
+expectpass("class extends same named class", function()
+    local open class Foo
+        public function add(self, x, y)
+            return x + y
+        end
+    end
+
+    local class Foo extends Foo
+        public z
+    end
+
+    local foo = Foo { z = 3 }
+
+    assert(foo.z == 3)
+    assert(foo:add(1, 2) == 3)
+end)
+
+expectpass("class assigned to the local it extends", function()
+    local open class Base
+        public function add(self, x, y)
+            return x + y
+        end
+    end
+
+    local Foo = Base
+
+    class Foo extends Foo
+        public z
+    end
+
+    local foo = Foo { z = 3 }
+
+    assert(Foo ~= Base)
+    assert(foo.z == 3)
+    assert(foo:add(1, 2) == 3)
+end)
+
+-- `g` gets inlined into `Inner.n` (at -O2, or at any level since this module has @native functions); `_x` must still refer to `Outer`'s private field
+expectpass("inlined private field access keeps its defining class", function()
+    local class Outer
+        private _x
+
+        public function __init(self)
+            self._x = 1
+        end
+
+        public function m(self)
+            local function g(o)
+                return o._x
+            end
+
+            local class Inner
+                private _x
+
+                public function __init(self)
+                    self._x = 2
+                end
+
+                public function n(self, o)
+                    return g(o)
+                end
+            end
+
+            return Inner():n(self)
+        end
+    end
+
+    assert(Outer():m() == 1)
+end)
+
+expectpass("sibling class method private field access keeps its defining class", function()
+    local class Outer
+        private _x
+
+        public function __init(self)
+            self._x = 1
+        end
+
+        public function m(self)
+            local class Sibling
+                private _x
+
+                public function __init(self)
+                    self._x = 2
+                end
+
+                public function g(o)
+                    return o._x
+                end
+            end
+
+            local class Inner
+                private _x
+
+                public function __init(self)
+                    self._x = 3
+                end
+
+                public function n(self, o)
+                    return Sibling.g(o)
+                end
+            end
+
+            return Inner():n(Sibling())
+        end
+    end
+
+    assert(Outer():m() == 2)
+end)
+
+expectpass("private access in extends clause", function()
+    local Mipha = 3
+    local open class Kass
+        private _cl
+
+        public function __init(self, cl)
+            self._cl = cl
+        end
+
+        public function f(self)
+            class Mipha extends self._cl
+            end
+        end
+    end
+
+    local k = Kass(Kass)
+    k:f()
+
+    assert(typeof(Mipha) == "class")
+end)
+
 return 'OK'

@@ -843,25 +843,10 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
          * same indexer.
          */
 
-        if (FFlag::LuauDoNotLeakGenericsInIndexer)
-        {
-            subTable->indexer = TableIndexer{
-                instantiateWithBoundTypes(superTable->indexer->indexType),
-                instantiateWithBoundTypes(superTable->indexer->indexResultType),
-            };
-        }
-        else
-        {
-            TypeId indexType = superTable->indexer->indexType;
-            if (TypeId* subst = genericSubstitutions.find(indexType))
-                indexType = *subst;
-
-            TypeId indexResultType = superTable->indexer->indexResultType;
-            if (TypeId* subst = genericSubstitutions.find(indexResultType))
-                indexResultType = *subst;
-
-            subTable->indexer = TableIndexer{indexType, indexResultType};
-        }
+        subTable->indexer = TableIndexer{
+            instantiateWithBoundTypes(superTable->indexer->indexType),
+            instantiateWithBoundTypes(superTable->indexer->indexResultType),
+        };
 
         if (FFlag::LuauInferReadOnlyIndexers)
             subTable->indexer->isReadOnly = superTable->indexer->isReadOnly;

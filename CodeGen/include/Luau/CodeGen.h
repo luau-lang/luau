@@ -47,6 +47,11 @@ struct ProtoCompilationFailure
 
     std::string debugname;
     int line = -1;
+
+    int bytecodeid = 0;
+    uint32_t funid = 0;
+
+    uint32_t irInstCount = 0; // Instruction count after the initial build
 };
 
 struct CompilationResult
@@ -71,6 +76,8 @@ struct CompilationStats
     uint32_t functionsTotal = 0;
     uint32_t functionsCompiled = 0;
     uint32_t functionsBound = 0;
+
+    double compilationTimeSec = 0.0;
 };
 
 bool isSupported();

@@ -15,7 +15,6 @@
 #define luai_numeq(a, b) ((a) == (b))
 #define luai_numlt(a, b) ((a) < (b))
 #define luai_numle(a, b) ((a) <= (b))
-#define luai_inteq(a, b) ((a) == (b))
 
 inline bool luai_veceq(const float* a, const float* b)
 {
@@ -101,8 +100,6 @@ inline double luai_lerpd(double a, double b, double t)
 
 #define luai_num2int(i, d) ((i) = (int)(d))
 
-#define luai_num2long(i, d) ((i) = (int64_t)(d))
-
 #define luai_fabs condvectordouble(fabs, fabsf)
 #define luai_sqrt condvectordouble(sqrt, sqrtf)
 #define luai_floor condvectordouble(floor, floorf)
@@ -125,10 +122,7 @@ inline double luai_lerpd(double a, double b, double t)
 #endif
 
 #define LUAI_MAXNUM2STR 48
-#define LUAI_MAXINT2STR 30
 
 LUAI_FUNC char* luai_num2str(char* buf, double n);
-LUAI_FUNC char* luai_int2str(char* buf, int64_t n);
 
 #define luai_str2num(s, p) strtod((s), (p))
-#define luai_str2long(s, p, base) strtoll((s), (p), base)

@@ -21,7 +21,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
@@ -69,29 +68,13 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|integer|string|thread|buffer|table)=a
-            end
-        end
-    )";
-
-    const std::string expectedWithNewSolver_NOINTEGER =
-        R"(
-        function f(a:{fn:()->(unknown,...unknown)}): ()
-            if type(a) == 'boolean' then
-                local a1:{fn:()->(unknown,...unknown)}&boolean=a
-            elseif a.fn() then
                 local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|string|thread|buffer|table)=a
             end
         end
     )";
 
     if (!FFlag::DebugLuauForceOldSolver)
-    {
-        if (FFlag::LuauIntegerType2)
-            CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
-        else
-            CHECK_EQ(expectedWithNewSolver_NOINTEGER, decorateWithTypes(code));
-    }
+        CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
     else
         CHECK_EQ(expected, decorateWithTypes(code));
 }
@@ -195,8 +178,6 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 // For now, infer it as just a free table.
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_table")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -842,8 +823,6 @@ Expected this to be exactly 'number', but got 'number?')";
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -1355,8 +1334,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_indexer_satisfies_reading_property")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // We would like this code to have _no_ errors, but it requires one of:

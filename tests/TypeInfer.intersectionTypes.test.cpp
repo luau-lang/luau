@@ -33,8 +33,6 @@ TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
 
 TEST_CASE_FIXTURE(Fixture, "table_combines")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         type A={a:number}
         type B={b:string}
@@ -319,8 +317,6 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         type X = { x: number }
         type Y = { y: number }
@@ -338,8 +334,6 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag _{FFlag::LuauCheckFunctionStatementTypes, true};
 
     CheckResult result = check(R"(
@@ -628,8 +622,6 @@ TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         function f(x: { p : number?, q : string? } & { p : number?, q : number?, r : number? })
             local y : { p : number?, q : nil, r : number? } = x -- OK
@@ -707,8 +699,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         function f(x : ((number?) -> ({ p : number } & { q : number })) & ((string?) -> ({ p : number } & { r : number })))
             local y : (nil) -> { p : number, q : number, r : number} = x -- OK
@@ -1196,8 +1186,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local x = setmetatable({ a = 5 }, { p = 5 })
         local y = setmetatable({ b = "hi" }, { p = 5, q = "hi" })
@@ -1219,8 +1207,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local x = setmetatable({ a = 5 }, { p = 5 })
         local y = setmetatable({ b = "hi" }, { q = "hi" })
@@ -1242,8 +1228,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (!FFlag::DebugLuauForceOldSolver)
     {
         CheckResult result = check(R"(
@@ -1286,8 +1270,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 
 TEST_CASE_FIXTURE(Fixture, "CLI-44817")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         type X = {x: number}
         type Y = {y: number}
@@ -1427,8 +1409,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag sffs{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(

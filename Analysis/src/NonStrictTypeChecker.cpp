@@ -563,7 +563,7 @@ struct NonStrictTypeChecker
                     if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, property->name.value))
                     {
                         reportError(
-                            IllegalClassPropertyOverride{property->name.value, Name{declClass->name->name.value}, *ancestor}, property->nameLocation
+                            IllegalClassPropertyOverride{property->name.value, Name{declClass->getName().value}, *ancestor}, property->nameLocation
                         );
                     }
                 }
@@ -582,7 +582,7 @@ struct NonStrictTypeChecker
                                 if (mt->props.count(methodName) != 0)
                                 {
                                     reportError(
-                                        IncompatibleClassMethodOverride{methodName, Name{declClass->name->name.value}, Name{curr->name}},
+                                        IncompatibleClassMethodOverride{methodName, Name{declClass->getName().value}, Name{curr->name}},
                                         method->nameLocation
                                     );
                                     break;
@@ -598,7 +598,7 @@ struct NonStrictTypeChecker
             if (!constructorDefined)
             {
                 if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, "__init"))
-                    reportError(MissingConstructor{Name(declClass->name->name.value), *ancestor}, declClass->location);
+                    reportError(MissingConstructor{Name(declClass->getName().value), *ancestor}, declClass->location);
             }
         }
 
@@ -633,8 +633,6 @@ struct NonStrictTypeChecker
         else if (auto e = expr->as<AstExprConstantBool>())
             return visit(e);
         else if (auto e = expr->as<AstExprConstantNumber>())
-            return visit(e);
-        else if (auto e = expr->as<AstExprConstantInteger>())
             return visit(e);
         else if (auto e = expr->as<AstExprConstantString>())
             return visit(e);
@@ -691,11 +689,6 @@ struct NonStrictTypeChecker
     }
 
     NonStrictContext visit(AstExprConstantNumber* expr)
-    {
-        return {};
-    }
-
-    NonStrictContext visit(AstExprConstantInteger* expr)
     {
         return {};
     }

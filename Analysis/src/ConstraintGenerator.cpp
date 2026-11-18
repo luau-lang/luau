@@ -41,17 +41,16 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalAnalysis)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalAnalysis, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAGVARIABLE(LuauUnconditionallyVisitTypeAliasParams)
 LUAU_FASTFLAGVARIABLE(LuauBanGlobalsInTypeFunctions)
+LUAU_FLAGVERSION(LuauBanGlobalsInTypeFunctions, 2)
 LUAU_FASTFLAGVARIABLE(LuauFillInUninitializedGlobals)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalAnalysis)
 
@@ -952,23 +951,10 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
 void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block)
 {
     DenseHashMap<Name, Location> typeNameLocations;
+    DenseHashMap<Name, AstStatClass*> classDeclsByName;
 
     bool hasTypeFunction = false;
     ScopePtr typeFunctionEnvScope;
-
-    // Stub out class declarations so that they can refer to one another in any order.
-    DenseHashMap<AstStatClass*, TypeId> allClasses;
-    for (AstStat* stat : block->body)
-    {
-        if (auto classDecl = stat->as<AstStatClass>())
-        {
-            TypeId classObjectTy = arena->addType(
-                ExternType{classDecl->name->name.value, {}, std::nullopt, std::nullopt, Tags{}, nullptr, module->name, classDecl->location}
-            );
-
-            allClasses[classDecl] = classObjectTy;
-        }
-    }
 
     // In order to enable mutually-recursive type aliases, we need to
     // populate the type bindings before we actually check any of the
@@ -1102,25 +1088,23 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
         }
         else if (auto classDecl = stat->as<AstStatClass>())
         {
-            Name declName = classDecl->name->name.value;
-            DefId theDef = dfg->getDef(classDecl->name);
+            Name declName = Name{classDecl->getName().value};
 
             if (Location* loc = typeNameLocations.find(declName))
             {
                 reportError(classDecl->location, DuplicateTypeDefinition{declName, *loc});
-                scope->bindings[classDecl->name] = Binding{builtinTypes->errorType, classDecl->location};
-                scope->lvalueTypes[theDef] = builtinTypes->errorType;
+
+                if (AstStatClass** firstClassDecl = classDeclsByName.find(declName))
+                {
+                    duplicateClassDecls.insert(*firstClassDecl);
+                    duplicateClassDecls.insert(classDecl);
+                }
+
                 continue;
             }
+
             typeNameLocations[declName] = classDecl->location;
-
-            TypeId* classObjectTy = allClasses.find(classDecl);
-            LUAU_ASSERT(classObjectTy && *classObjectTy);
-
-            scope->bindings[classDecl->name] = Binding{*classObjectTy, classDecl->name->location};
-            scope->lvalueTypes[theDef] = *classObjectTy;
-
-            prototypeClass(scope, classDecl, *classObjectTy);
+            classDeclsByName[declName] = classDecl;
         }
     }
 
@@ -1254,11 +1238,9 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
     }
 }
 
-void ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* classDecl, TypeId classObjectTy)
+ClassDeclRecord ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* classDecl, TypeId classObjectTy, Name className)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-
-    Name declName = classDecl->name->name.value;
 
     // Objects are ExternTypes, where the metatable field represents the metamethods associated with the instance.
     // Class: ExternType { props, parent: top class type, metatable: constructor }
@@ -1303,8 +1285,7 @@ void ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* cl
 
                     auto prop = Property::readonly(propertyType);
                     prop.location = method.nameLocation;
-                    if (method.function->args.size < 1 || method.function->args.data[0]->name != "self")
-                        staticProps[method.functionName.value] = prop;
+                    staticProps[method.functionName.value] = prop;
 
                     // The parser will report an error for classes that define disallowed metamethods.
                     // The RFC also requires that it is a syntax error for methods to have __ in their name whose name is not in the
@@ -1328,7 +1309,7 @@ void ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* cl
     TypeId instanceMetatable = arena->addType(TableType{instanceMetatableProps, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
 
     TypeId classInstanceTy = arena->addType(
-        ExternType{declName, std::move(props), builtinTypes->objectType, instanceMetatable, Tags{}, nullptr, module->name, classDecl->location}
+        ExternType{className, std::move(props), builtinTypes->objectType, instanceMetatable, Tags{}, nullptr, module->name, classDecl->location}
     );
 
     // If the class does not define an explicit constructor, then we know the type of the default constructor at this point.
@@ -1356,12 +1337,12 @@ void ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstStatClass* cl
     getMutable<ExternType>(classObjectTy)->relation.emplace(Obj{classInstanceTy});
     getMutable<ExternType>(classInstanceTy)->relation.emplace(Klass{classObjectTy});
 
-    if (classDecl->exported)
-        scope->exportedTypeBindings[classDecl->name->name.value] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
+    if (classDecl->declModifier == AstStatClass::DeclModifier::Export)
+        scope->exportedTypeBindings[className] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
     else
-        scope->privateTypeBindings[classDecl->name->name.value] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
+        scope->privateTypeBindings[className] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
 
-    classDeclRecords[classDecl->name] = std::make_unique<ClassDeclRecord>(classObjectTy, classInstanceTy, std::move(memberTypes));
+    return ClassDeclRecord{classObjectTy, classInstanceTy, std::move(memberTypes)};
 }
 
 ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
@@ -1999,19 +1980,41 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     }
     else if (AstExprGlobal* globalName = function->name->as<AstExprGlobal>())
     {
-        if (!existingFunctionTy)
-            ice->ice("prepopulateGlobalScope did not populate a global name", globalName->location);
-
-        if (auto bt = get<BlockedType>(*existingFunctionTy); bt && uninitializedGlobals.contains(globalName->name))
+        if (FFlag::LuauBanGlobalsInTypeFunctions)
         {
-            LUAU_ASSERT(bt->getOwner() == nullptr);
-            uninitializedGlobals.erase(globalName->name);
-            emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedType);
+            // If we're inside a type function, then we might not have a
+            // prexisting function type that we should refer to, which is
+            // fine.
+            if (existingFunctionTy)
+            {
+                if (auto bt = get<BlockedType>(*existingFunctionTy); bt && uninitializedGlobals.contains(globalName->name))
+                {
+                    LUAU_ASSERT(bt->getOwner() == nullptr);
+                    uninitializedGlobals.erase(globalName->name);
+                    emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedType);
+                }
+
+
+                scope->bindings[globalName->name] = Binding{sig.signature, globalName->location};
+                scope->lvalueTypes[def] = sig.signature;
+            }
         }
+        else
+        {
+            if (!existingFunctionTy)
+                ice->ice("prepopulateGlobalScope did not populate a global name", globalName->location);
+
+            if (auto bt = get<BlockedType>(*existingFunctionTy); bt && uninitializedGlobals.contains(globalName->name))
+            {
+                LUAU_ASSERT(bt->getOwner() == nullptr);
+                uninitializedGlobals.erase(globalName->name);
+                emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedType);
+            }
 
 
-        scope->bindings[globalName->name] = Binding{sig.signature, globalName->location};
-        scope->lvalueTypes[def] = sig.signature;
+            scope->bindings[globalName->name] = Binding{sig.signature, globalName->location};
+            scope->lvalueTypes[def] = sig.signature;
+        }
     }
     else if (AstExprIndexName* indexName = function->name->as<AstExprIndexName>())
     {
@@ -2656,15 +2659,60 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 
+    // Resolved before the class binds its own name so that `local class Foo extends Foo` sees the shadowed Foo instead
+    // of inheriting from itself.
+    std::optional<TypeId> superTy;
     if (statClass->super)
-        check(scope, statClass->super);
+    {
+        TypeId superValueTy = check(scope, statClass->super).ty;
+        superTy = resolveSuperclass(scope, statClass, superValueTy);
+    }
 
-    const std::unique_ptr<ClassDeclRecord>* classDeclRecordPtr = classDeclRecords.find(statClass->name);
-    // TODO CLI-199124: This is unpopulated in fragment autocomplete.
-    if (classDeclRecordPtr == nullptr)
-        return ControlFlow::None;
+    Name className{statClass->getName().value};
 
-    NotNull<ClassDeclRecord> classDeclRecord{classDeclRecordPtr->get()};
+    TypeId classObjectTy = arena->addType(ExternType{className, {}, std::nullopt, std::nullopt, Tags{}, nullptr, module->name, statClass->location});
+
+    // Duplicate classes still get a full ExternType so that their bodies are checked, but the name itself is bound to
+    // any so that uses of it don't pick an arbitrary winner.
+    TypeId boundTy = duplicateClassDecls.contains(statClass) ? builtinTypes->anyType : classObjectTy;
+
+    if (statClass->declModifier == AstStatClass::DeclModifier::None)
+    {
+        DefId def = dfg->getDef(statClass->exprName);
+
+        if (AstExprLocal* localName = statClass->exprName->as<AstExprLocal>())
+        {
+            visitLValue(scope, localName, boundTy);
+
+            scope->bindings[localName->local] = Binding{boundTy, localName->location};
+            scope->lvalueTypes[def] = boundTy;
+        }
+        else if (AstExprGlobal* globalName = statClass->exprName->as<AstExprGlobal>())
+        {
+            std::optional<TypeId> existingClassTy = follow(lookup(scope, globalName->location, def));
+
+            if (!existingClassTy)
+                ice->ice("prepopulateGlobalScope did not populate a global name", globalName->location);
+
+            if (const BlockedType* bt = get<BlockedType>(*existingClassTy); bt && uninitializedGlobals.contains(globalName->name))
+            {
+                LUAU_ASSERT(bt->getOwner() == nullptr);
+                uninitializedGlobals.erase(globalName->name);
+                emplaceType<BoundType>(asMutable(*existingClassTy), boundTy);
+            }
+
+            scope->bindings[globalName->name] = Binding{boundTy, globalName->location};
+            scope->lvalueTypes[def] = boundTy;
+        }
+    }
+    else
+    {
+        DefId def = dfg->getDef(statClass->localName);
+        scope->bindings[statClass->localName] = Binding{boundTy, statClass->localName->location};
+        scope->lvalueTypes[def] = boundTy;
+    }
+
+    ClassDeclRecord classDeclRecord = prototypeClass(scope, statClass, classObjectTy, className);
 
     for (const auto& member : statClass->members)
     {
@@ -2672,7 +2720,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
             overloaded{
                 [&](const AstClassProperty& classProp)
                 {
-                    auto entry = classDeclRecord->memberTypes.find(classProp.name);
+                    auto entry = classDeclRecord.memberTypes.find(classProp.name);
                     if (entry == nullptr)
                     {
                         LUAU_ASSERT(!"Unexpected missing class property type");
@@ -2688,7 +2736,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                 },
                 [&](const AstClassMethod& method)
                 {
-                    auto entry = classDeclRecord->memberTypes.find(method.functionName);
+                    auto entry = classDeclRecord.memberTypes.find(method.functionName);
                     if (entry == nullptr)
                     {
                         LUAU_ASSERT(!"Unexpected missing class method type");
@@ -2703,7 +2751,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                         return;
 
                     FunctionSignature sig =
-                        checkFunctionSignature(scope, classDeclRecord, method.function, /* expectedType */ std::nullopt, method.function->location);
+                        checkFunctionSignature(scope, &classDeclRecord, method.function, /* expectedType */ std::nullopt, method.function->location);
 
                     Checkpoint start = checkpoint(this);
                     checkFunctionBody(sig.bodyScope, method.function);
@@ -2729,7 +2777,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
 
                     if (method.functionName == "__init")
                     {
-                        std::optional<TypeId> classTy_ = classDeclRecord->classTy;
+                        std::optional<TypeId> classTy_ = classDeclRecord.classTy;
                         LUAU_ASSERT(classTy_.has_value());
                         TypeId classTy = follow(*classTy_);
 
@@ -2760,7 +2808,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                         FunctionType constructorFunction = *initFn;
                         // __call metamethod implicitly passes the class as the first argument
                         constructorFunction.argTypes = arena->addTypePack({classTy}, constructorArgs);
-                        constructorFunction.retTypes = arena->addTypePack({classDeclRecord->instanceTy});
+                        constructorFunction.retTypes = arena->addTypePack({classDeclRecord.instanceTy});
                         constructorFunction.hasSelf = false;
 
                         // Also clip self and the return pack from the generic list.
@@ -2768,7 +2816,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                         {
                             vec.erase(std::remove(vec.begin(), vec.end(), val), vec.end());
                         };
-                        eraseValue(constructorFunction.generics, classDeclRecord->instanceTy);
+                        eraseValue(constructorFunction.generics, classDeclRecord.instanceTy);
                         eraseValue(constructorFunction.genericPacks, initFn->retTypes);
 
                         TypeId constructorFn = arena->addType(std::move(constructorFunction));
@@ -2788,112 +2836,106 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
         );
     }
 
-    if (statClass->super)
+    if (superTy)
     {
-        const TypeId classInstanceTy = classDeclRecord->instanceTy;
-
-        TypeId superTy = builtinTypes->errorType;
-
-        // The superclass is an "expression" but it's also a type.  This is a
-        // bit kooky.
-        //
-        // * It could be a bare identifier which indicates a class type in the
-        //   current scope.
-
-        auto lookupClass = [&scope, this](AstName name)
-        {
-            auto tf = scope->lookupType(name.value);
-            if (!tf.has_value())
-            {
-                // If there is no type by this name, but there is a value, the
-                // developer has probably extended something they shouldn't
-                // have. We grab it here and retain it anyway for error
-                // reporting.
-                return scope->lookup(name).value_or(builtinTypes->errorType);
-            }
-            else if (!tf->typePackParams.empty() || !tf->typeParams.empty())
-            {
-                LUAU_ASSERT(!"Classes cannot yet inherit from generics");
-                return builtinTypes->errorType;
-            }
-            else
-            {
-                TypeId t = follow(tf->type);
-                if (is<ExternType>(t))
-                    return t;
-
-                return builtinTypes->errorType;
-            }
-        };
-
-        if (auto astLocal = statClass->super->as<AstExprLocal>())
-            superTy = lookupClass(astLocal->local->name);
-        else if (auto astGlobal = statClass->super->as<AstExprGlobal>())
-            superTy = lookupClass(astGlobal->name);
-
-        // * It could be ModuleName.TypeName, which indicates a class in another
-        //   module.
-
-        else if (auto indexName = statClass->super->as<AstExprIndexName>())
-        {
-            if (auto baseLocal = indexName->expr->as<AstExprLocal>())
-            {
-                std::optional<TypeFun> tf;
-
-                if (auto imported = scope->importedTypeBindings.find(baseLocal->local->name.value); imported != scope->importedTypeBindings.end())
-                {
-                    if (auto binding = imported->second.find(indexName->index.value); binding != imported->second.end())
-                        tf = binding->second;
-                }
-
-                if (!tf.has_value())
-                    superTy = builtinTypes->errorType;
-                else
-                {
-                    if (!tf->typeParams.empty() || !tf->typePackParams.empty())
-                    {
-                        LUAU_ASSERT(!"Classes cannot yet inherit from generics");
-                        superTy = builtinTypes->errorType;
-                    }
-                    else
-                    {
-                        TypeId t = follow(tf->type);
-                        if (is<ExternType>(t))
-                            superTy = tf->type;
-                    }
-                }
-            }
-        }
-
-        // * It could be something else entirely, in which case I think we just
-        //   inherit from `error` and hope for the best.
-
-        // Check for an inheritance cycle.  If there is, this class's base class
-        // is then errorType.
-        TypeId cycleTest = superTy;
-        while (cycleTest)
-        {
-            cycleTest = follow(cycleTest);
-
-            if (cycleTest == classInstanceTy)
-            {
-                // Cyclic inheritance detected
-                superTy = arena->addType(ErrorType{superTy});
-                break;
-            }
-
-            auto et = get<ExternType>(follow(cycleTest));
-            if (!et)
-                break;
-
-            cycleTest = et->parent.value_or(nullptr);
-        }
-
-        ExternType* classExtern = getMutable<ExternType>(classInstanceTy);
-        classExtern->parent = superTy;
+        ExternType* classExtern = getMutable<ExternType>(classDeclRecord.instanceTy);
+        classExtern->parent = *superTy;
     }
 
     return ControlFlow::None;
+}
+
+TypeId ConstraintGenerator::resolveSuperclass(const ScopePtr& scope, AstStatClass* statClass, TypeId superValueTy)
+{
+    LUAU_ASSERT(statClass->super);
+
+    TypeId superTy = builtinTypes->errorType;
+
+    // The superclass is an "expression" but it's also a type.  This is a
+    // bit kooky. We do some casing on node type to improve error messages.
+    //
+    // * It could be a bare identifier which indicates a class type in the
+    //   current scope.
+
+    auto lookupClass = [&scope, this](AstName name)
+    {
+        auto tf = scope->lookupType(name.value);
+        if (!tf.has_value())
+        {
+            // If there is no type by this name, but there is a value, the
+            // developer has probably extended something they shouldn't
+            // have. We grab it here and retain it anyway for error
+            // reporting.
+            return scope->lookup(name).value_or(builtinTypes->errorType);
+        }
+        else if (!tf->typePackParams.empty() || !tf->typeParams.empty())
+        {
+            LUAU_ASSERT(!"Classes cannot yet inherit from generics");
+            return builtinTypes->errorType;
+        }
+        else
+        {
+            TypeId t = follow(tf->type);
+            if (is<ExternType>(t))
+                return t;
+
+            return builtinTypes->errorType;
+        }
+    };
+
+    if (auto astLocal = statClass->super->as<AstExprLocal>())
+        superTy = lookupClass(astLocal->local->name);
+    else if (auto astGlobal = statClass->super->as<AstExprGlobal>())
+        superTy = lookupClass(astGlobal->name);
+
+    // * It could be ModuleName.TypeName, which indicates a class in another
+    //   module.
+
+    else if (auto indexName = statClass->super->as<AstExprIndexName>())
+    {
+        if (auto baseLocal = indexName->expr->as<AstExprLocal>())
+        {
+            std::optional<TypeFun> tf;
+
+            if (auto imported = scope->importedTypeBindings.find(baseLocal->local->name.value); imported != scope->importedTypeBindings.end())
+            {
+                if (auto binding = imported->second.find(indexName->index.value); binding != imported->second.end())
+                    tf = binding->second;
+            }
+
+            if (!tf.has_value())
+                superTy = builtinTypes->errorType;
+            else
+            {
+                if (!tf->typeParams.empty() || !tf->typePackParams.empty())
+                {
+                    LUAU_ASSERT(!"Classes cannot yet inherit from generics");
+                    superTy = builtinTypes->errorType;
+                }
+                else
+                {
+                    TypeId t = follow(tf->type);
+                    if (is<ExternType>(t))
+                        superTy = tf->type;
+                }
+            }
+        }
+    }
+    else
+    {
+        // We do some validation here to make sure superValueTy is an ExternType for a class type, not an object type
+        superTy = follow(superValueTy);
+
+        if (const ExternType* superClass = get<ExternType>(superTy); superClass && superClass->relation)
+        {
+            if (const Obj* obj = superClass->relation->get_if<Obj>())
+                superTy = obj->ty;
+        }
+    }
+
+    // In the failure case, we just inherit from `error` and hope for the best.
+
+    return superTy;
 }
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatError* error)
@@ -3368,8 +3410,6 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
         result = check(scope, stringExpr, expectedType, forceSingleton);
     else if (expr->is<AstExprConstantNumber>())
         result = Inference{builtinTypes->numberType};
-    else if (expr->is<AstExprConstantInteger>())
-        result = Inference{builtinTypes->integerType};
     else if (auto boolExpr = expr->as<AstExprConstantBool>())
         result = check(scope, boolExpr, expectedType, forceSingleton);
     else if (expr->is<AstExprConstantNil>())
@@ -3722,11 +3762,6 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprUnary* unary)
     }
     case AstExprUnary::Op::Minus:
     {
-        // compileExprUnary folds `-1i` into one negative constant, so a negated integer literal is a value rather than
-        // an operation. A non-literal integer still reaches the runtime, which has no __unm, so it keeps the check.
-        if (FFlag::LuauIntegerType2 && unary->expr->is<AstExprConstantInteger>())
-            return Inference{builtinTypes->integerType, std::move(refinement)};
-
         TypeId resultType = createTypeFunctionInstance(builtinTypes->typeFunctions->unmFunc, {operandType}, {}, scope, unary->location);
         return Inference{resultType, std::move(refinement)};
     }
@@ -4018,8 +4053,6 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
             discriminantTy = builtinTypes->stringType;
         else if (typeguard->type == "number")
             discriminantTy = builtinTypes->numberType;
-        else if (typeguard->type == "integer")
-            discriminantTy = builtinTypes->integerType;
         else if (typeguard->type == "boolean")
             discriminantTy = builtinTypes->booleanType;
         else if (typeguard->type == "thread")
@@ -4903,11 +4936,7 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
 
     polarity = p;
 
-    TableState state = TableState::Sealed;
-    if (FFlag::DebugLuauExactTableTypes && tab->isExact)
-        state = TableState::Exact;
-
-    TypeId tableTy = arena->addType(TableType{props, indexer, scope->level, scope.get(), state});
+    TypeId tableTy = arena->addType(TableType{props, indexer, scope->level, scope.get(), TableState::Sealed});
     TableType* ttv = getMutable<TableType>(tableTy);
 
     ttv->definitionModuleName = module->name;
@@ -5370,6 +5399,23 @@ struct GlobalPrepopulator : AstVisitor
     bool visit(AstStatFunction* function) override
     {
         if (AstExprGlobal* g = function->name->as<AstExprGlobal>())
+        {
+            TypeId bt = arena->addType(BlockedType{});
+            uninitializedGlobals.insert(g->name);
+            globalScope->bindings[g->name] = Binding{bt};
+        }
+
+        return true;
+    }
+
+    bool visit(AstStatClass* cls) override
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        if (cls->declModifier != AstStatClass::DeclModifier::None)
+            return true;
+
+        if (AstExprGlobal* g = cls->exprName->as<AstExprGlobal>())
         {
             TypeId bt = arena->addType(BlockedType{});
             uninitializedGlobals.insert(g->name);

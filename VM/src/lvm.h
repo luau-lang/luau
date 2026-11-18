@@ -38,3 +38,8 @@ LUAI_FUNC void luau_pushhandlerci(lua_State* L, StkId funcslot, int errfunc, int
 LUAI_FUNC void luau_poscall(lua_State* L, StkId first);
 LUAI_FUNC void luau_pospcallsuccess(lua_State* L);
 LUAI_FUNC void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
+LUAI_FUNC void luau_setupcci(lua_State* L, int nresults, StkId fun);
+
+// Lazy loading (luau_loadlazy): builds the stub p in place, with the environments of the load
+LUAI_FUNC void luaV_buildlazyproto(lua_State* L, Proto* p);
+LUAI_FUNC void luaV_releaselazychunk(lua_State* L, struct LuauLazyChunk* chunk);

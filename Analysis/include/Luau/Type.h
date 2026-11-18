@@ -167,7 +167,6 @@ struct PrimitiveType
         NilType, // ObjC #defines Nil :(
         Boolean,
         Number,
-        Integer,
         String,
         Thread,
         Function,
@@ -420,11 +419,6 @@ enum class TableState
     // properties are required, but we don't care about the full shape.  Only
     // used in the old solver.
     Generic,
-
-    // An exact table type is similar to a sealed table, but it does not
-    // participate in width subtyping.  It describes the exact exhaustive shape
-    // of the whole table.
-    Exact,
 };
 
 struct TableIndexer
@@ -985,7 +979,6 @@ bool isPrim(TypeId ty, PrimitiveType::Type primType);
 bool isNil(TypeId ty);
 bool isBoolean(TypeId ty);
 bool isNumber(TypeId ty);
-bool isInteger(TypeId ty);
 bool isString(TypeId ty);
 bool isThread(TypeId ty);
 bool isBuffer(TypeId ty);
@@ -1044,7 +1037,6 @@ public:
     std::unique_ptr<BuiltinTypeFunctions> typeFunctions;
     const TypeId nilType;
     const TypeId numberType;
-    const TypeId integerType;
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;
