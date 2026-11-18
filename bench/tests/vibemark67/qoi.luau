@@ -333,8 +333,6 @@ assert(decodedChannels == 4 and decodedColorspace == 0)
 assertEqualPixels(source, decoded)
 assertAllOpcodes(encoded, encodedSize)
 
-local sink = 0
-
 local function preallocatedRoundTrips()
     local checksum = 0
 
@@ -344,7 +342,7 @@ local function preallocatedRoundTrips()
         checksum += size + width + height + buffer.readu32(decoded, PIXEL_BYTES - 4)
     end
 
-    sink = checksum
+    assert(checksum ~= 0)
 end
 
 local function allocatingRoundTrips()
@@ -360,10 +358,8 @@ local function allocatingRoundTrips()
         checksum += size + width + height + buffer.readu32(iterationDecoded, PIXEL_BYTES - 4)
     end
 
-    sink = checksum
+    assert(checksum ~= 0)
 end
 
 bench.runCode(preallocatedRoundTrips, "qoi-preallocated")
 bench.runCode(allocatingRoundTrips, "qoi-allocate")
-
-assert(sink ~= 0)

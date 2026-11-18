@@ -167,7 +167,6 @@ struct PrimitiveType
         NilType, // ObjC #defines Nil :(
         Boolean,
         Number,
-        Integer,
         String,
         Thread,
         Function,
@@ -403,17 +402,22 @@ struct FunctionType
 
 enum class TableState
 {
-    // Sealed tables have an exact, known shape
+    // A sealed table type describes an inexact subset of a table.  It
+    // participates in width subtyping.
     Sealed,
 
-    // An unsealed table can have extra properties added to it
+    // An unsealed table type represents a table whose construction has been
+    // directly witnessed by the analysis engine.  Adding extra properties to an
+    // unsealed table is permitted.
     Unsealed,
 
-    // Tables which are not yet fully understood.  We are still in the process of learning its shape.
+    // Tables which are not yet fully understood.  We are still in the process
+    // of learning its shape. Only used in the old solver.
     Free,
 
-    // A table which is a generic parameter to a function.  We know that certain properties are required,
-    // but we don't care about the full shape.
+    // A table which is a generic parameter to a function.  We know that certain
+    // properties are required, but we don't care about the full shape.  Only
+    // used in the old solver.
     Generic,
 };
 
@@ -580,6 +584,7 @@ struct ExternType
     std::shared_ptr<ClassUserData> userData;
     ModuleName definitionModuleName;
     std::optional<Location> definitionLocation;
+    bool isOpen = false;
     std::optional<TableIndexer> indexer;
     /* This field represents a bidirectional relationship between classes and object types
        Given a Class, this relation should be a Obj in the variant, representing an instantiation of the class
@@ -597,7 +602,8 @@ struct ExternType
         Tags tags,
         std::shared_ptr<ClassUserData> userData,
         ModuleName definitionModuleName,
-        std::optional<Location> definitionLocation
+        std::optional<Location> definitionLocation,
+        bool isOpen = false
     )
         : name(std::move(name))
         , props(std::move(props))
@@ -607,6 +613,7 @@ struct ExternType
         , userData(std::move(userData))
         , definitionModuleName(std::move(definitionModuleName))
         , definitionLocation(definitionLocation)
+        , isOpen(isOpen)
     {
     }
 
@@ -972,7 +979,6 @@ bool isPrim(TypeId ty, PrimitiveType::Type primType);
 bool isNil(TypeId ty);
 bool isBoolean(TypeId ty);
 bool isNumber(TypeId ty);
-bool isInteger(TypeId ty);
 bool isString(TypeId ty);
 bool isThread(TypeId ty);
 bool isBuffer(TypeId ty);
@@ -1031,7 +1037,6 @@ public:
     std::unique_ptr<BuiltinTypeFunctions> typeFunctions;
     const TypeId nilType;
     const TypeId numberType;
-    const TypeId integerType;
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;
@@ -1076,6 +1081,8 @@ const Property* lookupExternTypeProp(const ExternType* cls, const Name& name);
 
 // Whether `cls` is a subclass of `parent`
 bool isSubclass(const ExternType* cls, const ExternType* parent);
+
+const ExternType* getClassInstanceType(TypeId classTy);
 
 Type* asMutable(TypeId ty);
 

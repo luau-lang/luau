@@ -256,20 +256,6 @@ std::optional<Ty> follow(std::optional<Ty> ty)
  */
 bool isLiteral(const AstExpr* expr);
 
-// Clip with LuauRelaxConstraintOrderingForFunctionCheck
-/**
- * Given a function call and a mapping from expression to type, determine
- * whether the type of any argument in said call in depends on a blocked types.
- * This is used as a precondition for bidirectional inference: be warned that
- * the behavior of this algorithm is tightly coupled to that of bidirectional
- * inference.
- * @param expr Expression to search
- * @param astTypes Mapping from AST node to TypeID
- * @returns A vector of blocked types
- */
-
-std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
-
 /**
  * Given a scope and a free type, find the closest parent that has a present
  * `interiorFreeTypes` and append the given type to said list. This list will
@@ -409,7 +395,6 @@ bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
  */
 bool isBlocked(TypeId ty);
 
-
 /**
  * **YOU SHOULD PROBABLY NOT USE THIS FUNCTION.**
  *
@@ -420,5 +405,7 @@ bool isBlocked(TypeId ty);
  *         union of functions.
  */
 std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty);
+
+std::optional<Name> propInInheritanceChain(const ExternType* cls, const std::string& prop);
 
 } // namespace Luau

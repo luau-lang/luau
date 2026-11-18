@@ -27,6 +27,7 @@
 LUAI_FUNC unsigned int luaS_hash(const char* str, size_t len);
 
 LUAI_FUNC void luaS_resize(lua_State* L, int newsize);
+LUAI_FUNC void luaS_sethashsalt(lua_State* L, uint32_t saltmult, uint32_t saltadd);
 
 LUAI_FUNC TString* luaS_newlstr(lua_State* L, const char* str, size_t l);
 LUAI_FUNC void luaS_free(lua_State* L, TString* ts, struct lua_Page* page);

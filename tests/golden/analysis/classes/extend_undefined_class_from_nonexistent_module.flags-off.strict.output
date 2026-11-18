@@ -1,0 +1,1 @@
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau(3,19): TypeError: Unknown global 'None'; consider assigning to it first

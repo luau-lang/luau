@@ -11,7 +11,7 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableMoveTimeoutFix, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableFindImprovement, false)
 
 static int foreachi(lua_State* L)
 {
@@ -150,7 +150,7 @@ static void moveelements(lua_State* L, int srct, int dstt, int f, int e, int t, 
 
         luaC_barrierfast(L, dst);
     }
-    else if (DFFlag::LuauTableMoveTimeoutFix && sparsemove)
+    else if (sparsemove)
     {
         int srcta = lua_absindex(L, srct);
         int dstta = lua_absindex(L, dstt);
@@ -289,7 +289,7 @@ static int tmove(lua_State* L)
         if (dst->readonly) // also checked in moveelements, but this blocks resizes of r/o tables
             luaG_readonlyerror(L);
 
-        bool sparsemove = DFFlag::LuauTableMoveTimeoutFix && shouldsparsemove(hvalue(L->base), dst, n);
+        bool sparsemove = shouldsparsemove(hvalue(L->base), dst, n);
 
         if (t > 0 && (t - 1) <= dst->sizearray && (t - 1 + n) > dst->sizearray)
         { // grow the destination table array
@@ -597,13 +597,50 @@ static int tcreate(lua_State* L)
 
 static int tfind(lua_State* L)
 {
-    luaL_checktype(L, 1, LUA_TTABLE);
-    luaL_checkany(L, 2);
-    int init = luaL_optinteger(L, 3, 1);
+    int init = 1;
+
+    if (DFFlag::LuauTableFindImprovement)
+    {
+        int nargs = int(L->top - L->base);
+
+        if (nargs < 1 || !ttistable(L->base))
+            luaL_checktype(L, 1, LUA_TTABLE);
+        if (nargs < 2)
+            luaL_checkany(L, 2);
+        if (nargs >= 3 && !ttisnil(L->base + 2))
+            init = luaL_checkinteger(L, 3);
+    }
+    else
+    {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        luaL_checkany(L, 2);
+        init = luaL_optinteger(L, 3, 1);
+    }
+
     if (init < 1)
         luaL_argerror(L, 3, "index out of range");
 
     LuaTable* t = hvalue(L->base);
+
+    if (DFFlag::LuauTableFindImprovement)
+    {
+        if (init > t->sizearray && t->node == &luaH_dummynode)
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+
+        // Fast array search can only be performed when metamethod is absent/not used, as it can mutate table and relocate stack
+        if (!iscollectable(L->base + 1) || ttisnil(luaT_gettmbyobj(L, L->base + 1, TM_EQ)))
+        {
+            if (int index = luaH_rawfind(t, init, L->base + 1))
+                lua_pushinteger(L, index);
+            else
+                lua_pushnil(L);
+
+            return 1;
+        }
+    }
 
     for (int i = init;; ++i)
     {

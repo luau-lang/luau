@@ -165,19 +165,11 @@ struct FunctionGraphReductionResult
     DenseHashSet<TypeId> irreducibleTypes;
 };
 
-/**
- * Attempt to reduce all instances of any type or type pack functions in the type
- * graph provided.
- *
- * @param entrypoint the entry point to the type graph.
- * @param location the location the reduction is occurring at; used to populate
- * type errors.
- * @param arena an arena to allocate types into.
- * @param builtins the built-in types.
- * @param normalizer the normalizer to use when normalizing types
- * @param ice the internal error reporter to use for ICEs
- */
-FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force = false);
+struct TypeFunctionAbsenceCache
+{
+    DenseHashSet<TypeId> types;
+    DenseHashSet<TypePackId> typePacks;
+};
 
 /**
  * Attempt to reduce all instances of any type or type pack functions in the type
@@ -191,7 +183,33 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
  * @param normalizer the normalizer to use when normalizing types
  * @param ice the internal error reporter to use for ICEs
  */
-FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force = false);
+FunctionGraphReductionResult reduceTypeFunctions(
+    TypeId entrypoint,
+    Location location,
+    NotNull<TypeFunctionContext> ctx,
+    bool force = false,
+    TypeFunctionAbsenceCache* cache = nullptr
+);
+
+/**
+ * Attempt to reduce all instances of any type or type pack functions in the type
+ * graph provided.
+ *
+ * @param entrypoint the entry point to the type graph.
+ * @param location the location the reduction is occurring at; used to populate
+ * type errors.
+ * @param arena an arena to allocate types into.
+ * @param builtins the built-in types.
+ * @param normalizer the normalizer to use when normalizing types
+ * @param ice the internal error reporter to use for ICEs
+ */
+FunctionGraphReductionResult reduceTypeFunctions(
+    TypePackId entrypoint,
+    Location location,
+    NotNull<TypeFunctionContext> ctx,
+    bool force = false,
+    TypeFunctionAbsenceCache* cache = nullptr
+);
 
 /* Returns true if the type provided should block a type function from reducing.
  *

@@ -28,10 +28,8 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
-LUAU_DYNAMIC_FASTFLAG(LuauSelfIsSelfAndAlwaysSelf)
-LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauBytecodeCostModel)
+LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 
 TEST_SUITE_BEGIN("RequireByStringTests");
 
@@ -454,7 +452,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSubmoduleUsingSelfWithOverrideAttempt")
 {
-    ScopedFastFlag sffs[] = {{DFFlag::LuauSelfIsSelfAndAlwaysSelf, true}};
     {
         std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/nested_override";
         runProtectedRequire(path);
@@ -794,6 +791,38 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnNonStringK
     assertOutputContainsAll({"false", "Cannot access the exported field 'unknown'"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicTypeOnlyExportNonTableReturn")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCyclicRequireShortCircuit, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportedTypesParticipateInScc, true},
+    };
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_typeonly_a";
+    runProtectedRequire(path);
+    assertOutputContainsAll({
+        "false",
+        "cyclic_typeonly_a.luau:2: error while running module",
+        "cyclic_typeonly_b.luau:1: error while running module",
+    });
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicTypeOnlyExportNonTableReturn2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCyclicRequireShortCircuit, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportedTypesParticipateInScc, true},
+    };
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_typeonly_c";
+    runProtectedRequire(path);
+    assertOutputContainsAll({
+        "false",
+        "cyclic_typeonly_c.luau:2: error while running module",
+        "cyclic_typeonly_d.luau:1: error while running module",
+        });
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("ExportValueTests");
@@ -1085,9 +1114,7 @@ TEST_CASE("RequireExportClass")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     // we create a new fixture so the new lua_State has the class library
@@ -1105,9 +1132,7 @@ TEST_CASE("RequireExportClassChildWithoutParent")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     ReplWithPathFixture fixture;
@@ -1124,9 +1149,7 @@ TEST_CASE("RequireExportClassBothExported")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     ReplWithPathFixture fixture;
@@ -1143,9 +1166,7 @@ TEST_CASE("RequireExportClassMultiLevel")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
         {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     ReplWithPathFixture fixture;

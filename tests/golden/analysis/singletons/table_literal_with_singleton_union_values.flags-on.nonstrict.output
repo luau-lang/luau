@@ -1,0 +1,3 @@
+./analysis/singletons/table_literal_with_singleton_union_values.luau(1,7): LocalUnused: Variable 't1' is never used; prefix with '_' to silence
+./analysis/singletons/table_literal_with_singleton_union_values.luau(2,7): LocalUnused: Variable 't2' is never used; prefix with '_' to silence
+./analysis/singletons/table_literal_with_singleton_union_values.luau(3,7): LocalUnused: Variable 't3' is never used; prefix with '_' to silence

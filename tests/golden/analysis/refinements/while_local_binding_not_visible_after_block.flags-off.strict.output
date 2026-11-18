@@ -1,0 +1,3 @@
+./analysis/refinements/while_local_binding_not_visible_after_block.luau(2,7): SyntaxError: Expected identifier when parsing expression, got 'local'
+./analysis/refinements/while_local_binding_not_visible_after_block.luau(9,1): SyntaxError: Expected 'end' (to close 'local' at line 2), got <eof>
+./analysis/refinements/while_local_binding_not_visible_after_block.luau(5,21): TypeError: Expected this to be 'true', but got 'boolean'

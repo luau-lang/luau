@@ -7,7 +7,6 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/RecursionCounter.h"
-#include "Luau/Set.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeIds.h"
@@ -18,13 +17,12 @@
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
-LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
-LUAU_FASTFLAGVARIABLE(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 namespace Luau
 {
 
-using SimplifierSeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
+using SimplifierSeenSet = DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash>;
 
 struct TypeSimplifier
 {
@@ -187,14 +185,9 @@ Relation relateTableToExternType(const TableType* table, const ExternType* cls, 
     {
         if (auto propInExternType = lookupExternTypeProp(cls, name))
         {
-            if (FFlag::LuauCheckReadTyWhenRelatingExtern)
-            {
-                // If either of these properties are disjoint read-write or write-only, bail.
-                if (!(prop.isReadOnly() || prop.isShared()) || !(propInExternType->isReadOnly() || propInExternType->isShared()))
-                    return Relation::Intersects;
-            }
-            else
-                LUAU_ASSERT(prop.readTy && propInExternType->readTy);
+            // If either of these properties are disjoint read-write or write-only, bail.
+            if (!(prop.isReadOnly() || prop.isShared()) || !(propInExternType->isReadOnly() || propInExternType->isShared()))
+                return Relation::Intersects;
             // For all examples, consider:
             //
             //  declare extern type Foobar with
@@ -405,16 +398,8 @@ Relation relateTables(const TableType* leftTable, const TableType* rightTable, S
     if (relate(leftTable->indexer->indexType, rightTable->indexer->indexType, seen) != Relation::Coincident)
         return Relation::Intersects;
 
-    if (FFlag::LuauRelateIndexersTypo)
-    {
-        if (relate(leftTable->indexer->indexResultType, rightTable->indexer->indexResultType, seen) != Relation::Coincident)
-            return Relation::Intersects;
-    }
-    else
-    {
-        if (relate(leftTable->indexer->indexType, rightTable->indexer->indexType, seen) != Relation::Coincident)
-            return Relation::Intersects;
-    }
+    if (relate(leftTable->indexer->indexResultType, rightTable->indexer->indexResultType, seen) != Relation::Coincident)
+        return Relation::Intersects;
 
     return hasSubset ? Relation::Subset : Relation::Coincident;
 }
@@ -431,7 +416,7 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         return Relation::Coincident;
 
     std::pair<TypeId, TypeId> typePair{left, right};
-    if (!seen.insert(typePair))
+    if (!seen.try_insert(typePair))
     {
         // TODO: is this right at all?
         // The thinking here is that this is a cycle if we get here, and therefore its coincident.
@@ -535,7 +520,6 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     }
     else if (auto ut = get<UnionType>(right))
     {
-        std::vector<Relation> opts;
         for (TypeId part : ut)
         {
             Relation r = relate(left, part, seen);
@@ -1348,7 +1332,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 
     if (const auto [lt, rt] = get2<TableType, TableType>(left, right); lt && rt)
     {
-        if (1 == lt->props.size())
+        if (1 == lt->props.size() && lt->state == TableState::Sealed)
         {
             const auto [propName, leftProp] = *begin(lt->props);
             const bool leftPropIsRefinable = leftProp.isShared() || leftProp.isReadOnly();
@@ -1366,15 +1350,23 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
                 case Relation::Coincident:
                     return right;
                 case Relation::Subset:
-                    if (1 == rt->props.size() && leftProp.isShared())
+                {
+                    // If T <: U, L = { x: T, ... }, R = { read x: U, ... }
+                    //
+                    // Then L & R == L
+                    //
+                    // This also holds if L is exact.
+                    const bool rightIsSimple = 1 == rt->props.size() && !rt->indexer.has_value();
+                    if (rightIsSimple && leftProp.isShared())
                         return left;
                     break;
+                }
                 default:
                     break;
                 }
             }
         }
-        else if (1 == rt->props.size())
+        else if (1 == rt->props.size() && rt->state == TableState::Sealed)
             return basicIntersect(right, left);
 
         // If two tables have disjoint properties and indexers, we can combine them.
@@ -1586,6 +1578,53 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
     }
     else if (get<UnionType>(right))
         return union_(right, left);
+
+    if (FFlag::LuauDecomposeIntersectionOfFreeType)
+    {
+        // There is a small peephole optimization here that allows us to transform
+        // something like `~number | number` into `unknown`.
+        if (auto leftNegation = get<NegationType>(left))
+        {
+            switch (relate(leftNegation->ty, right))
+            {
+            case Relation::Coincident:
+                // e.g. ~number | number => `unknown`
+            case Relation::Subset:
+                // e.g. ~number | (number | string) => unknown
+                return builtinTypes->unknownType;
+            case Relation::Disjoint:
+                // e.g. ~number | string
+                // We *could* transform this into the LHS, but only if the RHS
+                // does not contain an error type.
+            case Relation::Superset:
+                // e.g. ~(number | string) | string
+            case Relation::Intersects:
+                // e.g. ~(number | string) | (string | boolean)
+                break;
+            }
+        }
+
+        if (auto rightNegation = get<NegationType>(right))
+        {
+            switch (relate(left, rightNegation->ty))
+            {
+            case Relation::Coincident:
+                // e.g. number | ~number => `unknown`
+            case Relation::Superset:
+                // e.g. (number | string) | ~number => unknown
+                return builtinTypes->unknownType;
+            case Relation::Disjoint:
+                // e.g. number | ~string => `~string`
+                // We *could* transform this into the RHS, but only if the RHS
+                // does not contain an error type.
+            case Relation::Subset:
+                // e.g. (number | string) | ~string
+            case Relation::Intersects:
+                // e.g. (number | string) | ~(string | boolean)
+                break;
+            }
+        }
+    }
 
     Relation r = relate(left, right);
     if (left == right || r == Relation::Coincident || r == Relation::Superset)
@@ -2045,6 +2084,15 @@ std::optional<TypeId> intersectWithSimpleDiscriminant(
     TypeSimplifier s{builtinTypes, arena};
 
     return s.intersectWithSimpleDiscriminant(target, discriminant);
+}
+
+SimplifyResult simplifyWithUnionOfNegation(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId target, TypeId toBeNegated)
+{
+    TypeSimplifier s{builtinTypes, arena};
+
+    TypeId res = s.union_(target, s.mkNegation(follow(toBeNegated)));
+
+    return SimplifyResult{res, std::move(s.blockedTypes)};
 }
 
 

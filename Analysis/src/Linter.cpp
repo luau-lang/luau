@@ -14,9 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTINTVARIABLE(LuauLinterRecursionLimit, 128)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
-
-LUAU_FASTFLAGVARIABLE(LuauImproveDeprecatedLint)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 namespace Luau
 {
@@ -120,7 +118,6 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
     CASE(AstExprConstantNil) return true;
     CASE(AstExprConstantBool) return le->value == re->value;
     CASE(AstExprConstantNumber) return le->value == re->value;
-    CASE(AstExprConstantInteger) return le->value == re->value;
     CASE(AstExprConstantString) return le->value.size == re->value.size && memcmp(le->value.data, re->value.data, le->value.size) == 0;
     CASE(AstExprLocal) return le->local == re->local;
     CASE(AstExprGlobal) return le->name == re->name;
@@ -2372,97 +2369,15 @@ private:
 
     void check(AstExprIndexName* node, TypeId ty)
     {
-        if (FFlag::LuauImproveDeprecatedLint)
+        if (!checkProperty(node, ty, 0))
         {
-            if (!checkProperty(node, ty, 0))
-            {
-                if (std::optional<TypeId> indexedType = context->getType(node))
-                    checkFunction(node, *indexedType);
-            }
-        }
-        else
-        {
-            if (const ExternType* cty = get<ExternType>(ty))
-            {
-                if (const Property* prop = lookupExternTypeProp(cty, node->index.value))
-                {
-                    if (prop->deprecated)
-                    {
-                        report(node->location, *prop, cty->name.c_str(), node->index.value);
-                    }
-                    else if (std::optional<TypeId> ty = prop->readTy)
-                    {
-                        const FunctionType* fty = get<FunctionType>(follow(ty));
-                        bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
-
-                        if (shouldReport)
-                        {
-                            const char* className = nullptr;
-                            if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
-                                className = global->name.value;
-
-                            const char* functionName = node->index.value;
-                            if (fty->deprecatedInfo != nullptr)
-                            {
-                                report(node->location, className, functionName, *fty->deprecatedInfo);
-                            }
-                            else
-                            {
-                                report(node->location, className, functionName);
-                            }
-                        }
-                    }
-                }
-            }
-            else if (const TableType* tty = get<TableType>(ty))
-            {
-                auto prop = tty->props.find(node->index.value);
-
-                if (prop != tty->props.end())
-                {
-                    if (prop->second.deprecated)
-                    {
-                        // strip synthetic typeof() for builtin tables
-                        if (tty->name && tty->name->compare(0, 7, "typeof(") == 0 && tty->name->back() == ')')
-                            report(node->location, prop->second, tty->name->substr(7, tty->name->length() - 8).c_str(), node->index.value);
-                        else
-                            report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);
-                    }
-                    else
-                    {
-                        if (std::optional<TypeId> ty = prop->second.readTy)
-                        {
-                            const FunctionType* fty = get<FunctionType>(follow(ty));
-                            bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
-
-                            if (shouldReport)
-                            {
-                                const char* className = nullptr;
-                                if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
-                                    className = global->name.value;
-
-                                const char* functionName = node->index.value;
-
-                                if (fty->deprecatedInfo != nullptr)
-                                {
-                                    report(node->location, className, functionName, *fty->deprecatedInfo);
-                                }
-                                else
-                                {
-                                    report(node->location, className, functionName);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            if (std::optional<TypeId> indexedType = context->getType(node))
+                checkFunction(node, *indexedType);
         }
     }
 
     bool checkProperty(AstExprIndexName* node, TypeId ty, int metatableDepth)
     {
-        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
-
         if (metatableDepth >= FInt::LuauLinterRecursionLimit)
             return false;
 
@@ -2510,8 +2425,6 @@ private:
 
     bool checkMetatableProperty(AstExprIndexName* node, TypeId tableTy, TypeId metatableTy, int metatableDepth)
     {
-        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
-
         if (checkProperty(node, tableTy, metatableDepth + 1))
             return true;
 
@@ -2527,8 +2440,6 @@ private:
 
     void checkFunction(AstExprIndexName* node, TypeId ty)
     {
-        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
-
         if (auto fty = getDeprecatedFunctionType(ty, 0))
         {
             const char* className = nullptr;
@@ -2546,8 +2457,6 @@ private:
 
     const FunctionType* getDeprecatedFunctionType(TypeId ty, int depth)
     {
-        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
-
         if (depth >= FInt::LuauLinterRecursionLimit)
             return nullptr;
 
@@ -2961,7 +2870,7 @@ private:
             head->condition->visit(this);
             head->thenbody->visit(this);
 
-            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+            if (!FFlag::LuauExperimentalIfLocalAnalysis || !head->conditionLocal)
                 conditions.push_back(head->condition);
 
             if (head->elsebody && head->elsebody->is<AstStatIf>())
@@ -2997,7 +2906,7 @@ private:
             head->condition->visit(this);
             head->trueExpr->visit(this);
 
-            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+            if (!FFlag::LuauExperimentalIfLocalAnalysis || !head->conditionLocal)
                 conditions.push_back(head->condition);
 
             if (head->falseExpr->is<AstExprIfElse>())
@@ -3296,9 +3205,6 @@ private:
                 node->location,
                 "Hexadecimal number literal exceeded available precision and was truncated to 2^64"
             );
-            break;
-        case ConstantNumberParseResult::IntOverflow:
-            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location, "Integer number literal was clamped because it was out of range");
             break;
         }
 

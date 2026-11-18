@@ -542,11 +542,11 @@ struct RecursiveRestraintViolation
 // Error during subtyping when the inferred bounds of a generic type are incompatible
 struct GenericBoundsMismatch
 {
-    std::string_view genericName;
+    std::string genericName;
     std::vector<TypeId> lowerBounds;
     std::vector<TypeId> upperBounds;
 
-    GenericBoundsMismatch(std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
+    GenericBoundsMismatch(std::string genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
 
     bool operator==(const GenericBoundsMismatch& rhs) const;
 };
@@ -619,19 +619,60 @@ struct UninitializedFieldAccess
     bool operator==(const UninitializedFieldAccess& rhs) const;
 };
 
-struct TypeAnnotationRequired
-{
-    TypeId inferredTy;
-
-    bool operator==(const TypeAnnotationRequired& rhs) const;
-};
-
 struct ConstructorsShouldNotReturnAnything
 {
     bool operator==(const ConstructorsShouldNotReturnAnything&) const
     {
         return true;
     }
+};
+
+struct InvalidClassExtension
+{
+    enum Context
+    {
+        ClassIsNotOpen,
+        NotAClass,
+        BaseIsClassInstance,
+    };
+
+    Context context;
+    TypeId baseClass;
+
+    bool operator==(const InvalidClassExtension& rhs) const;
+};
+
+struct IncompatibleClassMethodOverride
+{
+    Name method;
+    Name className;
+    Name superName;
+
+    bool operator==(const IncompatibleClassMethodOverride& rhs) const;
+};
+
+struct IllegalClassPropertyOverride
+{
+    Name property;
+    Name className;
+    Name superName;
+
+    bool operator==(const IllegalClassPropertyOverride& rhs) const;
+};
+
+struct MissingConstructor
+{
+    Name className;
+    Name superName;
+
+    bool operator==(const MissingConstructor& rhs) const;
+};
+
+struct NotIterable
+{
+    TypeId ty;
+
+    bool operator==(const NotIterable& rhs) const;
 };
 
 using TypeErrorData = Variant<
@@ -700,8 +741,12 @@ using TypeErrorData = Variant<
     TypeInstantiationCountMismatch,
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
-    TypeAnnotationRequired,
-    ConstructorsShouldNotReturnAnything>;
+    ConstructorsShouldNotReturnAnything,
+    InvalidClassExtension,
+    IncompatibleClassMethodOverride,
+    IllegalClassPropertyOverride,
+    MissingConstructor,
+    NotIterable>;
 
 struct TypeErrorSummary
 {

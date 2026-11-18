@@ -13,13 +13,14 @@
 #include "lnumutils.h"
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenSkipDeadPredecessorTags)
-LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
+LUAU_FASTFLAGVARIABLE(LuauCodegenUpdateSafeEnvList)
+LUAU_FASTFLAGVARIABLE(LuauCodegenCmpAnySideEffecting)
 
 namespace Luau
 {
@@ -62,6 +63,9 @@ int getOpLength(LuauOpcode op)
     case LOP_CALLFB:
     case LOP_CMPPROTO:
     case LOP_NEWCLASS:
+    case LOP_CONSTRUCT:
+    case LOP_GETPRIVATEFIELD:
+    case LOP_SETPRIVATEFIELD:
         return 2;
 
     default:
@@ -123,6 +127,7 @@ bool isFastCall(LuauOpcode op)
     case LOP_FASTCALL2K:
     case LOP_FASTCALL3:
     case LOP_FASTPCALL:
+    case LOP_FINCONSTRUCT:
         return true;
 
     default:
@@ -175,13 +180,11 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
     case IrCmd::CHECK_DIV_INT64:
         return IrValueKind::None;
-    case IrCmd::LOAD_INT64:
     case IrCmd::ADD_INT64:
     case IrCmd::SUB_INT64:
     case IrCmd::MUL_INT64:
@@ -310,6 +313,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Float;
     case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
+    case IrCmd::UNTAG_VECTOR:
         return IrValueKind::Tvalue;
     case IrCmd::TRUNCATE_UINT:
         return IrValueKind::Int;
@@ -322,8 +326,10 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Int;
     case IrCmd::CHECK_FASTCALL_RES:
     case IrCmd::INVOKE_FASTPCALL:
+    case IrCmd::INVOKE_NAMECALL:
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
+    case IrCmd::CONSTRUCT:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
     case IrCmd::GET_CACHED_IMPORT:
@@ -349,6 +355,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_CMP_INT64:
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
+    case IrCmd::UPDATE_COUNTERS:
     case IrCmd::BARRIER_OBJ:
     case IrCmd::BARRIER_TABLE_BACK:
     case IrCmd::BARRIER_TABLE_FORWARD:
@@ -414,11 +421,18 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::BUFFER_WRITEF32:
     case IrCmd::BUFFER_WRITEF64:
     case IrCmd::BUFFER_WRITEI64:
+    case IrCmd::BUFFER_WRITEF32X4:
         return IrValueKind::None;
     case IrCmd::BUFFER_READF32:
         return IrValueKind::Float;
     case IrCmd::BUFFER_READF64:
         return IrValueKind::Double;
+    case IrCmd::BUFFER_READVECTOR:
+        return IrValueKind::Tvalue;
+    case IrCmd::BUFFER_WRITEVECTOR:
+        return IrValueKind::None;
+    case IrCmd::BUFFER_READF32X4:
+        return IrValueKind::Tvalue;
     case IrCmd::JUMP_CMP_PROTOID:
         return IrValueKind::None;
     }
@@ -455,7 +469,7 @@ static void removeInstUse(IrFunction& function, uint32_t instIdx)
     CODEGEN_ASSERT(inst.useCount);
     inst.useCount--;
 
-    if (inst.useCount == 0)
+    if (inst.useCount == 0 && (!FFlag::LuauCodegenCmpAnySideEffecting || !hasSideEffects(inst.cmd)))
         kill(function, inst);
 }
 
@@ -508,6 +522,89 @@ bool isCustomUserdataBytecodeType(uint8_t ty)
 bool isExpectedOrUnknownBytecodeType(uint8_t ty, LuauBytecodeType expected)
 {
     return ty == LBC_TYPE_ANY || ty == expected;
+}
+
+static LuauBytecodeType getBytecodeTypeForTag(uint8_t tag)
+{
+    switch (tag)
+    {
+    case LUA_TNIL:
+        return LBC_TYPE_NIL;
+    case LUA_TBOOLEAN:
+        return LBC_TYPE_BOOLEAN;
+    case LUA_TLIGHTUSERDATA:
+        return LBC_TYPE_ANY; // Doesn't have an LBC mapping
+    case LUA_TNUMBER:
+        return LBC_TYPE_NUMBER;
+    case LUA_TVECTOR:
+        return LBC_TYPE_VECTOR;
+    case LUA_TSTRING:
+        return LBC_TYPE_STRING;
+    case LUA_TTABLE:
+        return LBC_TYPE_TABLE;
+    case LUA_TFUNCTION:
+        return LBC_TYPE_FUNCTION;
+    case LUA_TUSERDATA:
+        return LBC_TYPE_USERDATA;
+    case LUA_TTHREAD:
+        return LBC_TYPE_THREAD;
+    case LUA_TBUFFER:
+        return LBC_TYPE_BUFFER;
+    case LUA_TCLASS:
+        return LBC_TYPE_CLASS;
+    case LUA_TOBJECT:
+        return LBC_TYPE_OBJECT;
+    }
+
+    return LBC_TYPE_ANY;
+}
+
+LuauBytecodeType getTagFeedback(const IrFunction& function, int pcpos, int reg)
+{
+    const std::vector<BytecodeTagFeedback>& tags = function.feedback.tags;
+
+    auto it = std::lower_bound(
+        tags.begin(),
+        tags.end(),
+        uint32_t(pcpos),
+        [](const BytecodeTagFeedback& item, uint32_t pcpos)
+        {
+            return item.pcpos < pcpos;
+        }
+    );
+
+    // There could be multiple items at the position
+    for (; it != tags.end() && it->pcpos == uint32_t(pcpos); ++it)
+    {
+        if (it->reg == reg)
+            return getBytecodeTypeForTag(it->tag);
+    }
+
+    return LBC_TYPE_ANY;
+}
+
+std::optional<BytecodeUserdataFeedback> getUserdataFeedback(const IrFunction& function, int pcpos, int reg)
+{
+    const std::vector<BytecodeUserdataFeedback>& userdataTypes = function.feedback.userdataTypes;
+
+    auto it = std::lower_bound(
+        userdataTypes.begin(),
+        userdataTypes.end(),
+        uint32_t(pcpos),
+        [](const BytecodeUserdataFeedback& item, uint32_t pcpos)
+        {
+            return item.pcpos < pcpos;
+        }
+    );
+
+    // There could be multiple items at the position
+    for (; it != userdataTypes.end() && it->pcpos == uint32_t(pcpos); ++it)
+    {
+        if (it->reg == reg)
+            return *it;
+    }
+
+    return std::nullopt;
 }
 
 HostMetamethod tmToHostMetamethod(int tm)
@@ -1085,8 +1182,6 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                     sameValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::Equal);
                 else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
                     sameValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::Equal);
-                else if (function.tagOp(OP_B(inst)) == LUA_TINTEGER)
-                    sameValue = compare(function.int64Op(OP_C(inst)), function.int64Op(OP_D(inst)), IrCondition::Equal);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
@@ -1114,8 +1209,6 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                     differentValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::NotEqual);
                 else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
                     differentValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::NotEqual);
-                else if (function.tagOp(OP_B(inst)) == LUA_TINTEGER)
-                    differentValue = compare(function.int64Op(OP_C(inst)), function.int64Op(OP_D(inst)), IrCondition::NotEqual);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
@@ -1881,7 +1974,7 @@ void propagateTagsFromPredecessors(
         return;
 
     // Entry block has an implicit edge as the function start and it has no tag info at that moment
-    if (FFlag::LuauCodegenPropagateFallbackTags && function.entryBlock == blockIdx)
+    if (function.entryBlock == blockIdx)
         return;
 
     BlockIteratorWrapper preds = predecessors(function.cfg, blockIdx);
@@ -1895,7 +1988,7 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
-        if (FFlag::LuauCodegenSkipDeadPredecessorTags && function.blocks[predIdx].kind == IrBlockKind::Dead)
+        if (function.blocks[predIdx].kind == IrBlockKind::Dead)
             continue;
 
         if (predIdx >= numBlockExitTags)
@@ -1910,7 +2003,7 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
-        if (FFlag::LuauCodegenSkipDeadPredecessorTags && function.blocks[predIdx].kind == IrBlockKind::Dead)
+        if (function.blocks[predIdx].kind == IrBlockKind::Dead)
             continue;
 
         const std::vector<uint8_t>& predTags = function.blockExitTags[predIdx];
@@ -1948,8 +2041,6 @@ std::optional<uint8_t> tryGetLuauTagForBcType(uint8_t bcType, bool ignoreOptiona
         return LUA_TBOOLEAN;
     case LBC_TYPE_NUMBER:
         return LUA_TNUMBER;
-    case LBC_TYPE_INTEGER:
-        return LUA_TINTEGER;
     case LBC_TYPE_STRING:
         return LUA_TSTRING;
     case LBC_TYPE_TABLE:
@@ -1964,6 +2055,10 @@ std::optional<uint8_t> tryGetLuauTagForBcType(uint8_t bcType, bool ignoreOptiona
         return LUA_TVECTOR;
     case LBC_TYPE_BUFFER:
         return LUA_TBUFFER;
+    case LBC_TYPE_CLASS:
+        return LUA_TCLASS;
+    case LBC_TYPE_OBJECT:
+        return LUA_TOBJECT;
     default:
         if (bcType >= LBC_TYPE_TAGGED_USERDATA_BASE && bcType < LBC_TYPE_TAGGED_USERDATA_END)
             return LUA_TUSERDATA;

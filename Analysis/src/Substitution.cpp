@@ -10,6 +10,7 @@
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
+LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 namespace Luau
 {
@@ -130,7 +131,10 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
         {
             ExternType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.definitionLocation, a.indexer};
             if (FFlag::DebugLuauUserDefinedClasses)
+            {
+                clone.isOpen = a.isOpen;
                 clone.relation = a.relation;
+            }
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, NegationType>)
@@ -281,6 +285,11 @@ void Tarjan::visitChildren(TypeId ty, int index)
     else if (const NegationType* ntv = get<NegationType>(ty))
     {
         visitChild(ntv->ty);
+    }
+    else if (const ErrorType* err = get<ErrorType>(ty); FFlag::LuauReduceTypeFunctionToSyntheticError && err)
+    {
+        LUAU_ASSERT(ty->persistent || err->synthetic);
+        visitChild(err->synthetic);
     }
 }
 
@@ -861,10 +870,32 @@ void Substitution::replaceChildren(TypeId ty)
             etv->indexer->indexType = replace(etv->indexer->indexType);
             etv->indexer->indexResultType = replace(etv->indexer->indexResultType);
         }
+
+        if (FFlag::DebugLuauUserDefinedClasses && etv->relation)
+        {
+            Luau::visit(
+                overloaded{
+                    [&](Obj& obj)
+                    {
+                        obj.ty = replace(obj.ty);
+                    },
+                    [&](Klass& klass)
+                    {
+                        klass.ty = replace(klass.ty);
+                    }
+                },
+                *etv->relation
+            );
+        }
     }
     else if (NegationType* ntv = getMutable<NegationType>(ty))
     {
         ntv->ty = replace(ntv->ty);
+    }
+    else if (ErrorType* err = getMutable<ErrorType>(ty); FFlag::LuauReduceTypeFunctionToSyntheticError && err)
+    {
+        LUAU_ASSERT(ty->persistent || err->synthetic);
+        err->synthetic = replace(err->synthetic);
     }
 }
 

@@ -144,7 +144,6 @@ enum class BcVmConstKind : uint8_t
     Import,
     Table,
     Closure,
-    Integer,
     ClassShape
 };
 
@@ -162,7 +161,6 @@ struct BcVmConst
         uint32_t valueImport;
         uint32_t valueTable;
         uint32_t valueClosure;
-        int64_t valueInteger;
         uint32_t valueClassShape;
     };
 
@@ -207,9 +205,6 @@ struct BcVmConst
 
         case BcVmConstKind::Closure:
             return valueClosure == rhs.valueClosure;
-
-        case BcVmConstKind::Integer:
-            return valueInteger == rhs.valueInteger;
 
         case BcVmConstKind::ClassShape:
             return valueClassShape == rhs.valueClassShape;
@@ -393,6 +388,24 @@ inline BcCondition opcodeToCondition(LuauOpcode op)
     }
 }
 
+struct BcFeedbackSlot
+{
+    LuauFeedbackType kind;
+
+    union
+    {
+        struct
+        {
+            uint32_t inst;
+        } callTarget;
+
+        struct
+        {
+            uint32_t shape;
+        } construct;
+    };
+};
+
 struct TypedLocal
 {
     LuauBytecodeType type;
@@ -445,6 +458,7 @@ struct BcFunction
     std::vector<BcProj> projections;
     std::vector<BytecodeBuilder::TableShape> tableShapes;
     std::vector<BytecodeBuilder::ClassShape> classShapes;
+    std::vector<BcFeedbackSlot> feedbackSlots;
 
     BcOp entryBlock;
     BcOp exitBlock;

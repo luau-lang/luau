@@ -49,6 +49,7 @@ target_sources(Luau.Bytecode PRIVATE
     Bytecode/include/Luau/BytecodeDump.h
     Bytecode/include/Luau/BytecodeGraph.h
     Bytecode/include/Luau/BytecodeOps.h
+    Bytecode/include/Luau/BytecodeSlotAllocation.h
     Bytecode/include/Luau/BytecodeValidation.h
     Bytecode/include/Luau/Sccp.h
 
@@ -257,7 +258,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
-    Analysis/include/Luau/Set.h
     Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
@@ -412,7 +412,6 @@ target_sources(Luau.VM PRIVATE
     VM/src/ludata.cpp
     VM/src/lutf8lib.cpp
     VM/src/lveclib.cpp
-    VM/src/lintlib.cpp
     VM/src/lvmexecute.cpp
     VM/src/lclass.cpp
     VM/src/lclasslib.cpp
@@ -506,8 +505,8 @@ if(TARGET Luau.UnitTest)
         tests/BuiltinDefinitions.test.cpp
         tests/BytecodeCallInliner.test.cpp
         tests/BytecodeCompiler.test.cpp
-        tests/ClassFixture.cpp
-        tests/ClassFixture.h
+        tests/ExternTypeFixture.cpp
+        tests/ExternTypeFixture.h
         tests/CodeAllocator.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
@@ -547,7 +546,6 @@ if(TARGET Luau.UnitTest)
         tests/Sccp.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
-        tests/Set.test.cpp
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
@@ -600,6 +598,7 @@ if(TARGET Luau.Conformance)
     # Luau.Conformance Sources
     target_sources(Luau.Conformance PRIVATE
         tests/BufferCage.h
+        tests/BufferCage.cpp
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
         tests/ConformanceIrHooks.h

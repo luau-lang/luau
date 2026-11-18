@@ -20,9 +20,9 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauSubtypingSkipUnreadReasoning)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
 using namespace Luau;
 
@@ -1078,6 +1078,35 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Classes are subtypes of themselves")
     CHECK_IS_SUBTYPE(b, b);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "user-defined class inheritance: grandchild <: grandparent")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    TypeId grandparent = userDefinedCls("Grandparent");
+    TypeId parent = userDefinedCls("Parent", grandparent);
+    TypeId child = userDefinedCls("Child", parent);
+
+    CHECK_IS_SUBTYPE(child, parent);
+    CHECK_IS_SUBTYPE(child, grandparent);
+    CHECK_IS_SUBTYPE(parent, grandparent);
+
+    CHECK_IS_NOT_SUBTYPE(parent, child);
+    CHECK_IS_NOT_SUBTYPE(grandparent, parent);
+    CHECK_IS_NOT_SUBTYPE(grandparent, child);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "user-defined class inheritance: siblings are not subtypes of each other")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    TypeId parent = userDefinedCls("Parent");
+    TypeId childOne = userDefinedCls("ChildOne", parent);
+    TypeId childTwo = userDefinedCls("ChildTwo", parent);
+
+    CHECK_IS_SUBTYPE(childOne, parent);
+    CHECK_IS_SUBTYPE(childTwo, parent);
+    CHECK_IS_NOT_SUBTYPE(childOne, childTwo);
+    CHECK_IS_NOT_SUBTYPE(childTwo, childOne);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: number")
 {
     CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), getBuiltins()->numberType);
@@ -1517,12 +1546,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
         TypePathRenderMetadata subMetadata;
         TypePathRenderMetadata superMetadata;
 
-        std::optional<TypeOrPack> optSubLeaf = (FFlag::LuauNewTypePathErrorMessages)
-                                                   ? traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena}, &subMetadata)
-                                                   : traverse_DEPRECATED(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
-        std::optional<TypeOrPack> optSuperLeaf = (FFlag::LuauNewTypePathErrorMessages)
-                                                     ? traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena}, &superMetadata)
-                                                     : traverse_DEPRECATED(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena}, &subMetadata);
+        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena}, &superMetadata);
 
         if (!optSubLeaf || !optSuperLeaf)
             CHECK(false);
@@ -1862,6 +1887,15 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
     );
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "successful_subtyping_has_no_reasoning")
+{
+    ScopedFastFlag sff{FFlag::LuauSubtypingSkipUnreadReasoning, true};
+
+    SubtypingResult result = isSubtype(getBuiltins()->numberType, negate(getBuiltins()->stringType));
+    CHECK(result.isSubtype);
+    CHECK(result.reasoning.empty());
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 {
     // <A, B>(x: A, y: B) -> (A & ~(false?)) | B
@@ -1887,6 +1921,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 {
+    ScopedFastFlag _{FFlag::LuauOneBitAssumedConstraintTracking, true};
+
     TypeId argTy = arena.freshType(getBuiltins(), moduleScope.get());
     FreeType* freeArg = getMutable<FreeType>(argTy);
     REQUIRE(freeArg);
@@ -1895,7 +1931,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 
     SubtypingResult result = isSubtype(getBuiltins()->stringType, argTy);
     CHECK(result.isSubtype);
-    REQUIRE(1 == result.assumedConstraints.size());
+    CHECK(result.assumingConstraints);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_pack_should_suppress_errors_during_overload_resolution")

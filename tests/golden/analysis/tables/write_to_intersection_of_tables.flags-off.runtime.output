@@ -1,0 +1,3 @@
+./analysis/tables/write_to_intersection_of_tables.luau:8: attempt to index nil with 'Id'
+stacktrace:
+./analysis/tables/write_to_intersection_of_tables.luau:8

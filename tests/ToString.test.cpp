@@ -14,9 +14,7 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -150,6 +148,21 @@ TEST_CASE_FIXTURE(Fixture, "metatable")
     Type metatable{TypeVariant(TableType())};
     Type mtv{TypeVariant(MetatableType{&table, &metatable})};
     CHECK_EQ("setmetatable<{|  |}, {|  |}>", toString(&mtv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "metatables_are_valid")
+{
+    ScopedFastFlag sff{FFlag::LuauBetterMetatableStringification, true};
+
+    Type table{TypeVariant(TableType(TableState::Sealed, TypeLevel{}))};
+    Type metatable{TypeVariant(TableType(TableState::Sealed, TypeLevel{}))};
+    Type mtv{TypeVariant(MetatableType{&table, &metatable})};
+
+    ToStringOptions opts;
+    auto tsr = toStringDetailed(&mtv, opts);
+
+    CHECK("setmetatable<{  }, {  }>" == tsr.name);
+    CHECK(!tsr.invalid);
 }
 
 TEST_CASE_FIXTURE(Fixture, "named_metatable")
@@ -367,8 +380,6 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         function f3(f) return f or f2 end
     )");
 
-    ignoreMissingAnnotations(result);
-
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -403,8 +414,6 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-
-    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -530,7 +539,6 @@ type Foo = typeof(tbl.foo)
 local u: Foo
 )");
 
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -550,7 +558,6 @@ TEST_CASE_FIXTURE(Fixture, "generate_friendly_names_for_inferred_generics")
         end
     )");
 
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -571,8 +578,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
             return a, b, c
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -611,8 +616,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")
     CheckResult result = check(R"(
 function foo(a, b) return a(b) end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(toString(requireType("foo")), "<T, U...>((T) -> (U...), T) -> (U...)");
@@ -662,8 +665,6 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union"
         local g: F = f
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("t1 where t1 = ((() -> number)?) -> t1?", toString(requireType("g")));
@@ -675,8 +676,6 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_inters
         function f() return f end
         local a: ((number) -> ()) & typeof(f)
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -871,17 +870,11 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 
     std::string expected;
     if (!FFlag::DebugLuauForceOldSolver)
-        expected = FFlag::LuauNewTypePathErrorMessages ? "Expected this to be\n\t"
-                                                         "'{ a: number, b: string, c: { d: number } }'\n"
-                                                         "but got\n\t"
-                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
-                                                         "Expected property `c.d` to be exactly `number`, but got `string`"
-                                                       : "Expected this to be\n\t"
-                                                         "'{ a: number, b: string, c: { d: number } }'\n"
-                                                         "but got\n\t"
-                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
-                                                         "accessing `c.d` results in `string` in the latter type and `number` in the former "
-                                                         "type, and `string` is not exactly `number`";
+        expected = "Expected this to be\n\t"
+                   "'{ a: number, b: string, c: { d: number } }'\n"
+                   "but got\n\t"
+                   "'{ a: number, b: string, c: { d: string } }'; \n"
+                   "Expected property `c.d` to be exactly `number`, but got `string`";
     else
         expected = "Expected this to be exactly\n\t"
                    "'{ a: number, b: string, c: { d: number } }'\n"
@@ -1089,70 +1082,51 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_generic")
     CHECK_EQ(recordedTyObject, requireTypeAlias("Object"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "suggest_syntactically_legal_annotation")
+TEST_CASE_FIXTURE(Fixture, "empty_tables")
 {
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    TypeId emptySealed = arena.addType(TableType{TableState::Sealed, TypeLevel{}});
+    TypeId emptyUnsealed = arena.addType(TableType{TableState::Unsealed, TypeLevel{}});
+    TypeId emptyFree = arena.addType(TableType{TableState::Free, TypeLevel{}});
+    TypeId emptyGeneric = arena.addType(TableType{TableState::Generic, TypeLevel{}});
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauExportValueSyntax, true},
-        {FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions, true},
-    };
-
-    CheckResult result = check(R"(
-        export function foo(t)
-            t.x = 10
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto e = findError<TypeAnnotationRequired>(result);
-    REQUIRE(e.has_value());
-    CHECK("Type annotation required here.  Consider (t: { x: number }) -> ()" == toString(*e));
+    CHECK("{  }" == toString(emptySealed));
+    CHECK("{|  |}" == toString(emptyUnsealed));
+    CHECK("{-  -}" == toString(emptyFree));
+    CHECK("{+  +}" == toString(emptyGeneric));
 }
 
-TEST_CASE_FIXTURE(Fixture, "dont_suggest_syntactically_illegal_annotation")
+TEST_CASE_FIXTURE(Fixture, "tables_with_indexers_and_props")
 {
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    TableType::Props xProp{{"x", getBuiltins()->numberType}};
+    TableIndexer stringIndexer{getBuiltins()->stringType, getBuiltins()->numberType};
+    TableIndexer numberIndexer{getBuiltins()->numberType, getBuiltins()->stringType};
+    TableIndexer readOnlyStringIndexer{getBuiltins()->stringType, getBuiltins()->numberType, true};
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauExportValueSyntax, true},
-        {FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions, true},
-    };
+    TypeId sealedStrIdx = arena.addType(TableType{{}, stringIndexer, TypeLevel{}, TableState::Sealed});
 
-    CheckResult result = check(R"(
-        export function foo(t)
-            t.x = is_not_defined
-        end
-    )");
+    TypeId sealedProps = arena.addType(TableType{xProp, std::nullopt, TypeLevel{}, TableState::Sealed});
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    LUAU_REQUIRE_ERROR(result, UnknownSymbol);
-    auto e = findError<TypeAnnotationRequired>(result);
-    REQUIRE(e.has_value());
-    CHECK("Type annotation required here.  Unable to infer the type of this function." == toString(*e));
-}
+    TypeId sealedBoth = arena.addType(TableType{xProp, stringIndexer, TypeLevel{}, TableState::Sealed});
+    TypeId unsealedBoth = arena.addType(TableType{xProp, stringIndexer, TypeLevel{}, TableState::Unsealed});
 
-TEST_CASE_FIXTURE(Fixture, "dont_suggest_type_that_is_too_long")
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    TypeId sealedNumIdxProps = arena.addType(TableType{xProp, numberIndexer, TypeLevel{}, TableState::Sealed});
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauExportValueSyntax, true},
-        {FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions, true},
-    };
+    TypeId sealedNumIdx = arena.addType(TableType{{}, numberIndexer, TypeLevel{}, TableState::Sealed});
 
-    ScopedFastInt sfi{FInt::LuauTypeMaximumStringifierLength, 3};
+    TypeId sealedReadOnlyStrIdx = arena.addType(TableType{{}, readOnlyStringIndexer, TypeLevel{}, TableState::Sealed});
 
-    CheckResult result = check(R"(
-        export function foo(t)
-            t.x.x.x.x.x.x = true
-        end
-    )");
+    CHECK("{ [string]: number }" == toString(sealedStrIdx));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto e = findError<TypeAnnotationRequired>(result);
-    REQUIRE(e.has_value());
-    CHECK("Type annotation required here.  Unable to infer the type of this function." == toString(*e));
+    CHECK("{ x: number }" == toString(sealedProps));
+
+    CHECK("{ [string]: number, x: number }" == toString(sealedBoth));
+    CHECK("{| [string]: number, x: number |}" == toString(unsealedBoth));
+
+    CHECK("{ [number]: string, x: number }" == toString(sealedNumIdxProps));
+
+    CHECK("{string}" == toString(sealedNumIdx));
+
+    CHECK("{ read [string]: number }" == toString(sealedReadOnlyStrIdx));
 }
 
 TEST_SUITE_END();

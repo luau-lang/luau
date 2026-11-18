@@ -8,9 +8,10 @@
 #include "Luau/Type.h"
 #include "Luau/ToString.h"
 
-#include "Luau/Common.h"
-
 #include <algorithm>
+
+LUAU_FASTFLAGVARIABLE(LuauRefactorAutocompleteAncestry)
+LUAU_FASTFLAGVARIABLE(LuauFindFullAncestryLooksIntoTypePacks)
 
 namespace Luau
 {
@@ -18,12 +19,13 @@ namespace Luau
 namespace
 {
 
-struct AutocompleteNodeFinder : public AstVisitor
+// Clip this with LuauRefactorAutocompleteAncestry
+struct AutocompleteNodeFinder_DEPRECATED : public AstVisitor
 {
     const Position pos;
     std::vector<AstNode*> ancestry;
 
-    explicit AutocompleteNodeFinder(Position pos, AstNode* root)
+    explicit AutocompleteNodeFinder_DEPRECATED(Position pos, AstNode* root)
         : pos(pos)
     {
     }
@@ -197,6 +199,14 @@ bool FindFullAncestry::visit(AstType* type)
         return false;
 }
 
+bool FindFullAncestry::visit(AstTypePack* pack)
+{
+    if (FFlag::LuauFindFullAncestryLooksIntoTypePacks && includeTypes)
+        return visit(static_cast<AstNode*>(pack));
+    else
+        return false;
+}
+
 bool FindFullAncestry::visit(AstStatFunction* node)
 {
     visit(static_cast<AstNode*>(node));
@@ -227,6 +237,133 @@ bool FindFullAncestry::visit(AstNode* node)
     return false;
 }
 
+namespace
+{
+
+bool isAutocompleteTarget(AstStatBlock* block, Position pos, NotNull<std::vector<AstNode*>> ancestry)
+{
+    // If ancestry is empty, we are inspecting the root of the AST.  Its extent is considered to be infinite.
+    if (ancestry->empty())
+        return true;
+
+    // AstExprIndexName nodes are nested outside-in, so we want the outermost node in the case of nested nodes.
+    // ex foo.bar.baz is represented in the AST as IndexName{ IndexName {foo, bar}, baz}
+    if (ancestry->back()->is<AstExprIndexName>())
+        return false;
+
+    // Type annotation error might intersect the block statement when the function header is being written,
+    // annotation takes priority
+    if (ancestry->back()->is<AstTypeError>())
+        return false;
+
+    // If the cursor is at the end of an expression or type and simultaneously at the beginning of a block,
+    // the expression or type wins out.
+    // The exception to this is if we are in a block under an AstExprFunction.  In this case, we consider the position to
+    // be within the block.
+    if (block->location.begin == pos)
+    {
+        if (ancestry->back()->asExpr() && !ancestry->back()->is<AstExprFunction>())
+            return false;
+
+        if (ancestry->back()->asType())
+            return false;
+    }
+
+    return block->location.begin <= pos && pos <= block->location.end;
+}
+
+struct FindNodeForAutocomplete : public AstVisitor
+{
+    Position pos;
+    NotNull<std::vector<AstNode*>> ancestry;
+
+    /**
+     * We only want to do one "level" of visiting, so we mark when we've seen
+     * a node, and then switch on that inside `visit`.
+     */
+    bool seenFirst = false;
+    AstNode* nextNode = nullptr;
+
+    explicit FindNodeForAutocomplete(Position pos, NotNull<std::vector<AstNode*>> ancestry)
+        : pos(pos)
+        , ancestry(ancestry)
+    {
+    }
+
+    bool isNextNode(AstNode* node) const
+    {
+        // First the node specific cases ....
+        if (auto block = node->as<AstStatBlock>())
+            return isAutocompleteTarget(block, pos, ancestry);
+
+        // For a missing type, match the whole range including the start position
+        if (auto errorTy = node->as<AstTypeError>())
+            return errorTy->isMissing && errorTy->location.containsClosed(pos);
+
+        // The positions for generic types are not quite the span of the
+        // type itself, so we need to do something special for this and packs.
+        if (auto genericTy = node->as<AstGenericType>())
+        {
+            auto end = genericTy->defaultValue ? genericTy->defaultValue->location.end : genericTy->location.end;
+            return genericTy->location.begin <= pos && pos <= end;
+        }
+
+        if (auto genericTp = node->as<AstGenericTypePack>())
+        {
+            auto end = genericTp->defaultValue ? genericTp->defaultValue->location.end : genericTp->location.end;
+            return genericTp->location.begin <= pos && pos <= end;
+        }
+
+        // ... then the general cases
+
+        if (auto expr = node->asExpr())
+            return expr->location.begin <= pos && pos <= expr->location.end && expr->location.begin != expr->location.end;
+
+        if (auto stat = node->asStat())
+        {
+            // Consider 'local myLocal = 4;|' and 'local myLocal = 4', where '|' is the cursor position. In both cases, the cursor position is equal
+            // to `AstStatLocal.location.end`. However, in the first case (semicolon), we are starting a new statement, whilst in the second case
+            // (no semicolon) we are still part of the AstStatLocal, hence the different comparison check.
+            return stat->location.begin < pos && (stat->hasSemicolon ? pos < stat->location.end : pos <= stat->location.end);
+        }
+
+        if (auto type = node->asType())
+            return type->location.begin < pos && pos <= type->location.end;
+
+        // There are a couple classes of nodes that do not fall under a category.
+        // We, at this moment, do not need to autocomplete off of them, so we can
+        // blindly consider them as long as they contain the position we're
+        // searching for.
+        return node->location.containsClosed(pos);
+    }
+
+    bool visit(AstType* node) override
+    {
+        return visit(static_cast<AstNode*>(node));
+    }
+
+    bool visit(AstTypePack* node) override
+    {
+        return visit(static_cast<AstNode*>(node));
+    }
+
+    bool visit(AstNode* node) override
+    {
+        if (!seenFirst)
+        {
+            seenFirst = true;
+            return true;
+        }
+
+        if (isNextNode(node) && !nextNode)
+            nextNode = node;
+
+        return false;
+    }
+};
+
+} // namespace
+
 std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& source, Position pos)
 {
     return findAncestryAtPositionForAutocomplete(source.root, pos);
@@ -234,9 +371,29 @@ std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& 
 
 std::vector<AstNode*> findAncestryAtPositionForAutocomplete(AstStatBlock* root, Position pos)
 {
-    AutocompleteNodeFinder finder{pos, root};
-    root->visit(&finder);
-    return finder.ancestry;
+    if (FFlag::LuauRefactorAutocompleteAncestry)
+    {
+        std::vector<AstNode*> ancestry;
+
+        AstNode* target = root;
+
+        while (target)
+        {
+            FindNodeForAutocomplete ep{pos, NotNull{&ancestry}};
+            ancestry.push_back(target);
+            target->visit(&ep);
+            target = ep.nextNode;
+        }
+
+        return ancestry;
+    }
+    else
+    {
+
+        AutocompleteNodeFinder_DEPRECATED finder{pos, root};
+        root->visit(&finder);
+        return finder.ancestry;
+    }
 }
 
 std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos, bool includeTypes)
@@ -252,7 +409,7 @@ std::vector<AstNode*> findAstAncestryOfPosition(AstStatBlock* root, Position pos
 
     FindFullAncestry finder(pos, end, includeTypes);
     root->visit(&finder);
-    return finder.nodes;
+    return std::move(finder.nodes);
 }
 
 AstNode* findNodeAtPosition(const SourceModule& source, Position pos)

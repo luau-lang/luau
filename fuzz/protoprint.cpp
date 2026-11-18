@@ -364,7 +364,7 @@ struct ProtoToLuau
 
     void ident(const luau::GenericTypeName& name)
     {
-        source += char('A' + (name.index() % 26));
+        source += char('A' + (size_t(name.index()) % 26));
     }
 
     void ident(const luau::BuiltinTypeName& name)
@@ -779,7 +779,7 @@ struct ProtoToLuau
 
         print(*cls.name);
 
-        source += ".new { ";
+        source += " { ";
 
         const int generatedArgsSize = 1 + expr.otherargs_size();
         for (int i = 0; i < int(cls.props.size()); ++i)
@@ -928,6 +928,12 @@ struct ProtoToLuau
     void print(const luau::StatWhile& stat)
     {
         source += "while ";
+        if (stat.has_condition_local())
+        {
+            source += stat.condition_is_const() ? "const " : "local ";
+            print(stat.condition_local());
+            source += " = ";
+        }
         print(stat.cond());
         source += " do\n";
 
@@ -1173,7 +1179,7 @@ struct ProtoToLuau
     {
         source += "local ";
         print(stat.var());
-        source += " = require(module" + std::to_string(stat.modulenum() % 2) + ")\n";
+        source += " = require(module" + std::to_string(size_t(stat.modulenum()) % 2) + ")\n";
     }
 
     void print(const luau::StatTypeFunction& stat)
@@ -1258,7 +1264,7 @@ struct ProtoToLuau
             source += '\n';
         }
 
-        classes.emplace_back(Class{ &stat.name(), std::move(propNames) });
+        classes.emplace_back(Class{&stat.name(), std::move(propNames)});
 
         for (size_t i = 0; i < stat.methods_size(); ++i)
         {

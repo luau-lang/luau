@@ -1,0 +1,3 @@
+./analysis/refinements/while_local_basic_typecheck.luau(2,11): SyntaxError: Expected identifier when parsing expression, got 'local'
+./analysis/refinements/while_local_basic_typecheck.luau(9,1): SyntaxError: Expected 'end' (to close 'function' at line 1), got <eof>; did you forget to close 'do' at line 2?
+./analysis/refinements/while_local_basic_typecheck.luau(4,15): TypeError: Operator '+' could not be applied to operands of types number? and number; there is no corresponding overload for __add

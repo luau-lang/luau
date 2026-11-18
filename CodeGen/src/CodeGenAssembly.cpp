@@ -11,6 +11,8 @@
 
 #include "lapi.h"
 
+LUAU_FASTFLAG(LuauCodegenRuntimeFeedback)
+
 namespace Luau
 {
 namespace CodeGen
@@ -192,6 +194,13 @@ static std::string getAssemblyImpl(
     for (Proto* p : protos)
     {
         IrBuilder ir(options.compilationOptions.hooks, envInfo);
+
+        if (FFlag::LuauCodegenRuntimeFeedback)
+        {
+            ir.function.recordCounters = options.compilationOptions.recordCounters;
+            ir.function.recordFeedback = options.compilationOptions.runtimeFeedback;
+        }
+
         ir.buildFunctionIr(p);
         unsigned asmSize = build.getCodeSize();
         unsigned asmCount = build.getInstructionCount();

@@ -1,0 +1,11 @@
+Block 0 (entry "Entry Block") -> [B1]:
+  local x-0 = <expr>
+Block 1 (linear "repeat-loop body") -> [B2]:
+  x-1 = <expr>
+Block 2 (condition "repeat-loop condition") -> [B4, B5]:
+Block 3 (linear "repeat-loop exit"):
+  local y-0 = <expr>
+Block 4 (linear "repeat-loop condition truthy") -> [B3]:
+  x-2 = refine(x-1 is truthy)
+Block 5 (linear "repeat-loop condition falsy") -> [B1]:
+  x-3 = refine(x-1 is falsy)

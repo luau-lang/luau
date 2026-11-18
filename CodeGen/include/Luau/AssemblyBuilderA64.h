@@ -176,6 +176,7 @@ public:
     void fsqrt(RegisterA64 dst, RegisterA64 src);
     void fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void faddp(RegisterA64 dst, RegisterA64 src);
+    void faddp(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void fmla(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
 
     // Vector component manipulation

@@ -174,9 +174,12 @@ local x, y, z = {}, {}, {}
 a[1], a[2], a[3] = x, y, z
 a[string.rep('$', 11)] = string.rep('$', 11)
 -- fill a with some `collectable' values
-for i=4,lim do a[i] = {} end
-for i=1,lim do a[{}] = i end
-for i=1,lim do local t={}; a[t]=t end
+function filltables()
+    for i=4,lim do a[i] = {} end
+    for i=1,lim do a[{}] = i end
+    for i=1,lim do local t={}; a[t]=t; end
+end
+filltables()
 collectgarbage()
 assert(next(a) ~= nil)
 local i = 0
@@ -240,6 +243,33 @@ do
     setblockallocations(false)
 end
 
+-- explicit GC does not have effect during bytecode load
+do
+  collectgarbage("restart")
+
+  for i = 1,3 do
+    local called = false
+    gcimport = setmetatable({}, {__index = function(t, k)
+      if i == 2 then collectgarbage("restart") end
+      if i == 3 then
+          for k = 1,10000 do coroutine.create(function() end) end
+      else
+          collectgarbage("collect")
+      end
+
+      called = true
+      return k
+    end})
+
+    local f = loadstring("local s = 'some' .. tostring(1); return gcimport.value, s")
+    assert(called)
+
+    local a, b = f()
+    assert(a == "value" and b == "some1")
+    gcimport = nil
+  end
+end
+
 -- testing userdata
 collectgarbage("stop")   -- stop collection
 local u = newproxy(true)
@@ -249,26 +279,19 @@ for i=1,10 do a[newproxy(true)] = i end
 -- for k in pairs(a) do assert(getmetatable(k) == getmetatable(u)) end
 local a1 = {}; for k,v in pairs(a) do a1[k] = v end
 for k,v in pairs(a1) do a[v] = k end
-for i =1,10 do assert(a[i]) end
+for i=1,10 do assert(a[i]) end
 getmetatable(u).a = a1
 getmetatable(u).u = u
 do
-  local u = u
   getmetatable(u).__gc = function (o)
-    assert(a[o] == 10-s)
-    assert(a[10-s] == nil) -- udata already removed from weak table
-    assert(getmetatable(o) == getmetatable(u))
-    assert(getmetatable(o).a[o] == 10-s)
-    s=s+1
+    assert(false) -- __gc is not called in Luau
   end
 end
 a1, u = nil
 assert(next(a) ~= nil)
 collectgarbage()
--- assert(s==11)
 collectgarbage()
 assert(next(a) == nil)  -- finalized keys are removed in two cycles
-
 
 -- __gc x weak tables
 local u = newproxy(true)
@@ -280,13 +303,10 @@ local u = newproxy(true)
 local m = getmetatable(u)
 m.x = {[{0}] = 1; [0] = {1}}; setmetatable(m.x, {__mode = "kv"});
 m.__gc = function (o)
-  assert(next(getmetatable(o).x) == nil)
-  m = 10
+  assert(false) -- __gc is not called in Luau
 end
 u, m = nil
 collectgarbage()
--- assert(m==10)
-
 
 -- errors during collection
 u = newproxy(true)

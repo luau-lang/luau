@@ -3,6 +3,7 @@
 
 #include "Luau/Compiler.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 char* luau_compile(const char* source, size_t size, lua_CompileOptions* options, size_t* outsize)
@@ -41,11 +42,6 @@ void luau_set_compile_constant_boolean(lua_CompileConstant* constant, int b)
 void luau_set_compile_constant_number(lua_CompileConstant* constant, double n)
 {
     Luau::setCompileConstantNumber(constant, n);
-}
-
-void luau_set_compile_constant_integer64(lua_CompileConstant* constant, int64_t l)
-{
-    Luau::setCompileConstantInteger64(constant, l);
 }
 
 void luau_set_compile_constant_vector(lua_CompileConstant* constant, float x, float y, float z, float w)

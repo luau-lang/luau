@@ -1,0 +1,5 @@
+./syntax/while-local/error_multiple_bindings.luau(1,7): SyntaxError: Expected identifier when parsing expression, got 'local'
+./syntax/while-local/error_multiple_bindings.luau(2,1): SyntaxError: Expected 'end' (to close 'local' at line 1), got <eof>
+./syntax/while-local/error_multiple_bindings.luau(1,7): UnbalancedAssignment: Assigning 1 values to 2 variables initializes extra variables with nil; add 'nil' to value list to silence
+./syntax/while-local/error_multiple_bindings.luau(1,13): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+./syntax/while-local/error_multiple_bindings.luau(1,16): LocalUnused: Variable 'y' is never used; prefix with '_' to silence

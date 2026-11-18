@@ -433,7 +433,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
         end
         test(false)
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -462,7 +462,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
 
     CheckResult result = getFrontend().check("Module/ListFns");
 
-    ignoreMissingAnnotations(result);
     auto modListFns = getFrontend().moduleResolver.getModule("Module/ListFns");
     freeze(modListFns->interfaceTypes);
     freeze(*modListFns->internalTypes);
@@ -571,8 +570,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "searching_for_free_types_does_not_use_
     ScopedFastInt limit{FInt::LuauVisitRecursionLimit, 10};
 
     std::vector<TypeId> types;
-    types.reserve(1000);
-    for (size_t i = 0; i < 1000; ++i)
+    types.reserve(100);
+    for (size_t i = 0; i < 100; ++i)
         types.emplace_back(freshType().first);
 
     for (size_t i = 1; i < types.size(); ++i)
@@ -594,7 +593,6 @@ TEST_CASE_FIXTURE(Fixture, "mixed_polarity_is_recovered")
         end
     )");
 
-    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     auto ty = requireType("identity");

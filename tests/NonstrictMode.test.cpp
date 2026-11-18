@@ -69,8 +69,6 @@ TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
         function foo(x): number return 'hello' end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK("any" != toString(requireType("foo")));

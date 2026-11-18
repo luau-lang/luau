@@ -14,10 +14,9 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAGVARIABLE(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAGVARIABLE(LuauExportAnnotationBinding)
-LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
+LUAU_FASTFLAGVARIABLE(LuauReduceTypeFunctionToSyntheticError)
 
 namespace Luau
 {
@@ -207,20 +206,26 @@ struct ClonePublicInterface : Substitution
             {
                 genericty->scope = nullptr;
             }
-            else if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+            else
             {
                 if (auto tfit = get<TypeFunctionInstanceType>(ty))
                 {
+                    // CLI-230871: Trying to use a synthetic error type here
+                    // causes a use-after-free.
                     if (tfit->state == TypeFunctionInstanceState::Stuck)
-                        result = arena->addType(ErrorType{ty});
-                    else if (FFlag::LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
+                    {
+                        if (FFlag::LuauReduceTypeFunctionToSyntheticError)
+                            result = builtinTypes->errorType;
+                        else
+                            result = arena->addType(ErrorType{ty});
+                    }
+                    else
                     {
                         auto resultTfit = getMutable<TypeFunctionInstanceType>(result);
                         LUAU_ASSERT(resultTfit);
                         resultTfit->state = tfit->state;
                     }
                 }
-
             }
         }
 
@@ -495,15 +500,13 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
         {
             if (AstStatClass* classStat = statement->as<AstStatClass>())
             {
-                if (!classStat->exported)
+                if (classStat->declModifier != AstStatClass::DeclModifier::Export)
                     continue;
 
-                TypeId ty = builtinTypes->errorType;
-                if (auto found = moduleScope->lookup(Symbol{classStat->name->name}))
-                    ty = follow(*found);
+                Name className = Name{classStat->getName().value};
 
-                props[classStat->name->name.value] = Property::readonly(ty);
-                props[classStat->name->name.value].location = classStat->name->location;
+                props[className] = Property::readonly(lookupExportedBindingType(classStat->localName));
+                props[className].location = classStat->localName->location;
             }
         }
     }

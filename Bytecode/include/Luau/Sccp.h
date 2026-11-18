@@ -387,10 +387,15 @@ struct Sccp
         }
         case LOP_FORNPREP:
         case LOP_FORNLOOP:
+            return conditionalTargets(inst, inst->ops[3], ConditionState::Unknown, true);
         case LOP_FORGPREP:
         case LOP_FORGPREP_NEXT:
         case LOP_FORGPREP_INEXT:
-            return conditionalTargets(inst, inst->ops[3], ConditionState::Unknown, true);
+        {
+            const BcOp& targetOp = inst->ops[3];
+            LUAU_ASSERT(targetOp.kind == BcOpKind::Block);
+            return {{false, targetOp, ConditionState::AlwaysTrue}};
+        }
         case LOP_FORGLOOP:
             // FORGLOOP has two leading imm operands FORGPREP* lack, so its target is ops[5]
             return conditionalTargets(inst, inst->ops[5], ConditionState::Unknown, true);

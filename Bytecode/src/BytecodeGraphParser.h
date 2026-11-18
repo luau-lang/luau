@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <unordered_set>
 #include <utility>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -46,6 +47,7 @@ struct BytecodeGraphParser
     Producers producers;
     BcOp currentBlock;
     std::unordered_map<BcOp, BcOp, BcOpHash> phiBlock;
+    std::unordered_map<BcOp, BcOp, BcOpHash> removedPhiValue;
 
     BytecodeGraphParser(BcFunction<VmConst>& func)
         : func(func)
@@ -214,10 +216,22 @@ struct BytecodeGraphParser
         {
             if (std::optional<BcOp> v = readVariable(pred, reg))
             {
-                func.addUse(phi, *v);
+                func.addUse(phi, resolveRemovedPhi(*v));
             }
         }
         return tryRemoveTrivialPhi(phiOp);
+    }
+
+    BcOp resolveRemovedPhi(BcOp op)
+    {
+        while (op.kind == BcOpKind::Phi)
+        {
+            auto it = removedPhiValue.find(op);
+            if (it == removedPhiValue.end())
+                break;
+            op = it->second;
+        }
+        return op;
     }
 
     // collapse a phi whose operands (ignoring self-references) are a single distinct value
@@ -239,6 +253,8 @@ struct BytecodeGraphParser
         Reg reg = static_cast<Reg>(func.regs.at(phiOp));
         if (!trivialValue.has_value())
             trivialValue = BcOp{BcOpKind::VmReg, reg}; // unreachable or undefined, so we collapse to an VmReg read
+
+        removedPhiValue[phiOp] = *trivialValue;
 
         BcRef<BcPhi> phiRef = func.phi(phiOp);
         std::vector<BcOp> users = std::move(phiRef->uses);
@@ -331,7 +347,7 @@ struct BytecodeGraphParser
         {
             auto staticRegOp = readVariable(block, reg);
             LUAU_ASSERT(staticRegOp);
-            res.push_back(*staticRegOp);
+            res.push_back(resolveRemovedPhi(*staticRegOp));
         }
         res.push_back(blockProducers.multiReturn);
         // multireturn is consumed, clean it up
@@ -452,7 +468,7 @@ struct BytecodeGraphParser
             return;
         }
         LUAU_ASSERT(source);
-        func.addUse(inst, *source);
+        func.addUse(inst, resolveRemovedPhi(*source));
     }
 
     void addJumpInput(BcRef<BcInst> inst, int target)
@@ -561,15 +577,17 @@ struct BytecodeGraphParser
                     break;
 
                 case LOP_FORNPREP:
-                    // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
+                case LOP_FORGPREP:
+                case LOP_FORGPREP_NEXT:
+                case LOP_FORGPREP_INEXT:
+                    // for loop prep: A..A+2 carry iterator state for both numeric loops and generalized
                     addVmRegInput(node, LUAU_INSN_A(insn));
                     addVmRegInput(node, LUAU_INSN_A(insn) + 1);
                     addVmRegInput(node, LUAU_INSN_A(insn) + 2);
                     addJumpInput(node, jumpTarget);
                     func.regs[nodeOp] = LUAU_INSN_A(insn);
-                    addProducer(LUAU_INSN_A(insn), func.addProj(nodeOp, 0));
-                    addProducer(LUAU_INSN_A(insn) + 1, func.addProj(nodeOp, 1));
-                    addProducer(LUAU_INSN_A(insn) + 2, func.addProj(nodeOp, 2));
+                    for (int offset = 0; offset < 3; ++offset)
+                        addProducer(LUAU_INSN_A(insn) + offset, func.addProj(nodeOp, offset));
                     break;
 
                 case LOP_FORNLOOP:
@@ -577,7 +595,25 @@ struct BytecodeGraphParser
                     addVmRegInput(node, LUAU_INSN_A(insn) + 1);
                     addVmRegInput(node, LUAU_INSN_A(insn) + 2);
                     addJumpInput(node, jumpTarget);
+                    func.regs[nodeOp] = LUAU_INSN_A(insn);
+                    addProducer(LUAU_INSN_A(insn) + 2, func.addProj(nodeOp, 2));
                     break;
+
+                // FORGLOOP updates A+2 for the iterator register and A+3..A+vars for loop variables
+                case LOP_FORGLOOP:
+                {
+                    addVmRegInput(node, LUAU_INSN_A(insn));
+                    addVmRegInput(node, LUAU_INSN_A(insn) + 1);
+                    addVmRegInput(node, LUAU_INSN_A(insn) + 2);
+                    addImmInput(node, static_cast<bool>(aux >> 31));
+                    int32_t vars = aux & 0xFF;
+                    addImmInput(node, vars);
+                    addJumpInput(node, jumpTarget);
+                    func.regs[nodeOp] = LUAU_INSN_A(insn);
+                    for (int offset = 2; offset <= 2 + std::max(vars, 2); ++offset)
+                        addProducer(LUAU_INSN_A(insn) + offset, func.addProj(nodeOp, offset));
+                    break;
+                }
 
                 default:
                     LUAU_UNREACHABLE();
@@ -809,6 +845,10 @@ struct BytecodeGraphParser
             case LOP_JUMPIFNOTLT:
             case LOP_FORNPREP:
             case LOP_FORNLOOP:
+            case LOP_FORGPREP:
+            case LOP_FORGPREP_NEXT:
+            case LOP_FORGPREP_INEXT:
+            case LOP_FORGLOOP:
                 parseJump(op, getJumpTarget(insn, i));
                 break;
 
@@ -876,35 +916,6 @@ struct BytecodeGraphParser
                 if (count < 0)
                     for (auto inp : findProducersUpToTop(currentBlock, LUAU_INSN_B(insn)))
                         func.addUse(node, inp);
-                break;
-            }
-
-            case LOP_FORGPREP:
-            case LOP_FORGPREP_NEXT:
-            case LOP_FORGPREP_INEXT:
-            {
-                addVmRegInput(node, LUAU_INSN_A(insn));
-                addVmRegInput(node, LUAU_INSN_A(insn) + 1);
-                addVmRegInput(node, LUAU_INSN_A(insn) + 2);
-                int loopInsnPc = getJumpTarget(insn, i);
-                addJumpInput(node, loopInsnPc);
-                LUAU_ASSERT(loopInsnPc + 1 < static_cast<int>(codesize) && LuauOpcode(LUAU_INSN_OP(code[loopInsnPc])) == LOP_FORGLOOP);
-                int32_t vars = code[loopInsnPc + 1] & 0xFF;
-                func.regs[nodeOp] = LUAU_INSN_A(insn);
-                for (int i = 0; i <= std::max(vars, 2); i++)
-                    addProducer(LUAU_INSN_A(insn) + 2 + i, func.addProj(nodeOp, 2 + i));
-                break;
-            }
-
-            case LOP_FORGLOOP:
-            {
-                addVmRegInput(node, LUAU_INSN_A(insn));
-                addVmRegInput(node, LUAU_INSN_A(insn) + 1);
-                addVmRegInput(node, LUAU_INSN_A(insn) + 2);
-                addImmInput(node, static_cast<bool>(aux >> 31));
-                int32_t vars = aux & 0xFF;
-                addImmInput(node, vars);
-                addJumpInput(node, getJumpTarget(insn, i));
                 break;
             }
 
@@ -1027,11 +1038,18 @@ struct BytecodeGraphParser
                 break;
 
             case LOP_NEWCLASSMEMBER:
+            {
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
                 addVmRegInput(node, LUAU_INSN_A(insn));
+                uint8_t flags = LUAU_INSN_B(insn);
+                addImmInput(node, static_cast<int32_t>(flags));
                 addVmRegInput(node, LUAU_INSN_C(insn));
-                addVmConstInput(node, aux);
-                break;
+                if (flags & 0x1)
+                    addImmInput(node, aux);
+                else
+                    addVmConstInput(node, aux);
+            }
+            break;
 
             case LOP_FASTPCALL:
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_A(insn)));
@@ -1039,6 +1057,7 @@ struct BytecodeGraphParser
                 // turn it in BcOp to CALL BcInst&.
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
                 break;
+
             case LOP_NEWCLASS:
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 
@@ -1052,6 +1071,44 @@ struct BytecodeGraphParser
                 addProducer(LUAU_INSN_A(insn), nodeOp);
                 break;
 
+            case LOP_CONSTRUCT:
+                LUAU_ASSERT(aux < func.feedbackSlots.size());
+                LUAU_ASSERT(func.feedbackSlots[aux].kind == LFT_CONSTRUCT);
+                addVmRegInput(node, LUAU_INSN_B(insn));
+                addImmInput(node, static_cast<int32_t>(aux));
+                addProducer(LUAU_INSN_A(insn), nodeOp);
+                break;
+
+            case LOP_FINCONSTRUCT:
+                addVmRegInput(node, LUAU_INSN_A(insn));
+                addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
+                break;
+                
+            case LOP_GETPRIVATEFIELD:
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+                addVmRegInput(node, LUAU_INSN_B(insn));
+                addUpvalInput(node, LUAU_INSN_C(insn));
+                addImmInput(node, aux);
+
+                if (LUAU_INSN_AUX_NAMECALL(aux))
+                {
+                    func.regs[nodeOp] = LUAU_INSN_A(insn);
+                    addProducer(LUAU_INSN_A(insn), func.addProj(nodeOp, 0));
+                    addProducer(LUAU_INSN_A(insn) + 1, func.addProj(nodeOp, 1));
+                }
+                else
+                    addProducer(LUAU_INSN_A(insn), nodeOp);
+                break;
+
+            case LOP_SETPRIVATEFIELD:
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+                addVmRegInput(node, LUAU_INSN_A(insn));
+                addVmRegInput(node, LUAU_INSN_B(insn));
+                addUpvalInput(node, LUAU_INSN_C(insn));
+                addImmInput(node, aux);
+                break;
 
             case LOP__COUNT:
                 LUAU_UNREACHABLE();
@@ -1070,6 +1127,44 @@ struct BytecodeGraphParser
         finalizeBlock(currentBlock);
         sealAllRemaining(); // seal any block whose predecessors were never all emitted
 
+        LUAU_ASSERT(noOperandReferencesRemovedPhi());
+        return true;
+    }
+
+    bool noOperandReferencesRemovedPhi()
+    {
+        std::unordered_set<BcOp, BcOpHash> livePhis;
+        for (const BcBlock& block : func.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (BcOp phiOp : block.phis)
+                livePhis.insert(phiOp);
+        }
+
+        auto operandsOk = [&](const BcOps& ops)
+        {
+            for (BcOp op : ops)
+                if (op.kind == BcOpKind::Phi && livePhis.count(op) == 0)
+                    return false;
+            return true;
+        };
+
+        for (const BcBlock& block : func.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (BcOp phiOp : block.phis)
+            {
+                if (!operandsOk(func.phiOp(phiOp).ops))
+                    return false;
+            }
+            for (BcOp instOp : block.ops)
+            {
+                if (!operandsOk(func.instOp(instOp).ops))
+                    return false;
+            }
+        }
         return true;
     }
 };

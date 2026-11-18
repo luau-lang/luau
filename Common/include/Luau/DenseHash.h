@@ -724,7 +724,7 @@ struct ItemInterfaceMap2
 } // namespace detail
 
 // This is a faster alternative of unordered_set
-template<typename Key, typename Hash = std::hash<Key>, typename Eq = std::equal_to<Key>>
+template<typename Key, typename Hash = detail::DenseHashDefault<Key>, typename Eq = std::equal_to<Key>>
 class DenseHashSet
 {
     using Impl = detail::DenseHashTable<Key, Key, Key, detail::ItemInterfaceSet2<Key>, Hash, Eq>;
@@ -823,7 +823,7 @@ public:
 };
 
 // This is a faster alternative of unordered_map
-template<typename Key, typename Value, typename Hash = std::hash<Key>, typename Eq = std::equal_to<Key>>
+template<typename Key, typename Value, typename Hash = detail::DenseHashDefault<Key>, typename Eq = std::equal_to<Key>>
 class DenseHashMap
 {
     using Impl = detail::DenseHashTable<Key, std::pair<Key, Value>, std::pair<const Key, Value>, detail::ItemInterfaceMap2<Key, Value>, Hash, Eq>;

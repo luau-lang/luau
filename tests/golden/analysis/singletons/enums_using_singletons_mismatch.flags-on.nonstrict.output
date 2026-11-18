@@ -1,0 +1,1 @@
+./analysis/singletons/enums_using_singletons_mismatch.luau(2,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence

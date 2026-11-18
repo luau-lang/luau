@@ -8,7 +8,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogCFG)
 LUAU_FASTFLAGVARIABLE(DebugLuauDumpCFGJson)
-using namespace Luau::CFG;
 
 namespace Luau
 {
@@ -94,50 +93,67 @@ struct ExprPrinter : AstVisitor
     }
 };
 
-static std::string dumpExpr(AstExpr* expr, NotNull<const ControlFlowGraph> cfg)
+[[maybe_unused]] static std::string dumpExpr(AstExpr* expr, NotNull<const ControlFlowGraph> cfg)
 {
     ExprPrinter printer(cfg);
     expr->visit(&printer);
     return printer.result;
 }
 
-static AstExpr* findRhsExpr(Symbol sym, AstStatLocal* source)
+static std::string dumpSingletonValue(const SingletonValue& value)
 {
-    if (!sym.local)
-        return nullptr;
-    for (size_t i = 0; i < source->vars.size; i++)
-    {
-        if (source->vars.data[i] == sym.local && i < source->values.size)
-            return source->values.data[i];
-    }
-    return nullptr;
+    return Luau::visit(
+        overloaded{
+            [](const StringSingletonValue& stringValue) -> std::string
+            {
+                return "\"" + stringValue.value + "\"";
+            },
+            [](const BooleanSingletonValue& booleanValue) -> std::string
+            {
+                return booleanValue.value ? "true" : "false";
+            },
+            [](const NilSingletonValue& nilValue) -> std::string
+            {
+                return "nil";
+            },
+        },
+        value
+    );
 }
 
-static AstExpr* findRhsExpr(Symbol sym, AstStatAssign* source)
+static std::string dumpLeafConstraint(const std::string& target, const LeafConstraint& constraint)
 {
-    for (size_t i = 0; i < source->vars.size; i++)
-    {
-        if (i >= source->values.size)
-            continue;
-        AstExpr* var = source->vars.data[i];
-        if (sym.local)
-        {
-            if (auto* exprLocal = var->as<AstExprLocal>())
+    return Luau::visit(
+        overloaded{
+            [&](const Truthy&) -> std::string
             {
-                if (exprLocal->local == sym.local)
-                    return source->values.data[i];
-            }
-        }
-        else if (sym.global.value)
-        {
-            if (auto* exprGlobal = var->as<AstExprGlobal>())
+                return target + " is truthy";
+            },
+            [&](const Falsy&) -> std::string
             {
-                if (exprGlobal->name == sym.global)
-                    return source->values.data[i];
-            }
-        }
-    }
-    return nullptr;
+                return target + " is falsy";
+            },
+            [&](const TypeEq& eq) -> std::string
+            {
+                std::string fn = eq.isTypeOf ? "typeof" : "type";
+                return fn + "(" + target + ") == \"" + eq.type + "\"";
+            },
+            [&](const TypeNeq& neq) -> std::string
+            {
+                std::string fn = neq.isTypeOf ? "typeof" : "type";
+                return fn + "(" + target + ") ~= \"" + neq.type + "\"";
+            },
+            [&](const SingletonEq& eq) -> std::string
+            {
+                return target + " == " + dumpSingletonValue(eq.v);
+            },
+            [&](const SingletonNeq& neq) -> std::string
+            {
+                return target + " ~= " + dumpSingletonValue(neq.v);
+            },
+        },
+        constraint
+    );
 }
 
 static std::string dumpInstruction(const Instruction* inst, NotNull<const ControlFlowGraph> cfg)
@@ -146,17 +162,27 @@ static std::string dumpInstruction(const Instruction* inst, NotNull<const Contro
         overloaded{
             [&](const Declare& decl) -> std::string
             {
-                std::string result = "local " + dumpDef(decl.def);
-                if (AstExpr* rhs = findRhsExpr(decl.def->sym, decl.source))
-                    result += " = " + dumpExpr(rhs, cfg);
-                return result;
+                return "local " + dumpDef(decl.def) + " = <expr>";
+            },
+            [&](const LocalFunction& fn) -> std::string
+            {
+                return "local function " + dumpDef(fn.def);
+            },
+            [&](const GlobalFunction& fn) -> std::string
+            {
+                return "global function " + dumpDef(fn.def);
+            },
+            [&](const Arg& arg) -> std::string
+            {
+                return "param " + dumpDef(arg.def);
+            },
+            [&](const Upvalue& uv) -> std::string
+            {
+                return dumpDef(uv.def) + " = upvalue";
             },
             [&](const Assign& assign) -> std::string
             {
-                std::string result = dumpDef(assign.def);
-                if (AstExpr* rhs = findRhsExpr(assign.def->sym, assign.source))
-                    result += " = " + dumpExpr(rhs, cfg);
-                return result;
+                return dumpDef(assign.def) + " = <expr>";
             },
             [](const Join& join) -> std::string
             {
@@ -170,25 +196,54 @@ static std::string dumpInstruction(const Instruction* inst, NotNull<const Contro
                 result += ")";
                 return result;
             },
-            [](const Refine& flow) -> std::string
+            [](const Refine& refine) -> std::string
             {
-                std::string rhs;
-                if (flow.type)
-                {
-                    const char* guard = flow.isTypeof ? "typeof" : "type";
-                    const char* cmp = flow.sense ? "==" : "~=";
-                    rhs = std::string(guard) + "(" + dumpDef(flow.toRefine) + ") " + cmp + " \"" + *flow.type + "\"";
-                }
-                else
-                {
-                    rhs = dumpDef(flow.toRefine) + " " + (flow.sense ? "truthy" : "falsy");
-                }
-                return dumpDef(flow.definition) + " = refine(" + rhs + ")";
+                std::string target = dumpDef(refine.target);
+                std::string constraint = Luau::visit(
+                    overloaded{
+                        [&](const Truthy&) -> std::string
+                        {
+                            return target + " is truthy";
+                        },
+                        [&](const Falsy&) -> std::string
+                        {
+                            return target + " is falsy";
+                        },
+                        [&](const TypeEq& eq) -> std::string
+                        {
+                            std::string fn = eq.isTypeOf ? "typeof" : "type";
+                            return fn + "(" + target + ") == \"" + eq.type + "\"";
+                        },
+                        [&](const TypeNeq& neq) -> std::string
+                        {
+                            std::string fn = neq.isTypeOf ? "typeof" : "type";
+                            return fn + "(" + target + ") ~= \"" + neq.type + "\"";
+                        },
+                        [&](const SingletonEq& eq) -> std::string
+                        {
+                            return target + " == " + dumpSingletonValue(eq.v);
+                        },
+                        [&](const SingletonNeq& neq) -> std::string
+                        {
+                            return target + " ~= " + dumpSingletonValue(neq.v);
+                        },
+                        [&](const HasShape& hs) -> std::string
+                        {
+                            std::string path = target;
+                            for (const auto& p : hs.path)
+                                path += "." + p;
+
+                            return dumpLeafConstraint(path, hs.constraint);
+                        },
+                    },
+                    refine.constraint
+                );
+                return dumpDef(refine.definition) + " = refine(" + constraint + ")";
             },
             [](const Dead&) -> std::string
             {
                 return "<dead>";
-            },
+            }
         },
         *inst
     );
@@ -349,7 +404,7 @@ std::string dumpCFGJson(const ControlFlowGraph& cfg)
 
     std::string out = "{\"functions\":[{\"name\":\"cfg\",\"passes\":[{\"name\":\"CFG\",\"mir\":{\"blocks\":[";
 
-    int nextInstrId = 1;
+    int nextInstructionId = 1;
     for (size_t i = 0; i < cfg.blocks.size(); i++)
     {
         const Block* block = cfg.blocks[i];
@@ -395,12 +450,12 @@ std::string dumpCFGJson(const ControlFlowGraph& cfg)
         out += "]";
 
         out += ",\"instructions\":[";
-        const std::vector<InstrId>& instructions = block->getInstructions();
+        const std::vector<InstructionId>& instructions = block->getInstructions();
         for (size_t j = 0; j < instructions.size(); j++)
         {
             if (j > 0)
                 out += ',';
-            out += "{\"id\":" + std::to_string(nextInstrId++);
+            out += "{\"id\":" + std::to_string(nextInstructionId++);
             out += ",\"opcode\":\"" + jsonEscape(dumpInstruction(instructions[j], NotNull{&cfg})) + "\"";
             out += ",\"attributes\":[],\"inputs\":[],\"uses\":[],\"memInputs\":[],\"type\":\"\"}";
         }
@@ -412,6 +467,111 @@ std::string dumpCFGJson(const ControlFlowGraph& cfg)
     // Close: pass object, passes array, function object, functions array, root object.
     out += "}]}]}";
     return out;
+}
+
+std::string dump(const Definition* def)
+{
+    if (!def)
+        return "(null)";
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%p %s", static_cast<const void*>(def), def->versionedName().c_str());
+    printf("%s\n", buf);
+    return buf;
+}
+
+std::string dump(const Instruction* inst)
+{
+    if (!inst)
+    {
+        printf("(null)\n");
+        return "(null)";
+    }
+    std::string result = Luau::visit(
+        overloaded{
+            [&](const Declare& decl) -> std::string
+            {
+                return "local " + dumpDef(decl.def);
+            },
+            [&](const LocalFunction& fn) -> std::string
+            {
+                return "local function " + dumpDef(fn.def);
+            },
+            [&](const GlobalFunction& fn) -> std::string
+            {
+                return "global function " + dumpDef(fn.def);
+            },
+            [&](const Arg& arg) -> std::string
+            {
+                return "param " + dumpDef(arg.def);
+            },
+            [&](const Upvalue& uv) -> std::string
+            {
+                return dumpDef(uv.def) + " = upvalue";
+            },
+            [&](const Assign& assign) -> std::string
+            {
+                return dumpDef(assign.def) + " = <expr>";
+            },
+            [](const Join& join) -> std::string
+            {
+                std::string r = dumpDef(join.definition) + " = join(";
+                for (size_t i = 0; i < join.operands.size(); i++)
+                {
+                    if (i > 0)
+                        r += ", ";
+                    r += dumpDef(join.operands[i]);
+                }
+                return r + ")";
+            },
+            [](const Refine& refine) -> std::string
+            {
+                return dumpDef(refine.definition) + " = refine(" + dumpDef(refine.target) + ")";
+            },
+            [](const Dead&) -> std::string
+            {
+                return "<dead>";
+            },
+        },
+        *inst
+    );
+    printf("%s\n", result.c_str());
+    return result;
+}
+
+void dump(const Block* block)
+{
+    if (!block)
+    {
+        printf("(null)\n");
+        return;
+    }
+    printf(
+        "%p %s \"%s\" [%zu instrs]\n",
+        static_cast<const void*>(block),
+        blockKindName(block->kind),
+        block->debugName.c_str(),
+        block->getInstructions().size()
+    );
+    for (const Instruction* inst : block->getInstructions())
+    {
+        if (inst->get_if<Dead>())
+            continue;
+        printf("  ");
+        dump(inst);
+    }
+}
+
+std::string dump(SSAId def)
+{
+    return dump(def.get());
+}
+std::string dump(InstructionId inst)
+{
+    return dump(inst.get());
+}
+void dump(BlockId block)
+{
+    return dump(block.get());
 }
 
 } // namespace Luau

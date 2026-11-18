@@ -8,7 +8,8 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -332,18 +333,6 @@ struct AstJsonEncoder : public AstVisitor
         );
     }
 
-    void write(class AstExprConstantInteger* node)
-    {
-        writeNode(
-            node,
-            "AstExprConstantInteger",
-            [&]()
-            {
-                write("value", node->value);
-            }
-        );
-    }
-
     void write(class AstExprConstantString* node)
     {
         writeNode(
@@ -568,10 +557,9 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(trueExpr);
                 PROP(hasElse);
                 PROP(falseExpr);
-                if (FFlag::DebugLuauIfLocalAnalysis && node->conditionLocal)
+                if (FFlag::LuauExperimentalIfLocalAnalysis && node->conditionLocal)
                 {
-                    write("conditionLocal", node->conditionLocal->name);
-                    write("conditionIsConst", node->conditionIsConst);
+                    write("conditionLocal", node->conditionLocal);
                 }
             }
         );
@@ -746,10 +734,9 @@ struct AstJsonEncoder : public AstVisitor
                 if (node->elsebody)
                     PROP(elsebody);
                 write("hasThen", node->thenLocation.has_value());
-                if (FFlag::DebugLuauIfLocalAnalysis && node->conditionLocal)
+                if (FFlag::LuauExperimentalIfLocalAnalysis && node->conditionLocal)
                 {
-                    write("conditionLocal", node->conditionLocal->name);
-                    write("conditionIsConst", node->conditionIsConst);
+                    write("conditionLocal", node->conditionLocal);
                 }
             }
         );
@@ -765,6 +752,10 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(condition);
                 PROP(body);
                 PROP(hasDo);
+                if (FFlag::LuauExperimentalWhileLocalAnalysis && node->conditionLocal)
+                {
+                    write("conditionLocal", node->conditionLocal);
+                }
             }
         );
     }
@@ -1259,12 +1250,6 @@ struct AstJsonEncoder : public AstVisitor
     }
 
     bool visit(class AstExprConstantNumber* node) override
-    {
-        write(node);
-        return false;
-    }
-
-    bool visit(class AstExprConstantInteger* node) override
     {
         write(node);
         return false;

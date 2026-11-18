@@ -1,0 +1,5 @@
+./analysis/tables/oss_2644_generic_instantiation_avoids_nil.luau(10,16): TypeError: No valid instantiation could be inferred for generic type parameter T. It was expected to be at least:
+	number | nil
+and at most:
+	number
+but these types are not compatible with one another.

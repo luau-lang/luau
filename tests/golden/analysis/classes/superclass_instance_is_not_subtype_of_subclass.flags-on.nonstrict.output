@@ -1,0 +1,1 @@
+./analysis/classes/superclass_instance_is_not_subtype_of_subclass.luau(12,7): LocalUnused: Variable 'd' is never used; prefix with '_' to silence

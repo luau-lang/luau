@@ -28,6 +28,22 @@ std::ostream& operator<<(std::ostream& stream, const AstName& name)
         return stream << "<empty>";
 }
 
+static std::ostream& operator<<(std::ostream& stream, InvalidClassExtension::Context ctx)
+{
+    switch (ctx)
+    {
+    case InvalidClassExtension::ClassIsNotOpen:
+        return stream << "ClassIsNotOpen";
+    case InvalidClassExtension::NotAClass:
+        return stream << "NotAClass";
+    case InvalidClassExtension::BaseIsClassInstance:
+        return stream << "BaseIsClassInstance";
+    default:
+        LUAU_ASSERT(0);
+        return stream << "???";
+    }
+}
+
 template<typename T>
 static void errorToString(std::ostream& stream, const T& err)
 {
@@ -308,10 +324,20 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "AmbiguousFunctionCall { " << toString(err.function) << ", " << toString(err.arguments) << " }";
     else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
         stream << "UninitializedFieldAccess { " << (err.fieldName ? *err.fieldName : "self") << " }";
-    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
-        stream << "TypeAnnotationRequired { " << toString(err.inferredTy) << " }";
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
         stream << "ConstructorsShouldNotReturnAnything {}";
+    else if constexpr (std::is_same_v<T, InvalidClassExtension>)
+        stream << "InvalidExtension { ctx = " << err.context << ", ty = " << toString(err.baseClass) << " }";
+    else if constexpr (std::is_same_v<T, IncompatibleClassMethodOverride>)
+        stream << "IncompatibleClassMethodOverride { method = " << err.method << ", className = " << err.className
+               << ", superName = " << err.superName << " }";
+    else if constexpr (std::is_same_v<T, IllegalClassPropertyOverride>)
+        stream << "IllegalClassPropertyOverride { property = " << err.property << ", className = " << err.className
+               << ", superName = " << err.superName << " }";
+    else if constexpr (std::is_same_v<T, MissingConstructor>)
+        stream << "MissingConstructor { className = " << err.className << ", superName = " << err.superName << " }";
+    else if constexpr (std::is_same_v<T, NotIterable>)
+        stream << "NotIterable { " << toString(err.ty) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

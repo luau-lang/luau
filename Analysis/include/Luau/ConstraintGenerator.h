@@ -15,7 +15,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
-#include "Luau/Set.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeIds.h"
@@ -69,8 +69,21 @@ struct Checkpoint
 
 struct ClassDeclRecord
 {
+    ClassDeclRecord(TypeId classTy, TypeId instanceTy, DenseHashMap<AstName, TypeId> memberTypes)
+        : classTy(classTy)
+        , instanceTy(instanceTy)
+        , memberTypes(std::move(memberTypes))
+    {
+        LUAU_ASSERT(classTy);
+        LUAU_ASSERT(instanceTy);
+    }
+
+    // The type of the class object itself.
+    TypeId classTy;
+
     // The type of an instance of the class.
-    TypeId ty = nullptr;
+    TypeId instanceTy;
+
     DenseHashMap<AstName, TypeId> memberTypes;
 };
 
@@ -150,6 +163,7 @@ struct ConstraintGenerator
     DenseHashMap<AstExpr*, Inference> inferredExprCache;
 
     DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords;
+    DenseHashSet<AstStatClass*> duplicateClassDecls;
 
     DcrLogger* logger;
 
@@ -157,10 +171,10 @@ struct ConstraintGenerator
 
     NotNull<ConstraintGraph> cgraph;
 
+    TypeStateMap* typestate = nullptr;
     // Defer module-level generalization constraints to the solver so that we can generalize them after all other constraints have been solved.
     ConstraintPtr moduleGeneralizationConstraint;
 
-    CFG::TypeStateMap* typestate = nullptr;
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
@@ -175,7 +189,7 @@ struct ConstraintGenerator
         NotNull<DataFlowGraph> dfg,
         std::vector<RequireCycle> requireCycles,
         NotNull<ConstraintGraph> cgraph,
-        CFG::TypeStateMap* typestate = nullptr
+        TypeStateMap* typestate = nullptr
     );
 
     ConstraintSet run(AstStatBlock* block);
@@ -201,7 +215,7 @@ private:
 
     std::vector<TypeId> unionsToSimplify;
 
-    Set<AstName> uninitializedGlobals;
+    DenseHashSet<AstName> uninitializedGlobals;
 
     Polarity polarity = Polarity::None;
 
@@ -250,9 +264,6 @@ private:
      * @param cv the constraint variant to add.
      * @return the pointer to the inserted constraint
      */
-    TypeId resolveRHSType(const ScopePtr& scope, Location location, AstExpr* expr);
-    TypeId resolveLHSType(const ScopePtr& scope, Location location, const CFG::LValue& lv);
-
     NotNull<Constraint> addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv);
 
     /**
@@ -293,6 +304,8 @@ private:
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     LUAU_NOINLINE void prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block);
+    ClassDeclRecord prototypeClass(const ScopePtr& scope, AstStatClass* classDecl, TypeId classObjectTy, Name className);
+    TypeId resolveSuperclass(const ScopePtr& scope, AstStatClass* statClass, TypeId superValueTy);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 
@@ -318,9 +331,12 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
 
-    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes, bool generalize);
-
-    InferencePack checkPack_DEPRECATED(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
+    InferencePack checkPack(
+        const ScopePtr& scope,
+        AstArray<AstExpr*> exprs,
+        const std::vector<std::optional<TypeId>>& expectedTypes,
+        bool generalize
+    );
 
     InferencePack checkPack(
         const ScopePtr& scope,
@@ -378,8 +394,6 @@ private:
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
     Inference check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation);
-
-    Inference check_DEPRECATED(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
 
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType, bool generalize);
 
@@ -575,6 +589,14 @@ private:
     void updateRValueRefinements(const ScopePtr& scope, DefId def, TypeId ty) const;
     void updateRValueRefinements(Scope* scope, DefId def, TypeId ty) const;
     void resolveGenericDefaultParameters(const ScopePtr& defnScope, AstStatTypeAlias* alias, const TypeFun& fun);
+
+    // Takes an expression and returns the reaching definition
+    TypeId getRHSType(AstExpr* expr) const;
+    // Takes a symbol and returns the type representing the total domain of that local variable
+    TypeId getLocalDomain(Symbol sym) const;
+    void expandDomain(AstExpr* l, TypeId rhs) const;
+    void expandDomain(AstLocal* l, TypeId rhs) const;
+    void expandDomain(AstExprGlobal* global, TypeId rhs) const;
 };
 
 } // namespace Luau

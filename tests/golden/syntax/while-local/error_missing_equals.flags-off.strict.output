@@ -1,0 +1,3 @@
+./syntax/while-local/error_missing_equals.luau(1,7): SyntaxError: Expected identifier when parsing expression, got 'local'
+./syntax/while-local/error_missing_equals.luau(2,1): SyntaxError: Expected 'end' (to close 'local' at line 1), got <eof>
+./syntax/while-local/error_missing_equals.luau(1,13): LocalUnused: Variable 'x' is never used; prefix with '_' to silence

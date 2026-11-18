@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(DebugLuauAnalyzeDumpsCFG)
+
 static void setLuauFlag(std::string_view name, bool state)
 {
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)

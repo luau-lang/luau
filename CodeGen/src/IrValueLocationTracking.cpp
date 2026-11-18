@@ -4,7 +4,7 @@
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHintUpdate)
+LUAU_FASTFLAGVARIABLE(LuauCodegenImprovedExitSync)
 
 namespace Luau
 {
@@ -61,7 +61,7 @@ void IrValueLocationTracking::processStoreLocationHint(const StoreLocationHint* 
 
         if (existingLoc.op.kind != IrOpKind::None)
         {
-            if (FFlag::LuauCodegenDseRestoreHintUpdate && existingLoc.lazy)
+            if (existingLoc.lazy)
             {
                 int prevReg = vmRegOp(existingLoc.op);
 
@@ -89,7 +89,7 @@ void IrValueLocationTracking::processStoreLocationHint(const StoreLocationHint* 
 
             if (logger && logger->options.includeRegSpills)
             {
-                if (FFlag::LuauCodegenDseRestoreHintUpdate && existingLoc.op.kind != IrOpKind::None)
+                if (existingLoc.op.kind != IrOpKind::None)
                     logger->formatAppendWithPrefix("  ; %%%u has a new lazy restore location R%d\n", hint->instIdx, reg);
                 else
                     logger->formatAppendWithPrefix("  ; %%%u has a lazy restore location R%d\n", hint->instIdx, reg);
@@ -115,7 +115,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
@@ -135,8 +134,13 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         // Even if result count is limited, all registers starting from function (ra) might be modified
         invalidateRestoreVmRegs(vmRegOp(OP_A(inst)), -1);
         break;
+    case IrCmd::INVOKE_NAMECALL:
+        // Even if result count is limited, all registers starting from function (ra) might be modified
+        invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), -1);
+        break;
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
+    case IrCmd::CONSTRUCT:
     case IrCmd::GET_TABLE:
     case IrCmd::GET_CACHED_IMPORT:
         invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
@@ -176,7 +180,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::LOAD_TAG:
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
-    case IrCmd::LOAD_INT64:
     case IrCmd::LOAD_INT:
     case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
@@ -185,7 +188,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::JUMP_IF_TRUTHY:
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
-    case IrCmd::SELECT_INT64:
     case IrCmd::SET_TABLE:
     case IrCmd::SET_UPVALUE:
     case IrCmd::INTERRUPT:
@@ -240,7 +242,6 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
-    case IrCmd::LOAD_INT64:
     case IrCmd::LOAD_TVALUE:
         if (OP_A(inst).kind == IrOpKind::VmReg)
             invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
@@ -250,7 +251,6 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_TVALUE:
         // If this is not the last use of the stored value, we can restore it from this new location
         // Additionally, even if it's a last use, it might allow its argument to be restored
@@ -286,7 +286,11 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
                 if (!function.cfg.captured.regs.test(reg) && vmRegDependent[reg] == kInvalidInstIdx)
                 {
                     IrCmd forwardCmd = inst.cmd == IrCmd::NUM_TO_UINT ? IrCmd::UINT_TO_NUM : IrCmd::INT_TO_NUM;
-                    function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd});
+
+                    if (FFlag::LuauCodegenImprovedExitSync)
+                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd, /* lazy */ false, OP_A(inst).index});
+                    else
+                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd});
 
                     vmRegDependent[reg] = instIdx;
 
@@ -338,7 +342,10 @@ void IrValueLocationTracking::recordRestoreOp(uint32_t instIdx, IrOp location)
 
             if (!captured)
             {
-                function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
+                if (FFlag::LuauCodegenImprovedExitSync)
+                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd, /* lazy */ false, instIdx});
+                else
+                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
 
                 if (logger && logger->options.includeRegSpills)
                     logger->formatAppendWithPrefix("  ; %%%u can be restored from R%d%s\n", depInstIdx, reg, getConversionCmdSuffix(inst.cmd));
@@ -375,7 +382,6 @@ void IrValueLocationTracking::invalidateRestoreOp(IrOp location, bool skipValueI
                 case IrValueKind::Double:
                 case IrValueKind::Pointer:
                 case IrValueKind::Int:
-                case IrValueKind::Int64:
                     return;
                 default:
                     break;
@@ -454,6 +460,62 @@ void IrValueLocationTracking::invalidateRestoreVmRegs(int start, int count)
 
     for (int reg = start; reg <= end; reg++)
         invalidateRestoreOp(IrOp{IrOpKind::VmReg, uint8_t(reg)}, /*skipValueInvalidation*/ false);
+}
+
+void IrValueLocationTracking::setupExitSyncEntry(uint32_t blockIdx)
+{
+    // Reset value tracking for the sync block
+    vmRegValue.fill(kInvalidInstIdx);
+    vmRegDependent.fill(kInvalidInstIdx);
+
+    const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx);
+
+    if (!guardInstIdx)
+        return;
+
+    const VmExitSyncInfo* syncInfo = function.vmExitInfo.find(*guardInstIdx);
+
+    if (!syncInfo)
+        return;
+
+    for (IrOp op : syncInfo->argOps)
+    {
+        if (op.kind != IrOpKind::Inst)
+            continue;
+
+        IrInst& inst = function.instOp(op);
+        uint32_t instIdx = op.index;
+
+        if (!inst.needsReload)
+            continue;
+
+        ValueRestoreLocation location = function.findRestoreLocation(instIdx, /* limitToCurrentBlock */ false);
+
+        if (location.op.kind != IrOpKind::VmReg)
+            continue;
+
+        int reg = vmRegOp(location.op);
+
+        if (reg > maxReg)
+            maxReg = reg;
+
+        if (location.conversionCmd == IrCmd::NOP)
+        {
+            CODEGEN_ASSERT(vmRegValue[reg] == kInvalidInstIdx || vmRegValue[reg] == instIdx); // Unset or same
+            vmRegValue[reg] = instIdx;
+        }
+        else
+        {
+            CODEGEN_ASSERT(vmRegDependent[reg] == kInvalidInstIdx);
+            vmRegDependent[reg] = instIdx;
+
+            CODEGEN_ASSERT(vmRegValue[reg] == kInvalidInstIdx || vmRegValue[reg] == location.sourceInstIdx); // Unset or same
+            vmRegValue[reg] = location.sourceInstIdx;
+        }
+
+        if (logger && logger->options.includeRegSpills)
+            logger->formatAppendWithPrefix("  ; %%%u can be restored from R%d%s\n", instIdx, reg, getConversionCmdSuffix(location.conversionCmd));
+    }
 }
 
 } // namespace CodeGen

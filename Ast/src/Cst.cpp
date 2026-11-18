@@ -50,12 +50,6 @@ CstExprConstantString::CstExprConstantString(AstArray<char> sourceString, QuoteS
     LUAU_ASSERT(blockDepth == 0 || quoteStyle == QuoteStyle::QuotedRaw);
 }
 
-CstExprConstantInteger::CstExprConstantInteger(const AstArray<char>& value)
-    : CstNode(CstClassIndex())
-    , value(value)
-{
-}
-
 CstExprCall::CstExprCall(Position openParens, Position closeParens, AstArray<Position> commaPositions)
     : CstNode(CstClassIndex())
     , openParens(openParens)
@@ -169,6 +163,12 @@ CstStatForIn::CstStatForIn(
 }
 
 CstStatIf::CstStatIf(Position annotationColonPosition)
+    : CstNode(CstClassIndex())
+    , annotationColonPosition(annotationColonPosition)
+{
+}
+
+CstStatWhile::CstStatWhile(Position annotationColonPosition)
     : CstNode(CstClassIndex())
     , annotationColonPosition(annotationColonPosition)
 {

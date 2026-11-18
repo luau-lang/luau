@@ -1,0 +1,2 @@
+./syntax/while-local/error_multiple_bindings.luau:1: Expected identifier when parsing expression, got 'local'
+stacktrace:

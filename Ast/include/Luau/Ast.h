@@ -344,7 +344,6 @@ enum class ConstantNumberParseResult
     Malformed,
     BinOverflow,
     HexOverflow,
-    IntOverflow,
 };
 
 class AstExprConstantNumber : public AstExpr
@@ -360,18 +359,6 @@ public:
     ConstantNumberParseResult parseResult;
 };
 
-class AstExprConstantInteger : public AstExpr
-{
-public:
-    LUAU_RTTI(AstExprConstantInteger)
-
-    AstExprConstantInteger(const Location& location, int64_t value, ConstantNumberParseResult parseResult = ConstantNumberParseResult::Ok);
-
-    void visit(AstVisitor* visitor) override;
-
-    int64_t value;
-    ConstantNumberParseResult parseResult;
-};
 class AstExprConstantString : public AstExpr
 {
 public:
@@ -457,6 +444,7 @@ public:
         AstExpr* func,
         const AstArray<AstExpr*>& args,
         bool self,
+        bool tableCall,
         const AstArray<AstTypeOrPack>& explicitTypes,
         const Location& argLocation
     );
@@ -470,6 +458,7 @@ public:
     AstArray<AstTypeOrPack> typeArguments;
     AstArray<AstExpr*> args;
     bool self;
+    bool tableCall;
     Location argLocation;
 };
 
@@ -484,7 +473,8 @@ public:
         const AstName& index,
         const Location& indexLocation,
         const Position& opPosition,
-        char op
+        char op,
+        bool privateAccess = false
     );
 
     void visit(AstVisitor* visitor) override;
@@ -494,6 +484,8 @@ public:
     Location indexLocation;
     Position opPosition;
     char op = '.';
+    // Indicates a private field/method access made within a class method body
+    bool privateAccess = false;
 };
 
 class AstExprIndexExpr : public AstExpr
@@ -803,6 +795,18 @@ public:
 
     AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation);
 
+    AstStatWhile(
+        const Location& location,
+        AstExpr* condition,
+        AstStatBlock* body,
+        bool hasDo,
+        const Location& doLocation,
+        AstLocal* conditionLocal,
+        bool conditionIsConst,
+        const std::optional<Location>& conditionKeywordLocation,
+        const std::optional<Location>& conditionEqualsLocation
+    );
+
     void visit(AstVisitor* visitor) override;
 
     AstExpr* condition;
@@ -810,6 +814,14 @@ public:
 
     bool hasDo = false;
     Location doLocation;
+
+    // Active for `while local` and `while const`; conditionLocal is bound to `condition` and re-evaluated each iteration in scope for `body` only
+    AstLocal* conditionLocal = nullptr;
+    bool conditionIsConst = false;
+    std::optional<Location> conditionKeywordLocation;
+
+    // Location of the `=` in a `while local`/`while const` binding
+    std::optional<Location> conditionEqualsLocation;
 };
 
 class AstStatRepeat : public AstStat
@@ -1139,6 +1151,12 @@ struct AstDeclaredExternTypeProperty
     AstTableAccess access = AstTableAccess::ReadWrite;
 };
 
+enum class AstClassAccess
+{
+    Public,
+    Private,
+};
+
 struct AstClassProperty
 {
     Location qualifierLocation;
@@ -1146,15 +1164,18 @@ struct AstClassProperty
     Location nameLocation;
     std::optional<Location> typeColonLocation = std::nullopt;
     AstType* ty = nullptr;
+    AstClassAccess access = AstClassAccess::Public;
 };
 
 struct AstClassMethod
 {
+    // Methods with no access modifiers are public by default.
     std::optional<Location> qualifierLocation;
     Location keywordLocation;
     AstName functionName;
     Location nameLocation;
-    AstExprFunction* function;
+    AstExprFunction* function = nullptr;
+    AstClassAccess access = AstClassAccess::Public;
 };
 
 using AstClassMember = Variant<AstClassProperty, AstClassMethod>;
@@ -1164,15 +1185,40 @@ class AstStatClass : public AstStat
 public:
     LUAU_RTTI(AstStatClass)
 
-    AstLocal* name;
+    // Neither functions nor classes currently support `export const` declarations, so we use an enum here
+    enum class DeclModifier
+    {
+        None,
+        Local,
+        Const,
+        Export
+    };
+
+    // exprName is populated if declModifier is None, otherwise localName is populated
+    union
+    {
+        AstExpr* exprName;
+        AstLocal* localName;
+    };
     AstExpr* super;
     AstArray<AstClassMember> members;
-    bool exported;
+    DeclModifier declModifier;
     bool open;
 
-    AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported, bool open);
+    AstStatClass(
+        const Location& location,
+        AstExpr* exprName,
+        AstLocal* localName,
+        AstExpr* super,
+        AstArray<AstClassMember> members,
+        DeclModifier declModifier,
+        bool open
+    );
 
     void visit(AstVisitor* visitor) override;
+
+    AstName getName() const;
+    Location getNameLocation() const;
 };
 
 struct AstTableIndexer
@@ -1519,10 +1565,6 @@ public:
         return visit(static_cast<AstExpr*>(node));
     }
     virtual bool visit(class AstExprConstantNumber* node)
-    {
-        return visit(static_cast<AstExpr*>(node));
-    }
-    virtual bool visit(class AstExprConstantInteger* node)
     {
         return visit(static_cast<AstExpr*>(node));
     }

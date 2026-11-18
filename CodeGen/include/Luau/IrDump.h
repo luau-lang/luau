@@ -5,6 +5,7 @@
 #include "Luau/CodeGenOptions.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct Proto;
@@ -31,6 +32,7 @@ struct IrToStringContext
     const std::vector<IrConst>& constants;
     const CfgInfo& cfg;
     const DenseHashMap<uint32_t, VmExitSyncInfo>& vmExitInfo;
+    const std::vector<IrCounterSet>& counterSets;
     Proto* proto = nullptr;
 };
 

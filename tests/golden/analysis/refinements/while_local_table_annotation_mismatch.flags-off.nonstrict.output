@@ -1,0 +1,3 @@
+./analysis/refinements/while_local_table_annotation_mismatch.luau(2,7): SyntaxError: Expected identifier when parsing expression, got 'local'
+./analysis/refinements/while_local_table_annotation_mismatch.luau(5,1): SyntaxError: Expected 'end' (to close 'local' at line 2), got <eof>
+./analysis/refinements/while_local_table_annotation_mismatch.luau(2,13): LocalUnused: Variable 'x' is never used; prefix with '_' to silence

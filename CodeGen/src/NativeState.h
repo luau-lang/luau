@@ -64,6 +64,8 @@ struct NativeContext
     const TValue* (*luaT_gettm)(LuaTable* events, TMS event, TString* ename) = nullptr;
     const TString* (*luaT_objtypenamestr)(lua_State* L, const TValue* o) = nullptr;
 
+    void (*luaR_tryconstructobject)(lua_State* L, StkId target, StkId maybeclass, uint32_t slotid) = nullptr;
+
     double (*libm_exp)(double) = nullptr;
     double (*libm_pow)(double, double) = nullptr;
     double (*libm_fmod)(double, double) = nullptr;
@@ -98,6 +100,7 @@ struct NativeContext
     void (*getImport)(lua_State* L, StkId res, unsigned id, unsigned pc) = nullptr;
 
     Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
+    Closure* (*callNamecall)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
     int (*fastPcallSetup)(lua_State* L, StkId ra, int pfid, int nparams, int nresults) = nullptr;
 
     // Opcode fallbacks, implemented in C

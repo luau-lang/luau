@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
+LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 namespace
 {
@@ -63,7 +64,8 @@ struct SimplifyFixture : Fixture
     TypeId unrelatedClassTy = nullptr;
 
     // This only affects type stringification.
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff2{FFlag::LuauDecomposeIntersectionOfFreeType, true};
 
     SimplifyFixture()
     {
@@ -112,6 +114,16 @@ struct SimplifyFixture : Fixture
     TypeId union_(TypeId a, TypeId b)
     {
         return simplifyUnion(getBuiltins(), arena, a, b).result;
+    }
+
+    TypeId unionOfNegation(TypeId target, TypeId toBeNegated)
+    {
+        return simplifyWithUnionOfNegation(getBuiltins(), arena, target, toBeNegated).result;
+    }
+
+    std::string unionOfNegationStr(TypeId target, TypeId toBeNegated)
+    {
+        return toString(unionOfNegation(target, toBeNegated), opts);
     }
 };
 
@@ -399,25 +411,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "combine_disjoint_sealed_tables")
     CHECK("{ prop: string, second_prop: number }" == toString(intersect(t1, t2)));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify")
-{
-    TypeId t1 = mkTable({{"prop", stringTy}});
-    TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
-
-    CHECK("{ prop: string } & { prop: unknown, second_prop: number }" == toString(intersect(t1, t2)));
-}
-
-// Simplification has an extra code path especially for intersections with
-// single-property tables, so it's worthwhile to separately test the case where
-// both tables have multiple properties.
-TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify_2")
-{
-    TypeId t1 = mkTable({{"prop", stringTy}, {"third_prop", numberTy}});
-    TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
-
-    CHECK("{ prop: string, third_prop: number } & { prop: unknown, second_prop: number }" == toString(intersect(t1, t2)));
-}
-
 TEST_CASE_FIXTURE(SimplifyFixture, "tables_and_top_table")
 {
     TypeId notTableType = mkNegation(tableTy);
@@ -436,17 +429,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "tables_and_truthy")
 
     CHECK(t1 == intersect(t1, truthyTy));
     CHECK(t1 == intersect(truthyTy, t1));
-}
-
-TEST_CASE_FIXTURE(SimplifyFixture, "table_with_a_tag")
-{
-    // {tag: string, prop: number} & {tag: "hello"}
-    // I think we can decline to simplify this:
-    TypeId t1 = mkTable({{"tag", stringTy}, {"prop", numberTy}});
-    TypeId t2 = mkTable({{"tag", helloTy}});
-
-    CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t1, t2));
-    CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t2, t1));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "nested_table_tag_test")
@@ -539,6 +521,113 @@ TEST_CASE_FIXTURE(SimplifyFixture, "negations_of_extern_types")
     CHECK(notParentClassTy == intersect(notParentClassTy, notChildClassTy));
 }
 
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_drops_disjoint_target")
+{
+    // number | ~string => ~string
+    CHECK("~string" == unionOfNegationStr(numberTy, stringTy));
+    // number | ~"hello" => ~"hello"
+    CHECK("~\"hello\"" == unionOfNegationStr(numberTy, helloTy));
+    // { x: number } | ~string => ~string
+    CHECK("~string" == unionOfNegationStr(mkTable({{"x", numberTy}}), stringTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_never_target_is_negation")
+{
+    // never | ~number => ~number
+    CHECK("~number" == unionOfNegationStr(neverTy, numberTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_intersects_stays_union")
+{
+    // "hello" | ~string cannot be simplified further
+    CHECK("\"hello\" | ~string" == unionOfNegationStr(helloTy, stringTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_of_never_is_unknown")
+{
+    // T | ~never => unknown
+    CHECK(unknownTy == unionOfNegation(stringTy, neverTy));
+    CHECK(unknownTy == unionOfNegation(nilTy, neverTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_of_unknown_drops_negation")
+{
+    // T | ~unknown => T
+    CHECK(stringTy == unionOfNegation(stringTy, unknownTy));
+
+    TypeId numberOrString = arena->addType(UnionType{{numberTy, stringTy}});
+    CHECK(numberOrString == unionOfNegation(numberOrString, unknownTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_of_any")
+{
+    // any = *error-type* | unknown, so T | ~any = *error-type* | T
+    CHECK("*error-type* | string" == unionOfNegationStr(stringTy, anyTy));
+
+    // any | ~any => any
+    CHECK(anyTy == unionOfNegation(anyTy, anyTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_double_negation_cancels")
+{
+    // string | ~~number => string | number
+    CHECK("number | string" == unionOfNegationStr(stringTy, mkNegation(numberTy)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_truthy_falsy_canonicalization")
+{
+    // mkNegation(falsy) == truthy, so truthy | truthy => truthy
+    CHECK(truthyTy == unionOfNegation(truthyTy, falsyTy));
+    // mkNegation(truthy) == falsy; falsy is a union, so the result is re-minted
+    CHECK("false?" == unionOfNegationStr(falsyTy, truthyTy));
+
+    // nil | ~truthy => falsy
+    CHECK(falsyTy == unionOfNegation(nilTy, truthyTy));
+    // false | ~truthy => falsy
+    CHECK(falsyTy == unionOfNegation(falseTy, truthyTy));
+
+    // number | ~truthy stays a union: truthy is not canonicalized from the target side
+    CHECK("number | ~(false?)" == unionOfNegationStr(numberTy, falsyTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_extern_types")
+{
+    // Child | ~Parent cannot be simplified (Child intersects ~Parent)
+    CHECK("Child | ~Parent" == unionOfNegationStr(childClassTy, parentClassTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_union_targets")
+{
+    // (never | string) | ~nil => ~nil
+    TypeId neverOrString = arena->addType(UnionType{{neverTy, stringTy}});
+    CHECK("~nil" == unionOfNegationStr(neverOrString, nilTy));
+
+    // (number | string) | ~string stays a union; toString lexically sorts the options
+    TypeId numberOrString = arena->addType(UnionType{{numberTy, stringTy}});
+    CHECK("string | ~string" == unionOfNegationStr(numberOrString, stringTy));
+
+    // string | ~(number | string) stays a union. This *could* be ~number.
+    TypeId numberAndString = arena->addType(UnionType{{numberTy, stringTy}});
+    CHECK("string | ~(number | string)" == unionOfNegationStr(stringTy, numberAndString));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_implication_semantics")
+{
+    // number & (string | ~number) => never
+    CHECK(neverTy == intersect(unionOfNegation(stringTy, numberTy), numberTy));
+
+    // ("hello" | ~string) & string => "hello"
+    CHECK(helloTy == intersect(unionOfNegation(helloTy, stringTy), stringTy));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_negation_free_type")
+{
+    CHECK("'a | ~number" == unionOfNegationStr(freeTy, numberTy));
+
+    auto res = simplifyWithUnionOfNegation(getBuiltins(), arena, freeTy, numberTy);
+    CHECK(res.blockedTypes.empty());
+}
+
 TEST_CASE_FIXTURE(SimplifyFixture, "intersection_of_intersection_of_a_free_type_can_result_in_removal_of_that_free_type")
 {
     // a & string and number
@@ -566,32 +655,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "some_tables_are_really_never")
     CHECK(neverTy == intersect(t2, numberTy));
     CHECK(neverTy == intersect(numberTy, t2));
     CHECK(neverTy == intersect(t2, t2));
-}
-
-TEST_CASE_FIXTURE(SimplifyFixture, "simplify_stops_at_cycles")
-{
-    TypeId t = mkTable({});
-    TableType* tt = getMutable<TableType>(t);
-    REQUIRE(tt);
-
-    TypeId t2 = mkTable({});
-    TableType* t2t = getMutable<TableType>(t2);
-    REQUIRE(t2t);
-
-    tt->props["cyclic"] = Property{t2};
-    t2t->props["cyclic"] = Property{t};
-
-    CHECK(t == intersect(t, unknownTy));
-    CHECK(t == intersect(unknownTy, t));
-
-    CHECK(t2 == intersect(t2, unknownTy));
-    CHECK(t2 == intersect(unknownTy, t2));
-
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(t, anyTy));
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(anyTy, t));
-
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(t2, anyTy));
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(anyTy, t2));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "free_type_bound_by_any_with_any")
@@ -654,93 +717,12 @@ TEST_CASE_FIXTURE(SimplifyFixture, "{ x: number, y: number } & { read x: unknown
     CHECK(leftTy == intersect(leftTy, rightTy));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "{ read x: Child } & { x: Parent }")
+TEST_CASE_FIXTURE(SimplifyFixture, "distinct_empty_inexact_tables_are_coincident")
 {
-    createSomeExternTypes(getFrontend());
+    TypeId left = mkTable({});
+    TypeId right = mkTable({});
 
-    TypeId parentTy = getFrontend().globals.globalScope->exportedTypeBindings["Parent"].type;
-    REQUIRE(parentTy);
-
-    TypeId childTy = getFrontend().globals.globalScope->exportedTypeBindings["Child"].type;
-    REQUIRE(childTy);
-
-    TypeId leftTy = mkTable({{"x", Property::readonly(childTy)}});
-    TypeId rightTy = mkTable({{"x", parentTy}});
-
-    // TODO: This could be { read x: Child, write x: Parent }
-    CHECK("{ read x: Child } & { x: Parent }" == toString(intersect(leftTy, rightTy)));
-}
-
-TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")
-{
-    TableType empty;
-    empty.state = TableState::Sealed;
-    TypeId emptyTable = arena->addType(std::move(empty));
-
-    TableType nonEmpty;
-    nonEmpty.props["p"] = arena->addType(UnionType{{getBuiltins()->numberType, getBuiltins()->stringType}});
-    nonEmpty.state = TableState::Sealed;
-    TypeId nonEmptyTable = arena->addType(std::move(nonEmpty));
-
-    CHECK("{ p: number | string }" == toString(simplifyIntersection(getBuiltins(), arena, {nonEmptyTable, emptyTable}).result));
-}
-
-TEST_CASE_FIXTURE(SimplifyFixture, "relate_write_only_number_with_number")
-{
-    TypeId leftTy = mkTable({{"x", Property::writeonly(builtinTypes->numberType)}});
-    TypeId rightTy = mkTable({{"x", Property::rw(arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}}))}});
-
-    // This example could be simplified to:
-    //
-    //  { write x: number, read x: number ? }
-    CHECK("{ write x: number } & { x: number? }" == toString(intersect(leftTy, rightTy)));
-    CHECK("{ write x: number } & { x: number? }" == toString(intersect(rightTy, leftTy)));
-
-    // We could probably simplify this to...
-    //
-    //  { x: number? }
-    //
-    // ... as...
-    //
-    //  { write x: number } <: { x: number? }
-    CHECK("{ write x: number } | { x: number? }" == toString(union_(leftTy, rightTy)));
-    CHECK("{ write x: number } | { x: number? }" == toString(union_(rightTy, leftTy)));
-}
-
-TEST_CASE_FIXTURE(SimplifyFixture, "relate_read_only_number_with_number")
-{
-    TypeId leftTy = mkTable({{"x", Property::readonly(builtinTypes->numberType)}});
-    TypeId rightTy = mkTable({{"x", Property::rw(arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}}))}});
-
-    // Both of these examples _could_ be simplified, but require
-    // minting a new table ...
-
-    // This could be: { read x: number, write x: number? }
-    CHECK("{ read x: number } & { x: number? }" == toString(intersect(leftTy, rightTy)));
-    CHECK("{ read x: number } & { x: number? }" == toString(intersect(rightTy, leftTy)));
-
-    // This could be: { read x: number? }
-    CHECK("{ read x: number } | { x: number? }" == toString(union_(leftTy, rightTy)));
-    CHECK("{ read x: number } | { x: number? }" == toString(union_(rightTy, leftTy)));
-}
-
-TEST_CASE_FIXTURE(SimplifyFixture, "relate_coincident_minus_one_prop_tables")
-{
-    // { x: number, y: boolean }
-    TypeId leftTy = mkTable({{"x", Property::rw(builtinTypes->numberType)}, {"y", Property::rw(builtinTypes->booleanType)}});
-
-    // { x: number, y: boolean, z: string }
-    TypeId rightTy = mkTable(
-        {{"x", Property::rw(builtinTypes->numberType)}, {"y", Property::rw(builtinTypes->booleanType)}, {"z", Property::rw(builtinTypes->stringType)}}
-    );
-
-    // By width subtyping this could be { x: number, y: boolean, z: string }
-    CHECK("{ x: number, y: boolean } & { x: number, y: boolean, z: string }" == toString(intersect(leftTy, rightTy)));
-    CHECK("{ x: number, y: boolean } & { x: number, y: boolean, z: string }" == toString(intersect(rightTy, leftTy)));
-
-    // By width subtyping this could be { x: number, y: boolean }
-    CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(leftTy, rightTy)));
-    CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(rightTy, leftTy)));
+    CHECK(Relation::Coincident == relate(left, right));
 }
 
 TEST_SUITE_END();

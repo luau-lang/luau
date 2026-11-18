@@ -1,0 +1,1 @@
+./analysis/classes/extends_non_open_class_is_an_error.luau(7,19): TypeError: Non-open class Animal cannot be extended

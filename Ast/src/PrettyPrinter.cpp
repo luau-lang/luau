@@ -8,12 +8,14 @@
 
 #include <algorithm>
 #include <limits>
+
 #include <math.h>
+#include <stdio.h>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 namespace
 {
@@ -521,28 +523,6 @@ struct Printer
                 }
             }
         }
-        else if (const auto& a = expr.as<AstExprConstantInteger>())
-        {
-            if (const auto cstNode = lookupCstNode<CstExprConstantInteger>(a))
-            {
-                writer.literal(std::string_view(cstNode->value.data, cstNode->value.size));
-            }
-            else
-            {
-                if (a->value >= 0)
-                {
-                    char buffer[100];
-                    size_t len = snprintf(buffer, sizeof(buffer), "%lldi", (long long)a->value);
-                    writer.literal(std::string_view{buffer, len});
-                }
-                else
-                {
-                    char buffer[100];
-                    size_t len = snprintf(buffer, sizeof(buffer), "0x%llxi", (unsigned long long)a->value);
-                    writer.literal(std::string_view{buffer, len});
-                }
-            }
-        }
         else if (const auto& a = expr.as<AstExprConstantString>())
         {
             if (const auto cstNode = lookupCstNode<CstExprConstantString>(a))
@@ -901,6 +881,27 @@ struct Printer
             advance(newPos);
     }
 
+    void visualize(AstStatClass::DeclModifier modifier)
+    {
+        switch (modifier)
+        {
+        case AstStatClass::DeclModifier::None:
+            break;
+        case AstStatClass::DeclModifier::Export:
+            writer.keyword("export");
+            break;
+        case AstStatClass::DeclModifier::Local:
+            writer.keyword("local");
+            break;
+        case AstStatClass::DeclModifier::Const:
+            writer.keyword("const");
+            break;
+        default:
+            LUAU_ASSERT(!"Unknown class declaration modifier");
+            break;
+        }
+    }
+
     void visualize(AstStat& program)
     {
         advance(program.location.begin);
@@ -935,6 +936,20 @@ struct Printer
         else if (const auto& a = program.as<AstStatWhile>())
         {
             writer.keyword("while");
+            if (FFlag::LuauExperimentalWhileLocalSyntax && a->conditionLocal)
+            {
+                const auto cstNode = lookupCstNode<CstStatWhile>(a);
+
+                if (a->conditionKeywordLocation)
+                    advance(a->conditionKeywordLocation->begin);
+                writer.keyword(a->conditionIsConst ? "const" : "local");
+
+                visualize(*a->conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+                if (a->conditionEqualsLocation)
+                    advance(a->conditionEqualsLocation->begin);
+                writer.symbol("=");
+            }
             visualize(*a->condition);
             // TODO: what if 'hasDo = false'?
             advance(a->doLocation.begin);
@@ -1365,9 +1380,20 @@ struct Printer
         }
         else if (const auto& c = program.as<AstStatClass>(); c && FFlag::DebugLuauUserDefinedClasses)
         {
+            visualize(c->declModifier);
+
+            if (c->open)
+                writer.keyword("open");
+
             writer.keyword("class");
-            writer.advance(c->name->location.begin);
-            writer.identifier(c->name->name.value);
+            if (c->declModifier == AstStatClass::DeclModifier::None)
+                visualize(*c->exprName);
+            else
+            {
+                writer.advance(c->localName->location.begin);
+                writer.identifier(c->localName->name.value);
+            }
+
             if (c->super)
             {
                 writer.keyword("extends");
@@ -1381,7 +1407,7 @@ struct Printer
                         [&](const AstClassProperty& prop)
                         {
                             writer.advance(prop.qualifierLocation.begin);
-                            writer.keyword("public");
+                            writer.keyword(prop.access == AstClassAccess::Private ? "private" : "public");
                             writer.advance(prop.nameLocation.begin);
                             writer.identifier(prop.name.value);
                             if (writeTypes && prop.ty)
@@ -1397,7 +1423,7 @@ struct Printer
                             if (method.qualifierLocation)
                             {
                                 writer.advance(method.qualifierLocation->begin);
-                                writer.keyword("public");
+                                writer.keyword(method.access == AstClassAccess::Private ? "private" : "public");
                             }
                             writer.advance(method.keywordLocation.begin);
                             writer.keyword("function");
@@ -1547,7 +1573,7 @@ struct Printer
 
     void visualizeElseIf(AstStatIf& elseif)
     {
-        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalSyntax && elseif.conditionLocal)
         {
             const auto cstNode = lookupCstNode<CstStatIf>(&elseif);
 
@@ -1597,7 +1623,7 @@ struct Printer
     {
         const auto cstNode = lookupCstNode<CstExprIfElse>(&elseif);
 
-        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalSyntax && elseif.conditionLocal)
         {
             if (elseif.conditionKeywordLocation)
                 advance(elseif.conditionKeywordLocation->begin);
@@ -1916,15 +1942,12 @@ struct Printer
             {
                 if (a->props.size == 0 && indexType && indexType->name == "number")
                 {
-                    if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
+                    if (a->indexer->access != AstTableAccess::ReadWrite)
                     {
-                        if (a->indexer->access != AstTableAccess::ReadWrite)
-                        {
-                            if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
-                                advance(accessLocation->begin);
+                        if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                            advance(accessLocation->begin);
 
-                            writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
-                        }
+                        writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
                     }
 
                     visualizeTypeAnnotation(*a->indexer->resultType);
@@ -1948,18 +1971,15 @@ struct Printer
                     {
                         comma();
 
-                        if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
+                        if (a->indexer->access != AstTableAccess::ReadWrite)
                         {
-                            if (a->indexer->access != AstTableAccess::ReadWrite)
-                            {
-                                if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
-                                    advance(accessLocation->begin);
+                            if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                                advance(accessLocation->begin);
 
-                                writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
-                            }
-
-                            advance(a->indexer->location.begin);
+                            writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
                         }
+
+                        advance(a->indexer->location.begin);
 
                         writer.symbol("[");
                         visualizeTypeAnnotation(*a->indexer->indexType);

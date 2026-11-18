@@ -1,0 +1,1 @@
+./analysis/singletons/bool_singleton_subtype.luau(2,7): LocalUnused: Variable 'b' is never used; prefix with '_' to silence

@@ -263,6 +263,26 @@ std::string toString(BcFunction<VmConst>& function, bool includeDetailColumn)
     toStringFunctionHeader(ctx, function);
     append(ctx.result, "\n");
 
+    for (uint32_t i = 0; i < function.feedbackSlots.size(); ++i)
+    {
+        const BcFeedbackSlot& slot = function.feedbackSlots[i];
+
+        if (slot.kind == LFT_CALLTARGET)
+        {
+            append(ctx.result, "; feedback slot %u: CALLTARGET %%%u\n", i, slot.callTarget.inst);
+        }
+        else if (slot.kind == LFT_CONSTRUCT)
+        {
+            append(ctx.result, "; feedback slot %u: CONSTRUCT ", i);
+            toString(ctx, function, BcOp{BcOpKind::VmConst, slot.construct.shape});
+            append(ctx.result, "\n");
+        }
+        else
+        {
+            LUAU_ASSERT(!"unknown feedback slot kind");
+        }
+    }
+
     std::vector<BcOp> sortedBlocks;
     sortedBlocks.reserve(function.blocks.size());
     for (uint32_t i = 0; i < function.blocks.size(); i++)

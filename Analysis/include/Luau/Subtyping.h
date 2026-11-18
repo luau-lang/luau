@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Luau/DenseHash.h"
-#include "Luau/Set.h"
 #include "Luau/SubtypingVariance.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunction.h"
@@ -11,6 +10,7 @@
 #include "Luau/TypePairHash.h"
 #include "Luau/TypePath.h"
 
+#include <string>
 #include <vector>
 #include <optional>
 
@@ -56,6 +56,11 @@ struct SubtypingReasoningHash
 
 using SubtypingReasonings = DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>;
 inline const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
+
+// The leaf types at the end of the paths are the same type, so a
+// plain "X is not a subtype of X" message would be misleading.
+// Instead, explain that the mismatch is about the access modifier.
+std::string explainPropertyModifierViolation(const Path& subPath);
 
 /*
  * When we encounter a generic pack over the course of a subtyping test, we need
@@ -113,6 +118,7 @@ struct SubtypingResult
     bool normalizationTooComplex = false;
     bool isCacheable = true;
     bool isErrorSuppressing = false;
+    bool assumingConstraints = false;
     ErrorVec errors;
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
@@ -121,7 +127,7 @@ struct SubtypingResult
     // If this subtype result required testing free types, we might be making
     // assumptions about what the free type eventually resolves to.  If so,
     // those assumptions are recorded here.
-    std::vector<ConstraintV> assumedConstraints;
+    std::vector<ConstraintV> assumedConstraints_DEPRECATED;
 
     /// If any generic bounds were invalid, report them here
     std::vector<GenericBoundsMismatch> genericBoundsMismatches;
@@ -216,8 +222,8 @@ struct Subtyping
     // a covariant test where an invariant test would otherwise be required.
     const DenseHashSet<TypeId>* uniqueTypes = nullptr;
 
-    using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
-    using SeenTypePackSet = Set<std::pair<TypePackId, TypePackId>, TypePairHash>;
+    using SeenSet = DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash>;
+    using SeenTypePackSet = DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash>;
 
     SeenSet seenTypes;
     SeenTypePackSet seenPacks;
@@ -304,7 +310,6 @@ private:
         SubtypingEnvironment& env,
         const TableType* subTable,
         const TableType* superTable,
-        bool forceCovariantTest,
         NotNull<Scope> scope
     );
 
@@ -341,12 +346,19 @@ private:
         const TableIndexer& superIndexer,
         NotNull<Scope> scope
     );
+
+    SubtypingResult isCovariantWith_DEPRECATED(
+        SubtypingEnvironment& env,
+        const TableIndexer& subIndexer,
+        const TableIndexer& superIndexer,
+        NotNull<Scope> scope
+    );
+
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const Property& subProperty,
         const Property& superProperty,
         const std::string& name,
-        bool forceCovariantTest,
         NotNull<Scope> scope
     );
 

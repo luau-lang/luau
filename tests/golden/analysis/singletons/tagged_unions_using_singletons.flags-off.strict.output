@@ -1,0 +1,1 @@
+./analysis/singletons/tagged_unions_using_singletons.luau(6,7): LocalUnused: Variable 'c' is never used; prefix with '_' to silence

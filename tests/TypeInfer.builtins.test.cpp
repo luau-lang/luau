@@ -11,7 +11,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
+LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -135,8 +136,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
         table.sort(t, p)
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -212,6 +211,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
 {
+    ScopedFastFlag luauRemoveLoadstringFromBuiltinDefinitions{FFlag::LuauRemoveLoadstringFromBuiltinDefinitions, true};
+
     // Extracted from lua5.1
     CheckResult result = check(R"(
         local v__G = _G
@@ -353,7 +354,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
         local v_gcinfo = gcinfo
         local v_pairs = pairs
         local v_rawget = rawget
-        local v_loadstring = loadstring
+        --local v_loadstring = loadstring
         local v_ipairs = ipairs
         local v__VERSION = _VERSION
         --local v_dofile = dofile
@@ -529,6 +530,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_a_type")
     CHECK("buffer" == toString(requireType("b")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_vector_functions_have_vector_types")
+{
+    ScopedFastFlag bufferVectorLibrary{FFlag::DebugLuauBufferVectorLibrary, true};
+
+    CheckResult result = check(R"(
+        local b = buffer.create(24)
+        local v2 = buffer.readvectorf32x2(b, 0)
+        local v3 = buffer.readvectorf32x3(b, 0)
+        buffer.writevectorf32x2(b, 0, vector.create(1, 2))
+        buffer.writevectorf32x3(b, 0, vector.create(1, 2, 3))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("vector" == toString(requireType("v2")));
+    CHECK("vector" == toString(requireType("v3")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
 {
     CheckResult result = check(R"(
@@ -543,8 +561,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
         local x, y = coroutine.resume(co, 1, 2)
         local answer = coroutine.resume(co, 3)
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -594,8 +610,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_types_inference")
             return string.format("%f %d %s", a, b, c)
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(number, number, string) -> string", toString(requireType("f")));
@@ -653,8 +667,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier_type_constr
             return x
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(string) -> string", toString(requireType("f")));
@@ -1037,18 +1049,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        if (FFlag::LuauNewTypePathErrorMessages)
-            CHECK_EQ(
-                "Expected this to be 'number', but got 'number?'; \n"
-                "`nil` is not a subtype of `number`",
-                toString(result.errors[0])
-            );
-        else
-            CHECK_EQ(
-                "Expected this to be 'number', but got 'number?'; \n"
-                "the 2nd component of the union is `nil`, which is not a subtype of `number`",
-                toString(result.errors[0])
-            );
+        CHECK_EQ(
+            "Expected this to be 'number', but got 'number?'; \n"
+            "`nil` is not a subtype of `number`",
+            toString(result.errors[0])
+        );
     }
     else
     {
@@ -1101,8 +1106,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1131,8 +1134,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types3")
             return x
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1433,8 +1434,6 @@ local function f(x: string)
 end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1694,7 +1693,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
             end
         end
     )");
-    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1738,8 +1737,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break")
         return Immutable
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1754,8 +1751,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break_2")
             return new
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

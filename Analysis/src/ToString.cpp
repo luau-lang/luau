@@ -6,7 +6,6 @@
 #include "Luau/DenseHash.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
-#include "Luau/Set.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
@@ -18,7 +17,7 @@
 #include <algorithm>
 #include <string>
 
-LUAU_FASTFLAG(LuauIntegerType2)
+
 LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
 
 /*
@@ -60,8 +59,8 @@ struct FindCyclicTypes final : TypeVisitor
     FindCyclicTypes& operator=(const FindCyclicTypes&) = delete;
 
     bool exhaustive = false;
-    Luau::Set<TypeId> visited;
-    Luau::Set<TypePackId> visitedPacks;
+    Luau::DenseHashSet<TypeId> visited;
+    Luau::DenseHashSet<TypePackId> visitedPacks;
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
 
@@ -77,17 +76,17 @@ struct FindCyclicTypes final : TypeVisitor
 
     bool visit(TypeId ty) override
     {
-        return visited.insert(ty);
+        return visited.try_insert(ty);
     }
 
     bool visit(TypePackId tp) override
     {
-        return visitedPacks.insert(tp);
+        return visitedPacks.try_insert(tp);
     }
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (!visited.insert(ty))
+        if (!visited.try_insert(ty))
             return false;
         LUAU_ASSERT(ft.lowerBound);
         LUAU_ASSERT(ft.upperBound);
@@ -98,7 +97,7 @@ struct FindCyclicTypes final : TypeVisitor
 
     bool visit(TypeId ty, const TableType& ttv) override
     {
-        if (!visited.insert(ty))
+        if (!visited.try_insert(ty))
             return false;
 
         if (ttv.name || ttv.syntheticName)
@@ -169,7 +168,7 @@ struct StringifierState
 
     DenseHashMap<TypeId, std::string> cycleNames;
     DenseHashMap<TypePackId, std::string> cycleTpNames;
-    Set<void*> seen;
+    DenseHashSet<void*> seen;
     // `$$$` was chosen as the tombstone for `usedNames` since it is not a valid name syntactically and is relatively short for string comparison
     // reasons.
     DenseHashSet<std::string> usedNames;
@@ -216,9 +215,7 @@ struct StringifierState
         if (!n.empty())
             return n;
 
-        const bool isForGeneric = FFlag::LuauBetterInferredGenericNames
-            ? nullptr != get<GenericType>(follow(ty))
-            : false;
+        const bool isForGeneric = FFlag::LuauBetterInferredGenericNames ? nullptr != get<GenericType>(follow(ty)) : false;
 
         for (int count = 0; count < 256; ++count)
         {
@@ -243,10 +240,7 @@ struct StringifierState
         if (!n.empty())
             return n;
 
-        const bool isForGeneric =
-            FFlag::LuauBetterInferredGenericNames
-            ? nullptr != get<GenericTypePack>(follow(ty))
-            : false;
+        const bool isForGeneric = FFlag::LuauBetterInferredGenericNames ? nullptr != get<GenericTypePack>(follow(ty)) : false;
 
         for (int count = 0; count < 256; ++count)
         {
@@ -660,13 +654,6 @@ struct TypeStringifier
         case PrimitiveType::Table:
             state.emit("table");
             return;
-        case PrimitiveType::Integer:
-            if (FFlag::LuauIntegerType2)
-            {
-                state.emit("integer");
-                return;
-            }
-            [[fallthrough]];
         default:
             LUAU_ASSERT(!"Unknown primitive type");
             throw InternalCompilerError("Unknown primitive type " + std::to_string(ptv.type));
@@ -842,6 +829,7 @@ struct TypeStringifier
             if (ttv.indexer->isReadOnly)
                 state.emit("read ");
             stringify(ttv.indexer->indexResultType);
+
             state.emit("}");
 
             state.unsee(&ttv);
@@ -904,7 +892,9 @@ struct TypeStringifier
 
     void operator()(TypeId ty, const MetatableType& mtv)
     {
-        state.result.invalid = true;
+        if (!FFlag::LuauBetterMetatableStringification)
+            state.result.invalid = true;
+
         if (!state.exhaustive && mtv.syntheticName)
         {
             state.emitAndRecordSpan(*mtv.syntheticName, ty);
@@ -2078,7 +2068,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {
-            std::string s = tos(c.resultType) + " ~ hasProp " + tos(c.subjectType) + ", \"" + c.prop + "\" ctx=" + std::to_string(int(c.context));
+            std::string s = tos(c.resultType) + " ~ hasProp " + tos(c.subjectType) + ", \"" + c.prop + "\" ";
             if (c.inConditional)
                 s += " (inConditional)";
             return s;

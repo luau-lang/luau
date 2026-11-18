@@ -1,0 +1,2 @@
+./analysis/intersection-types/oss_1646_mixed_overload_arguments.luau(11,5): TypeError: None of the overloads for function that accept 2 arguments are compatible.
+./analysis/intersection-types/oss_1646_mixed_overload_arguments.luau(11,5): TypeError: Available overloads: (string, string) -> (); and (number, number) -> ()

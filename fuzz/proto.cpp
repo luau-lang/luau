@@ -61,8 +61,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 const double kTypecheckTimeoutSec = 4.0;
 
@@ -190,7 +188,7 @@ static void setupFrontend(Luau::Frontend& frontend)
     registerTypes(frontend, frontend.globalsForAutocomplete, true);
     Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
-    frontend.iceHandler.onInternalError = [](const char* error)
+    frontend.onInternalError = [](const char* error)
     {
         printf("ICE: %s\n", error);
         LUAU_ASSERT(!"ICE");
@@ -291,8 +289,6 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     FFlag::DebugLuauAbortingChecks.value = true;
     FFlag::DebugLuauUserDefinedClasses.value = true;
     FFlag::DebugLuauUserDefinedClassesRuntime.value = true;
-    FFlag::DebugLuauIfLocalSyntax.value = true;
-    FFlag::DebugLuauIfLocalAnalysis.value = true;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 

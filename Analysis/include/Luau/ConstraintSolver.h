@@ -201,13 +201,17 @@ private:
 
     void generalizeOneType(TypeId ty);
 
-    // Clip with LuauRemoveConstraintSolverEmplace
-    template<typename T, typename... Args>
-    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
+    std::optional<std::pair<TypeId, bool>> lookupTablePropHelper(
+        NotNull<const Constraint> constraint,
+        TypeId subjectType,
+        const std::string& propName,
+        ValueContext context,
+        TypeIds& blockedTypes,
+        DenseHashMap<TypeId, std::optional<std::pair<TypeId, bool>>>& cache,
+        bool inConditional,
+        bool suppressSimplification
+    );
 
-    // Clip with LuauRemoveConstraintSolverEmplace
-    template<typename T, typename... Args>
-    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
 
 public:
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If
@@ -233,7 +237,7 @@ public:
         TypeId subjectType,
         TypeId indexType,
         TypeId resultType,
-        Set<TypeId>& seen
+        DenseHashSet<TypeId>& seen
     );
     bool tryDispatch(const HasIndexerConstraint& c, NotNull<const Constraint> constraint);
 
@@ -256,7 +260,7 @@ public:
     // for a, ... in next_function, t, ... do
     bool tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint);
 
-    TablePropLookupResult lookupTableProp(
+    TablePropLookupResult lookupTableProp_DEPRECATED(
         NotNull<const Constraint> constraint,
         TypeId subjectType,
         const std::string& propName,
@@ -265,14 +269,23 @@ public:
         bool suppressSimplification = false
     );
 
-    TablePropLookupResult lookupTableProp(
+    TablePropLookupResult lookupTableProp_DEPRECATED(
         NotNull<const Constraint> constraint,
         TypeId subjectType,
         const std::string& propName,
         ValueContext context,
         bool inConditional,
         bool suppressSimplification,
-        Set<TypeId>& seen
+        DenseHashSet<TypeId>& seen
+    );
+
+    TablePropLookupResult lookupTableProp(
+        NotNull<const Constraint> constraint,
+        TypeId subjectType,
+        const std::string& propName,
+        ValueContext context,
+        bool inConditional,
+        bool suppressSimplification
     );
 
     /**

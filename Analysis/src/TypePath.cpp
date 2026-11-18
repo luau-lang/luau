@@ -17,9 +17,6 @@
 #include <optional>
 #include <sstream>
 
-LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
-
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
 // logic.
@@ -281,8 +278,6 @@ namespace
 
 bool isSingletonTypePack(TypePackId pack)
 {
-    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
-
     DenseHashSet<TypePackId> seen;
     bool foundElement = false;
     int steps = 0;
@@ -683,9 +678,6 @@ bool traverse(TraversalState& state, const Path& path, TypePathRenderMetadata* r
     {
         if (renderMetadata)
         {
-            // We should only ever compute render metadata when the flag is enabled, so we assert that here.
-            LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
-
             if (i > 0)
             {
                 const auto* field = get_if<TypePath::PackField>(&path.components[i - 1]);
@@ -715,8 +707,6 @@ bool traverse(TraversalState& state, const Path& path, TypePathRenderMetadata* r
 template<typename TID>
 TypePathRenderMetadata deriveRenderMetadataImpl(TID root, const TypePath::Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
 {
-    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
-
     TraversalState state{follow(root), builtinTypes, arena};
     TypePathRenderMetadata options;
     traverse(state, path, &options);
@@ -1292,251 +1282,6 @@ RenderedTypePath renderTypePath(const TypePath::Path& path, const TypePathRender
     return result;
 }
 
-/// Remove with FFlag::LuauNewTypePathErrorMessages
-std::string toStringHuman_DEPRECATED(const TypePath::Path& path)
-{
-    enum class State
-    {
-        Initial,
-        Normal,
-        Property,
-        PendingIs,
-        PendingAs,
-        PendingWhich,
-    };
-
-    std::stringstream result;
-    State state = State::Initial;
-    bool last = false;
-
-    auto strComponent = [&](auto&& c)
-    {
-        using T = std::decay_t<decltype(c)>;
-        if constexpr (std::is_same_v<T, TypePath::Property>)
-        {
-            if (state == State::PendingIs)
-                result << ", ";
-
-            switch (state)
-            {
-            case State::Initial:
-            case State::PendingIs:
-                if (c.isRead)
-                    result << "accessing `";
-                else
-                    result << "writing to `";
-                break;
-            case State::Property:
-                // if the previous state was a property, then we're doing a sequence of indexing
-                result << '.';
-                break;
-            default:
-                break;
-            }
-
-            result << c.name;
-
-            state = State::Property;
-        }
-        else if constexpr (std::is_same_v<T, TypePath::Index>)
-        {
-            if (state == State::Initial && !last)
-                result << "in" << ' ';
-            else if (state == State::PendingIs)
-                result << ' ' << "has" << ' ';
-            else if (state == State::Property)
-                result << '`' << ' ' << "has" << ' ';
-
-            result << "the " << toHumanReadableIndex(c.index);
-
-            switch (c.variant)
-            {
-            case TypePath::Index::Variant::Pack:
-                result << ' ' << "entry in the type pack";
-                break;
-            case TypePath::Index::Variant::Union:
-                result << ' ' << "component of the union";
-                break;
-            case TypePath::Index::Variant::Intersection:
-                result << ' ' << "component of the intersection";
-                break;
-            }
-
-            if (state == State::PendingWhich)
-                result << ' ' << "which";
-
-            if (state == State::PendingIs || state == State::Property)
-                state = State::PendingAs;
-            else
-                state = State::PendingIs;
-        }
-        else if constexpr (std::is_same_v<T, TypePath::TypeField>)
-        {
-            if (state == State::Initial && !last)
-                result << "in" << ' ';
-            else if (state == State::PendingIs)
-                result << ", ";
-            else if (state == State::Property)
-                result << '`' << ' ' << "has" << ' ';
-
-            switch (c)
-            {
-            case TypePath::TypeField::Table:
-                result << "the table portion";
-                if (state == State::Property)
-                    state = State::PendingAs;
-                else
-                    state = State::PendingIs;
-                break;
-            case TypePath::TypeField::Metatable:
-                result << "the metatable portion";
-                if (state == State::Property)
-                    state = State::PendingAs;
-                else
-                    state = State::PendingIs;
-                break;
-            case TypePath::TypeField::LowerBound:
-                result << "the lower bound of" << ' ';
-                state = State::Normal;
-                break;
-            case TypePath::TypeField::UpperBound:
-                result << "the upper bound of" << ' ';
-                state = State::Normal;
-                break;
-            case TypePath::TypeField::IndexLookup:
-                result << "the index type";
-                if (state == State::Property)
-                    state = State::PendingAs;
-                else
-                    state = State::PendingIs;
-                break;
-            case TypePath::TypeField::IndexResult:
-                result << "the result of indexing";
-                if (state == State::Property)
-                    state = State::PendingAs;
-                else
-                    state = State::PendingIs;
-                break;
-            case TypePath::TypeField::Negated:
-                result << "the negation" << ' ';
-                state = State::Normal;
-                break;
-            case TypePath::TypeField::Variadic:
-                result << "the variadic" << ' ';
-                state = State::Normal;
-                break;
-            }
-        }
-        else if constexpr (std::is_same_v<T, TypePath::PackField>)
-        {
-            if (state == State::PendingIs)
-                result << ", ";
-            else if (state == State::Property)
-                result << "`, ";
-
-            switch (c)
-            {
-            case TypePath::PackField::Arguments:
-                if (state == State::Initial)
-                    result << "it" << ' ';
-                else if (state == State::PendingIs)
-                    result << "the function" << ' ';
-
-                result << "takes";
-                break;
-            case TypePath::PackField::Returns:
-                if (state == State::Initial)
-                    result << "it" << ' ';
-                else if (state == State::PendingIs)
-                    result << "the function" << ' ';
-
-                result << "returns";
-                break;
-            case TypePath::PackField::Tail:
-                if (state == State::Initial)
-                    result << "it has" << ' ';
-                result << "a tail of";
-                break;
-            }
-
-            if (state == State::PendingIs)
-            {
-                result << ' ';
-                state = State::PendingWhich;
-            }
-            else
-            {
-                result << ' ';
-                state = State::Normal;
-            }
-        }
-        else if constexpr (std::is_same_v<T, TypePath::PackSlice>)
-            result << "the portion of the type pack starting at index " << c.start_index << " to the end";
-        else if constexpr (std::is_same_v<T, TypePath::Reduction>)
-        {
-            if (state == State::Initial)
-                result << "it" << ' ';
-            result << "reduces to" << ' ';
-            state = State::Normal;
-        }
-        else if constexpr (std::is_same_v<T, TypePath::GenericPackMapping>)
-            result << "is a generic pack mapped to ";
-        else
-        {
-            static_assert(always_false_v<T>, "Unhandled Component variant");
-        }
-    };
-
-    size_t count = 0;
-
-    for (const TypePath::Component& component : path.components)
-    {
-        count++;
-        if (count == path.components.size())
-            last = true;
-
-        Luau::visit(strComponent, component);
-    }
-
-    switch (state)
-    {
-    case State::Property:
-        result << "` results in ";
-        break;
-    case State::PendingWhich:
-        // pending `which` becomes `is` if it's at the end
-        result << "is" << ' ';
-        break;
-    case State::PendingIs:
-        result << ' ' << "is" << ' ';
-        break;
-    case State::PendingAs:
-        result << ' ' << "as" << ' ';
-        break;
-    default:
-        break;
-    }
-
-    return result.str();
-}
-
-std::optional<TypeOrPack> traverse_DEPRECATED(
-    const TypePackId root,
-    const Path& path,
-    const NotNull<BuiltinTypes> builtinTypes,
-    const NotNull<TypeArena> arena
-)
-{
-    TraversalState state(follow(root), builtinTypes, arena);
-    if (traverse(state, path))
-    {
-        if (state.encounteredErrorSuppression)
-            return builtinTypes->errorType;
-        return state.current;
-    }
-    else
-        return std::nullopt;
-}
 
 std::optional<TypeOrPack> traverse(
     const TypePackId root,
@@ -1546,8 +1291,6 @@ std::optional<TypeOrPack> traverse(
     TypePathRenderMetadata* renderMetadata
 )
 {
-    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
-
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path, renderMetadata))
     {
@@ -1559,20 +1302,6 @@ std::optional<TypeOrPack> traverse(
         return std::nullopt;
 }
 
-std::optional<TypeOrPack> traverse_DEPRECATED(
-    const TypeId root,
-    const Path& path,
-    const NotNull<BuiltinTypes> builtinTypes,
-    const NotNull<TypeArena> arena
-)
-{
-    TraversalState state(follow(root), builtinTypes, arena);
-    if (traverse(state, path))
-        return state.current;
-    else
-        return std::nullopt;
-}
-
 std::optional<TypeOrPack> traverse(
     const TypeId root,
     const Path& path,
@@ -1581,8 +1310,6 @@ std::optional<TypeOrPack> traverse(
     TypePathRenderMetadata* renderMetadata
 )
 {
-    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
-
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path, renderMetadata))
         return state.current;

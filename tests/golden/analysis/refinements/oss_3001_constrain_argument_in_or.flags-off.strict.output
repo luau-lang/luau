@@ -1,0 +1,7 @@
+./analysis/refinements/oss_3001_constrain_argument_in_or.luau(11,22): TypeError: Parameter 'arg' has been reduced to never. This function is not callable with any possible value.
+./analysis/refinements/oss_3001_constrain_argument_in_or.luau(14,5): TypeError: Parameter 'arg' is required to be a subtype of 'true' here.
+./analysis/refinements/oss_3001_constrain_argument_in_or.luau(14,5): TypeError: Parameter 'arg' is required to be a subtype of 'nil' here.
+_luau_print (18, 9): (true?) -> true?
+
+_luau_print (19, 9): (never) -> never
+

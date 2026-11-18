@@ -1,0 +1,46 @@
+./analysis/tables/indexer_suppression.luau(1,39): TypeError: Expected this to be
+	'{read "hello"}'
+but got
+	'{ read [any]: string }'; 
+this is because 
+	 * Expected the indexer key type to be exactly `number`, but got `any`
+	 * Expected the indexer result to be `"hello"`, but got `string`
+./analysis/tables/indexer_suppression.luau(2,38): TypeError: Expected this to be
+	'{read string}'
+but got
+	'{ read [string]: any }'; 
+this is because 
+	 * Expected the indexer key type to be exactly `number`, but got `string`
+	 * Expected the indexer result to be `string`, but got `any`
+./analysis/tables/indexer_suppression.luau(3,34): TypeError: Expected this to be '{"hello"}', but got '{ [any]: string }'; 
+this is because 
+	 * Expected the indexer key type to be exactly `number`, but got `any`
+	 * Expected the indexer result to be exactly `"hello"`, but got `string`
+./analysis/tables/indexer_suppression.luau(4,33): TypeError: Expected this to be '{string}', but got '{ [string]: any }'; 
+this is because 
+	 * Expected the indexer key type to be exactly `number`, but got `string`
+	 * Expected the indexer result to be exactly `string`, but got `any`
+./analysis/tables/indexer_suppression.luau(5,45): TypeError: Expected this to be
+	'{ [number]: "hello", x: number }'
+but got
+	'{ [any]: string, x: any }'; 
+this is because 
+	 * Expected property `x` to be exactly `number`, but got `any`
+	 * Expected the indexer key type to be exactly `number`, but got `any`
+	 * Expected the indexer result to be exactly `"hello"`, but got `string`
+./analysis/tables/indexer_suppression.luau(6,58): TypeError: Expected this to be
+	'{read {read "hello"}}'
+but got
+	'{read { read [any]: string }}'; 
+this is because 
+	 * Expected the indexer key type of the indexer result to be exactly `number`, but got `any`
+	 * Expected the indexer result of the indexer result to be `"hello"`, but got `string`
+./analysis/tables/indexer_suppression.luau(7,33): TypeError: Expected this to be '{string}', but got '{ read [any]: string }'; 
+the indexer is read-only in the latter type, but the former type requires a read-write indexer
+./analysis/tables/indexer_suppression.luau(10,13): TypeError: Expected this to be
+	'{read "hello"}'
+but got
+	'{ read [any]: string }'; 
+this is because 
+	 * Expected the indexer key type to be exactly `number`, but got `any`
+	 * Expected the indexer result to be `"hello"`, but got `string`

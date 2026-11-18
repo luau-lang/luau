@@ -1,0 +1,1 @@
+./analysis/refinements/refinement_should_create_union_of_options.luau(5,20): TypeError: the function 'string.len' expects to get a string as its 1st argument, but is being given a number & unknown & string

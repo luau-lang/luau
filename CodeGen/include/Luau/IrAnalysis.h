@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include <stddef.h>
 #include <stdint.h>
 
 namespace Luau

@@ -1,0 +1,1 @@
+./analysis/classes/missing_constructor_when_superclass_defines_one_errors.luau(11,1): TypeError: 'Dog' inherits a constructor from 'Animal', so it needs to define one too

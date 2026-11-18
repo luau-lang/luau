@@ -1,0 +1,10 @@
+./analysis/type-states/global_reassign_func.luau(7,10): FunctionUnused: Function 'f' is never used; prefix with '_' to silence
+./analysis/type-states/global_reassign_func.luau(7,10): DuplicateFunction: Duplicate function definition: 'f' also defined on line 3
+_luau_print (0, 9): *error-type*
+
+_luau_print (3, 13): () -> ()
+
+_luau_print (7, 13): () -> ()
+
+_luau_print (10, 9): () -> ()
+

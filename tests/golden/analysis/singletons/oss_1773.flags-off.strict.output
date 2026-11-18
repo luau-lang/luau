@@ -1,0 +1,1 @@
+./analysis/singletons/oss_1773.luau(11,16): FunctionUnused: Function 'hello' is never used; prefix with '_' to silence

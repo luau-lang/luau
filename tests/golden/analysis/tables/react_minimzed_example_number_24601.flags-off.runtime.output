@@ -1,0 +1,3 @@
+./analysis/tables/react_minimzed_example_number_24601.luau:16: attempt to call a nil value
+stacktrace:
+./analysis/tables/react_minimzed_example_number_24601.luau:16

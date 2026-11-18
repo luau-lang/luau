@@ -1,0 +1,1 @@
+./analysis/singletons/tagged_unions_using_singletons_mismatch.luau(4,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence

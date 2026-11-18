@@ -8,12 +8,15 @@
 
 #include <array>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <stdint.h>
 #include <unordered_map>
+#include <utility>
 #include <vector>
+
+#include <stdint.h>
 
 namespace Luau
 {

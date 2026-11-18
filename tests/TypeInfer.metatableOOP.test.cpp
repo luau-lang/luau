@@ -17,7 +17,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -40,8 +39,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
 
         someTable.Function1() -- Argument count mismatch
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<CountMismatch>(result.errors[0]));
@@ -67,8 +64,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
 
         someTable.Function2() -- Argument count mismatch
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<CountMismatch>(result.errors[0]));
@@ -116,8 +111,6 @@ TEST_CASE_FIXTURE(Fixture, "methods_are_topologically_sorted")
 
         local a, b = T:foo()
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
@@ -243,8 +236,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_se
         -- foo.fooConn()
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -332,8 +323,6 @@ function test()
     print(string.format("%d %d", n, nn))
 end
 )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -442,8 +431,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
         local cName = C.name
         local hello = i.props.hello
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -577,8 +564,6 @@ TEST_CASE_FIXTURE(Fixture, "method_should_not_create_cyclic_type")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -600,8 +585,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
     )";
 
     CheckResult result = getFrontend().check("game/B");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -641,8 +624,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
             return setmetatable(self, Account)
         end
     )");
-
-    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -689,8 +670,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
         end
     )");
 
-    ignoreMissingAnnotations(result);
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -716,9 +695,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
         local container = ItemContainer.new()
 
         container:removeItem(0, "magic")
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
@@ -744,9 +721,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
         local container = ItemContainer.new("library")
 
         container:removeItem(0, "magic")
-    )");
-    ignoreMissingAnnotations(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    )");    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
@@ -898,8 +873,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_for_fresh_ta
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type DateTime = { date: number }
         type A = setmetatable<{ value: DateTime? }, { test: DateTime? }>
@@ -911,8 +884,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_for_fresh_ta
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_in_call_and_return_contexts")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type DateTime = { date: number }
@@ -934,8 +905,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_does_not_widen_al
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
-
     CheckResult result = check(R"(
         type DateTime = { date: number }
         type A = setmetatable<{}, { test: DateTime? }>
@@ -951,8 +920,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_does_not_widen_al
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_rejects_invalid_fresh_table_values")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
 
     CheckResult result = check(R"(
         type DateTime = { date: number }
@@ -970,8 +937,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_pushed_into_ne
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type DateTime = { date: number }
         type A = setmetatable<{}, { callback: (DateTime) -> () }>
@@ -986,23 +951,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_pushed_into_ne
     std::optional<TypeId> expectedCallback = findExpectedTypeAtPosition({5, 23});
     REQUIRE(expectedCallback);
     CHECK_EQ("(DateTime) -> ()", toString(*expectedCallback));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_unchanged_when_flag_is_disabled")
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, false};
-
-    CheckResult result = check(R"(
-        type DateTime = { date: number }
-        type A = setmetatable<{}, { test: DateTime? }>
-
-        local x: A = setmetatable({}, { test = nil })
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    REQUIRE(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")

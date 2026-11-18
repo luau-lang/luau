@@ -9,9 +9,8 @@
 #include <vector>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
-LUAU_FASTFLAGVARIABLE(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileTableFoldFix)
 
 namespace Luau
 {
@@ -48,11 +47,6 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
 
     case Constant::Type_Table:
         return ra.type == Constant::Type_Table && la.valueTable == ra.valueTable;
-
-    case Constant::Type_Integer:
-        if (FFlag::LuauIntegerType2)
-            return ra.type == Constant::Type_Integer && la.valueInteger64 == ra.valueInteger64;
-        [[fallthrough]];
 
     default:
         LUAU_ASSERT(!"Unexpected constant type in comparison");
@@ -489,8 +483,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::CompareNe:
-        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown &&
-            !(FFlag::LuauCompileNoFoldVectorEqW && vectorsDifferOnlyInW(la, ra)))
+        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown && !vectorsDifferOnlyInW(la, ra))
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = !constantsEqual(la, ra);
@@ -498,8 +491,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::CompareEq:
-        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown &&
-            !(FFlag::LuauCompileNoFoldVectorEqW && vectorsDifferOnlyInW(la, ra)))
+        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown && !vectorsDifferOnlyInW(la, ra))
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = constantsEqual(la, ra);
@@ -660,7 +652,7 @@ struct TableMutationTracker : AstVisitor
         }
     }
 
-    void markEscapedTableIndex(AstExpr* expr, bool isLvalue)
+    void markEscapedTableIndex(AstExpr* expr, bool isLvalue_DEPRECATED)
     {
         if (AstExprIndexName* idx = expr->as<AstExprIndexName>())
         {
@@ -670,9 +662,31 @@ struct TableMutationTracker : AstVisitor
         {
             markEscaped(idx->expr);
 
-            if (isLvalue)
+            if (!FFlag::LuauCompileTableFoldFix && isLvalue_DEPRECATED)
                 markEscaped(idx->index);
         }
+    }
+
+    void markEscapedBinaryOp(AstExpr* lhs, AstExpr* rhs, AstExprBinary::Op op)
+    {
+        // Comparisons do not support operands with different metamethods, and/or don't have a metamethod
+        switch (op)
+        {
+        case AstExprBinary::CompareLt:
+        case AstExprBinary::CompareLe:
+        case AstExprBinary::CompareGt:
+        case AstExprBinary::CompareGe:
+        case AstExprBinary::CompareEq:
+        case AstExprBinary::CompareNe:
+        case AstExprBinary::And:
+        case AstExprBinary::Or:
+            return;
+        default:
+            break;
+        }
+
+        markEscaped(lhs);
+        markEscaped(rhs);
     }
 
     bool visit(AstExprCall* node) override
@@ -698,6 +712,22 @@ struct TableMutationTracker : AstVisitor
 
             markEscaped(item.value);
         }
+
+        return true;
+    }
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscapedBinaryOp(node->left, node->right, node->op);
+
+        return true;
+    }
+
+    bool visit(AstExprIndexExpr* node) override
+    {
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscaped(node->index);
 
         return true;
     }
@@ -728,6 +758,10 @@ struct TableMutationTracker : AstVisitor
     {
         // LHS index expressions mutate the table
         markEscapedTableIndex(node->var, true);
+
+        if (FFlag::LuauCompileTableFoldFix)
+            markEscapedBinaryOp(node->var, node->value, node->op);
+
         return true;
     }
 
@@ -831,11 +865,6 @@ struct ConstantVisitor : AstVisitor
         {
             result.type = Constant::Type_Number;
             result.valueNumber = expr->value;
-        }
-        else if (AstExprConstantInteger* expr = node->as<AstExprConstantInteger>())
-        {
-            result.type = Constant::Type_Integer;
-            result.valueInteger64 = expr->value;
         }
         else if (AstExprConstantString* expr = node->as<AstExprConstantString>())
         {
@@ -1189,7 +1218,7 @@ struct ConstantVisitor : AstVisitor
         // all values that align wrt indexing are simple - we just match them 1-1
         for (size_t i = 0; i < node->vars.size && i < node->values.size; ++i)
         {
-            if (FFlag::DebugLuauIfLocalSyntax)
+            if (FFlag::LuauExperimentalIfLocalSyntax)
             {
                 recordLocal(node->vars.data[i], node->values.data[i]);
             }

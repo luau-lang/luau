@@ -1,0 +1,10 @@
+./analysis/singletons/oss_2010_but_with_booleans.luau(13,18): TypeError: Expected this to be 'false & true', but got 'false'; 
+`false` is not a subtype of `true`
+_luau_print (14, 17): unknown
+
+_luau_print (16, 17): false
+
+_luau_print (18, 17): true
+
+_luau_print (20, 17): false
+
