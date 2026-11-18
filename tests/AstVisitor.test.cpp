@@ -6,7 +6,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 using namespace Luau;
 
@@ -139,7 +139,7 @@ TEST_CASE_FIXTURE(Fixture, "IfLocalAnnotationVisit")
 
 TEST_CASE_FIXTURE(Fixture, "WhileLocalAnnotationVisit")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}};
 
     AstStatBlock* block = parse(R"(
         while local a: number = foo() do break end
@@ -159,7 +159,7 @@ TEST_CASE_FIXTURE(Fixture, "WhileLocalAnnotationVisit")
 
 TEST_CASE_FIXTURE(Fixture, "WhileConstAnnotationVisit")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauWhileLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalWhileLocalSyntax, true}};
 
     AstStatBlock* block = parse(R"(
         while const a: number = foo() do break end

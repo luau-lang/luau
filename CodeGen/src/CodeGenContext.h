@@ -34,12 +34,34 @@ struct ModuleBindResult
     uint32_t functionsBound = 0;
 };
 
+struct RecordedRegTags
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint16_t tagMask = 0;
+    uint64_t hits = 0;
+};
+
+struct RecordedUserdataTag
+{
+    uint32_t pcpos = 0;
+    uint8_t reg = 0;
+    uint8_t tag = 0;
+    bool polymorphic = false;
+    uint64_t hits = 0;
+};
+
 struct FunctionBuildHistory
 {
     uint32_t rebuildCount = 0;
 
     // If Proto size changes, history has to be invalidated
     int sizecode = 0;
+
+    std::vector<RecordedRegTags> recordedTags;
+    std::vector<RecordedUserdataTag> recordedUserdataTags;
+
+    BytecodeFeedback lastFeedback;
 };
 
 struct VmCodeGenData

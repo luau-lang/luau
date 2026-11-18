@@ -1,0 +1,3 @@
+./analysis/type-states/global_self_assign.luau(1,1): TypeError: Unknown global 'foobar'; consider assigning to it first
+_luau_print (1, 9): *blocked-103*
+

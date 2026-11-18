@@ -1,0 +1,6 @@
+./analysis/user-defined-type-functions/udtf_no_shared_state.luau(2,12): TypeError: Unknown global 'glob'; consider assigning to it first
+./analysis/user-defined-type-functions/udtf_no_shared_state.luau(15,1): TypeError: 'bar' type function errored at runtime: [string "foo"]:3: attempt to modify a readonly table
+./analysis/user-defined-type-functions/udtf_no_shared_state.luau(15,26): TypeError: 'bar' type function errored at runtime: [string "foo"]:3: attempt to modify a readonly table
+./analysis/user-defined-type-functions/udtf_no_shared_state.luau(19,1): TypeError: 'bar' type function errored at runtime: [string "foo"]:3: attempt to modify a readonly table
+./analysis/user-defined-type-functions/udtf_no_shared_state.luau(19,26): TypeError: 'bar' type function errored at runtime: [string "foo"]:3: attempt to modify a readonly table
+./analysis/user-defined-type-functions/udtf_no_shared_state.luau(2,12): GlobalUsedAsLocal: Global 'glob' is only used in the enclosing function 'foo'; consider changing it to local

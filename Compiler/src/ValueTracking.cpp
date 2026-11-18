@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "ValueTracking.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Lexer.h"
 #include "Luau/SmallVector.h"
 
@@ -157,6 +158,26 @@ struct ValueVisitor : AstVisitor
     {
         assign(node->var);
         node->value->visit(this);
+
+        return false;
+    }
+
+    bool visit(AstStatClass* node) override
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        if (node->declModifier == AstStatClass::DeclModifier::None)
+            assign(node->exprName);
+        // we can do more here if we decide to constant fold classes/objects
+
+        if (node->super)
+            node->super->visit(this);
+
+        for (const AstClassMember& member : node->members)
+        {
+            if (const AstClassMethod* method = member.get_if<AstClassMethod>())
+                method->function->visit(this);
+        }
 
         return false;
     }

@@ -9,6 +9,7 @@
 #define getproto(cl) ((cl)->isC ? nullptr : (FFlag::LuauPromoteProto && cl->l.p->optimized ? luaF_promoteproto(cl) : (cl)->l.p))
 
 LUAI_FUNC Proto* luaF_newproto(lua_State* L);
+LUAI_FUNC Proto* luaF_cloneproto(lua_State* L, Proto* source);
 LUAI_FUNC Closure* luaF_newLclosure(lua_State* L, int nelems, LuaTable* e, Proto* p);
 LUAI_FUNC Closure* luaF_newCclosure(lua_State* L, int nelems, LuaTable* e);
 LUAI_FUNC UpVal* luaF_findupval(lua_State* L, StkId level);

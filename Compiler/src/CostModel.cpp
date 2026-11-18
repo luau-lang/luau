@@ -112,7 +112,7 @@ struct CostVisitor : AstVisitor
 
     Cost model(AstExpr* node)
     {
-        if (const Constant* c = constants.find(node))
+        if (constants.contains(node))
             return Cost(0, Cost::kLiteral);
 
         if (AstExprGroup* expr = node->as<AstExprGroup>())
@@ -120,7 +120,7 @@ struct CostVisitor : AstVisitor
             return model(expr->expr);
         }
         else if (node->is<AstExprConstantNil>() || node->is<AstExprConstantBool>() || node->is<AstExprConstantNumber>() ||
-                 node->is<AstExprConstantString>() || node->is<AstExprConstantInteger>())
+                 node->is<AstExprConstantString>())
         {
             return Cost(0, Cost::kLiteral);
         }
@@ -168,7 +168,7 @@ struct CostVisitor : AstVisitor
         {
             return model(expr->expr) + model(expr->index) + 1;
         }
-        else if (AstExprFunction* expr = node->as<AstExprFunction>())
+        else if (node->is<AstExprFunction>())
         {
             return 10; // high baseline cost due to allocation
         }

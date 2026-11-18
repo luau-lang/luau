@@ -201,14 +201,6 @@ private:
 
     void generalizeOneType(TypeId ty);
 
-    // Clip with LuauRemoveConstraintSolverEmplace
-    template<typename T, typename... Args>
-    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
-
-    // Clip with LuauRemoveConstraintSolverEmplace
-    template<typename T, typename... Args>
-    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
-
     std::optional<std::pair<TypeId, bool>> lookupTablePropHelper(
         NotNull<const Constraint> constraint,
         TypeId subjectType,

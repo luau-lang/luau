@@ -67,10 +67,21 @@ ConstraintList::Iterator::Iterator(NotNull<ConstraintList> cl, size_t index)
 
 ConstraintList::Iterator& ConstraintList::Iterator::operator++()
 {
-    if (index < cl->order.size())
+    if (FFlag::LuauTraverseScopeToFunction)
     {
-        index++;
-        advanceUntilPresentOrEnd();
+        if (index < cl->order.size())
+        {
+            index++;
+            advanceUntilPresentOrEnd();
+        }
+    }
+    else
+    {
+        if (index < cl->order_DEPRECATED.size())
+        {
+            index++;
+            advanceUntilPresentOrEnd();
+        }
     }
     return *this;
 }
@@ -87,13 +98,25 @@ bool ConstraintList::Iterator::operator!=(const Iterator& rhs) const
 
 ConstraintList::Iterator::value_type ConstraintList::Iterator::operator*()
 {
-    return cl->order[index];
+    if (FFlag::LuauTraverseScopeToFunction)
+        return cl->order[index].first;
+
+    return cl->order_DEPRECATED[index];
 }
 
 void ConstraintList::Iterator::advanceUntilPresentOrEnd()
 {
-    while (index < cl->order.size() && !cl->contains(cl->order[index]))
-        index++;
+    if (FFlag::LuauTraverseScopeToFunction)
+    {
+        while (index < cl->order.size() && !cl->order[index].second)
+            index++;
+    }
+    else
+    {
+
+        while (index < cl->order_DEPRECATED.size() && !cl->contains(cl->order_DEPRECATED[index]))
+            index++;
+    }
     return;
 }
 
@@ -104,37 +127,88 @@ ConstraintGraph::ConstraintGraph(NotNull<BuiltinTypes> builtinTypes)
 
 bool ConstraintList::contains(ConstraintVertex vertex) const
 {
-    if (auto entry = present.find(vertex))
-        return *entry;
-    return false;
+    if (FFlag::LuauTraverseScopeToFunction)
+    {
+        if (auto idx = indices.find(vertex))
+            return order[*idx].second;
+        return false;
+    }
+    else
+    {
+
+        if (auto entry = present_DEPRECATED.find(vertex))
+            return *entry;
+        return false;
+    }
 }
 
 void ConstraintList::insert(ConstraintVertex vertex)
 {
-    auto [entry, fresh] = present.try_insert(vertex, true);
-    if (fresh)
+    if (FFlag::LuauTraverseScopeToFunction)
     {
-        order.emplace_back(vertex);
-        entries++;
+        auto [index, fresh] = indices.try_insert(vertex, order.size());
+        if (fresh)
+        {
+            // If this insert is fresh, then we've seen this vertex for the first 
+            // time, and need to make a new entry for it.
+            order.emplace_back(vertex, true);
+            entries++;
+            return;
+        }
+
+        // Otherwise, if the insert is *not* fresh, check to see if we're 
+        // adding a vertex we previously removed. If so, set the entry to
+        // true and increment the number of entries.
+        auto& entry = order[index];
+        if (!entry.second)
+        {
+            entry.second = true;
+            entries++;
+        }
     }
-    else if (!entry)
+    else
     {
-        entry = true;
-        entries++;
+        auto [entry, fresh] = present_DEPRECATED.try_insert(vertex, true);
+        if (fresh)
+        {
+            order_DEPRECATED.emplace_back(vertex);
+            entries++;
+        }
+        else if (!entry)
+        {
+            entry = true;
+            entries++;
+        }
+        // If the entry was *not* fresh and its value was already true, then do
+        // nothing: the set state has not changed.
     }
-    // If the entry was *not* fresh and its value was already true, then do
-    // nothing: the set state has not changed.
 }
 
 void ConstraintList::remove(ConstraintVertex vertex)
 {
-    if (auto entry = present.find(vertex))
+    if (FFlag::LuauTraverseScopeToFunction)
     {
-        // If the entry is true then we also need to decrement the number of
-        // entries in the constraint list.
-        if (*entry)
-            entries--;
-        *entry = false;
+        if (auto index = indices.find(vertex))
+        {
+            // If the entry's second value is true, then we also need to
+            // decrement the number of entries in the constraint list.
+            if (auto& entry = order[*index]; entry.second)
+            {
+                entries--;
+                entry.second = false;
+            }
+        }
+    }
+    else
+    {
+        if (auto entry = present_DEPRECATED.find(vertex))
+        {
+            // If the entry is true then we also need to decrement the number of
+            // entries in the constraint list.
+            if (*entry)
+                entries--;
+            *entry = false;
+        }
     }
 }
 
@@ -145,8 +219,16 @@ size_t ConstraintList::size() const
 
 void ConstraintList::clear()
 {
-    order.clear();
-    present.clear();
+    if (FFlag::LuauTraverseScopeToFunction)
+    {
+        indices.clear();
+        order.clear();
+    }
+    else
+    {
+        order_DEPRECATED.clear();
+        present_DEPRECATED.clear();
+    }
     entries = 0;
 }
 
@@ -157,13 +239,16 @@ ConstraintList::Iterator ConstraintList::begin()
 
 ConstraintList::Iterator ConstraintList::end()
 {
-    return Iterator{NotNull{this}, order.size()};
+    if (FFlag::LuauTraverseScopeToFunction)
+        return Iterator{NotNull{this}, order.size()};
+    else
+        return Iterator{NotNull{this}, order_DEPRECATED.size()};
 }
 
 bool ConstraintGraph::addDependencyOf(ConstraintVertex dependency, ConstraintVertex target)
 {
-    auto deps = findDependencyList(target);
-    auto reverseDeps = findReverseDependencyList(dependency);
+    auto deps = findOrMakeDependencyList(target);
+    auto reverseDeps = findOrMakeReverseDependencyList(dependency);
 
     if (deps->contains(dependency))
     {
@@ -195,8 +280,8 @@ bool ConstraintGraph::addDependencyOf(Constraint* dependency, Constraint* target
  */
 void ConstraintGraph::inheritBlocks(ConstraintVertex existingVertex, ConstraintVertex newVertex)
 {
-    auto existingReverseDeps = findReverseDependencyList(existingVertex);
-    auto newReverseDeps = findReverseDependencyList(newVertex);
+    auto existingReverseDeps = findOrMakeReverseDependencyList(existingVertex);
+    auto newReverseDeps = findOrMakeReverseDependencyList(newVertex);
 
     // For each reverse dependency of [existingVertex] ...
     for (auto existingRdep : *existingReverseDeps)
@@ -204,7 +289,7 @@ void ConstraintGraph::inheritBlocks(ConstraintVertex existingVertex, ConstraintV
         // ... add it as a reverse dependency of [newVertex]
         newReverseDeps->insert(existingRdep);
         /// ... and add [newVertex] as a dependency.
-        auto newDeps = findDependencyList(existingRdep);
+        auto newDeps = findOrMakeDependencyList(existingRdep);
         newDeps->insert(newVertex);
     }
 }
@@ -228,34 +313,71 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
     // The reverse dependencies of this constraint should contain all of the types
     // and type packs that this constraint may mutate, either as a free type or
     // as a blocked type.
-    auto reverseDeps = findReverseDependencyList(c.get());
-    for (auto rdep : *reverseDeps)
+    if (FFlag::LuauTraverseScopeToFunction)
     {
-        if (auto ty = rdep.get_if<TypeId>())
+        if (auto reverseDeps = findReverseDependencyList(c.get()); reverseDeps && reverseDeps->size() > 0)
         {
-            result.types.insert(*ty);
-            auto deps = findDependencyList(*ty);
-            deps->remove(c.get());
-        }
-        else if (auto tp = rdep.get_if<TypePackId>())
-        {
-            result.packs.insert(*tp);
-            auto deps = findDependencyList(*tp);
-            deps->remove(c.get());
-        }
-        else if (auto depCons = rdep.get_if<const Constraint*>())
-        {
-            auto deps = findDependencyList(*depCons);
-            deps->remove(c.get());
-            if (FFlag::DebugLuauLogSolver)
-                printf("Unblocking count=%d\t%s\n", int(deps->size()), toString(**depCons, {/* exhaustive */ true}).c_str());
-        }
-        else
-        {
-            LUAU_ASSERT(!"Unknown constraint graph vertex.");
+            for (auto rdep : *reverseDeps)
+            {
+                if (auto ty = rdep.get_if<TypeId>())
+                {
+                    result.types.insert(*ty);
+                    if (auto deps = findDependencyList(*ty))
+                        deps->remove(c.get());
+                }
+                else if (auto tp = rdep.get_if<TypePackId>())
+                {
+                    result.packs.insert(*tp);
+                    if (auto deps = findDependencyList(*tp))
+                        deps->remove(c.get());
+                }
+                else if (auto depCons = rdep.get_if<const Constraint*>())
+                {
+                    if (auto deps = findDependencyList(*depCons))
+                    {
+                        deps->remove(c.get());
+                        if (FFlag::DebugLuauLogSolver)
+                            printf("Unblocking count=%d\t%s\n", int(deps->size()), toString(**depCons, {/* exhaustive */ true}).c_str());
+                    }
+                }
+                else
+                {
+                    LUAU_ASSERT(!"Unknown constraint graph vertex.");
+                }
+            }
         }
     }
+    else
+    {
 
+        auto reverseDeps = findOrMakeReverseDependencyList(c.get());
+        for (auto rdep : *reverseDeps)
+        {
+            if (auto ty = rdep.get_if<TypeId>())
+            {
+                result.types.insert(*ty);
+                auto deps = findOrMakeDependencyList(*ty);
+                deps->remove(c.get());
+            }
+            else if (auto tp = rdep.get_if<TypePackId>())
+            {
+                result.packs.insert(*tp);
+                auto deps = findOrMakeDependencyList(*tp);
+                deps->remove(c.get());
+            }
+            else if (auto depCons = rdep.get_if<const Constraint*>())
+            {
+                auto deps = findOrMakeDependencyList(*depCons);
+                deps->remove(c.get());
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Unblocking count=%d\t%s\n", int(deps->size()), toString(**depCons, {/* exhaustive */ true}).c_str());
+            }
+            else
+            {
+                LUAU_ASSERT(!"Unknown constraint graph vertex.");
+            }
+        }
+    }
     /**
      * This whole song and dance is to repair the constraint graph after we
      * dispatch a constraint.
@@ -297,10 +419,19 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
             // a layer of indirection between `'ret...` and the *second* call
             // to `g`, which may also mutate `'ret...`.
             type = follow(type);
-            if (auto ft = get<FreeType>(type))
+
+            if (auto sourceDependencies = findDependencyList(type); sourceDependencies && sourceDependencies->size() > 0)
             {
-                copyDependenciesOf(type, follow(ft->upperBound));
-                copyDependenciesOf(type, follow(ft->lowerBound));
+                if (auto ft = get<FreeType>(type))
+                {
+                    TypeIds mutatedTypes;
+                    TypePackIds mutatedTypePacks;
+                    ReferenceCountInitializer rci{NotNull{type->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+                    rci.run(ft->lowerBound);
+                    rci.run(ft->upperBound);
+                    // We do not want to _delete_ the original vertex, so we pass nullopt here.
+                    copyDependenciesToReachableTypes(std::nullopt, NotNull{sourceDependencies}, std::move(mutatedTypes), std::move(mutatedTypePacks));
+                }
             }
         }
     }
@@ -313,8 +444,17 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
 
 bool ConstraintGraph::hasUnsolvedDependencies(ConstraintVertex vertex)
 {
-    auto deps = findDependencyList(vertex);
-    return deps->size() > 0;
+    if (FFlag::LuauTraverseScopeToFunction)
+    {
+        if (auto deps = findDependencyList(vertex))
+            return deps->size() > 0;
+        return false;
+    }
+    else
+    {
+        auto deps = findOrMakeDependencyList(vertex);
+        return deps->size() > 0;
+    }
 }
 
 /**
@@ -336,14 +476,14 @@ void ConstraintGraph::copyDependenciesToReachableTypes(
         // NOTE: Technically we could express this function solely in terms
         // of [addDependencyOf], but we save some cycles by fetching the
         // reverse dependency list once.
-        auto vertexReverseDeps = findReverseDependencyList(vertex);
+        auto vertexReverseDeps = findOrMakeReverseDependencyList(vertex);
 
         if (originalVertex)
             vertexReverseDeps->remove(*originalVertex);
 
         for (auto subTarget : mutatedTypes)
         {
-            auto tyDeps = findDependencyList(subTarget);
+            auto tyDeps = findOrMakeDependencyList(subTarget);
             // Add this vertex to the list of dependencies for this type.
             tyDeps->insert(vertex);
             // ... and then add the same backwards edge.
@@ -352,7 +492,7 @@ void ConstraintGraph::copyDependenciesToReachableTypes(
 
         for (auto subPackTarget : mutatedTypePacks)
         {
-            auto tpDeps = findDependencyList(subPackTarget);
+            auto tpDeps = findOrMakeDependencyList(subPackTarget);
             // Add this vertex to the list of dependencies for this type.
             tpDeps->insert(vertex);
             // ... and then add the same backwards edge.
@@ -365,19 +505,40 @@ void ConstraintGraph::clearReverseDependenciesOf(ConstraintVertex vertex)
 {
     LUAU_ASSERT(vertex.get_if<const Constraint*>() == nullptr);
 
-    auto revDeps = findReverseDependencyList(vertex);
-
-    // For all of the reverse dependencies of vertex (vertices that depend on vertex) ...
-    for (auto rdep : *revDeps)
+    if (FFlag::LuauTraverseScopeToFunction)
     {
-        // Remove vertex from the list of dependencies.
-        // TODO CLI-205496: We should assert that deps contains `vertex`
-        auto deps = findDependencyList(rdep);
-        deps->remove(vertex);
-    }
+        if (auto revDeps = findReverseDependencyList(vertex))
+        {
+            // For all of the reverse dependencies of vertex (vertices that depend on vertex) ...
+            for (auto rdep : *revDeps)
+            {
+                // Remove vertex from the list of dependencies.
+                // TODO CLI-205496: We should assert that deps contains `vertex`
+                if (auto deps = findDependencyList(rdep))
+                    deps->remove(vertex);
+            }
 
-    // Then clear this set.
-    revDeps->clear();
+            // Then clear this set.
+            revDeps->clear();
+        }
+    }
+    else
+    {
+
+        auto revDeps = findOrMakeReverseDependencyList(vertex);
+
+        // For all of the reverse dependencies of vertex (vertices that depend on vertex) ...
+        for (auto rdep : *revDeps)
+        {
+            // Remove vertex from the list of dependencies.
+            // TODO CLI-205496: We should assert that deps contains `vertex`
+            auto deps = findOrMakeDependencyList(rdep);
+            deps->remove(vertex);
+        }
+
+        // Then clear this set.
+        revDeps->clear();
+    }
 }
 
 template<typename T>
@@ -387,33 +548,52 @@ void ConstraintGraph::shiftReferences(T source, T target)
     if (source == target)
         return;
 
-    auto sourceDependencies = findDependencyList(source);
-
-    // With nothing to copy, the types reachable from the target are never used.
-    if (FFlag::LuauSkipUnusedTypeTraversals && sourceDependencies->size() == 0)
+    if (FFlag::LuauTraverseScopeToFunction)
     {
+        if (auto sourceDependencies = findDependencyList(source); sourceDependencies && sourceDependencies->size() > 0)
+        {
+            TypeIds mutatedTypes;
+            TypePackIds mutatedTypePacks;
+            ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+            rci.run(target);
+            copyDependenciesToReachableTypes(source, NotNull{sourceDependencies}, std::move(mutatedTypes), std::move(mutatedTypePacks));
+        }
+        // Types in the constraint graph are always dynamically discovered, so
+        // when we shift a reference over, we'll remove it from the dependencies
+        // of our reverse dependencies and then delete the edge from the graph.
         clearReverseDependenciesOf(source);
-        return;
-    }
-
-    TypeIds mutatedTypes;
-    TypePackIds mutatedTypePacks;
-    if (FFlag::LuauReferenceCountInitializerIsIterative)
-    {
-        ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-        rci.run(target);
     }
     else
     {
-        ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-        rci.traverse(target);
-    }
-    copyDependenciesToReachableTypes(source, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
 
-    // Types in the constraint graph are always dynamically discovered, so
-    // when we shift a reference over, we'll remove it from the dependencies
-    // of our reverse dependencies and then delete the edge from the graph.
-    clearReverseDependenciesOf(source);
+        auto sourceDependencies = findOrMakeDependencyList(source);
+
+        // With nothing to copy, the types reachable from the target are never used.
+        if (FFlag::LuauSkipUnusedTypeTraversals && sourceDependencies->size() == 0)
+        {
+            clearReverseDependenciesOf(source);
+            return;
+        }
+
+        TypeIds mutatedTypes;
+        TypePackIds mutatedTypePacks;
+        if (FFlag::LuauReferenceCountInitializerIsIterative)
+        {
+            ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+            rci.run(target);
+        }
+        else
+        {
+            ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+            rci.traverse(target);
+        }
+        copyDependenciesToReachableTypes(source, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
+
+        // Types in the constraint graph are always dynamically discovered, so
+        // when we shift a reference over, we'll remove it from the dependencies
+        // of our reverse dependencies and then delete the edge from the graph.
+        clearReverseDependenciesOf(source);
+    }
 }
 
 template void ConstraintGraph::shiftReferences(TypePackId source, TypePackId target);
@@ -459,28 +639,54 @@ template<typename T>
 void ConstraintGraph::copyDependenciesOf(T source, T target)
 {
     static_assert(std::is_same_v<T, TypeId> || std::is_same_v<T, TypePackId>, "Copying dependencies can only be used with types or type packs.");
-    auto sourceDependencies = findDependencyList(source);
-    TypeIds mutatedTypes;
-    TypePackIds mutatedTypePacks;
 
-    if (FFlag::LuauReferenceCountInitializerIsIterative)
+    if (FFlag::LuauTraverseScopeToFunction)
     {
-        ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-        rci.run(target);
+        if (auto sourceDependencies = findDependencyList(source); sourceDependencies && sourceDependencies->size() > 0)
+        {
+            TypeIds mutatedTypes;
+            TypePackIds mutatedTypePacks;
+            ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+            rci.run(target);
+            // We do not want to _delete_ the original vertex, so we pass nullopt here.
+            copyDependenciesToReachableTypes(std::nullopt, NotNull{sourceDependencies}, std::move(mutatedTypes), std::move(mutatedTypePacks));
+        }
     }
     else
     {
-        ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-        rci.traverse(target);
+
+        auto sourceDependencies = findOrMakeDependencyList(source);
+        TypeIds mutatedTypes;
+        TypePackIds mutatedTypePacks;
+
+        if (FFlag::LuauReferenceCountInitializerIsIterative)
+        {
+            ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+            rci.run(target);
+        }
+        else
+        {
+            ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+            rci.traverse(target);
+        }
+        // We do not want to _delete_ the original vertex, so we pass nullopt here.
+        copyDependenciesToReachableTypes(std::nullopt, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
     }
-    // We do not want to _delete_ the original vertex, so we pass nullopt here.
-    copyDependenciesToReachableTypes(std::nullopt, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
 }
 
 template void ConstraintGraph::copyDependenciesOf(TypeId source, TypeId target);
 template void ConstraintGraph::copyDependenciesOf(TypePackId source, TypePackId target);
 
-NotNull<ConstraintList> ConstraintGraph::findDependencyList(ConstraintVertex vertex)
+
+ConstraintList* ConstraintGraph::findDependencyList(ConstraintVertex vertex)
+{
+    if (auto dep = dependencies.find(vertex))
+        return *dep;
+
+    return nullptr;
+}
+
+NotNull<ConstraintList> ConstraintGraph::findOrMakeDependencyList(ConstraintVertex vertex)
 {
     if (auto dep = dependencies.find(vertex))
         return NotNull{*dep};
@@ -492,7 +698,15 @@ NotNull<ConstraintList> ConstraintGraph::findDependencyList(ConstraintVertex ver
     return NotNull{newlist};
 }
 
-NotNull<ConstraintList> ConstraintGraph::findReverseDependencyList(ConstraintVertex vertex)
+ConstraintList* ConstraintGraph::findReverseDependencyList(ConstraintVertex vertex)
+{
+    if (auto rdep = reverseDependencies.find(vertex))
+        return *rdep;
+
+    return nullptr;
+}
+
+NotNull<ConstraintList> ConstraintGraph::findOrMakeReverseDependencyList(ConstraintVertex vertex)
 {
     if (auto rdep = reverseDependencies.find(vertex))
         return NotNull{*rdep};
@@ -593,7 +807,7 @@ void ConstraintGraph::dump()
 void ConstraintGraph::dumpBlocked(NotNull<const Constraint> c, ToStringOptions& opts)
 {
     printf("Blocked on:\n");
-    auto deps = findDependencyList(c.get());
+    auto deps = findOrMakeDependencyList(c.get());
     for (auto dep : *deps)
     {
         Luau::visit(
@@ -622,7 +836,7 @@ void ConstraintGraph::dumpWith(const std::vector<NotNull<const Constraint>>& uns
     printf("constraints:\n");
     for (NotNull<const Constraint> c : unsolvedConstraints)
     {
-        auto deps = findDependencyList(c.get());
+        auto deps = findOrMakeDependencyList(c.get());
         printf("\t%zu\t%s\n", deps->size(), toString(*c, opts).c_str());
 
         for (auto dep : *deps)

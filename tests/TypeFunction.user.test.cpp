@@ -11,7 +11,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
@@ -549,8 +548,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof_two_things")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_serialization_works")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -570,8 +567,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_methods_work")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -735,8 +730,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_two_negations_type_mismatch")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -756,8 +749,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_types")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -778,8 +769,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_t
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -818,8 +807,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_metatable_methods_work")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -928,8 +915,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_serialization_works2")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_methods_works")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -977,8 +962,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "write_of_readonly_is_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1010,8 +993,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1044,8 +1025,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_simple_cyclic_serialization_works")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1087,8 +1066,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_metatable")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_complex_cyclic_serialization_works")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1298,34 +1275,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_unordered")
     CHECK(toString(tm->givenType) == "\"hi\"");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
-{
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
-
-    CheckResult result = check(R"(
-        type function foo()
-            if not glob then
-                glob = 'a'
-            else
-                glob ..= 'b'
-            end
-
-            return glob
-        end
-        type function bar(prefix)
-            return types.singleton(tostring(prefix:value()) .. foo())
-        end
-        local function ok1(idx: bar<'x'>): nil return idx end
-        local function ok2(idx: bar<'y'>): nil return idx end
-    )");
-
-    // We are only checking first errors, others are mostly duplicates
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
-    CHECK(toString(result.errors[0]) == R"(Unknown global 'glob'; consider assigning to it first)");
-    CHECK(toString(result.errors[1]) == R"('bar' type function errored at runtime: foo:4: attempt to modify a readonly table)");
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
 {
     if (FFlag::DebugLuauForceOldSolver)
@@ -1343,8 +1292,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1458,8 +1405,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strip_indexer")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1574,8 +1519,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tag_field")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1899,8 +1842,6 @@ local function ok(idx: pass<test>): test return idx end
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_serialization_3")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2508,8 +2449,6 @@ local y: keyof<typeof(x)>
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "blocking_nested_pending_expansions_2")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2527,8 +2466,6 @@ local x: foo<{a: foo<string>, b: foo<number>}> = nil
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "irreducible_pending_expansions")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -2565,8 +2502,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_type_function_name")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2588,8 +2523,6 @@ local y: foo<{b: number}> = { b = 2 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2615,8 +2548,6 @@ local y: bar<{b: number}> = { b = 2 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect_levels")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2646,8 +2577,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_values")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -2669,8 +2598,6 @@ local y: foo<string> = "a"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unordered")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -3374,77 +3301,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
     );
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_cloner_missing_integer_crashes_copy")
-{
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
-
-    CheckResult result = check(R"(
-        type function copy_int(arg)
-            local c = types.copy(arg)
-            return c
-        end
-
-        local function ok(idx: copy_int<integer>): integer return idx end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_methods_work")
-{
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
-
-    CheckResult result = check(R"(
-        type function getinteger()
-            local ty = types.integer
-            if ty:is("integer") then
-                return ty
-            end
-            -- this should never be returned
-            return types.string
-        end
-        local function ok(idx: getinteger<>): integer return idx end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_is_distinct_from_number")
-{
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
-
-    CheckResult result = check(R"(
-        type function pick(arg)
-            if arg:is("integer") then
-                return types.integer
-            end
-            return types.number
-        end
-        local function ok(idx: pick<integer>): integer return idx end
-        local function ok2(idx: pick<number>): number return idx end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_constructor_is_not_number")
-{
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
-
-    CheckResult result = check(R"(
-        type function getinteger()
-            return types.integer
-        end
-        local function bad(idx: getinteger<>): number return idx end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
@@ -3736,8 +3592,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 

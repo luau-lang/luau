@@ -1,0 +1,9 @@
+./analysis/type-states/global_assign_to_global.luau(1,1): TypeError: Unknown global 'A'; consider assigning to it first
+./analysis/type-states/global_assign_to_global.luau(2,1): TypeError: Unknown global 'B'; consider assigning to it first
+./analysis/type-states/global_assign_to_global.luau(3,1): TypeError: Unknown global 'C'; consider assigning to it first
+_luau_print (10, 9): number
+
+_luau_print (11, 9): number
+
+_luau_print (12, 9): number
+

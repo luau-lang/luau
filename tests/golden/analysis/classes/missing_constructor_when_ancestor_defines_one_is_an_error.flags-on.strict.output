@@ -1,0 +1,3 @@
+./analysis/classes/missing_constructor_when_ancestor_defines_one_is_an_error.luau(7,1): TypeError: 'Middle' inherits a constructor from 'Base', so it needs to define one too
+./analysis/classes/missing_constructor_when_ancestor_defines_one_is_an_error.luau(10,1): TypeError: 'Leaf' inherits a constructor from 'Base', so it needs to define one too
+./analysis/classes/missing_constructor_when_ancestor_defines_one_is_an_error.luau(17,1): TypeError: 'OverridingLeaf' inherits a constructor from 'Overriding', so it needs to define one too

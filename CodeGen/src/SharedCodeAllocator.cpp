@@ -8,7 +8,7 @@
 #include <string_view>
 #include <utility>
 
-LUAU_FASTFLAG(LuauRuntimeFeedback)
+LUAU_FASTFLAG(LuauCodegenRuntimeFeedback)
 
 namespace Luau
 {
@@ -64,7 +64,7 @@ NativeModule::NativeModule(
     }
 
     // Anonymous 'modules' can have function sets in compilation order (from multiple source files)
-    if (!FFlag::LuauRuntimeFeedback || moduleId)
+    if (!FFlag::LuauCodegenRuntimeFeedback || moduleId)
     {
         std::sort(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdLess{});
 

@@ -48,12 +48,12 @@
 // Version 5: Adds SUBRK/DIVRK and vector constants. Currently supported.
 // Version 6: Adds FASTCALL3. Currently supported.
 // Version 7: Adds LBC_CONSTANT_TABLE_WITH_CONSTANTS for DUPTABLE with pre-filled constant values. Currently supported.
-// Version 8: Adds LBC_CONSTANT_INTEGER for 64-bit integer constants. Currently supported.
+// Version 8: Adds LBC_CONSTANT_INTEGER for 64-bit integer constants. No longer supported when integers feature is enabled.
 // Version 9: Adds atom-based userdata field access acceleration. Currently supported.
-// Version 10: Adds LBC_CONSTANT_CLASS_SHAPE and NEWCLASSMEMBER for use with Luau Classes. Experimental.
-// Version 11: Adds CALLFB, CMPPROTO and feedback vector description. Experimental.
-// Version 12: Adds cost function serialized for proto and prepend each proto with size in bytes. Experimental.
-// Version 13: Adds support for double-precision vector constants. Experimental.
+// Version 10: Adds LBC_CONSTANT_CLASS_SHAPE and NEWCLASSMEMBER for use with Luau Classes. No longer supported when class feature is enabled.
+// Version 11: Adds CALLFB, CMPPROTO and feedback vector description. Currently supported.
+// Version 12: Adds cost function serialized for proto and prepend each proto with size in bytes. Currently supported.
+// Version 13: Adds support for double-precision vector constants. Currently supported.
 // Version 14: Adds FASTPCALL. Currently supported.
 
 // WIP Versions: Used for in-progress features that might require multiple changes to bytecode. Since these versions are higher than the non-WIP versions, they are responsible for maintaining compatibility with them. For example, tests exercising WIP bytecode versions may need to enable flags for unreleased but non-WIP bytecode versions.
@@ -559,7 +559,7 @@ enum LuauBytecodeTag
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
     LBC_VERSION_MAX = 14,
-    LBC_VERSION_TARGET = 13,
+    LBC_VERSION_TARGET = 14,
     LBC_VERSION_CLASSES = 100,
     // Type encoding version
     LBC_TYPE_VERSION_MIN = 1,
@@ -575,7 +575,7 @@ enum LuauBytecodeTag
     LBC_CONSTANT_CLOSURE,
     LBC_CONSTANT_VECTOR,
     LBC_CONSTANT_TABLE_WITH_CONSTANTS,
-    LBC_CONSTANT_INTEGER,
+    LBC_CONSTANT_INTEGER_DEPRECATED, // integers are no longer supported
     LBC_CONSTANT_CLASS_SHAPE,
     LBC_CONSTANT_VECTORD,
 
@@ -596,7 +596,7 @@ enum LuauBytecodeType
     LBC_TYPE_USERDATA,
     LBC_TYPE_VECTOR,
     LBC_TYPE_BUFFER,
-    LBC_TYPE_INTEGER,
+    LBC_TYPE_INTEGER_DEPRECATED, // integers are no longer supported
     LBC_TYPE_CLASS,
     LBC_TYPE_OBJECT,
 
@@ -754,52 +754,19 @@ enum LuauBuiltinFunction
     LBF_MATH_ISINF,
     LBF_MATH_ISFINITE,
 
-    // integer
-    LBF_INTEGER_CREATE,
-    LBF_INTEGER_TONUMBER,
-    LBF_INTEGER_NEG,
-    LBF_INTEGER_ADD,
-    LBF_INTEGER_SUB,
-    LBF_INTEGER_MUL,
-    LBF_INTEGER_DIV,
-    LBF_INTEGER_MIN,
-    LBF_INTEGER_MAX,
-    LBF_INTEGER_REM,
-    LBF_INTEGER_IDIV,
-    LBF_INTEGER_UDIV,
-    LBF_INTEGER_UREM,
-    LBF_INTEGER_MOD,
-    LBF_INTEGER_CLAMP,
-    LBF_INTEGER_BAND,
-    LBF_INTEGER_BOR,
-    LBF_INTEGER_BNOT,
-    LBF_INTEGER_BXOR,
-    LBF_INTEGER_LT,
-    LBF_INTEGER_LE,
-    LBF_INTEGER_ULT,
-    LBF_INTEGER_ULE,
-    LBF_INTEGER_GT,
-    LBF_INTEGER_GE,
-    LBF_INTEGER_UGT,
-    LBF_INTEGER_UGE,
-    LBF_INTEGER_LSHIFT,
-    LBF_INTEGER_RSHIFT,
-    LBF_INTEGER_ARSHIFT,
-    LBF_INTEGER_LROTATE,
-    LBF_INTEGER_RROTATE,
-    LBF_INTEGER_EXTRACT,
-    LBF_INTEGER_BTEST,
-    LBF_INTEGER_COUNTRZ,
-    LBF_INTEGER_COUNTLZ,
-    LBF_INTEGER_BSWAP,
-
-    // buffer.readinteger / buffer.writeinteger (int64_t)
-    LBF_BUFFER_READINTEGER,
-    LBF_BUFFER_WRITEINTEGER,
-
     // table.create / table.clear
-    LBF_TABLE_CREATE,
+    // IDs 94..132 are reserved for removed integer fastcalls
+    // when adding new fastcall functions, use slots above this to reclaim spots
+    LBF_TABLE_CREATE = 133,
     LBF_TABLE_CLEAR,
+
+    // buffer.readvectorf32x* / buffer.writevectorf32x* (N contiguous f32 components)
+    LBF_BUFFER_READVECTORF32X2,
+    LBF_BUFFER_READVECTORF32X3,
+    LBF_BUFFER_READVECTORF32X4,
+    LBF_BUFFER_WRITEVECTORF32X2,
+    LBF_BUFFER_WRITEVECTORF32X3,
+    LBF_BUFFER_WRITEVECTORF32X4,
 };
 
 // Capture type, used in LOP_CAPTURE

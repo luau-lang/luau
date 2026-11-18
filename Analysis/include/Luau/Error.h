@@ -627,13 +627,6 @@ struct ConstructorsShouldNotReturnAnything
     }
 };
 
-struct CyclicClassInheritance
-{
-    std::vector<Name> cycle;
-
-    bool operator==(const CyclicClassInheritance& rhs) const;
-};
-
 struct InvalidClassExtension
 {
     enum Context
@@ -665,6 +658,21 @@ struct IllegalClassPropertyOverride
     Name superName;
 
     bool operator==(const IllegalClassPropertyOverride& rhs) const;
+};
+
+struct MissingConstructor
+{
+    Name className;
+    Name superName;
+
+    bool operator==(const MissingConstructor& rhs) const;
+};
+
+struct NotIterable
+{
+    TypeId ty;
+
+    bool operator==(const NotIterable& rhs) const;
 };
 
 using TypeErrorData = Variant<
@@ -734,10 +742,11 @@ using TypeErrorData = Variant<
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
     ConstructorsShouldNotReturnAnything,
-    CyclicClassInheritance,
     InvalidClassExtension,
     IncompatibleClassMethodOverride,
-    IllegalClassPropertyOverride>;
+    IllegalClassPropertyOverride,
+    MissingConstructor,
+    NotIterable>;
 
 struct TypeErrorSummary
 {

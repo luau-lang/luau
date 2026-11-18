@@ -6,7 +6,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 using namespace Luau;
 
@@ -254,7 +254,7 @@ end
 
 TEST_CASE("WhileLocal")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     uint64_t model = modelFunction(R"(
 function test(a)
@@ -273,7 +273,7 @@ end
 
 TEST_CASE("WhileConst")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauWhileLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
 
     // `while const` should be identical to `while local`
     uint64_t model = modelFunction(R"(

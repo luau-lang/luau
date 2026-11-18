@@ -24,6 +24,9 @@ enum class CodeGenCounter : unsigned
     RegularBlockExecuted = 1,
     FallbackBlockExecuted = 2,
     VmExitTaken = 3,
+
+    VmRegTagMismatch = 4,
+    VmRegUserdataTag = 5,
 };
 
 using AllocationCallback = void(void* context, void* oldPointer, size_t oldSize, void* newPointer, size_t newSize);
@@ -70,6 +73,9 @@ using HostUserdataNamecallHandler = bool (*)(
     int results,
     int pcpos
 );
+
+using RuntimeBuildResultCallback = void (*)(void* context, const struct CompilationResult& result, const struct CompilationStats& stats);
+using RuntimeBuildLogCallback = void (*)(void* context, const std::string& message);
 
 struct HostIrHooks
 {
@@ -135,6 +141,13 @@ struct CompilationOptions
     // When true, random NOP sleds are inserted between blocks to
     // make intra-function gadget offsets unpredictable.
     bool nopPadding = false;
+
+    // Callbacks for runtime build result and internal event log
+    RuntimeBuildResultCallback runtimeBuildResult = nullptr;
+    RuntimeBuildLogCallback runtimeBuildLog = nullptr;
+
+    // Custom userdata provided to the callbacks
+    void* runtimeBuildContext = nullptr;
 };
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);

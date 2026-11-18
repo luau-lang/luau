@@ -553,37 +553,36 @@ struct NonStrictTypeChecker
             if (!superInstanceEtv)
                 return {};
 
+            bool constructorDefined = false;
+
             for (auto prop : declClass->members)
             {
                 if (auto property = get_if<AstClassProperty>(&prop))
                 {
-                    Name propName = Name{property->name.value};
                     // Slightly inefficient: we walk the inheritance chain for each property
-                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, property->name.value))
                     {
-                        if (curr->props.count(propName) != 0)
-                        {
-                            reportError(
-                                IllegalClassPropertyOverride{propName, Name{declClass->name->name.value}, Name{curr->name}}, property->nameLocation
-                            );
-                            break;
-                        }
+                        reportError(
+                            IllegalClassPropertyOverride{property->name.value, Name{declClass->getName().value}, *ancestor}, property->nameLocation
+                        );
                     }
                 }
-                else if (auto method = get_if<AstClassMethod>(&prop);
-                         method && (method->functionName == "__eq" || method->functionName == "__lt" || method->functionName == "__le"))
+                else if (auto method = get_if<AstClassMethod>(&prop))
                 {
-                    Name methodName = Name{method->functionName.value};
-                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    if (method->functionName == "__eq" || method->functionName == "__lt" || method->functionName == "__le")
                     {
-                        if (curr->metatable)
+                        Name methodName = Name{method->functionName.value};
+                        for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
                         {
+                            if (!curr->metatable)
+                                continue;
+
                             if (const TableType* mt = get<TableType>(follow(*curr->metatable)))
                             {
                                 if (mt->props.count(methodName) != 0)
                                 {
                                     reportError(
-                                        IncompatibleClassMethodOverride{methodName, Name{declClass->name->name.value}, Name{curr->name}},
+                                        IncompatibleClassMethodOverride{methodName, Name{declClass->getName().value}, Name{curr->name}},
                                         method->nameLocation
                                     );
                                     break;
@@ -591,7 +590,15 @@ struct NonStrictTypeChecker
                             }
                         }
                     }
+                    else if (method->functionName == "__init")
+                        constructorDefined = true;
                 }
+            }
+
+            if (!constructorDefined)
+            {
+                if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, "__init"))
+                    reportError(MissingConstructor{Name(declClass->getName().value), *ancestor}, declClass->location);
             }
         }
 
@@ -626,8 +633,6 @@ struct NonStrictTypeChecker
         else if (auto e = expr->as<AstExprConstantBool>())
             return visit(e);
         else if (auto e = expr->as<AstExprConstantNumber>())
-            return visit(e);
-        else if (auto e = expr->as<AstExprConstantInteger>())
             return visit(e);
         else if (auto e = expr->as<AstExprConstantString>())
             return visit(e);
@@ -684,11 +689,6 @@ struct NonStrictTypeChecker
     }
 
     NonStrictContext visit(AstExprConstantNumber* expr)
-    {
-        return {};
-    }
-
-    NonStrictContext visit(AstExprConstantInteger* expr)
     {
         return {};
     }

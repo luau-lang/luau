@@ -31,7 +31,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
-LUAU_FASTFLAG(DebugLuauWhileLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -1660,6 +1660,38 @@ static bool autocompleteIfElseExpression(
     }
 }
 
+// True when the cursor could start an `if local`/`while local` binding: the condition is empty or a single name.
+static bool canStartConditionBinding(const AstNode* node, const std::vector<AstNode*>& ancestry, Position position)
+{
+    LUAU_ASSERT(FFlag::LuauExperimentalWhileLocalSyntax && FFlag::LuauExperimentalIfLocalSyntax);
+
+    if (ancestry.size() < 2)
+        return false;
+
+    const AstNode* parent = ancestry.rbegin()[1];
+    const AstExpr* condition = nullptr;
+    bool missingBodyKeyword = false;
+    if (const AstStatWhile* statWhile = parent->as<AstStatWhile>(); statWhile && !statWhile->conditionLocal)
+    {
+        condition = statWhile->condition;
+        missingBodyKeyword = !statWhile->hasDo;
+    }
+    else if (const AstStatIf* statIf = parent->as<AstStatIf>(); statIf && !statIf->conditionLocal)
+    {
+        condition = statIf->condition;
+        missingBodyKeyword = !statIf->thenLocation;
+    }
+
+    if (!condition)
+        return false;
+
+    // An empty condition parses as an error expression past the cursor, so the ancestry ends at the body block.
+    if (node->is<AstStatBlock>())
+        return missingBodyKeyword && condition->is<AstExprError>() && position <= condition->location.end;
+
+    return condition->location == node->location && (node->is<AstExprGlobal>() || node->is<AstExprLocal>() || node->is<AstExprError>());
+}
+
 static AutocompleteContext autocompleteExpression(
     const Module& module,
     NotNull<BuiltinTypes> builtinTypes,
@@ -1756,6 +1788,12 @@ static AutocompleteContext autocompleteExpression(
         result["nil"] = {AutocompleteEntryKind::Keyword, builtinTypes->nilType, false, false, correctForNil};
         result["not"] = {AutocompleteEntryKind::Keyword};
         result["function"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false, correctForFunction};
+
+        if (FFlag::LuauExperimentalWhileLocalSyntax && FFlag::LuauExperimentalIfLocalSyntax && canStartConditionBinding(node, ancestry, position))
+        {
+            result["local"] = {AutocompleteEntryKind::Keyword};
+            result["const"] = {AutocompleteEntryKind::Keyword};
+        }
 
         if (auto ty = findExpectedTypeAt(module, node, position))
             autocompleteStringSingleton(*ty, true, node, position, result);
@@ -2299,7 +2337,7 @@ AutocompleteResult autocomplete_(
         return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     }
     else if (AstStatWhile* statWhile = node->as<AstStatWhile>();
-             FFlag::DebugLuauWhileLocalSyntax && statWhile && statWhile->conditionLocal && statWhile->conditionEqualsLocation &&
+             FFlag::LuauExperimentalWhileLocalSyntax && statWhile && statWhile->conditionLocal && statWhile->conditionEqualsLocation &&
              position >= statWhile->conditionEqualsLocation->end && (!statWhile->hasDo || position < statWhile->doLocation.begin))
     {
         return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);

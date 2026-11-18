@@ -21,6 +21,8 @@
 
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinally)
+LUAU_FASTFLAG(LuauLoadExplicitGcDisable)
+LUAU_FASTFLAG(LuauSaltedInterningTable)
 
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
@@ -475,23 +477,6 @@ int lua_toboolean(lua_State* L, int idx)
     return !l_isfalse(o);
 }
 
-int64_t lua_tointeger64(lua_State* L, int idx, int* isinteger)
-{
-    const TValue* o = index2addr(L, idx);
-    if (ttisinteger(o))
-    {
-        if (isinteger)
-            *isinteger = 1;
-        return lvalue(o);
-    }
-    else
-    {
-        if (isinteger)
-            *isinteger = 0;
-        return 0;
-    }
-}
-
 const char* lua_tolstring(lua_State* L, int idx, size_t* len)
 {
     StkId o = index2addr(L, idx);
@@ -696,13 +681,6 @@ void lua_pushinteger(lua_State* L, int n)
 {
     ensure_stack(L, 1);
     setnvalue(L->top, cast_num(n));
-    api_incr_top(L);
-}
-
-void lua_pushinteger64(lua_State* L, int64_t n)
-{
-    ensure_stack(L, 1);
-    setlvalue(L->top, n);
     api_incr_top(L);
 }
 
@@ -1442,6 +1420,9 @@ int lua_gc(lua_State* L, int what, int data)
     }
     case LUA_GCCOLLECT:
     {
+        if (FFlag::LuauLoadExplicitGcDisable && g->gcdisabled != 0)
+            break;
+
         luaC_fullgc(L);
         break;
     }
@@ -1463,6 +1444,9 @@ int lua_gc(lua_State* L, int what, int data)
     }
     case LUA_GCSTEP:
     {
+        if (FFlag::LuauLoadExplicitGcDisable && g->gcdisabled != 0)
+            break;
+
         size_t amount = (cast_to(size_t, data) << 10);
         ptrdiff_t oldcredit = g->gcstate == GCSpause ? 0 : g->GCthreshold - g->totalbytes;
 
@@ -1839,6 +1823,13 @@ void lua_setpointerencodekey(lua_State* L, uint64_t a, uint64_t b, uint64_t c, u
     {
         g->ptrenckeynew[2 * i + 0] = siphash24(a, b, i);
         g->ptrenckeynew[2 * i + 1] = siphash24(c, d, i);
+    }
+
+    // Derive an additional key for the string interning table
+    if (FFlag::LuauSaltedInterningTable && g->ptrencactive)
+    {
+        uint64_t salt = siphash24(a, b, 4);
+        luaS_sethashsalt(L, uint32_t(salt), uint32_t(salt >> 32));
     }
 }
 
@@ -2253,12 +2244,6 @@ void lua_userdatadirectfield_setboolean(void* result, int b)
 {
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setbvalue(slot, b);
-}
-
-void lua_userdatadirectfield_setinteger64(void* result, int64_t n)
-{
-    TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
-    setlvalue(slot, n);
 }
 
 void lua_userdatadirectfield_setnil(void* result)
