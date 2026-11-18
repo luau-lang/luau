@@ -173,18 +173,6 @@ void AstExprConstantNumber::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstExprConstantInteger::AstExprConstantInteger(const Location& location, int64_t value, ConstantNumberParseResult parseResult)
-    : AstExpr(ClassIndex(), location)
-    , value(value)
-    , parseResult(parseResult)
-{
-}
-
-void AstExprConstantInteger::visit(AstVisitor* visitor)
-{
-    visitor->visit(this);
-}
-
 AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle)
     : AstExpr(ClassIndex(), location)
     , value(value)
@@ -1067,15 +1055,32 @@ AstStatDeclareFunction::AstStatDeclareFunction(
 {
 }
 
-AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported, bool open)
+AstStatClass::AstStatClass(
+    const Location& location,
+    AstExpr* exprName,
+    AstLocal* localName,
+    AstExpr* super,
+    AstArray<AstClassMember> members,
+    DeclModifier declModifier,
+    bool open
+)
     : AstStat(ClassIndex(), location)
-    , name(name)
     , super(super)
     , members(members)
-    , exported(exported)
+    , declModifier(declModifier)
     , open(open)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    if (declModifier == DeclModifier::None)
+    {
+        LUAU_ASSERT(exprName != nullptr);
+        this->exprName = exprName;
+    }
+    else
+    {
+        LUAU_ASSERT(localName != nullptr);
+        this->localName = localName;
+    }
 }
 
 void AstStatClass::visit(AstVisitor* visitor)
@@ -1083,6 +1088,9 @@ void AstStatClass::visit(AstVisitor* visitor)
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
     if (visitor->visit(this))
     {
+        if (declModifier == DeclModifier::None)
+            exprName->visit(visitor);
+
         if (super)
             super->visit(visitor);
 
@@ -1104,6 +1112,26 @@ void AstStatClass::visit(AstVisitor* visitor)
             );
         }
     }
+}
+
+AstName AstStatClass::getName() const
+{
+    if (declModifier != DeclModifier::None)
+        return localName->name;
+    else if (AstExprLocal* local = exprName->as<AstExprLocal>())
+        return local->local->name;
+    else if (AstExprGlobal* global = exprName->as<AstExprGlobal>())
+        return global->name;
+    else if (exprName->is<AstExprError>())
+        return AstName{"*error*"};
+
+    LUAU_ASSERT(!"Unreachable");
+    return AstName();
+}
+
+Location AstStatClass::getNameLocation() const
+{
+    return declModifier == DeclModifier::None ? exprName->location : localName->location;
 }
 
 AstStatDeclareFunction::AstStatDeclareFunction(
@@ -1241,11 +1269,10 @@ void AstTypeReference::visit(AstVisitor* visitor)
     }
 }
 
-AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer, bool isExact)
+AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer)
     : AstType(ClassIndex(), location)
     , props(props)
     , indexer(indexer)
-    , isExact(isExact)
 {
 }
 

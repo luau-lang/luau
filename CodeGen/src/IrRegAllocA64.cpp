@@ -69,6 +69,7 @@ static int getReloadOffset(IrValueKind kind)
     case IrValueKind::Unknown:
     case IrValueKind::None:
     case IrValueKind::Float:
+    case IrValueKind::Int64:
     case IrValueKind::Count:
         CODEGEN_ASSERT(!"Invalid operand restore value kind");
         break;
@@ -76,8 +77,6 @@ static int getReloadOffset(IrValueKind kind)
         return offsetof(TValue, tt);
     case IrValueKind::Int:
         return offsetof(TValue, value);
-    case IrValueKind::Int64:
-        return offsetof(TValue, value.l);
     case IrValueKind::Pointer:
         return offsetof(TValue, value.gc);
     case IrValueKind::Double:

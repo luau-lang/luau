@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <unordered_set>
 #include <utility>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -46,6 +47,7 @@ struct BytecodeGraphParser
     Producers producers;
     BcOp currentBlock;
     std::unordered_map<BcOp, BcOp, BcOpHash> phiBlock;
+    std::unordered_map<BcOp, BcOp, BcOpHash> removedPhiValue;
 
     BytecodeGraphParser(BcFunction<VmConst>& func)
         : func(func)
@@ -214,10 +216,22 @@ struct BytecodeGraphParser
         {
             if (std::optional<BcOp> v = readVariable(pred, reg))
             {
-                func.addUse(phi, *v);
+                func.addUse(phi, resolveRemovedPhi(*v));
             }
         }
         return tryRemoveTrivialPhi(phiOp);
+    }
+
+    BcOp resolveRemovedPhi(BcOp op)
+    {
+        while (op.kind == BcOpKind::Phi)
+        {
+            auto it = removedPhiValue.find(op);
+            if (it == removedPhiValue.end())
+                break;
+            op = it->second;
+        }
+        return op;
     }
 
     // collapse a phi whose operands (ignoring self-references) are a single distinct value
@@ -239,6 +253,8 @@ struct BytecodeGraphParser
         Reg reg = static_cast<Reg>(func.regs.at(phiOp));
         if (!trivialValue.has_value())
             trivialValue = BcOp{BcOpKind::VmReg, reg}; // unreachable or undefined, so we collapse to an VmReg read
+
+        removedPhiValue[phiOp] = *trivialValue;
 
         BcRef<BcPhi> phiRef = func.phi(phiOp);
         std::vector<BcOp> users = std::move(phiRef->uses);
@@ -331,7 +347,7 @@ struct BytecodeGraphParser
         {
             auto staticRegOp = readVariable(block, reg);
             LUAU_ASSERT(staticRegOp);
-            res.push_back(*staticRegOp);
+            res.push_back(resolveRemovedPhi(*staticRegOp));
         }
         res.push_back(blockProducers.multiReturn);
         // multireturn is consumed, clean it up
@@ -452,7 +468,7 @@ struct BytecodeGraphParser
             return;
         }
         LUAU_ASSERT(source);
-        func.addUse(inst, *source);
+        func.addUse(inst, resolveRemovedPhi(*source));
     }
 
     void addJumpInput(BcRef<BcInst> inst, int target)
@@ -1111,6 +1127,44 @@ struct BytecodeGraphParser
         finalizeBlock(currentBlock);
         sealAllRemaining(); // seal any block whose predecessors were never all emitted
 
+        LUAU_ASSERT(noOperandReferencesRemovedPhi());
+        return true;
+    }
+
+    bool noOperandReferencesRemovedPhi()
+    {
+        std::unordered_set<BcOp, BcOpHash> livePhis;
+        for (const BcBlock& block : func.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (BcOp phiOp : block.phis)
+                livePhis.insert(phiOp);
+        }
+
+        auto operandsOk = [&](const BcOps& ops)
+        {
+            for (BcOp op : ops)
+                if (op.kind == BcOpKind::Phi && livePhis.count(op) == 0)
+                    return false;
+            return true;
+        };
+
+        for (const BcBlock& block : func.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (BcOp phiOp : block.phis)
+            {
+                if (!operandsOk(func.phiOp(phiOp).ops))
+                    return false;
+            }
+            for (BcOp instOp : block.ops)
+            {
+                if (!operandsOk(func.instOp(instOp).ops))
+                    return false;
+            }
+        }
         return true;
     }
 };

@@ -112,6 +112,8 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
         return true;
     case IrCmd::INVOKE_FASTPCALL:
         return FFlag::LuauCodegenUpdateSafeEnvList;
+    case IrCmd::INVOKE_NAMECALL:
+        return true;
     default:
         break;
     }

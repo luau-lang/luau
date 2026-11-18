@@ -17,7 +17,6 @@ using namespace Luau;
 using namespace Luau::Bytecode;
 
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 
 namespace
@@ -976,7 +975,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "inheriting_classes_bytecode_roundtri
     };
 
     std::string_view source = R"(
-open class Animal
+local open class Animal
     public species: string
 
     function __tostring(self)
@@ -988,7 +987,7 @@ open class Animal
     end
 end
 
-class Cat extends Animal
+local class Cat extends Animal
     public breed: string
 
     function __tostring(self): string
@@ -1121,8 +1120,6 @@ end
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "fastpcall_roundtrip")
 {
-    ScopedFastFlag luauCompileFastpcall{FFlag::LuauCompileFastpcall, true};
-
     checkRoundtrip(R"(
         local function test(fn)
             return pcall(fn, 42)

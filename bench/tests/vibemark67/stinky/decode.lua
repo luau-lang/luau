@@ -4,6 +4,7 @@
 -- Decodes 32-bit instruction words and executes them on the CPU state.
 
 local Int = require("./integer")
+type integer = Int.Int64
 local CPU = require("./cpu")
 local Syscall = require("./syscall")
 
@@ -152,11 +153,12 @@ local fpBuf = buffer.create(8)
 
 local function f64ToInt(val: number): integer
     buffer.writef64(fpBuf, 0, val)
-    return buffer.readinteger(fpBuf, 0, 8)
+    return Int.fromWords(buffer.readu32(fpBuf, 0), buffer.readu32(fpBuf, 4))
 end
 
 local function intToF64(bits: integer): number
-    buffer.writeinteger(fpBuf, 0, bits, 8)
+    buffer.writeu32(fpBuf, 0, bits.lo)
+    buffer.writeu32(fpBuf, 4, bits.hi)
     return buffer.readf64(fpBuf, 0)
 end
 
@@ -1433,7 +1435,7 @@ function Decode.execSimdThreeSame(cpu: CPU.CPU, insn: number, pc: integer)
     -- CMEQ (register): U=1, opcode=0x11
     if u == 1 and opcode5 == 0x11 then
         Decode.simdBinOp(cpu, insn, function(a, b, bits)
-            return if a == b then Int.sub(Int.shl(Int.ONE, bits), Int.ONE) else Int.ZERO
+            return if Int.eq(a, b) then Int.sub(Int.shl(Int.ONE, bits), Int.ONE) else Int.ZERO
         end)
         return
     end

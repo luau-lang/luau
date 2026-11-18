@@ -119,6 +119,74 @@ end
 
 simple_double_reinterpret()
 
+local vector_size = if pcall(function() return vector.create(0, 0, 0).w end) then 4 else 3
+
+local function vector_roundtrip()
+  local native_check = is_native_if_supported()
+  local b = buffer.create(64)
+
+  buffer.writevectorf32x2(b, 0, vector.create(1.5, -2.25, 99))
+  local v2 = buffer.readvectorf32x2(b, 0)
+  assert(v2.x == 1.5)
+  assert(v2.y == -2.25)
+  assert(v2.z == 0) -- unspecified components are zeroed
+
+  buffer.writevectorf32x3(b, 8, vector.create(3, 4, 5))
+  local v3 = buffer.readvectorf32x3(b, 8)
+  assert(v3.x == 3 and v3.y == 4 and v3.z == 5)
+
+  -- vector writes are just contiguous little-endian f32s
+  assert(buffer.readf32(b, 8) == 3)
+  assert(buffer.readf32(b, 12) == 4)
+  assert(buffer.readf32(b, 16) == 5)
+
+  buffer.writef32(b, 32, 7)
+  buffer.writef32(b, 36, 8)
+  assert(buffer.readvectorf32x2(b, 32) == vector.create(7, 8, 0))
+
+  assert(not native_check or is_native_if_supported())
+end
+
+local function vector_bounds()
+  local b = buffer.create(16)
+
+  -- readvectorf32x3 needs 12 bytes; offset 5 overflows a 16-byte buffer
+  assert(ecall(function() buffer.readvectorf32x3(b, 5) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writevectorf32x3(b, 5, vector.create(1, 2, 3)) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readvectorf32x2(b, 9) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readvectorf32x2(b, -1) end) == "buffer access out of bounds")
+end
+
+local function vector_boundaries()
+  local native_check = is_native_if_supported()
+
+  local b3 = buffer.create(12)
+  buffer.writevectorf32x3(b3, 0, vector.create(-1, -2, -3))
+  assert(buffer.readvectorf32x3(b3, 0) == vector.create(-1, -2, -3))
+
+  local b2 = buffer.create(8)
+  buffer.writevectorf32x2(b2, 0, vector.create(10, 20, 0))
+  assert(buffer.readvectorf32x2(b2, 0) == vector.create(10, 20, 0))
+
+  assert(not native_check or is_native_if_supported())
+end
+
+local function vector4()
+  if vector_size ~= 4 then
+    return
+  end
+
+  local b = buffer.create(32)
+  buffer.writevectorf32x4(b, 0, vector.create(1, 2, 3, 4))
+  local v4 = buffer.readvectorf32x4(b, 0)
+  assert(v4.x == 1 and v4.y == 2 and v4.z == 3 and v4.w == 4)
+end
+
+vector_roundtrip()
+vector_bounds()
+vector_boundaries()
+vector4()
+
 local function simple_string_ops()
   local native_check = is_native_if_supported()
   local b = buffer.create(1024)

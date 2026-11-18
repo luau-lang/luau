@@ -1,0 +1,1 @@
+./analysis/classes/dup_classes_in_nested_block_do_not_affect_shadowed_class.luau(12,5): TypeError: Redefinition of type 'Point', previously defined at line 7

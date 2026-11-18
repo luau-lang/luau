@@ -1,3 +1,7 @@
+./analysis/singletons/oss_2613_variadic_intersection.luau(7,12): TypeError: Expected this to be
+	'"Lit1" | "Lit2"'
+but got
+	'"invalid literal"'
 ./analysis/singletons/oss_2613_variadic_intersection.luau(8,4): TypeError: Expected this to be
 	'("Lit1" | "Lit2") & ("invalid literal 1" | "invalid literal 2")'
 but got

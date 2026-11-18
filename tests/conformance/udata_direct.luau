@@ -211,4 +211,109 @@ do
     assert(guardedCallDot(vec2(1, 2), vec2(3, 4), 0) == 11)
 end
 
+-- direct userdata namecalls
+do
+    local v = vec2(1, 2)
+    local function arguments() return 7, 8, 9 end
+    local function results(obj, ...)
+        return obj:Results(...)
+    end
+
+    local a, b, c = results(v, arguments())
+    assert(a == 4 and b == 42 and c == nil)
+    local x, y, z = v:Results(7)
+    assert(x == 2 and y == 42 and z == nil)
+    assert(v:Results() == 1)
+    v:Results()
+end
+
+-- direct userdata namecalls (yielding)
+do
+    local v = vec2(1, 2)
+    local co = coroutine.create(function()
+        local value = v:Yield()
+        assert(value == 99)
+        assert(v:Dot(vec2(3, 4)) == 11)
+        return value + 1
+    end)
+
+    local ok, value = coroutine.resume(co)
+    assert(ok and value == 55 and coroutine.status(co) == "suspended")
+    ok, value = coroutine.resume(co, 99)
+    assert(ok and value == 100 and coroutine.status(co) == "dead")
+end
+
+-- direct userdata namecalls (deoptimization)
+do
+    local function clone(obj)
+        return obj:Clone()
+    end
+
+    assert(clone(vec2(1, 2)).X == 1)
+    local proxy = newproxy(true)
+    getmetatable(proxy).__namecall = function(self)
+        assert(self == proxy)
+        return 18
+    end
+    assert(clone(proxy) == 18)
+    assert(clone(vec2(3, 4)).X == 3)
+
+    local co = coroutine.create(function()
+        local result = clone({
+            Clone = function() return coroutine.yield(56) end
+        })
+        assert(result == 101)
+        return 102
+    end)
+    local ok, value = coroutine.resume(co)
+    assert(ok and value == 56)
+    ok, value = coroutine.resume(co, 101)
+    assert(ok and value == 102 and coroutine.status(co) == "dead")
+
+    local indexedProxy = newproxy(true)
+    getmetatable(indexedProxy).__index = {
+        Clone = function(self)
+            assert(self == indexedProxy)
+            return 19
+        end
+    }
+    assert(clone(indexedProxy) == 19)
+
+    local indexedTable = setmetatable({X = 4, Y = 5}, {
+        __index = function(self, key)
+            assert(key == "Clone")
+            return function(self) return {X = self.X, Y = self.Y} end
+        end,
+    })
+    local copy = clone(indexedTable)
+    assert(copy.X == 4 and copy.Y == 5)
+
+    local co = coroutine.create(function()
+        local result = clone(setmetatable({}, {
+            __index = function(self, key)
+                assert(key == "Clone")
+                return function() return coroutine.yield(57) end
+            end,
+        }))
+        assert(result == 103)
+        return 104
+    end)
+    local ok, value = coroutine.resume(co)
+    assert(ok and value == 57 and coroutine.status(co) == "suspended")
+    ok, value = coroutine.resume(co, 103)
+    assert(ok and value == 104 and coroutine.status(co) == "dead")
+
+    assert(not pcall(clone, nil))
+    assert(not pcall(clone, {}))
+end
+
+do
+    local function dot(a: vector, b: vector)
+        return a:Dot(b)
+    end
+
+    local result = table.pack(dot(vector.create(1, 2, 3), vector.create(4, 5, 6)))
+    assert(result.n == 1 and result[1] == 32)
+end
+
 return 'OK'

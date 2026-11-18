@@ -1045,21 +1045,6 @@ struct ErrorConverter
         return "Class constructors should not return anything.";
     }
 
-    std::string operator()(const CyclicClassInheritance& e) const
-    {
-        std::string s = "Cyclic class inheritance detected: ";
-        bool first = true;
-        for (const Name& name : e.cycle)
-        {
-            if (first)
-                first = false;
-            else
-                s += " -> ";
-            s += name;
-        }
-        return s;
-    }
-
     std::string operator()(const InvalidClassExtension& e) const
     {
         switch (e.context)
@@ -1336,11 +1321,6 @@ bool FunctionExitsWithoutReturning::operator==(const FunctionExitsWithoutReturni
     return expectedReturnType == rhs.expectedReturnType;
 }
 
-bool CyclicClassInheritance::operator==(const CyclicClassInheritance& rhs) const
-{
-    return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
-}
-
 bool InvalidClassExtension::operator==(const InvalidClassExtension& rhs) const
 {
     return context == rhs.context && baseClass == rhs.baseClass;
@@ -1365,6 +1345,7 @@ bool NotIterable::operator==(const NotIterable& rhs) const
 {
     return ty == rhs.ty;
 }
+
 
 int TypeError::code() const
 {
@@ -1854,9 +1835,6 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
-    {
-    }
-    else if constexpr (std::is_same_v<T, CyclicClassInheritance>)
     {
     }
     else if constexpr (std::is_same_v<T, InvalidClassExtension>)

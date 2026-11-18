@@ -44,7 +44,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
 LUAU_FLAGVERSION(LuauTraverseScopeToFunction, 2)
 LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
@@ -1026,12 +1025,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
                 }
             }
             else if (auto tt = get<TableType>(ty))
-            {
-                TableState targetState = TableState::Sealed;
-                if (FFlag::DebugLuauExactTableTypes && tt->state == TableState::Unsealed)
-                    targetState = TableState::Exact;
-                sealTable(constraint->scope, ty, targetState);
-            }
+                sealTable(constraint->scope, ty);
 
             unblock(ty, constraint->location);
         }
@@ -1843,9 +1837,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     if (!ftv)
         return true;
 
-    DenseHashMap<TypeId, TypeId> replacements;
-    DenseHashMap<TypePackId, TypePackId> replacementPacks;
-
     DenseHashSet<const void*> genericTypesAndPacks;
 
     Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
@@ -1855,17 +1846,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
         // We may see non-generic types here, for example when evaluating a
         // recursive function call.
         if (auto gty = get<GenericType>(follow(generic)))
-        {
-            replacements[generic] = gty->polarity == Polarity::Negative ? builtinTypes->neverType : builtinTypes->unknownType;
             genericTypesAndPacks.insert(generic);
-        }
     }
 
     for (auto genericPack : ftv->genericPacks)
-    {
-        replacementPacks[genericPack] = builtinTypes->unknownTypePack;
         genericTypesAndPacks.insert(genericPack);
-    }
 
     // If this is a self call, the types will have more elements than the AST call.
     // We don't attempt to perform bidirectional inference on the self type.
@@ -2023,7 +2008,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         // We expect `resultType` to be followed later, so just reassign it here.
         resultType = freeResult;
 
-        const TableState ubState = FFlag::DebugLuauExactTableTypes ? TableState::Sealed : TableState::Unsealed;
+        const TableState ubState = TableState::Unsealed;
         TypeId upperBound = arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, ubState});
 
         TypeId sr = follow(simplifyIntersection(constraint->scope, constraint->location, ft->upperBound, upperBound));
@@ -2726,7 +2711,6 @@ bool ConstraintSolver::tryDispatch(const EqualityConstraint& c, NotNull<const Co
         unify(constraint, resultType, assignmentType);
         unify(constraint, assignmentType, resultType);
         return true;
-    
     }
     else
     {
@@ -2780,7 +2764,7 @@ struct FindAllUnionMembers : TypeOnceVisitor
 
     bool visit(TypeId ty, const TableType& tbl) override
     {
-        if (tbl.state != TableState::Sealed && tbl.state != TableState::Exact)
+        if (tbl.state != TableState::Sealed)
             blockedTys.insert(ty);
         else
             recordedTys.insert(ty);
@@ -3380,16 +3364,8 @@ TablePropLookupResult ConstraintSolver::lookupTableProp_DEPRECATED(
         // If we are in a conditional context, we treat the property as present
         // and `unknown` because we may be _refining_ a table to include that
         // property.
-        if (FFlag::DebugLuauExactTableTypes)
-        {
-            if (inConditional && ttv->state != TableState::Exact)
-                return {{}, builtinTypes->unknownType};
-        }
-        else
-        {
-            if (inConditional)
-                return {{}, builtinTypes->unknownType};
-        }
+        if (inConditional)
+            return {{}, builtinTypes->unknownType};
     }
     else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::LValue)
     {
@@ -3715,16 +3691,8 @@ std::optional<std::pair<TypeId, bool>> ConstraintSolver::lookupTablePropHelper(
             // If we are in a conditional context, we treat the property as present
             // and `unknown` because we may be _refining_ a table to include that
             // property.
-            if (FFlag::DebugLuauExactTableTypes)
-            {
-                if (inConditional && ttv->state != TableState::Exact)
-                    return {{builtinTypes->unknownType, false}};
-            }
-            else
-            {
-                if (inConditional)
-                    return {{builtinTypes->unknownType, false}};
-            }
+            if (inConditional)
+                return {{builtinTypes->unknownType, false}};
         }
         else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::LValue)
         {

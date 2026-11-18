@@ -11,6 +11,7 @@
 #include "Luau/Sccp.h"
 
 #include <optional>
+#include <unordered_set>
 
 #include "Fixture.h"
 
@@ -214,6 +215,46 @@ struct BytecodeInlinerFixture
             result.push_back(str);
         }
         return result;
+    }
+
+    std::optional<std::pair<BcOp, BcOp>> findDanglingPhiOperand(const CompTimeBcFunction& fn)
+    {
+        std::unordered_set<BcOp, BcOpHash> livePhis;
+        for (const BcBlock& block : fn.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (const BcOp& phiOp : block.phis)
+                livePhis.insert(phiOp);
+        }
+
+        auto dangles = [&](BcOp operand)
+        {
+            return operand.kind == BcOpKind::Phi && livePhis.count(operand) == 0;
+        };
+
+        for (const BcBlock& block : fn.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (const BcOp& phiOp : block.phis)
+            {
+                for (BcOp operand : fn.phis[phiOp.index].ops)
+                {
+                    if (dangles(operand))
+                        return std::make_pair(phiOp, operand);
+                }
+            }
+            for (const BcOp& instOp : block.ops)
+            {
+                for (BcOp operand : fn.instructions[instOp.index].ops)
+                {
+                    if (dangles(operand))
+                        return std::make_pair(instOp, operand);
+                }
+            }
+        }
+        return std::nullopt;
     }
 
     std::vector<std::string> strings;
@@ -2426,7 +2467,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "construct_feedback_slot_after_inlinin
     ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
 
     auto res = compileAndInline(R"(
-        class Point
+        local class Point
             public x
             public y
         end
@@ -2488,6 +2529,32 @@ bb_1 (exit):
 ; predecessors: bb_3 [fallthrough]
 )"
     );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "parser_does_not_reference_removed_phi")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function f7(a8)
+            for _ = 0, 4 do
+                local function f12() end
+                for _ = 0, 4 do
+                    local C14 = {}
+                    C14.__index = C14
+                    setmetatable(C14, { __index = f12 })
+                end
+            end
+            local v20 = { [a8] = function(self) end }
+        end
+        f7(-1844856569)
+    )");
+
+    for (const CompTimeBcFunction& fn : graphs)
+    {
+        std::optional<std::pair<BcOp, BcOp>> dangling = findDanglingPhiOperand(fn);
+        CHECK_MESSAGE(!dangling.has_value(), "phi operand points at a removed phi in function '", fn.debugname, "'");
+    }
 }
 
 TEST_SUITE_END();
