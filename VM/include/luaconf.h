@@ -47,13 +47,17 @@
 
 // Can be used to reconfigure visibility/exports for public APIs
 #ifndef LUA_API
+#if defined(__cplusplus) && defined(LUAU_EXTERN_C)
+#define LUA_API extern "C"
+#else
 #define LUA_API extern
+#endif
 #endif
 
 #define LUALIB_API LUA_API
 
 // Can be used to reconfigure visibility for internal APIs
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(LUAU_SHARED_INTERNALS)
 #define LUAI_FUNC __attribute__((visibility("hidden"))) extern
 #define LUAI_DATA LUAI_FUNC
 #else
