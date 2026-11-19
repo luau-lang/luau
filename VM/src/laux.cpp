@@ -589,16 +589,8 @@ void luaL_pushresultsize(luaL_Strbuf* B, size_t size)
 
 // }======================================================
 
-const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
+const char* luaL_rawtolstring(lua_State* L, int idx, size_t* len)
 {
-    if (luaL_callmeta(L, idx, "__tostring")) // is there a metafield?
-    {
-        const char* s = lua_tolstring(L, -1, len);
-        if (!s)
-            luaL_error(L, "'__tostring' must return a string");
-        return s;
-    }
-
     switch (lua_type(L, idx))
     {
     case LUA_TNIL:
@@ -645,4 +637,17 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     }
     }
     return lua_tolstring(L, -1, len);
+}
+
+const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
+{
+    if (luaL_callmeta(L, idx, "__tostring")) // is there a metafield?
+    {
+        const char* s = lua_tolstring(L, -1, len);
+        if (!s)
+            luaL_error(L, "'__tostring' must return a string");
+        return s;
+    }
+
+    return luaL_rawtolstring(L, idx, len);
 }

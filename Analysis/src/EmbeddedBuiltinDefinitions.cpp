@@ -37,6 +37,7 @@ declare function rawequal<T1, T2>(a: T1, b: T2): boolean
 declare function rawget<K, V>(tab: {[K]: V}, k: K): V?
 declare function rawset<K, V>(tab: {[K]: V}, k: K, v: V): {[K]: V}
 declare function rawlen<K, V>(obj: {[K]: V} | string): number
+declare function rawtostring(obj: any): string
 
 declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
 
@@ -86,6 +87,7 @@ declare function rawequal<T1, T2>(a: T1, b: T2): boolean
 declare function rawget<K, V>(tab: {[K]: V}, k: K): V?
 declare function rawset<K, V>(tab: {[K]: V}, k: K, v: V): {[K]: V}
 declare function rawlen<K, V>(obj: {[K]: V} | string): number
+declare function rawtostring(obj: any): string
 
 declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
 

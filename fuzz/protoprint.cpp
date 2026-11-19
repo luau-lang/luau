@@ -127,6 +127,7 @@ static const std::string kNames[] = {
     "rawget",
     "rawlen",
     "rawset",
+    "rawtostring",
     "readf32",
     "readf64",
     "readi16",
