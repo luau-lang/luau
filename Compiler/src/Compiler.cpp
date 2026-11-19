@@ -498,11 +498,14 @@ struct Compiler
         RegScope rs(this);
 
         bool self = func->self != 0;
-        uint32_t fid = bytecode.beginFunction(uint8_t(self + func->args.size), func->vararg);
+        // a function that declares `...` but never reads it behaves exactly like a non-variadic function (extra arguments are dropped)
+        bool vararg = func->vararg && (options.optimizationLevel < 2 || usesVarargs(func->body));
+
+        uint32_t fid = bytecode.beginFunction(uint8_t(self + func->args.size), vararg);
 
         setDebugLine(func);
 
-        if (func->vararg)
+        if (vararg)
             bytecode.emitABC(LOP_PREPVARARGS, uint8_t(self + func->args.size), 0, 0);
 
         uint8_t args = allocReg(func, self + unsigned(func->args.size));
@@ -671,7 +674,7 @@ struct Compiler
         f.upvals = upvals;
 
         // record information for inlining
-        if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
+        if (options.optimizationLevel >= 2 && !vararg && !func->self && !getfenvUsed && !setfenvUsed)
         {
             if (FFlag::DebugLuauNoInline && func->hasAttribute(AstAttr::Type::DebugNoinline))
             {
@@ -5704,6 +5707,39 @@ struct Compiler
         // If we allocated a temporary register for the operation argument, try hinting its type
         if (!getExprLocal(expr))
             hintTemporaryRegType(expr, reg, expectedType, instLength);
+    }
+
+    struct VarargsVisitor : AstVisitor
+    {
+        bool result = false;
+
+        bool visit(AstExprVarargs* node) override
+        {
+            result = true;
+            return false;
+        }
+
+        bool visit(AstExprFunction* node) override
+        {
+            return false; // nested functions have their own `...`
+        }
+
+        bool visit(AstStat* node) override
+        {
+            return !result;
+        }
+
+        bool visit(AstExpr* node) override
+        {
+            return !result;
+        }
+    };
+
+    static bool usesVarargs(AstStatBlock* body)
+    {
+        VarargsVisitor visitor;
+        body->visit(&visitor);
+        return visitor.result;
     }
 
     struct FenvVisitor : AstVisitor

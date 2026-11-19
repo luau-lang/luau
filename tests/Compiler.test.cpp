@@ -7212,7 +7212,29 @@ RETURN R1 1
 
 TEST_CASE("InlineProhibited")
 {
-    // we can't inline variadic functions
+    // we can't inline variadic functions that use their varargs
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(...)
+    return select('#', ...)
+end
+
+local x = foo()
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+MOVE R1 R0
+CALL R1 0 1
+RETURN R1 1
+)"
+    );
+
+    // ... but a function that declares `...` and never reads it is equivalent to a non-variadic one
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7228,8 +7250,7 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-MOVE R1 R0
-CALL R1 0 1
+LOADN R1 42
 RETURN R1 1
 )"
     );
