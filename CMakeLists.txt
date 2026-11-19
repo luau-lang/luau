@@ -312,7 +312,10 @@ target_compile_options(isocline PRIVATE ${LUAU_OPTIONS} ${ISOCLINE_OPTIONS})
 if(LUAU_EXTERN_C)
     # enable extern "C" for VM (lua.h, lualib.h) and Compiler (luacode.h) to make Luau friendlier to use from non-C++ languages
     # note that we enable LUA_USE_LONGJMP=1 as well; otherwise functions like luaL_error will throw C++ exceptions, which can't be done from extern "C" functions
-    target_compile_definitions(Luau.VM PUBLIC LUA_USE_LONGJMP=1)
+    # LUAU_EXTERN_C is PUBLIC so consumers of the installed headers get C linkage as well
+    target_compile_definitions(Luau.VM PUBLIC LUAU_EXTERN_C=1 LUA_USE_LONGJMP=1)
+    target_compile_definitions(Luau.Compiler PUBLIC LUAU_EXTERN_C=1)
+    target_compile_definitions(Luau.CodeGen PUBLIC LUAU_EXTERN_C=1)
 
     if(LUAU_BUILD_SHARED)
         if(MSVC)
@@ -325,11 +328,7 @@ if(LUAU_EXTERN_C)
             target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\" __attribute__((visibility(\"default\")))")
             target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\" __attribute__((visibility(\"default\")))")
         endif()
-    else()
-        # For static builds (or if not exporting) just use extern "C"
-        target_compile_definitions(Luau.VM PUBLIC "LUA_API=extern \"C\"")
-        target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\"")
-        target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\"")
+        target_compile_definitions(Luau.VM PRIVATE LUAU_SHARED_INTERNALS=1)
     endif()
 endif()
 
@@ -425,7 +424,7 @@ if(LUAU_BUILD_TESTS)
     target_compile_options(Luau.UnitTest PRIVATE ${LUAU_OPTIONS})
     target_compile_definitions(Luau.UnitTest PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY DOCTEST_CONFIG_USE_STD_HEADERS)
     target_include_directories(Luau.UnitTest PRIVATE extern)
-    target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Bytecode Luau.Compiler Luau.CodeGen)
+    target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Bytecode Luau.Compiler Luau.CodeGen Luau.VM)
 
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
     target_compile_definitions(Luau.Conformance PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY DOCTEST_CONFIG_USE_STD_HEADERS)
@@ -502,6 +501,11 @@ endforeach()
 # Installation target
 cmake_path(APPEND libdir_for_pc_file "\${prefix}" "${CMAKE_INSTALL_LIBDIR}")
 cmake_path(APPEND includedir_for_pc_file "\${prefix}" "${CMAKE_INSTALL_INCLUDEDIR}")
+
+set(LUAU_PC_CFLAGS "")
+if(LUAU_EXTERN_C)
+    set(LUAU_PC_CFLAGS "-DLUAU_EXTERN_C=1")
+endif()
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/luau.pc.in"
