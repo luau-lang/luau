@@ -12,7 +12,7 @@ namespace CodeGen
 {
 
 template<typename T>
-static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
+void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
 {
     // For correct analysis, all instruction uses must be handled before handling the definitions
     switch (inst.cmd)
@@ -291,7 +291,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
 }
 
 template<typename T>
-static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrBlock& block)
+void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrBlock& block)
 {
     for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
     {

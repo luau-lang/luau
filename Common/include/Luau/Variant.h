@@ -223,13 +223,13 @@ T* get_if(Variant<Ts...>* var)
 }
 
 template<typename Visitor, typename Result, typename T>
-static void fnVisitR(Visitor& vis, Result& dst, std::conditional_t<std::is_const_v<T>, const void, void>* src)
+void fnVisitR(Visitor& vis, Result& dst, std::conditional_t<std::is_const_v<T>, const void, void>* src)
 {
     dst = vis(*static_cast<T*>(src));
 }
 
 template<typename Visitor, typename T>
-static void fnVisitV(Visitor& vis, std::conditional_t<std::is_const_v<T>, const void, void>* src)
+void fnVisitV(Visitor& vis, std::conditional_t<std::is_const_v<T>, const void, void>* src)
 {
     vis(*static_cast<T*>(src));
 }

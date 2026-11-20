@@ -1,0 +1,27 @@
+[flags-on]
+strict = '''
+./analysis/classes/cyclic_inheritance.luau(3,22): TypeError: Cannot extend non-class of type nil
+./analysis/classes/cyclic_inheritance.luau(3,22): UninitializedLocal: Variable 'B' defined at line 2 is never initialized or assigned; initialize with 'nil' to silence
+'''
+nonstrict = '''
+./analysis/classes/cyclic_inheritance.luau(3,22): UninitializedLocal: Variable 'B' defined at line 2 is never initialized or assigned; initialize with 'nil' to silence
+'''
+runtime = '''
+./analysis/classes/cyclic_inheritance.luau:3: attempt to extend a nil value
+stacktrace:
+./analysis/classes/cyclic_inheritance.luau:3
+'''
+
+[flags-off]
+strict = '''
+./analysis/classes/cyclic_inheritance.luau(3,22): TypeError: Cannot extend non-class of type nil
+./analysis/classes/cyclic_inheritance.luau(3,22): UninitializedLocal: Variable 'B' defined at line 2 is never initialized or assigned; initialize with 'nil' to silence
+'''
+nonstrict = '''
+./analysis/classes/cyclic_inheritance.luau(3,22): UninitializedLocal: Variable 'B' defined at line 2 is never initialized or assigned; initialize with 'nil' to silence
+'''
+runtime = '''
+./analysis/classes/cyclic_inheritance.luau:3: attempt to extend a nil value
+stacktrace:
+./analysis/classes/cyclic_inheritance.luau:3
+'''

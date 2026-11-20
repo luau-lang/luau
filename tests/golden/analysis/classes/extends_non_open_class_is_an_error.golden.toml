@@ -1,0 +1,21 @@
+[flags-on]
+strict = '''
+./analysis/classes/extends_non_open_class_is_an_error.luau(7,19): TypeError: Non-open class Animal cannot be extended
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extends_non_open_class_is_an_error.luau:7: Non-open class 'Animal' cannot be extended
+stacktrace:
+./analysis/classes/extends_non_open_class_is_an_error.luau:7
+'''
+
+[flags-off]
+strict = '''
+./analysis/classes/extends_non_open_class_is_an_error.luau(7,19): TypeError: Non-open class Animal cannot be extended
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extends_non_open_class_is_an_error.luau:7: Non-open class 'Animal' cannot be extended
+stacktrace:
+./analysis/classes/extends_non_open_class_is_an_error.luau:7
+'''

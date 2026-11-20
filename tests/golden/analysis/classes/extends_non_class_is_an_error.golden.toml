@@ -1,0 +1,21 @@
+[flags-on]
+strict = '''
+./analysis/classes/extends_non_class_is_an_error.luau(5,19): TypeError: Cannot extend non-class of type (number) -> number
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extends_non_class_is_an_error.luau:5: attempt to extend a function value
+stacktrace:
+./analysis/classes/extends_non_class_is_an_error.luau:5
+'''
+
+[flags-off]
+strict = '''
+./analysis/classes/extends_non_class_is_an_error.luau(5,19): TypeError: Cannot extend non-class of type (number) -> number
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extends_non_class_is_an_error.luau:5: attempt to extend a function value
+stacktrace:
+./analysis/classes/extends_non_class_is_an_error.luau:5
+'''

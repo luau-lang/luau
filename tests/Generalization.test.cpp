@@ -17,7 +17,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauBetterInferredGenericNames)
-LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -127,72 +126,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_traverse_into_class_types_when_ge
     CHECK(is<FreeType>(*genPropTy));
 }
 
-TEST_CASE_FIXTURE(GeneralizationFixture, "cache_fully_generalized_types")
-{
-    // Clip this test with LuauIterativeTypeSearcher
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, false};
-
-    CHECK(generalizedTypes->empty());
-
-    TypeId tinyTable = arena.addType(
-        TableType{TableType::Props{{"one", builtinTypes.numberType}, {"two", builtinTypes.stringType}}, std::nullopt, TypeLevel{}, TableState::Sealed}
-    );
-
-    generalize(tinyTable);
-
-    CHECK(generalizedTypes->contains(tinyTable));
-    CHECK(generalizedTypes->contains(builtinTypes.numberType));
-    CHECK(generalizedTypes->contains(builtinTypes.stringType));
-}
-
-TEST_CASE_FIXTURE(GeneralizationFixture, "dont_cache_types_that_arent_done_yet")
-{
-    // Clip this test with LuauIterativeTypeSearcher
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, false};
-
-    TypeId freeTy = arena.addType(FreeType{NotNull{globalScope.get()}, builtinTypes.neverType, builtinTypes.stringType});
-
-    TypeId fnTy = arena.addType(FunctionType{builtinTypes.emptyTypePack, arena.addTypePack(TypePack{{builtinTypes.numberType}})});
-
-    TypeId tableTy = arena.addType(
-        TableType{TableType::Props{{"one", builtinTypes.numberType}, {"two", freeTy}, {"three", fnTy}}, std::nullopt, TypeLevel{}, TableState::Sealed}
-    );
-
-    generalize(tableTy);
-
-    CHECK(generalizedTypes->contains(fnTy));
-    CHECK(generalizedTypes->contains(builtinTypes.numberType));
-    CHECK(generalizedTypes->contains(builtinTypes.neverType));
-    CHECK(generalizedTypes->contains(builtinTypes.stringType));
-    CHECK(!generalizedTypes->contains(freeTy));
-    CHECK(!generalizedTypes->contains(tableTy));
-}
-
-TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can_be_cached")
-{
-    // Clip this test with LuauIterativeTypeSearcher
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, false};
-
-    TypeId selfTy = arena.addType(BlockedType{});
-
-    TypeId methodTy = arena.addType(
-        FunctionType{
-            arena.addTypePack({selfTy}),
-            arena.addTypePack({builtinTypes.numberType}),
-        }
-    );
-
-    asMutable(selfTy)->ty.emplace<TableType>(
-        TableType::Props{{"count", builtinTypes.numberType}, {"method", methodTy}}, std::nullopt, TypeLevel{}, TableState::Sealed
-    );
-
-    generalize(methodTy);
-
-    CHECK(generalizedTypes->contains(methodTy));
-    CHECK(generalizedTypes->contains(selfTy));
-    CHECK(generalizedTypes->contains(builtinTypes.numberType));
-}
-
 TEST_CASE_FIXTURE(GeneralizationFixture, "union_type_traversal_doesnt_crash")
 {
     // t1 where t1 = ('h <: (t1 <: 'i)) | ('j <: (t1 <: 'i))
@@ -240,8 +173,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
-
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
     TypeId numberArray = arena.addType(TableType{tt});
@@ -566,7 +497,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "no_spurious_cycle_through_intersection
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "searching_for_free_types_does_not_use_the_native_stack")
 {
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
     ScopedFastInt limit{FInt::LuauVisitRecursionLimit, 10};
 
     std::vector<TypeId> types;
@@ -584,8 +514,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "searching_for_free_types_does_not_use_
 TEST_CASE_FIXTURE(Fixture, "mixed_polarity_is_recovered")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
 
     CheckResult result = check(R"(
         local function identity<T>(x: T)

@@ -904,6 +904,68 @@ expectpass("class inheritance __eq inherited", function()
     checkTwice(e, f)
 end)
 
+expectfail("class inheritance cannot override an instance member", "Cannot override instance member 'x' of parent class 'Parent' in child class 'Child'", function()
+    local open class Parent
+        public x: number
+    end
+
+    local class Child extends Parent
+        public x: number
+    end
+end)
+
+expectfail("class inheritance cannot extend a non-open class", "Non-open class 'Parent' cannot be extended", function()
+    local class Parent
+        public x: number
+    end
+
+    local class Child extends Parent
+        public y: number
+    end
+end)
+
+expectfail("class inheritance cannot override __eq", "Overriding comparison metamethods is not allowed ('__eq' in class 'Child')", function()
+    local open class Parent
+        public function __eq(self, other)
+            return true
+        end
+    end
+
+    local class Child extends Parent
+        public function __eq(self, other)
+            return false
+        end
+    end
+end)
+
+expectfail("class inheritance cannot override __lt", "Overriding comparison metamethods is not allowed ('__lt' in class 'Child')", function()
+    local open class Parent
+        public function __lt(self, other)
+            return true
+        end
+    end
+
+    local class Child extends Parent
+        public function __lt(self, other)
+            return false
+        end
+    end
+end)
+
+expectfail("class inheritance cannot override __le", "Overriding comparison metamethods is not allowed ('__le' in class 'Child')", function()
+    local open class Parent
+        public function __le(self, other)
+            return true
+        end
+    end
+
+    local class Child extends Parent
+        public function __le(self, other)
+            return false
+        end
+    end
+end)
+
 expectpass("class inheritance GC stress", function()
     for i = 1, 100 do
         local c = Cat { species = "species" .. tostring(i), breed = "breed" .. tostring(i) }

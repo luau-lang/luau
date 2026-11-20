@@ -17,7 +17,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenMetatableCache)
-LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 LUAU_FASTFLAG(LuauCodegenMultiLaneDot)
 
 namespace Luau
@@ -3871,18 +3870,11 @@ void IrLoweringX64::startBlock(const IrBlock& curr)
 
     if (curr.kind == IrBlockKind::ExitSync)
     {
-        if (FFlag::LuauCodegenImprovedExitSync)
-        {
-            uint32_t blockIdx = function.getBlockIndex(curr);
-            regs.setupExitSyncEntry(blockIdx);
+        uint32_t blockIdx = function.getBlockIndex(curr);
+        regs.setupExitSyncEntry(blockIdx);
 
-            // With register state restored, we can restore value location tracking
-            valueTracker.setupExitSyncEntry(blockIdx);
-        }
-        else
-        {
-            regs.setupExitSyncEntry(function.getBlockIndex(curr));
-        }
+        // With register state restored, we can restore value location tracking
+        valueTracker.setupExitSyncEntry(blockIdx);
     }
 }
 

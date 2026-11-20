@@ -1,0 +1,13 @@
+[flags-on]
+strict = '''
+_luau_print (2, 16): ("A" | "B") -> ()
+
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+_luau_print (2, 16): ("A" | "B") -> ()
+
+'''
+nonstrict = ""
