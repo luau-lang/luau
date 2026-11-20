@@ -15,7 +15,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 
 namespace Luau
 {
