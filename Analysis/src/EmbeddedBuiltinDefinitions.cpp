@@ -10,6 +10,7 @@ LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauEZAddBuiltins)
+LUAU_FASTFLAGVARIABLE(LuauConfigurableVectorSize)
 
 namespace Luau
 {
@@ -427,7 +428,9 @@ static constexpr const char* kBuiltinDefinitionBufferSrcSuffix = R"BUILTIN_SRC(
 
 )BUILTIN_SRC";
 
-static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
+// The vector library's shape depends on the vector width: 4-wide vectors expose a 'w' component and take a
+// fourth argument in 'create'. Both headers are compiled in and selected at runtime; the method list is shared.
+static const char* const kBuiltinDefinitionVector3HeaderSrc = R"BUILTIN_SRC(
 
 -- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
 declare extern type vector with
@@ -437,7 +440,22 @@ declare extern type vector with
 end
 
 declare vector: {
-    create: @checked (x: number, y: number, z: number?) -> vector,
+    create: @checked (x: number, y: number, z: number?) -> vector,)BUILTIN_SRC";
+
+static const char* const kBuiltinDefinitionVector4HeaderSrc = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
+declare extern type vector with
+    read x: number
+    read y: number
+    read z: number
+    read w: number
+end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number?, w: number?) -> vector,)BUILTIN_SRC";
+
+static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
     magnitude: @checked (vec: vector) -> number,
     normalize: @checked (vec: vector) -> vector,
     cross: @checked (vec1: vector, vec2: vector) -> vector,
@@ -465,12 +483,12 @@ declare class: {
 }
 )CLASS_SRC";
 
-std::string buildBuiltinTypeDefinitions();
+std::string buildBuiltinTypeDefinitions(VectorSize vectorSize);
 
-std::string getBuiltinDefinitionSource()
+std::string getBuiltinDefinitionSource(VectorSize vectorSize)
 {
     if (FFlag::LuauEZAddBuiltins)
-        return buildBuiltinTypeDefinitions();
+        return buildBuiltinTypeDefinitions(vectorSize);
     else
     {
         std::string result = kBuiltinDefinitionBaseSrc;
@@ -492,6 +510,10 @@ std::string getBuiltinDefinitionSource()
             result += kBuiltinDefinitionBufferVectorSrc;
         result += kBuiltinDefinitionBufferSrcSuffix;
 
+        if (FFlag::LuauConfigurableVectorSize && vectorSize == VectorSize::Four)
+            result += kBuiltinDefinitionVector4HeaderSrc;
+        else
+            result += kBuiltinDefinitionVector3HeaderSrc;
         result += kBuiltinDefinitionVectorSrc;
 
         if (FFlag::DebugLuauUserDefinedClasses && FFlag::LuauAllowGlobalDeclarationToBeCalledClass)
@@ -829,9 +851,27 @@ static void buildBufferDefinitions(TypeDefBuilder& builder)
     table.registerProp("writebits", "@checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> ()");
 }
 
-static void buildVectorDefinitions(TypeDefBuilder& builder)
+static void buildVectorDefinitions(TypeDefBuilder& builder, VectorSize vectorSize)
 {
-    builder.declareMagic(R"VECTOR_SRC(
+    bool fourWide = FFlag::LuauConfigurableVectorSize && vectorSize == VectorSize::Four;
+
+    if (fourWide)
+    {
+        builder.declareMagic(R"VECTOR_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
+declare extern type vector with
+    read x: number
+    read y: number
+    read z: number
+    read w: number
+end
+
+)VECTOR_SRC");
+    }
+    else
+    {
+        builder.declareMagic(R"VECTOR_SRC(
 
 -- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
 declare extern type vector with
@@ -841,8 +881,13 @@ declare extern type vector with
 end
 
 )VECTOR_SRC");
+    }
+
     TableLikeDefinition table = builder.declareTablePartial("vector");
-    table.registerProp("create", "@checked (x: number, y: number, z: number?) -> vector");
+    if (fourWide)
+        table.registerProp("create", "@checked (x: number, y: number, z: number?, w: number?) -> vector");
+    else
+        table.registerProp("create", "@checked (x: number, y: number, z: number?) -> vector");
     table.registerProp("magnitude", "@checked (vec: vector) -> number");
     table.registerProp("normalize", "@checked (vec: vector) -> vector");
     table.registerProp("cross", "@checked (vec1: vector, vec2: vector) -> vector");
@@ -870,7 +915,7 @@ static void buildClassDefinitions(TypeDefBuilder& builder)
     }
 }
 
-std::string buildBuiltinTypeDefinitions()
+std::string buildBuiltinTypeDefinitions(VectorSize vectorSize)
 {
     TypeDefBuilder builder;
     buildBaseDefinitions(builder);
@@ -882,7 +927,7 @@ std::string buildBuiltinTypeDefinitions()
     buildDebugDefinitions(builder);
     buildUtf8Definitions(builder);
     buildBufferDefinitions(builder);
-    buildVectorDefinitions(builder);
+    buildVectorDefinitions(builder, vectorSize);
     buildClassDefinitions(builder);
     return builder.str();
 }
