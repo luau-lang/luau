@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+./analysis/singletons/if_then_else_expression_singleton_options.luau(5,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/if_then_else_expression_singleton_options.luau(5,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/if_then_else_expression_singleton_options.luau(5,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/if_then_else_expression_singleton_options.luau(5,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''

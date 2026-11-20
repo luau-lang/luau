@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+_luau_print (7, 9): (true) -> ()
+
+'''
+nonstrict = ""
+runtime = ""
+
+[flags-off]
+strict = '''
+_luau_print (7, 9): (true) -> ()
+
+'''
+nonstrict = ""
+runtime = ""

@@ -19,7 +19,6 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
@@ -3560,54 +3559,6 @@ local abc = b@1
     CHECK(ac.entryMap["bar"].parens == ParenthesesRecommendation::CursorInside);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_on_class")
-{
-    // Legacy behavior: dot on an extern type method (`one`) is flagged wrongIndexType. The
-    // conversion feature changes this — see extern_type_method_via_dot for the flag-on case.
-    ScopedFastFlag sff{FFlag::LuauAutocompleteDotMethodConversion, false};
-
-    loadDefinition(R"(
-declare extern type Foo with
-    function one(self): number
-    two: () -> number
-end
-    )");
-
-    {
-        check(R"(
-local function f(t: Foo)
-    t:@1
-end
-        )");
-
-        auto ac = autocomplete('1');
-
-        REQUIRE(ac.entryMap.count("one"));
-        REQUIRE(ac.entryMap.count("two"));
-        CHECK(!ac.entryMap["one"].wrongIndexType);
-        CHECK(ac.entryMap["two"].wrongIndexType);
-        CHECK(ac.entryMap["one"].indexedWithSelf);
-        CHECK(ac.entryMap["two"].indexedWithSelf);
-    }
-
-    {
-        check(R"(
-local function f(t: Foo)
-    t.@1
-end
-        )");
-
-        auto ac = autocomplete('1');
-
-        REQUIRE(ac.entryMap.count("one"));
-        REQUIRE(ac.entryMap.count("two"));
-        CHECK(ac.entryMap["one"].wrongIndexType);
-        CHECK(!ac.entryMap["two"].wrongIndexType);
-        CHECK(!ac.entryMap["one"].indexedWithSelf);
-        CHECK(!ac.entryMap["two"].indexedWithSelf);
-    }
-}
-
 TEST_CASE_FIXTURE(ACFixture, "simple")
 {
     check(R"(
@@ -3684,29 +3635,6 @@ t:@1
     CHECK(ac.entryMap["m"].indexedWithSelf);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "do_wrong_compatible_nonself_calls")
-{
-    // Legacy behavior: dot on a method is flagged wrongIndexType. The conversion feature
-    // intentionally changes this — see dot_method_marks_for_conversion for the flag-on case.
-    ScopedFastFlag sff{FFlag::LuauAutocompleteDotMethodConversion, false};
-
-    check(R"(
-local t = {}
-function t:m(x: string) end
-t.@1
-    )");
-
-    auto ac = autocomplete('1');
-
-    REQUIRE(ac.entryMap.count("m"));
-
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK(ac.entryMap["m"].wrongIndexType);
-    else
-        CHECK(!ac.entryMap["m"].wrongIndexType);
-    CHECK(!ac.entryMap["m"].indexedWithSelf);
-}
-
 TEST_CASE_FIXTURE(ACFixture, "no_wrong_compatible_self_calls_with_generics")
 {
     check(R"(
@@ -3730,7 +3658,6 @@ TEST_CASE_FIXTURE(ACFixture, "dot_method_marks_for_conversion")
     // (see do_wrong_compatible_nonself_calls). Force the new solver so this test is deterministic.
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauAutocompleteDotMethodConversion, true},
     };
 
     check(R"(
@@ -3751,7 +3678,6 @@ TEST_CASE_FIXTURE(ACFixture, "dot_function_no_conversion")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauAutocompleteDotMethodConversion, true},
     };
 
     check(R"(
@@ -3771,7 +3697,6 @@ TEST_CASE_FIXTURE(ACFixture, "colon_no_conversion_marker")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauAutocompleteDotMethodConversion, true},
     };
 
     check(R"(
@@ -3792,7 +3717,6 @@ TEST_CASE_FIXTURE(ACFixture, "extern_type_method_via_dot")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauAutocompleteDotMethodConversion, true},
     };
 
     loadDefinition(R"(
@@ -3824,7 +3748,6 @@ TEST_CASE_FIXTURE(ACFixture, "extern_type_first_arg_match_does_not_make_colon_co
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauAutocompleteDotMethodConversion, true},
     };
 
     // For ExternTypes, the `hasSelf` property of the method is the only thing we look at.
@@ -3852,7 +3775,6 @@ TEST_CASE_FIXTURE(ACFixture, "intersection_with_some_self_overloads")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauAutocompleteDotMethodConversion, true},
     };
 
     // An intersection where at least one overload is dot-callable: keep the dot,
@@ -3888,27 +3810,6 @@ s:@1
     REQUIRE(ac.entryMap.count("sub"));
     CHECK(ac.entryMap["sub"].wrongIndexType == false);
     CHECK(ac.entryMap["sub"].indexedWithSelf);
-}
-
-TEST_CASE_FIXTURE(ACFixture, "string_prim_non_self_calls_are_avoided")
-{
-    // Legacy behavior: dot on a string method like `sub` is flagged wrongIndexType. The
-    // conversion feature changes this — `sub` becomes a convertible method completion.
-    ScopedFastFlag sff{FFlag::LuauAutocompleteDotMethodConversion, false};
-
-    check(R"(
-local s = "hello"
-s.@1
-    )");
-
-    auto ac = autocomplete('1');
-
-    REQUIRE(ac.entryMap.count("char"));
-    CHECK(ac.entryMap["char"].wrongIndexType == false);
-    CHECK(!ac.entryMap["char"].indexedWithSelf);
-    REQUIRE(ac.entryMap.count("sub"));
-    CHECK(ac.entryMap["sub"].wrongIndexType == true);
-    CHECK(!ac.entryMap["sub"].indexedWithSelf);
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "library_non_self_calls_are_fine")

@@ -1,1 +1,0 @@
-./analysis/tables/table_width_subtyping_soundness_hole.luau(5,12): TypeError: Expected this to be 'Y', but got 'X'

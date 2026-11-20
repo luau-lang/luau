@@ -1,0 +1,17 @@
+[flags-on]
+strict = '''
+./analysis/singletons/tagged_unions_using_singletons_mismatch.luau(4,20): TypeError: Table type '{ howls: boolean, tag: "Cat" }' not compatible with type 'Cat' because the former is missing field 'meows'
+./analysis/singletons/tagged_unions_using_singletons_mismatch.luau(4,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/tagged_unions_using_singletons_mismatch.luau(4,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/tagged_unions_using_singletons_mismatch.luau(4,20): TypeError: Table type '{ howls: boolean, tag: "Cat" }' not compatible with type 'Cat' because the former is missing field 'meows'
+./analysis/singletons/tagged_unions_using_singletons_mismatch.luau(4,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/tagged_unions_using_singletons_mismatch.luau(4,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''

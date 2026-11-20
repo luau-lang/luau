@@ -12,7 +12,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
 namespace Luau
@@ -492,10 +491,8 @@ void OverloadResolver::reportErrors(
         TypePathRenderMetadata subMetadata;
         TypePathRenderMetadata superMetadata;
 
-        Path truncatedSuperPathTail =
-            FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks ? truncatePathAtUnionOrIntersection(superPathTail) : superPathTail;
-        Path truncatedSubPathTail =
-            FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks ? truncatePathAtUnionOrIntersection(reason.subPath) : reason.subPath;
+        Path truncatedSuperPathTail = truncatePathAtUnionOrIntersection(superPathTail);
+        Path truncatedSubPathTail = truncatePathAtUnionOrIntersection(reason.subPath);
         std::optional<TypeOrPack> failedSub = traverse(argPack, truncatedSuperPathTail, builtinTypes, arena, &subMetadata);
         std::optional<TypeOrPack> failedSuper = traverse(fnTy, truncatedSubPathTail, builtinTypes, arena, &superMetadata);
 

@@ -1,0 +1,11 @@
+[flags-on]
+strict = '''
+./analysis/type-functions/index_union_key.luau(8,22): TypeError: Property '"a" | "d"' does not exist on type 'MyObject'
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+./analysis/type-functions/index_union_key.luau(8,22): TypeError: Property '"a" | "d"' does not exist on type 'MyObject'
+'''
+nonstrict = ""

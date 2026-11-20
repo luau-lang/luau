@@ -1,0 +1,23 @@
+[flags-on]
+strict = '''
+./analysis/fuzzer/fuzzer_recursive_union_intersection_occurs_check.luau(2,1): TypeError: Unknown global 'x'; consider assigning to it first
+./analysis/fuzzer/fuzzer_recursive_union_intersection_occurs_check.luau(2,24): DuplicateCondition: Condition has already been checked on column 8
+'''
+nonstrict = '''
+./analysis/fuzzer/fuzzer_recursive_union_intersection_occurs_check.luau(2,24): DuplicateCondition: Condition has already been checked on column 8
+'''
+runtime = '''
+Warning: unrecognized flag 'LuauDoNotCrashOnRecursiveSetType'.
+'''
+
+[flags-off]
+strict = '''
+./analysis/fuzzer/fuzzer_recursive_union_intersection_occurs_check.luau(2,1): TypeError: Unknown global 'x'; consider assigning to it first
+./analysis/fuzzer/fuzzer_recursive_union_intersection_occurs_check.luau(2,24): DuplicateCondition: Condition has already been checked on column 8
+'''
+nonstrict = '''
+./analysis/fuzzer/fuzzer_recursive_union_intersection_occurs_check.luau(2,24): DuplicateCondition: Condition has already been checked on column 8
+'''
+runtime = '''
+Warning: unrecognized flag 'LuauDoNotCrashOnRecursiveSetType'.
+'''

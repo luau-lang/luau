@@ -1,0 +1,15 @@
+[flags-on]
+strict = ""
+nonstrict = ""
+runtime = '''
+1
+1
+'''
+
+[flags-off]
+strict = ""
+nonstrict = ""
+runtime = '''
+1
+1
+'''

@@ -21,7 +21,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizeFunctionIntersections)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAGVARIABLE(LuauSupportNegationOfIntersectionType)
 
 namespace Luau
 {
@@ -3583,7 +3583,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             here.tyvars = std::move(tyvars);
             return intersectNormalWithTy(here, nt->ty, seenTablePropPairs, seenSetTypes);
         }
-        else if (auto itv = get<IntersectionType>(t); FFlag::LuauDecomposeIntersectionOfFreeType && itv)
+        else if (auto itv = get<IntersectionType>(t); FFlag::LuauSupportNegationOfIntersectionType && itv)
         {
             // ~(A & B & C) => ~A | ~B | ~C
             NormalizedType thereNorm{builtinTypes};

@@ -14,6 +14,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauBytecodeLoadbSkip)
+
 namespace Luau
 {
 namespace Bytecode
@@ -353,6 +355,10 @@ struct Sccp
     {
         switch (inst->op)
         {
+        case LOP_LOADB:
+            if (FFlag::LuauBytecodeLoadbSkip && inst->ops.size() > 1)
+                return {{false, inst->ops[1], ConditionState::AlwaysTrue}};
+            return {};
         case LOP_JUMP:
         case LOP_JUMPBACK:
         {

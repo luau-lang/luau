@@ -1,4 +1,4 @@
--- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime,LuauEmitCallFeedback
+-- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime
 local function prequire(name)
     local success, result = pcall(require, name)
     return success and result

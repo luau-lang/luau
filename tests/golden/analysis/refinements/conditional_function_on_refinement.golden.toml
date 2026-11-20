@@ -1,0 +1,19 @@
+[flags-on]
+strict = '''
+_luau_print (6, 9): (unknown) -> ()
+
+'''
+nonstrict = ""
+runtime = '''
+HEYHEYHEY
+'''
+
+[flags-off]
+strict = '''
+_luau_print (6, 9): (unknown) -> ()
+
+'''
+nonstrict = ""
+runtime = '''
+HEYHEYHEY
+'''

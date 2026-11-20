@@ -1,0 +1,21 @@
+[flags-on]
+strict = '''
+./analysis/classes/extend_class_instance.luau(8,19): TypeError: Object of type Foo cannot be extended because it is an object, not a class
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extend_class_instance.luau:8: attempt to extend a object value
+stacktrace:
+./analysis/classes/extend_class_instance.luau:8
+'''
+
+[flags-off]
+strict = '''
+./analysis/classes/extend_class_instance.luau(8,19): TypeError: Object of type Foo cannot be extended because it is an object, not a class
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extend_class_instance.luau:8: attempt to extend a object value
+stacktrace:
+./analysis/classes/extend_class_instance.luau:8
+'''

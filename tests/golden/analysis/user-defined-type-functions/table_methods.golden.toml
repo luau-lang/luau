@@ -1,0 +1,17 @@
+[flags-on]
+strict = '''
+./analysis/user-defined-type-functions/table_methods.luau(7,39): TypeError: Expected this to be
+	'{ index: type, readresult: type, writeresult: type? }?'
+but got
+	'{ index: type, readresult: type, writeresult: type }'
+./analysis/user-defined-type-functions/table_methods.luau(25,12): TypeError: Expected this to be unreachable, but got
+	'{ [boolean]: string, number: string }'
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+./analysis/user-defined-type-functions/table_methods.luau(25,12): TypeError: Expected this to be unreachable, but got
+	'{ [boolean]: string, number: string }'
+'''
+nonstrict = ""
