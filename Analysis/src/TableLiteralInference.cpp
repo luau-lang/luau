@@ -15,7 +15,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-#include <cstdlib>
+#include <stdlib.h>
 
 namespace Luau
 {
@@ -75,8 +75,8 @@ struct FindFunctionTypeIn : IterativeTypeVisitor
             return false;
         }
 
-        int candidateDistance = std::abs(int(size(candidate->argTypes)) - numberOfLambdaParameters);
-        int thisDistance = std::abs(int(size(ftv.argTypes)) - numberOfLambdaParameters);
+        int candidateDistance = abs(int(size(candidate->argTypes)) - numberOfLambdaParameters);
+        int thisDistance = abs(int(size(ftv.argTypes)) - numberOfLambdaParameters);
 
         if (thisDistance < candidateDistance)
         {
