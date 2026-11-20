@@ -1,0 +1,11 @@
+[flags-on]
+strict = '''
+./analysis/type-functions/rawget_basic.luau(14,12): TypeError: Expected this to be 'boolean', but got 'string'
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+./analysis/type-functions/rawget_basic.luau(14,12): TypeError: Expected this to be 'boolean', but got 'string'
+'''
+nonstrict = ""

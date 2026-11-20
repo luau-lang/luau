@@ -8,10 +8,10 @@ uncategorized `TypeInfer.test.cpp` maps to `general/`, and the two type function
 suites map to `type-functions/` and `user-defined-type-functions/`.
 
 Each entry is an independently runnable golden test. Its adjacent
-`flags-on`/`flags-off` strict and nonstrict `.output` files encode complete
-combined process output, so the suite detects changed diagnostics, changed
-locations, unexpected warnings, and unexpected output from successful
-analysis.
+`.golden.toml` snapshot encodes the complete combined process output of the
+`flags-on`/`flags-off` strict and nonstrict runs, so the suite detects changed
+diagnostics, changed locations, unexpected warnings, and unexpected output from
+successful analysis.
 
 Only behavior visible through `luau-analyze` and safely runnable through
 `luau` belongs here. Tests remain C++-only when they depend on fixture-provided

@@ -3171,4 +3171,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_globals_in_type_functions_arent_defin
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_globals_in_type_functions_arent_captured")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+        @_
+        type function t0<A>(l0)
+            if _ then
+                _ = if _._ then ""
+            end
+        end
+        function _()
+        end
+    )"));
+}
+
 TEST_SUITE_END();

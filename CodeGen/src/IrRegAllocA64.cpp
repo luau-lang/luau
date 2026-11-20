@@ -14,7 +14,6 @@
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
 LUAU_FASTFLAGVARIABLE(LuauCodegenA64ReloadLargeConstOffset)
-LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 namespace Luau
 {
@@ -393,17 +392,6 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
     if (!args)
         return;
 
-    // Collect VM registers that the ExitSync stores will write to
-    const VmExitSyncInfo* syncInfo = nullptr;
-
-    SmallVector<uint32_t, 8> argumentsToRestore;
-
-    if (!FFlag::LuauCodegenImprovedExitSync)
-    {
-        if (const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx))
-            syncInfo = function.vmExitInfo.find(*guardInstIdx);
-    }
-
     for (const ExitSyncArgA64& arg : *args)
     {
         IrInst& inst = function.instructions[arg.instIdx];
@@ -440,42 +428,7 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
             function.recordRestoreLocation(arg.instIdx, arg.restoreLocation);
 
             spills.push_back({arg.instIdx, arg.originalReg, arg.slot});
-
-            // If the restore VM register will be clobbered by a store in this block, restore it immediately
-            if (!FFlag::LuauCodegenImprovedExitSync && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
-            {
-                uint8_t vmReg = vmRegOp(arg.restoreLocation.op);
-
-                for (const VmExitStoreInfo& regStore : syncInfo->regStores)
-                {
-                    if (regStore.reg != vmReg)
-                        continue;
-
-                    // If store is the user of the argument, there is no conflict
-                    bool argUsedHere = false;
-
-                    for (const VmExitStoreRecord& record : regStore.stores)
-                    {
-                        for (const auto& op : record.backup.ops)
-                        {
-                            if (op.kind == IrOpKind::Inst && op.index == arg.instIdx)
-                                argUsedHere = true;
-                        }
-                    }
-
-                    if (!argUsedHere)
-                        argumentsToRestore.push_back(function.getInstIndex(inst));
-
-                    break;
-                }
-            }
         }
-    }
-
-    if (!FFlag::LuauCodegenImprovedExitSync)
-    {
-        for (uint32_t instIdx : argumentsToRestore)
-            restoreReg(function.instructions[instIdx]);
     }
 }
 

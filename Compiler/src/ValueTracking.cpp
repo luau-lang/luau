@@ -6,7 +6,6 @@
 #include "Luau/SmallVector.h"
 
 LUAU_FASTFLAG(LuauOptimizeExportTable)
-LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 
 namespace Luau
 {
@@ -46,21 +45,14 @@ struct ValueVisitor : AstVisitor
     {
         if (AstExprLocal* lv = var->as<AstExprLocal>())
         {
-            if (FFlag::LuauCompileReuseLocalRegs)
-            {
-                Variable& variable = variables[lv->local];
+            Variable& variable = variables[lv->local];
 
-                variable.written = true;
-                LUAU_ASSERT(!variable.lastUsed || lv->location.end >= variable.lastUsed->location.end);
-                variable.lastUsed = lv;
+            variable.written = true;
+            LUAU_ASSERT(!variable.lastUsed || lv->location.end >= variable.lastUsed->location.end);
+            variable.lastUsed = lv;
 
-                if (lv->upvalue || lv->local->isExported)
-                    variable.nonLexicalUse = true;
-            }
-            else
-            {
-                variables[lv->local].written = true;
-            }
+            if (lv->upvalue || lv->local->isExported)
+                variable.nonLexicalUse = true;
         }
         else if (AstExprGlobal* gv = var->as<AstExprGlobal>())
         {
@@ -75,22 +67,15 @@ struct ValueVisitor : AstVisitor
 
     bool visit(AstExprLocal* node) override
     {
-        if (FFlag::LuauCompileReuseLocalRegs)
-        {
-            Variable& variable = variables[node->local];
+        Variable& variable = variables[node->local];
 
-            LUAU_ASSERT(!variable.lastUsed || node->location.end >= variable.lastUsed->location.end);
-            variable.lastUsed = node;
+        LUAU_ASSERT(!variable.lastUsed || node->location.end >= variable.lastUsed->location.end);
+        variable.lastUsed = node;
 
-            if (node->upvalue || node->local->isExported)
-                variable.nonLexicalUse = true;
+        if (node->upvalue || node->local->isExported)
+            variable.nonLexicalUse = true;
 
-            return false;
-        }
-        else
-        {
-            return true;
-        }
+        return false;
     }
 
     bool visit(AstStatLocal* node) override
@@ -113,15 +98,12 @@ struct ValueVisitor : AstVisitor
             }
         }
 
-        if (FFlag::LuauCompileReuseLocalRegs)
+        for (size_t i = 0; i < node->vars.size; ++i)
         {
-            for (size_t i = 0; i < node->vars.size; ++i)
-            {
-                AstLocal* local = node->vars.data[i];
+            AstLocal* local = node->vars.data[i];
 
-                LUAU_ASSERT(!blockOwnerStack.empty());
-                variables[local].owner = blockOwnerStack.back();
-            }
+            LUAU_ASSERT(!blockOwnerStack.empty());
+            variables[local].owner = blockOwnerStack.back();
         }
 
         return true;
@@ -184,22 +166,15 @@ struct ValueVisitor : AstVisitor
 
     bool visit(AstStatLocalFunction* node) override
     {
-        if (FFlag::LuauCompileReuseLocalRegs)
-        {
-            Variable& variable = variables[node->name];
+        Variable& variable = variables[node->name];
 
-            variable.init = node->func;
+        variable.init = node->func;
 
-            LUAU_ASSERT(!blockOwnerStack.empty());
-            variable.owner = blockOwnerStack.back();
+        LUAU_ASSERT(!blockOwnerStack.empty());
+        variable.owner = blockOwnerStack.back();
 
-            if (node->name->isExported)
-                variable.nonLexicalUse = true;
-        }
-        else
-        {
-            variables[node->name].init = node->func;
-        }
+        if (node->name->isExported)
+            variable.nonLexicalUse = true;
 
         if (FFlag::LuauOptimizeExportTable && exportedFunctions && node->name->isExported)
         {
@@ -228,18 +203,11 @@ struct ValueVisitor : AstVisitor
 
     bool visit(AstStatBlock* block) override
     {
-        if (FFlag::LuauCompileReuseLocalRegs)
-        {
-            blockOwnerStack.push_back(block);
-            for (AstStat* stat : block->body)
-                stat->visit(this);
-            blockOwnerStack.pop_back();
-            return false;
-        }
-        else
-        {
-            return true;
-        }
+        blockOwnerStack.push_back(block);
+        for (AstStat* stat : block->body)
+            stat->visit(this);
+        blockOwnerStack.pop_back();
+        return false;
     }
 };
 

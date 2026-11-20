@@ -11,8 +11,6 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableFindImprovement, false)
-
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -598,48 +596,35 @@ static int tcreate(lua_State* L)
 static int tfind(lua_State* L)
 {
     int init = 1;
+    int nargs = int(L->top - L->base);
 
-    if (DFFlag::LuauTableFindImprovement)
-    {
-        int nargs = int(L->top - L->base);
-
-        if (nargs < 1 || !ttistable(L->base))
-            luaL_checktype(L, 1, LUA_TTABLE);
-        if (nargs < 2)
-            luaL_checkany(L, 2);
-        if (nargs >= 3 && !ttisnil(L->base + 2))
-            init = luaL_checkinteger(L, 3);
-    }
-    else
-    {
+    if (nargs < 1 || !ttistable(L->base))
         luaL_checktype(L, 1, LUA_TTABLE);
+    if (nargs < 2)
         luaL_checkany(L, 2);
-        init = luaL_optinteger(L, 3, 1);
-    }
+    if (nargs >= 3 && !ttisnil(L->base + 2))
+        init = luaL_checkinteger(L, 3);
 
     if (init < 1)
         luaL_argerror(L, 3, "index out of range");
 
     LuaTable* t = hvalue(L->base);
 
-    if (DFFlag::LuauTableFindImprovement)
+    if (init > t->sizearray && t->node == &luaH_dummynode)
     {
-        if (init > t->sizearray && t->node == &luaH_dummynode)
-        {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    // Fast array search can only be performed when metamethod is absent/not used, as it can mutate table and relocate stack
+    if (!iscollectable(L->base + 1) || ttisnil(luaT_gettmbyobj(L, L->base + 1, TM_EQ)))
+    {
+        if (int index = luaH_rawfind(t, init, L->base + 1))
+            lua_pushinteger(L, index);
+        else
             lua_pushnil(L);
-            return 1;
-        }
 
-        // Fast array search can only be performed when metamethod is absent/not used, as it can mutate table and relocate stack
-        if (!iscollectable(L->base + 1) || ttisnil(luaT_gettmbyobj(L, L->base + 1, TM_EQ)))
-        {
-            if (int index = luaH_rawfind(t, init, L->base + 1))
-                lua_pushinteger(L, index);
-            else
-                lua_pushnil(L);
-
-            return 1;
-        }
+        return 1;
     }
 
     for (int i = init;; ++i)

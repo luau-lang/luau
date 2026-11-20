@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauCodegenForwardSplitStore)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodegenSinkConstantLoads)
 LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 LUAU_FASTFLAG(LuauCodegenMultiLaneDot)
 LUAU_FASTFLAG(LuauCodegenX64ConflictCheck)
@@ -8149,6 +8150,38 @@ bb_exit_1:
    STORE_DOUBLE R2, 6
    STORE_TAG R1, tnumber
    STORE_DOUBLE R1, %5
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncConstantTvalue")
+{
+    ScopedFastFlag luauCodegenSinkConstantLoads{FFlag::LuauCodegenSinkConstantLoads, true};
+
+    build.beginBlock(build.block(IrBlockKind::Internal));
+
+    IrOp value = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(5), build.constInt(0), build.constTag(tstring));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), value);
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0
+   %2 = LOAD_TAG R0
+   CHECK_TAG %2, tnumber, bb_exit_1
+   ; exit sync: R1, {}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %5 = LOAD_TVALUE K5, 0i, tstring
+   STORE_TVALUE R1, %5
    JUMP exit(1)
 
 )");

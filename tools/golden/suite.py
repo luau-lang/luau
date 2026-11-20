@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .execution import execute_configuration
-from .expectations import update_configuration, validate_configuration, write_actual_outputs
+from .expectations import update_configuration, validate_configuration, write_actual_outputs, write_snapshot
 from .models import ConfigResult, Executables, GoldenTest, UpdateMode
 from .text import diff_color_enabled
 
@@ -44,25 +44,40 @@ def run_suite(
         with ThreadPoolExecutor(max_workers=jobs if jobs > 0 else None) as pool:
             results = list(pool.map(execute, work))
 
+    results_by_test: dict[str, dict[str, ConfigResult]] = {}
+    for (test, config), result in zip(work, results, strict=True):
+        results_by_test.setdefault(test.test_id, {})[config] = result
+
     errors: list[str] = []
     color = diff_color_enabled(sys.stderr, os.environ if environ is None else environ)
-    writes = 0
-    actual_writes = 0
-    for (test, config), result in zip(work, results, strict=True):
-        errors.extend(validate_configuration(test, config, result, update, color=color))
-        if update is not None:
-            update_errors, update_writes = update_configuration(test, config, result, update)
-            errors.extend(update_errors)
-            writes += update_writes
+    updated_outputs = 0
+    updated_files = 0
+    dumped_files = 0
+    for test in tests:
+        test_results = results_by_test[test.test_id]
+        test_updates = 0
+        for config, result in test_results.items():
+            errors.extend(validate_configuration(test, config, result, update, color=color))
+            if update is not None:
+                test_updates += update_configuration(test, config, result, update)
+
+        # Every configuration lands in the same snapshot, so it is written once per test.
+        if test_updates:
+            if (error := write_snapshot(test)) is not None:
+                errors.append(error)
+            else:
+                updated_outputs += test_updates
+                updated_files += 1
         if dump:
-            actual_errors, written = write_actual_outputs(test, config, result)
-            errors.extend(actual_errors)
-            actual_writes += written
+            if (error := write_actual_outputs(test, test_results)) is not None:
+                errors.append(error)
+            else:
+                dumped_files += 1
 
     for error in errors:
         print(f"\nFAIL: {error}", file=sys.stderr)
-    update_summary = f", updated {writes} file(s)" if update is not None else ""
-    actual_summary = f", dumped {actual_writes} .output.tmp file(s)" if dump else ""
+    update_summary = f", updated {updated_outputs} output(s) in {updated_files} file(s)" if update is not None else ""
+    actual_summary = f", dumped {dumped_files} .golden.toml.tmp file(s)" if dump else ""
     print(
         f"golden: {len(tests)} test(s), {len(work)} configuration run(s)"
         f"{update_summary}{actual_summary}, {len(errors)} failure(s)"

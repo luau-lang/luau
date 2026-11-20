@@ -1,0 +1,21 @@
+[flags-on]
+strict = '''
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau(3,19): TypeError: Unknown global 'None'; consider assigning to it first
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau:3: attempt to index nil with 'nope_not_defined'
+stacktrace:
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau:3
+'''
+
+[flags-off]
+strict = '''
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau(3,19): TypeError: Unknown global 'None'; consider assigning to it first
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau:3: attempt to index nil with 'nope_not_defined'
+stacktrace:
+./analysis/classes/extend_undefined_class_from_nonexistent_module.luau:3
+'''

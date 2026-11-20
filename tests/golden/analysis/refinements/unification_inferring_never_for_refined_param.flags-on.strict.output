@@ -1,2 +1,0 @@
-_luau_print (9, 9): ({ read getItem: (number) -> ((false | number)?, ...unknown) }, number) -> ()
-

@@ -1,1 +1,0 @@
-./analysis/classes/class_is_not_subtype_of_superclass.luau(6,26): TypeError: Expected this to be 'Base', but got 'Child'

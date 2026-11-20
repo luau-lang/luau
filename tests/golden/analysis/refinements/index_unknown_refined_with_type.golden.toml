@@ -1,0 +1,11 @@
+[flags-on]
+strict = '''
+./analysis/refinements/index_unknown_refined_with_type.luau(6,12): TypeError: Cannot add indexer to table 'table'
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+./analysis/refinements/index_unknown_refined_with_type.luau(6,12): TypeError: Cannot add indexer to table 'table'
+'''
+nonstrict = ""
