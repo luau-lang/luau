@@ -33,7 +33,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAbsenceCache)
 
 namespace Luau
 {

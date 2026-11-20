@@ -1,0 +1,25 @@
+[flags-on]
+strict = '''
+./analysis/type-functions/leaked_type_function_is_error/init.luau(3,23): TypeError: Table type '{  }' not compatible with type '{ label: *error-type* }' because the former is missing field 'label'
+'''
+nonstrict = ""
+runtime = '''
+Warning: unrecognized flag 'LuauReduceTypeFunctionToSyntheticError'.
+./analysis/type-functions/leaked_type_function_is_error/A.luau:7: attempt to concatenate string with nil
+stacktrace:
+./analysis/type-functions/leaked_type_function_is_error/A.luau:7 function tag
+./analysis/type-functions/leaked_type_function_is_error/init.luau:3
+'''
+
+[flags-off]
+strict = '''
+./analysis/type-functions/leaked_type_function_is_error/init.luau(3,23): TypeError: Table type '{  }' not compatible with type '{ label: *error-type* }' because the former is missing field 'label'
+'''
+nonstrict = ""
+runtime = '''
+Warning: unrecognized flag 'LuauReduceTypeFunctionToSyntheticError'.
+./analysis/type-functions/leaked_type_function_is_error/A.luau:7: attempt to concatenate string with nil
+stacktrace:
+./analysis/type-functions/leaked_type_function_is_error/A.luau:7 function tag
+./analysis/type-functions/leaked_type_function_is_error/init.luau:3
+'''

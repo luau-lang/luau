@@ -193,12 +193,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _ = parser.add_argument(
         "--dump",
         action="store_true",
-        help="dump each run's captured output to a gitignored '<entry>.<config>.<command>.output.tmp' file for further inspection",
+        help="dump each test's captured output to a gitignored '<entry>.golden.toml.tmp' file for further inspection",
     )
     _ = parser.add_argument(
         "--clean",
         action="store_true",
-        help="delete every '*.output.tmp' file under the test root and exit without running any tests",
+        help="delete every '*.golden.toml.tmp' file under the test root and exit without running any tests",
     )
     return parser
 
@@ -257,7 +257,7 @@ def main(
             return 2
         for error in clean_errors:
             print(f"\nFAIL: {error}", file=sys.stderr)
-        print(f"golden: removed {removed} .output.tmp file(s), {len(clean_errors)} failure(s)")
+        print(f"golden: removed {removed} .golden.toml.tmp file(s), {len(clean_errors)} failure(s)")
         return 1 if clean_errors else 0
 
     configs = _selected_matrix_values(args.config, tuple(CONFIGURATIONS), "--config", parser)

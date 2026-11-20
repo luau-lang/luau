@@ -324,7 +324,6 @@ public:
     FrontendOptions options;
 
     std::function<void(const char*)> onInternalError;
-    InternalErrorReporter iceHandler_DEPRECATED; // TODO: remove with FFlagLuauSplitIceHandler
 
     std::function<void(const ModuleName& name, const ScopePtr& scope, bool forAutocomplete)> prepareModuleScope;
     std::function<void(const ModuleName& name, std::string log)> writeJsonLog = {};

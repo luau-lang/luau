@@ -24,10 +24,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
-LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
-LUAU_FASTFLAG(LuauInferReadOnlyIndexers)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauEqualityConstraintBinds)
 LUAU_FASTFLAG(LuauNonreentrantLookupTableProp)
@@ -6924,8 +6921,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_2669_infer_read_only_indexers_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauInferReadOnlyIndexers, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function combine<T>(a: { read T }, b: { read T }): { T }
             return {}
@@ -6942,8 +6937,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_2669_infer_read_only_indexers_1")
 TEST_CASE_FIXTURE(Fixture, "oss_2669_infer_read_only_indexers_2")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauInferReadOnlyIndexers, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function combine<T>(a: { T }): { read T }
@@ -7003,8 +6996,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_2669_infer_read_only_indexers_4")
 TEST_CASE_FIXTURE(Fixture, "oss_2669_infer_read_only_indexers_5")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauInferReadOnlyIndexers, true};
 
     CheckResult result = check(R"(
         local function combine<T>(a: { T }, b: { T }): { T }

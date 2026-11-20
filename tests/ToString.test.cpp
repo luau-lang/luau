@@ -152,8 +152,6 @@ TEST_CASE_FIXTURE(Fixture, "metatable")
 
 TEST_CASE_FIXTURE(Fixture, "metatables_are_valid")
 {
-    ScopedFastFlag sff{FFlag::LuauBetterMetatableStringification, true};
-
     Type table{TypeVariant(TableType(TableState::Sealed, TypeLevel{}))};
     Type metatable{TypeVariant(TableType(TableState::Sealed, TypeLevel{}))};
     Type mtv{TypeVariant(MetatableType{&table, &metatable})};

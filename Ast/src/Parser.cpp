@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauDeclarationFixCrashOnBadUnicode)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2062,37 +2063,75 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
     // global variable declaration whose name is `class`, not as a malformed class declaration. This allows
     // us to support a global table like string/math/bit32 called `class`. CLI-203833 tracks the work to actually
     // remove support for `declare class X [extends Y]` syntax.
-    else if (AstName(lexer.current().name) == "extern")
+    else if ((!FFlag::LuauDeclarationFixCrashOnBadUnicode || lexer.current().type == Lexeme::Name) && AstName(lexer.current().name) == "extern")
     {
-        if (AstName(lexer.current().name) == "extern")
+        if (FFlag::LuauDeclarationFixCrashOnBadUnicode)
         {
-            nextLexeme();
-            if (AstName(lexer.current().name) != "type")
+            nextLexeme(); // consume the `extern` token
+
+            if (lexer.current().type != Lexeme::Name)
+                return reportStatError(
+                    lexer.current().location, {}, {}, "Expected `type` keyword after `extern`, but got %s instead", lexer.current().toString().c_str()
+                );
+            else if (AstName(lexer.current().name) != "type")
                 return reportStatError(
                     lexer.current().location, {}, {}, "Expected `type` keyword after `extern`, but got %s instead", lexer.current().name
                 );
-        }
 
-        nextLexeme();
+            nextLexeme(); // consume the `type` token.
+        }
+        else
+        {
+            if (AstName(lexer.current().name) == "extern")
+            {
+                nextLexeme();
+                if (AstName(lexer.current().name) != "type")
+                    return reportStatError(
+                        lexer.current().location, {}, {}, "Expected `type` keyword after `extern`, but got %s instead", lexer.current().name
+                    );
+            }
+
+            nextLexeme();
+        }
 
         Location classStart = lexer.current().location;
         Name className = parseName("type name");
         std::optional<AstName> superName = std::nullopt;
 
-        if (AstName(lexer.current().name) == "extends")
+        if ((!FFlag::LuauDeclarationFixCrashOnBadUnicode || lexer.current().type == Lexeme::Name) && AstName(lexer.current().name) == "extends")
         {
             nextLexeme();
             superName = parseName("supertype name").name;
         }
 
-        if (AstName(lexer.current().name) != "with")
-            report(
-                lexer.current().location,
-                "Expected `with` keyword before listing properties of the external type, but got %s instead",
-                lexer.current().name
-            );
+        if (FFlag::LuauDeclarationFixCrashOnBadUnicode)
+        {
+            if (lexer.current().type != Lexeme::Name)
+                report(
+                    lexer.current().location,
+                    "Expected `with` keyword before listing properties of the external type, but got %s instead",
+                    lexer.current().toString().c_str()
+                );
+            else if (AstName(lexer.current().name) != "with")
+                report(
+                    lexer.current().location,
+                    "Expected `with` keyword before listing properties of the external type, but got %s instead",
+                    lexer.current().name
+                );
+            else
+                nextLexeme();
+        }
         else
-            nextLexeme();
+        {
+            if (AstName(lexer.current().name) != "with")
+                report(
+                    lexer.current().location,
+                    "Expected `with` keyword before listing properties of the external type, but got %s instead",
+                    lexer.current().name
+                );
+            else
+                nextLexeme();
+        }
 
         TempVector<AstDeclaredExternTypeProperty> props(scratchDeclaredClassProps);
         AstTableIndexer* indexer = nullptr;

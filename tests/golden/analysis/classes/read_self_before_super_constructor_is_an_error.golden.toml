@@ -1,0 +1,13 @@
+[flags-on]
+strict = '''
+./analysis/classes/read_self_before_super_constructor_is_an_error.luau(11,15): TypeError: Access to 'self' before all of its fields have been initialized
+'''
+nonstrict = ""
+runtime = ""
+
+[flags-off]
+strict = '''
+./analysis/classes/read_self_before_super_constructor_is_an_error.luau(11,15): TypeError: Access to 'self' before all of its fields have been initialized
+'''
+nonstrict = ""
+runtime = ""

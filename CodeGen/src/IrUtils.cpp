@@ -19,7 +19,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenUpdateSafeEnvList)
 LUAU_FASTFLAGVARIABLE(LuauCodegenCmpAnySideEffecting)
 
 namespace Luau

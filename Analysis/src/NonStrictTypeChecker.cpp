@@ -9,6 +9,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Simplify.h"
+#include "Luau/StackPusher.h"
 #include "Luau/Subtyping.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
@@ -23,48 +24,10 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAGVARIABLE(LuauNonStrictCallTypePacks)
-LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
-
-/* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
- * NonStrictTypeChecker uses this to maintain knowledge about which scope encloses every
- * given AstNode.
- */
-struct StackPusher
-{
-    std::vector<NotNull<Scope>>* stack;
-    NotNull<Scope> scope;
-
-    explicit StackPusher(std::vector<NotNull<Scope>>& stack, Scope* scope)
-        : stack(&stack)
-        , scope(scope)
-    {
-        stack.emplace_back(scope);
-    }
-
-    ~StackPusher()
-    {
-        if (stack)
-        {
-            LUAU_ASSERT(stack->back() == scope);
-            stack->pop_back();
-        }
-    }
-
-    StackPusher(const StackPusher&) = delete;
-    StackPusher&& operator=(const StackPusher&) = delete;
-
-    StackPusher(StackPusher&& other)
-        : stack(std::exchange(other.stack, nullptr))
-        , scope(other.scope)
-    {
-    }
-};
-
 
 struct NonStrictContext
 {
@@ -252,10 +215,7 @@ struct NonStrictTypeChecker
             return instance;
 
         TypeFunctionContext context{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
-        ErrorVec errors = reduceTypeFunctions(
-                              instance, location, NotNull{&context}, true, FFlag::LuauTypeFunctionsAbsenceCache ? &typeFunctionAbsenceCache : nullptr
-        )
-                              .errors;
+        ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true, &typeFunctionAbsenceCache).errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -760,7 +720,7 @@ struct NonStrictTypeChecker
             size_t argumentCount = arguments.size();
             bool hasVariadicTail = false;
 
-            if (FFlag::LuauNonStrictCallTypePacks && !arguments.empty())
+            if (!arguments.empty())
             {
                 AstExpr* last = arguments.back();
                 TypePackId* tp = module->astTypePacks.find(last);
@@ -802,7 +762,7 @@ struct NonStrictTypeChecker
                 return fresh;
             }
 
-            for (size_t i = 0; i < arguments.size() && (!FFlag::LuauNonStrictCallTypePacks || i < argumentCount); i++)
+            for (size_t i = 0; i < arguments.size() && i < argumentCount; i++)
             {
                 // For example, if the arg is "hi"
                 // The actual arg type is string

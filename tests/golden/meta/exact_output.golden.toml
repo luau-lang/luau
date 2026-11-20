@@ -1,0 +1,15 @@
+[flags-on]
+strict = ""
+nonstrict = ""
+runtime = '''
+exact output
+42
+'''
+
+[flags-off]
+strict = ""
+nonstrict = ""
+runtime = '''
+exact output
+42
+'''
