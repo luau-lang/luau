@@ -149,6 +149,7 @@ ic_private bool tty_read_timeout(tty_t* tty, long timeout_ms, code_t* code)
 {
   // is there a push_count back code?
   if (tty_code_pop(tty,code)) {
+#pragma warning(suppress : 4047)
     return code;
   }
 
