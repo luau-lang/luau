@@ -18,11 +18,6 @@
 
 LUAU_FASTFLAG(LuauCodegenMarkUsed)
 LUAU_FASTFLAG(DebugLuauBufferVectorFastcalls)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCompileNoDebugConst)
-LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
-LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
-LUAU_FASTFLAG(LuauLoadRemapOptionalUserdata)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCodegenRuntimeFeedback)
 LUAU_FASTFLAG(LuauCodegenUserdataDirect)
@@ -1238,7 +1233,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorNamecall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1346,7 +1340,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecall")
 {
     ensureVectorFloat();
 
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1388,7 +1381,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecall2")
 {
     ensureVectorFloat();
 
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1478,7 +1470,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecallChain")
 {
     ensureVectorFloat();
 
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1540,7 +1531,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "VectorCustomNamecallChain2")
 {
     ensureVectorFloat();
 
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1932,7 +1922,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "UserDataNamecall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -2836,7 +2825,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "TableNodeLoadStoreProp5")
     ensureVectorFloat();
     ensureVectorSize3();
 
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
     ScopedFastFlag luauCodegenMarkUsed{FFlag::LuauCodegenMarkUsed, true};
 
     CHECK_EQ(
@@ -3661,8 +3649,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ResolvableSimpleMath")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
 type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
@@ -3719,8 +3705,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "ResolvableFunctionReturns")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
 type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
@@ -3904,7 +3888,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "ForInManualAnnotation")
 {
     ensureVectorFloat();
 
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -4001,7 +3984,6 @@ bb_9:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ForInAutoAnnotationIpairs")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
@@ -4030,7 +4012,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "ForInAutoAnnotationPairs")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
@@ -4454,7 +4435,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataMapping")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
@@ -5373,7 +5353,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveLoopRangeBase")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // TODO: opportunity 1 - buffer.len is not a fastcall, but under safe env we can treat it like one and read buffer len field
     // TODO: opportunity 2 - range of 'i' is known, we can check it in loop header
@@ -8138,7 +8117,6 @@ bb_linear_9:
 
 TEST_CASE_FIXTURE(LoweringFixture, "TableOperationTagSuggestion2")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -8442,9 +8420,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "OptionalUserdataTypeRemapping")
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
-
-    ScopedFastFlag remapOptional{FFlag::LuauLoadRemapOptionalUserdata, true};
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
 
     // Argument types
     CHECK_EQ(

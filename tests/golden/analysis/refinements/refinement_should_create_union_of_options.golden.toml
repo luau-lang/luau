@@ -1,0 +1,35 @@
+[flags-on]
+strict = '''
+./analysis/refinements/refinement_should_create_union_of_options.luau(11,8): TypeError: Expected this to be 'number & unknown', but got 'string'; 
+`string` is not a subtype of `number`
+./analysis/refinements/refinement_should_create_union_of_options.luau(13,8): TypeError: Expected this to be 'number & unknown', but got 'boolean'; 
+`boolean` is not a subtype of `number`
+'''
+nonstrict = '''
+./analysis/refinements/refinement_should_create_union_of_options.luau(5,20): TypeError: the function 'string.len' expects to get a string as its 1st argument, but is being given a number & unknown & string
+'''
+runtime = '''
+./analysis/refinements/refinement_should_create_union_of_options.luau:7: invalid argument #1 to 'abs' (number expected, got boolean)
+stacktrace:
+[C] function abs
+./analysis/refinements/refinement_should_create_union_of_options.luau:7 function foobar
+./analysis/refinements/refinement_should_create_union_of_options.luau:13
+'''
+
+[flags-off]
+strict = '''
+./analysis/refinements/refinement_should_create_union_of_options.luau(11,8): TypeError: Expected this to be 'number & unknown', but got 'string'; 
+`string` is not a subtype of `number`
+./analysis/refinements/refinement_should_create_union_of_options.luau(13,8): TypeError: Expected this to be 'number & unknown', but got 'boolean'; 
+`boolean` is not a subtype of `number`
+'''
+nonstrict = '''
+./analysis/refinements/refinement_should_create_union_of_options.luau(5,20): TypeError: the function 'string.len' expects to get a string as its 1st argument, but is being given a number & unknown & string
+'''
+runtime = '''
+./analysis/refinements/refinement_should_create_union_of_options.luau:7: invalid argument #1 to 'abs' (number expected, got boolean)
+stacktrace:
+[C] function abs
+./analysis/refinements/refinement_should_create_union_of_options.luau:7 function foobar
+./analysis/refinements/refinement_should_create_union_of_options.luau:13
+'''

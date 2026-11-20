@@ -7,7 +7,6 @@
 
 #include <optional>
 
-LUAU_FASTFLAG(LuauCodegenUpdateSafeEnvList)
 LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 
 namespace Luau
@@ -109,9 +108,7 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
     case IrCmd::FALLBACK_SETTABLEKS:
     case IrCmd::FALLBACK_NAMECALL:
     case IrCmd::FALLBACK_FORGPREP:
-        return true;
     case IrCmd::INVOKE_FASTPCALL:
-        return FFlag::LuauCodegenUpdateSafeEnvList;
     case IrCmd::INVOKE_NAMECALL:
         return true;
     default:

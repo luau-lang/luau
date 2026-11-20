@@ -22,7 +22,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 

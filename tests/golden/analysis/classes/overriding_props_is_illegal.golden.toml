@@ -1,0 +1,33 @@
+[flags-on]
+strict = '''
+./analysis/classes/overriding_props_is_illegal.luau(9,12): TypeError: Illegal override of property 'x' on class 'Point1' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(10,12): TypeError: Illegal override of property 'y' on class 'Point1' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(16,12): TypeError: Illegal override of property 'x' on class 'BadPointGrandchild' inherited from superclass 'Point'
+'''
+nonstrict = '''
+./analysis/classes/overriding_props_is_illegal.luau(16,12): TypeError: Illegal override of property 'x' on class 'BadPointGrandchild' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(9,12): TypeError: Illegal override of property 'x' on class 'Point1' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(10,12): TypeError: Illegal override of property 'y' on class 'Point1' inherited from superclass 'Point'
+'''
+runtime = '''
+./analysis/classes/overriding_props_is_illegal.luau:8: Cannot override instance member 'x' of parent class 'Point' in child class 'Point1'
+stacktrace:
+./analysis/classes/overriding_props_is_illegal.luau:8
+'''
+
+[flags-off]
+strict = '''
+./analysis/classes/overriding_props_is_illegal.luau(9,12): TypeError: Illegal override of property 'x' on class 'Point1' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(10,12): TypeError: Illegal override of property 'y' on class 'Point1' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(16,12): TypeError: Illegal override of property 'x' on class 'BadPointGrandchild' inherited from superclass 'Point'
+'''
+nonstrict = '''
+./analysis/classes/overriding_props_is_illegal.luau(16,12): TypeError: Illegal override of property 'x' on class 'BadPointGrandchild' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(9,12): TypeError: Illegal override of property 'x' on class 'Point1' inherited from superclass 'Point'
+./analysis/classes/overriding_props_is_illegal.luau(10,12): TypeError: Illegal override of property 'y' on class 'Point1' inherited from superclass 'Point'
+'''
+runtime = '''
+./analysis/classes/overriding_props_is_illegal.luau:8: Cannot override instance member 'x' of parent class 'Point' in child class 'Point1'
+stacktrace:
+./analysis/classes/overriding_props_is_illegal.luau:8
+'''
