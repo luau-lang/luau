@@ -138,6 +138,12 @@ function nothing() end
 assert(pcall(tostring) == false)
 assert(pcall(function() return tostring(nothing()) end) == false)
 
+assert(pcall(rawtostring) == false)
+assert(pcall(function() return rawtostring(nothing()) end) == false)
+
+-- rawtostring must reject userdata
+assert(not pcall(rawtostring, newproxy()))
+
 print('+')
 
 x = '"ílo"\n\\'

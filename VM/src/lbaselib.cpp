@@ -191,6 +191,7 @@ static int luaB_rawlen(lua_State* L)
 static int luaB_rawtostring(lua_State* L)
 {
     luaL_checkany(L, 1);
+    luaL_argcheck(L, !lua_isuserdata(L, 1), 1, "userdata not supported");
     luaL_rawtolstring(L, 1, NULL);
     return 1;
 }
