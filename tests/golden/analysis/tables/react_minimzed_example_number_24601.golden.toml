@@ -1,0 +1,23 @@
+[flags-on]
+strict = ""
+nonstrict = ""
+runtime = '''
+./analysis/tables/react_minimzed_example_number_24601.luau:16: attempt to call a nil value
+stacktrace:
+./analysis/tables/react_minimzed_example_number_24601.luau:16
+'''
+
+[flags-off]
+strict = '''
+./analysis/tables/react_minimzed_example_number_24601.luau(16,18): TypeError: No valid instantiation could be inferred for generic type parameter P. It was expected to be at least:
+	{ displayOrder: number }
+and at most:
+	CustomTitleBarPortalProps
+but these types are not compatible with one another.
+'''
+nonstrict = ""
+runtime = '''
+./analysis/tables/react_minimzed_example_number_24601.luau:16: attempt to call a nil value
+stacktrace:
+./analysis/tables/react_minimzed_example_number_24601.luau:16
+'''

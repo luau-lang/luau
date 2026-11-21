@@ -1,5 +1,0 @@
-Warning: unrecognized flag 'LuauReduceTypeFunctionToSyntheticError'.
-./analysis/type-functions/leaked_type_function_is_error/A.luau:7: attempt to concatenate string with nil
-stacktrace:
-./analysis/type-functions/leaked_type_function_is_error/A.luau:7 function tag
-./analysis/type-functions/leaked_type_function_is_error/init.luau:3

@@ -21,13 +21,10 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
-LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2800,8 +2797,6 @@ TEST_CASE_FIXTURE(Fixture, "function_inference_notes_generic_return")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
-
     auto result = check(R"(
         local function get(model)
             model:Find("leg")
@@ -2825,8 +2820,6 @@ TEST_CASE_FIXTURE(Fixture, "function_inference_notes_generic_return")
 
 TEST_CASE_FIXTURE(Fixture, "dont_infer_overloaded_functions")
 {
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
-
     CheckResult result = check(R"(
         function getR6Attachments(model)
             model:FindFirstChild("Right Leg")
@@ -2990,8 +2983,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
 
 TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
-
     CheckResult result = check(R"(
         function foo(player)
             local success,result = player:thing()
@@ -4428,7 +4419,6 @@ TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_distinguished_by_r
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauBidirectionalInferenceBetterLambdaHandling, true},
     };
 
     // useEffect pattern: callback is either (() -> ()) or (() -> () -> ())
@@ -4460,7 +4450,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pass_generic_function_to_pcall")
 
 TEST_CASE_FIXTURE(Fixture, "call_with_any_arg_and_optional_return_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks, true};
     auto result = check(R"(
         --!strict
         local hrp : any = true

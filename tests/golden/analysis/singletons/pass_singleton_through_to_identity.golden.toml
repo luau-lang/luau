@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+./analysis/singletons/pass_singleton_through_to_identity.luau(3,16): FunctionUnused: Function 'foobar' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/pass_singleton_through_to_identity.luau(3,16): FunctionUnused: Function 'foobar' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/pass_singleton_through_to_identity.luau(3,16): FunctionUnused: Function 'foobar' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/pass_singleton_through_to_identity.luau(3,16): FunctionUnused: Function 'foobar' is never used; prefix with '_' to silence
+'''

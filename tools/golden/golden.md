@@ -12,7 +12,7 @@ mind.
 
 To get started, create a Luau file under `tests/golden`. Its name will be used as the name of the
 test. In fact, every `.luau` file within the directory is a test; we can add a directive
-or an output file to record its expected outcome:
+or a snapshot file to record its expected outcome:
 
 ```luau
 --!golden ok
@@ -217,8 +217,8 @@ running `luau` itself.
 
 The values for status can be either `ok` or `fail`. A configuration-specific status takes precedence
 over a global status directive. Each configuration must either define its expected status via a
-directive, or have at least one golden file for its exact output. The test runner will error if =
-neither are provided for a test.
+directive, or have at least one exact output in the test's snapshot file. The test runner will
+error if neither are provided for a test.
 
 Status `ok` indicates that all three commands should exit successfully with exit code 0. Status
 `fail` requires at least one command to exit 1; the others may exit 0 or 1. Only exit 1 satisfies
@@ -262,39 +262,69 @@ directives and CLI arguments. This documentation will require a manual update ho
 
 ## Exact output in Golden Files
 
-Golden files are flat and adjacent to their entry point, specifying the exact output expected in the
-given combination of configuration and command:
+Each test's exact expected output lives in a single TOML snapshot file adjacent to its entry point,
+named after the entry point with a `.golden.toml` extension. For a multifile test, the prefix is
+`init`, so expectations sit beside `init.luau` as `init.golden.toml`:
 
 ```text
 example.luau
-example.flags-on.strict.output
-example.flags-off.nonstrict.output
-example.flags-off.runtime.output
+example.golden.toml
+packages/cycle/init.luau
+packages/cycle/init.golden.toml
 ```
 
-For a multifile test, the prefix is `init`, so expectations sit beside
-`init.luau` as `init.flags-on.strict.output`, and so on. A present file must
-match the output exactly byte-for-byte, while a missing file will mean that command's output is
-ignored entirely. An empty output file requires that the output be empty. All files must be UTF-8.
+The snapshot has one table per configuration, and one string key per command within it. For
+example, `tests/golden/meta/exact_output.golden.toml` expects empty analysis output and two
+printed lines at runtime in both configurations:
 
-A golden file also makes the use of status directives optional for that test in that configuration.
-This is because the exact comparison of the output already implies the full behavior of the test.
+```toml
+[flags-on]
+strict = ""
+nonstrict = ""
+runtime = '''
+exact output
+42
+'''
 
-The `.output` file extension is reserved for exact expectations throughout the golden test suite.
-Every such file must follow the naming scheme above and refer to a real test entry point. Any
-misspelled configurations, commands, and orphan files cause the test execution to fail, allowing us
-to catch situations where the programmer might believe a test to be working when it isn't.
+[flags-off]
+strict = ""
+nonstrict = ""
+runtime = '''
+exact output
+42
+'''
+```
 
-Currently, the harness will signal an error if a test attempts to mix both exact output files and
+A present key must match the output exactly byte-for-byte, while a missing key (or a missing
+snapshot file) means that command's output is ignored entirely. An empty string requires that the
+output be empty. The harness writes multiline literal strings (`'''`) wherever it can, so the
+snapshot reads as the raw captured output; the opening newline is not part of the value. Output that
+can't be expressed that way (containing `'''` or control characters) is written as an escaped basic
+string instead. All snapshot files must be UTF-8, and reading them requires Python 3.11 or newer
+(for `tomllib`).
+
+An exact output also makes the use of status directives optional for that test in that
+configuration. This is because the exact comparison of the output already implies the full behavior
+of the test.
+
+The `.golden.toml` file extension is reserved for snapshots throughout the golden test suite. Every
+such file must refer to a real test entry point, and may only use the configurations and commands
+of the test matrix as tables and keys. Any misspelled configurations, commands, non-string values,
+invalid TOML, and orphan files cause the test execution to fail, allowing us to catch situations
+where the programmer might believe a test to be working when it isn't. Stray `.output` files are
+rejected as well, since they would otherwise be silently ignored.
+
+Currently, the harness will signal an error if a test attempts to mix both an exact output and
 regular expression directives for the same combination of configuration and command. This is because
 we think they represent distinct approaches to test output specification, and combining them would
 likely be redundant.
 
 Both CRLF and CR line endings are normalized to LF in both the captured and exact output before
-comparison. Exact mismatches are reported as unified git-style diffs, while regex mismatches include
-the captured output. You can run the test runner with `--dump` to write the _actual_ (rather than
-expected) output files to adjacent `.tmp` files as well, if you wish to have further basis for
-manual inspection and comparison.
+comparison. Exact mismatches are reported as unified git-style diffs labeled with the snapshot path
+and key (e.g. `example.golden.toml [flags-on.runtime]`), while regex mismatches include the captured
+output. You can run the test runner with `--dump` to write the _actual_ (rather than expected)
+outputs to an adjacent `.tmp` snapshot as well, if you wish to have further basis for manual
+inspection and comparison.
 
 ## Comparing and updating test outputs
 
@@ -306,12 +336,12 @@ python3 -m tools.golden
 python3 -m tools.golden types/generic packages/cycle
 ```
 
-We can instead run in an _update_ mode to write out new golden files for both specific tests and for
+We can instead run in an _update_ mode to write out new exact outputs for both specific tests and for
 the entire suite, by using the `--update` and `--update-all` commands. With `--update`, we can
 perform a targeted update for (at least one) test provided as an argument to the call. In doing so,
 we can specify both the command (between `runtime`, `strict`, and `nonstrict`) and the configuration
 (between `flags-on` and `flags-off`). This can be used either to define initial expectations for a
-new test, or to update the expectation files for a particular configuration (typically flags on)
+new test, or to update the exact outputs for a particular configuration (typically flags on)
 after implementing a bug fix. Here are some examples:
 
 ```sh
@@ -322,9 +352,9 @@ python3 -m tools.golden --update=nonstrict --config=all packages/cycle
 python3 -m tools.golden --update=all --config=all runtime/assertions
 ```
 
-With `--update-all`, we can automatically update expected files of the specified configurations and
-commands for the entire test suite at once. This will never generate new expected files for any test
-that doesn't already have them, it will only update existing ones. This pairs especially well with a
+With `--update-all`, we can automatically update exact outputs of the specified configurations and
+commands for the entire test suite at once. This will never add new keys to any snapshot (or create
+any new snapshot file), it will only update existing ones. This pairs especially well with a
 `git diff` afterwards to see how all the files have changed in a compact interface. Example
 invocations with `--update-all` include:
 
@@ -341,41 +371,45 @@ and configuration based on where it's used, and cannot be combined with named va
 `--update` and `--update-all` are mutually exclusive, so you cannot use both within one invocation
 of the test runner.
 
+Updates rewrite the whole snapshot file in a canonical order (configurations, then commands, in
+matrix order), preserving every existing key that wasn't selected for the update. A configuration
+that hits a harness failure keeps its previous expectations.
+
 ## Inspecting captured output more carefully
 
 If just writing the files and using `git diff` directly is not sufficient, you can use `--dump` to
-write the _actual_ output of each command next to its corresponding expected file in a `.tmp` file.
-These files will automatically be ignored by git, and can be used with arbitrary tooling to compare
-any mismatches between the actual and expected outputs:
+write the _actual_ output of each test next to its snapshot in a `.tmp` file. These files will
+automatically be ignored by git, and can be used with arbitrary tooling to compare any mismatches
+between the actual and expected outputs:
 
 ```sh
 python3 -m tools.golden --dump types/generic
+diff tests/golden/types/generic.golden.toml tests/golden/types/generic.golden.toml.tmp
 ```
 
-In particular, for every command in every selected configuration, `--dump` writes
-`<entry>.<config>.<command>.output.tmp` beside the entry point — the expected `.output` name plus a
-`.tmp` suffix, so the pair sorts together:
+In particular, `--dump` writes `<entry>.golden.toml.tmp` beside the entry point, containing every
+command in every selected configuration in the same format as the snapshot. It uses the expected
+`.golden.toml` name plus a `.tmp` suffix, so the pair sorts together:
 
 ```text
-example.flags-on.strict.output       # expected (committed)
-example.flags-on.strict.output.tmp   # last captured run (gitignored)
+example.golden.toml       # expected (committed)
+example.golden.toml.tmp   # last captured run (gitignored)
 ```
 
 `--dump` is independent of comparison and update modes, as it only records output and never affects
 the actual test status. Commands that hit a harness failure (timeout, spawn error, and so on)
-captured no usable output and are skipped. The `.tmp` files are intended to be thrown away: they are
-blindly overwritten each run with `--dump`, ignored by discovery (the `.output` scheme is
-unaffected), and defined to be ignored by git.
+captured no usable output and are omitted. The `.tmp` files are intended to be thrown away: they are
+blindly overwritten each run with `--dump`, ignored by discovery, and defined to be ignored by git.
 
 If you wish to clean up these temporary files, `--clean` will do just that. It deletes every
-`*.output.tmp` file under the test root and exits without running any tests whatsoever, so it needs
-neither the Luau executables nor a valid corpus:
+`*.golden.toml.tmp` file under the test root and exits without running any tests whatsoever, so it
+needs neither the Luau executables nor a valid corpus:
 
 ```sh
 python3 -m tools.golden --clean
 ```
 
-`--clean` removes only the throwaway `.tmp` files, and committed `.output` golden files are left
+`--clean` removes only the throwaway `.tmp` files, and committed `.golden.toml` snapshots are left
 untouched. `--clean` takes no test selectors and cannot be combined with `--dump`, `--update`, or
 `--update-all`.
 
@@ -424,4 +458,4 @@ Exit 0 and 1 are treated as success and failure outcomes for each test. Spawn fa
 signals, all other exit codes, and invalid UTF-8 output are harness failures that are raised
 separately and do not match against a `fail` status. Output from all commands is decoded strictly as
 UTF-8. Each command's stderr is redirected to stdout before launch, preserving their combined pipe
-order, but reducing the number of required output files for each test.
+order, but reducing the number of required outputs for each test.

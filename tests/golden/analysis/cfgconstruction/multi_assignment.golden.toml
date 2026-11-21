@@ -1,0 +1,33 @@
+[flags-on]
+strict = '''
+Block 0 (entry "Entry Block"):
+  local a-0 = <expr>
+  local b-0 = <expr>
+  a-1 = <expr>
+  b-1 = <expr>
+'''
+nonstrict = '''
+Block 0 (entry "Entry Block"):
+  local a-0 = <expr>
+  local b-0 = <expr>
+  a-1 = <expr>
+  b-1 = <expr>
+'''
+runtime = ""
+
+[flags-off]
+strict = '''
+Block 0 (entry "Entry Block"):
+  local a-0 = <expr>
+  local b-0 = <expr>
+  a-1 = <expr>
+  b-1 = <expr>
+'''
+nonstrict = '''
+Block 0 (entry "Entry Block"):
+  local a-0 = <expr>
+  local b-0 = <expr>
+  a-1 = <expr>
+  b-1 = <expr>
+'''
+runtime = ""

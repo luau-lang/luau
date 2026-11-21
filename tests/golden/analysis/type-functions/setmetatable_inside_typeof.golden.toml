@@ -1,0 +1,29 @@
+[flags-on]
+strict = '''
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,60): TypeError: Unknown type 'typeDefs.client'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,78): TypeError: Unknown type 'typeDefs.server'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,10): TypeError: Unknown type 'typeDefs.sharedCharacter'
+./analysis/type-functions/setmetatable_inside_typeof.luau(1,7): LocalUnused: Variable 'typeDefs' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,60): TypeError: Unknown type 'typeDefs.client'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,78): TypeError: Unknown type 'typeDefs.server'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,10): TypeError: Unknown type 'typeDefs.sharedCharacter'
+./analysis/type-functions/setmetatable_inside_typeof.luau(1,7): LocalUnused: Variable 'typeDefs' is never used; prefix with '_' to silence
+'''
+runtime = ""
+
+[flags-off]
+strict = '''
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,60): TypeError: Unknown type 'typeDefs.client'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,78): TypeError: Unknown type 'typeDefs.server'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,10): TypeError: Unknown type 'typeDefs.sharedCharacter'
+./analysis/type-functions/setmetatable_inside_typeof.luau(1,7): LocalUnused: Variable 'typeDefs' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,60): TypeError: Unknown type 'typeDefs.client'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,78): TypeError: Unknown type 'typeDefs.server'
+./analysis/type-functions/setmetatable_inside_typeof.luau(3,10): TypeError: Unknown type 'typeDefs.sharedCharacter'
+./analysis/type-functions/setmetatable_inside_typeof.luau(1,7): LocalUnused: Variable 'typeDefs' is never used; prefix with '_' to silence
+'''
+runtime = ""

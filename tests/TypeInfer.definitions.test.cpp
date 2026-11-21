@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauDeclarationFixCrashOnBadUnicode)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -714,6 +715,79 @@ da.value = false
     REQUIRE(get<TypeMismatch>(result.errors[1]));
     CHECK_EQ(result.errors[0].location.begin.line, 4);
     CHECK_EQ(result.errors[1].location.begin.line, 6);
+}
+
+TEST_CASE_FIXTURE(Fixture, "declare_broken_unicode_crash_1")
+{
+    ScopedFastFlag _{FFlag::LuauDeclarationFixCrashOnBadUnicode, true};
+
+    const std::string src = "declare \304\204\n"
+                            "   X: number\n"
+                            "end\n";
+
+    LoadDefinitionFileResult result = tryLoadDefinition(src);
+    CHECK(!result.success);
+    REQUIRE(!result.parseResult.errors.empty());
+    CHECK(result.parseResult.errors.front().getMessage() == "Expected identifier when parsing global variable name, got Unicode character U+104");
+}
+
+TEST_CASE_FIXTURE(Fixture, "declare_broken_unicode_crash_2")
+{
+    ScopedFastFlag _{FFlag::LuauDeclarationFixCrashOnBadUnicode, true};
+
+    const std::string src = "declare extern \304\204\n"
+                            "   X: number\n"
+                            "end\n";
+
+    LoadDefinitionFileResult result = tryLoadDefinition(src);
+    CHECK(!result.success);
+    REQUIRE(!result.parseResult.errors.empty());
+    CHECK(result.parseResult.errors.front().getMessage() == "Expected `type` keyword after `extern`, but got Unicode character U+104 instead");
+}
+
+TEST_CASE_FIXTURE(Fixture, "declare_broken_unicode_crash_3")
+{
+    ScopedFastFlag _{FFlag::LuauDeclarationFixCrashOnBadUnicode, true};
+
+    const std::string src = "declare extern type \304\204\n"
+                            "   X: number\n"
+                            "end\n";
+
+    LoadDefinitionFileResult result = tryLoadDefinition(src);
+    CHECK(!result.success);
+    REQUIRE(!result.parseResult.errors.empty());
+    CHECK(result.parseResult.errors.front().getMessage() == "Expected identifier when parsing type name, got Unicode character U+104");
+}
+
+TEST_CASE_FIXTURE(Fixture, "declare_broken_unicode_crash_4")
+{
+    ScopedFastFlag _{FFlag::LuauDeclarationFixCrashOnBadUnicode, true};
+
+    const std::string src = "declare extern type Foo \304\204\n"
+                            "   X: number\n"
+                            "end\n";
+
+    LoadDefinitionFileResult result = tryLoadDefinition(src);
+    CHECK(!result.success);
+    REQUIRE(!result.parseResult.errors.empty());
+    CHECK(
+        result.parseResult.errors.front().getMessage() ==
+        "Expected `with` keyword before listing properties of the external type, but got Unicode character U+104 instead"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "declare_broken_unicode_crash_5")
+{
+    ScopedFastFlag _{FFlag::LuauDeclarationFixCrashOnBadUnicode, true};
+
+    const std::string src = "declare extern type Foo extends \304\204 with\n"
+                            "   X: number\n"
+                            "end\n";
+
+    LoadDefinitionFileResult result = tryLoadDefinition(src);
+    CHECK(!result.success);
+    REQUIRE(!result.parseResult.errors.empty());
+    CHECK(result.parseResult.errors.front().getMessage() == "Expected identifier when parsing supertype name, got Unicode character U+104");
 }
 
 TEST_SUITE_END();

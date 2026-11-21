@@ -11,7 +11,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
 LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -211,8 +210,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
 {
-    ScopedFastFlag luauRemoveLoadstringFromBuiltinDefinitions{FFlag::LuauRemoveLoadstringFromBuiltinDefinitions, true};
-
     // Extracted from lua5.1
     CheckResult result = check(R"(
         local v__G = _G

@@ -1,3 +1,0 @@
-./analysis/classes/overriding_props_is_illegal.luau(16,12): TypeError: Illegal override of property 'x' on class 'BadPointGrandchild' inherited from superclass 'Point'
-./analysis/classes/overriding_props_is_illegal.luau(9,12): TypeError: Illegal override of property 'x' on class 'Point1' inherited from superclass 'Point'
-./analysis/classes/overriding_props_is_illegal.luau(10,12): TypeError: Illegal override of property 'y' on class 'Point1' inherited from superclass 'Point'

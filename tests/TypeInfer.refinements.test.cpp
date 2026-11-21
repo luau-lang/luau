@@ -10,11 +10,9 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
-LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
@@ -1783,8 +1781,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_param_of_type_folder_or_p
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "isa_type_refinement_must_be_known_ahead_of_time")
 {
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
-
     CheckResult result = check(R"(
         local function f(x): Instance
             if x:IsA("Folder") then
@@ -3061,12 +3057,6 @@ TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[]{
-        {FFlag::LuauIterativeTypeSearcher, true},
-        {FFlag::LuauDecomposeIntersectionOfFreeType, true},
-        {FFlag::DebugLuauAssertOnForcedConstraint, true},
-    };
-
     CheckResult results = check(R"(
         local function track(instance): boolean
             local isBasePart = instance:IsA("BasePart")
@@ -3463,8 +3453,6 @@ TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function __remove(__: number?) end
 
@@ -3476,7 +3464,9 @@ TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
         end
     )"));
 
-    CHECK_EQ("({ read getItem: (number) -> ((false | number)?, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
+    // CLI-168953: `getItem` returning `never` is clearly incorrect.
+
+    CHECK_EQ("({ read getItem: (number) -> (never, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_narrows_to_truthy")
@@ -3572,6 +3562,64 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_binding_keeps_declared_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true},
+        {FFlag::LuauExperimentalIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            if local x = v then
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_annotated_binding_keeps_annotated_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true},
+        {FFlag::LuauExperimentalIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number)
+            if local x: number? = v then
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_expression_binding_keeps_declared_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalIfLocalSyntax, true},
+        {FFlag::LuauExperimentalIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            local y = if local x = v then x + 1 else 0
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({2, 42})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_statement_annotation_with_typeof_is_visited")
@@ -4008,6 +4056,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_narrows_to_truthy_both_solvers")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // The binding narrows from `number?` to `number` inside the loop body under both solvers.
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_binding_keeps_declared_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalWhileLocalSyntax, true},
+        {FFlag::LuauExperimentalWhileLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            while local x = v do
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_annotated_binding_keeps_annotated_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExperimentalWhileLocalSyntax, true},
+        {FFlag::LuauExperimentalWhileLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number)
+            while local x: number? = v do
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
 }
 
