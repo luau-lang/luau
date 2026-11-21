@@ -116,7 +116,7 @@ private:
     // [attributes] function funcname funcbody |
     // [attributes] local function Name funcbody |
     // local namelist [`=' explist]
-    // laststat ::= return [explist] | break
+    // laststat ::= return [explist] | break | continue
     AstStat* parseStat();
 
     // if exp then block {elseif exp then block} [else block] end
