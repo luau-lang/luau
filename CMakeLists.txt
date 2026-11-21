@@ -196,27 +196,25 @@ target_compile_options(Luau.VM PRIVATE ${LUAU_OPTIONS})
 target_compile_options(isocline PRIVATE ${LUAU_OPTIONS} ${ISOCLINE_OPTIONS})
 
 if(LUAU_EXTERN_C)
-    # enable extern "C" for VM (lua.h, lualib.h) and Compiler (luacode.h) to make Luau friendlier to use from non-C++ languages
-    # note that we enable LUA_USE_LONGJMP=1 as well; otherwise functions like luaL_error will throw C++ exceptions, which can't be done from extern "C" functions
     target_compile_definitions(Luau.VM PUBLIC LUA_USE_LONGJMP=1)
 
-    if(LUAU_BUILD_SHARED)
-        if(MSVC)
-            target_compile_definitions(Luau.VM PUBLIC "LUA_API=extern \"C\" __declspec(dllexport)")
-            target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\" __declspec(dllexport)")
-            target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\" __declspec(dllexport)")
-        else()
-            # GCC/Clang
-            target_compile_definitions(Luau.VM PUBLIC "LUA_API=extern \"C\" __attribute__((visibility(\"default\")))")
-            target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\" __attribute__((visibility(\"default\")))")
-            target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\" __attribute__((visibility(\"default\")))")
+    function(luau_configure_api target api)
+        target_compile_definitions(${target} PUBLIC LUAU_EXTERN_C=1)
+
+        if(LUAU_BUILD_SHARED)
+            if(WIN32)
+                target_compile_definitions(${target} PRIVATE "${api}_VISIBILITY=__declspec(dllexport)")
+                target_compile_definitions(${target} INTERFACE "${api}_VISIBILITY=__declspec(dllimport)")
+            else()
+                # GCC/Clang
+                target_compile_definitions(${target} PUBLIC "${api}_VISIBILITY=__attribute__((visibility(\"default\")))")
+            endif()
         endif()
-    else()
-        # For static builds (or if not exporting) just use extern "C"
-        target_compile_definitions(Luau.VM PUBLIC "LUA_API=extern \"C\"")
-        target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\"")
-        target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\"")
-    endif()
+    endfunction()
+
+    luau_configure_api(Luau.VM LUA_API)
+    luau_configure_api(Luau.Compiler LUACODE_API)
+    luau_configure_api(Luau.CodeGen LUACODEGEN_API)
 endif()
 
 if(LUAU_VECTOR_DOUBLE)

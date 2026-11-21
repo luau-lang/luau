@@ -60,8 +60,11 @@ if (result == 0)
     return 1; /* return chunk main function */
 ```
 
-For more details about the use of the host API, see the [C API documentation](https://luau.org/api).
-Much of it is similar to the [Lua 5.x API](https://www.lua.org/manual/5.1/manual.html#3), but Luau has a few deviations, such as the need to compile source separately (which is important to be able to deploy VM without a compiler), and the lack of `__gc` support (use `lua_newuserdatadtor` instead).
+For C consumers of `Luau.VM`, `Luau.Compiler`, or `Luau.CodeGen`, set `LUAU_EXTERN_C=ON` before `add_subdirectory()`. CMake propagates the API configuration to linked targets, and the headers select the correct C or C++ declarations. Shared builds also require `LUAU_BUILD_SHARED=ON` and select export/import attributes automatically.
+
+For manual builds, define `LUAU_EXTERN_C=1` for the libraries and their consumers when using C linkage. For shared builds, set `LUA_API_VISIBILITY`, `LUACODE_API_VISIBILITY`, and `LUACODEGEN_API_VISIBILITY` for the VM, compiler, and codegen APIs respectively.
+
+For details about the host API, see the [Luau C API reference](https://luau.org/api/). Luau closely tracks the [Lua 5.x API](https://www.lua.org/manual/5.1/manual.html#3) but has a few deviations, such as the need to compile source separately (which is important to be able to deploy VM without a compiler), and the lack of `__gc` support (use `lua_newuserdatadtor` instead).
 
 To gain advantage of many performance improvements, it's highly recommended to use the `safeenv` feature, which sandboxes individual scripts' global tables from each other, and protects builtin libraries from monkey-patching. For this to work, you must call `luaL_sandbox` on the global state and `luaL_sandboxthread` for each new script's execution thread.
 
