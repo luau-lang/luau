@@ -620,6 +620,7 @@ static void buildBaseDefinitions(TypeDefBuilder& builder)
     builder.declareFunction("rawget", {"K", "V"}, {{"tab", "{[K]: V}"}, {"k", "K"}}, "V?");
     builder.declareFunction("rawset", {"K", "V"}, {{"tab", "{[K]: V}"}, {"k", "K"}, {"v", "V"}}, "{[K]: V}");
     builder.declareFunction("rawlen", {"K", "V"}, {{"obj", "{[K]: V} | string"}}, "number");
+    builder.declareFunction("rawtostring", {}, {{"obj", "any"}}, "string");
     builder.declareFunction("setfenv", {"T...", "R..."}, {{"target", "number | (T...) -> R..."}, {"env", "{[string]: any}"}}, "((T...) -> R...)?");
     builder.declareFunction("ipairs", {"V"}, {{"tab", "{V}"}}, "(({V}, number) -> (number?, V), {V}, number)");
     builder.declareFunction("pcall", {"A...", "R..."}, {{"f", "(A...) -> R..."}, {"...", "A..."}}, "(boolean, R...)");
