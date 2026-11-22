@@ -957,10 +957,9 @@ static void buildTypesLibraryDefinitions(TypeDefBuilder& builder)
     table.registerProp("intersectionof", "@checked (...type) -> type");
     if (FFlag::DebugLuauUdtfConvertStringsIntoTypesForProps)
     {
-        // `any` keys because indexer keys are invariant, so `{[type | string]: ...}` would reject existing `{[type]: ...}` tables
         table.registerProp(
             "newtable",
-            "@checked (props: ({ [any]: type } | { [any]: { read: type?, write: type? } })?, indexer: { index: type, readresult: "
+            "@checked (props: ({ [string | type]: type } | { [string | type]: { read: type?, write: type? } })?, indexer: { index: type, readresult: "
             "type, writeresult: type? }?, metatable: type?) -> type"
         );
     }
