@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "lualib.h"
 
-#include "lcommon.h"
 #include "lbuffer.h"
 #include <algorithm>
 
@@ -471,6 +470,11 @@ static const luaL_Reg buffervectorlib[] = {
     {NULL, NULL},
 };
 
+static const luaL_Reg bufferCompareLib[] = {
+    {"compare", buffer_compare},
+    {NULL, NULL},
+};
+
 int luaopen_buffer(lua_State* L)
 {
     luaL_register(L, LUA_BUFFERLIBNAME, bufferlib);
@@ -480,10 +484,7 @@ int luaopen_buffer(lua_State* L)
         luaL_register(L, NULL, buffervectorlib);
 
     if (FFlag::DebugLuauBufferCompare)
-    {
-        lua_pushcfunction(L, buffer_compare, "compare");
-        lua_setfield(L, -2, "compare");
-    }
+        luaL_register(L, NULL, bufferCompareLib);
 
     return 1;
 }
