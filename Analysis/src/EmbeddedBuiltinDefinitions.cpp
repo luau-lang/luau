@@ -959,8 +959,8 @@ static void buildTypesLibraryDefinitions(TypeDefBuilder& builder)
     {
         table.registerProp(
             "newtable",
-            "@checked (props: ({ [string | type]: type } | { [string | type]: { read: type?, write: type? } })?, indexer: { index: type, readresult: "
-            "type, writeresult: type? }?, metatable: type?) -> type"
+            "@checked (props: ({ [type]: type } | { [type]: { read: type?, write: type? } } | { [string | type]: type | { read: type?, write: "
+            "type? } })?, indexer: { index: type, readresult: type, writeresult: type? }?, metatable: type?) -> type"
         );
     }
     else
