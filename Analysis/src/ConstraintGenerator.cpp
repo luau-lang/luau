@@ -1104,6 +1104,16 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
 
             typeNameLocations[declName] = classDecl->location;
             classDeclsByName[declName] = classDecl;
+            
+            // Predeclare the class type so it is available throughout the current scope
+            TypeId initialType = arena->addType(BlockedType{});
+            TypeFun initialFun{initialType};
+            initialFun.definitionLocation = classDecl->location;
+
+            if (classDecl->declModifier == AstStatClass::DeclModifier::Export)
+                scope->exportedTypeBindings[declName] = std::move(initialFun);
+            else
+                scope->privateTypeBindings[declName] = std::move(initialFun);
         }
     }
 
@@ -1336,10 +1346,22 @@ ClassDeclRecord ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstSt
     getMutable<ExternType>(classObjectTy)->relation.emplace(Obj{classInstanceTy});
     getMutable<ExternType>(classInstanceTy)->relation.emplace(Klass{classObjectTy});
 
-    if (classDecl->declModifier == AstStatClass::DeclModifier::Export)
-        scope->exportedTypeBindings[className] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
-    else
-        scope->privateTypeBindings[className] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
+    // Resolve the placeholder created during type predeclaration to the actual class instance type.
+    auto& typeBindings = classDecl->declModifier == AstStatClass::DeclModifier::Export
+        ? scope->exportedTypeBindings
+        : scope->privateTypeBindings;
+
+    auto it = typeBindings.find(className);
+
+    if (it != typeBindings.end() &&
+        it->second.definitionLocation &&
+        *it->second.definitionLocation == classDecl->location)
+    {
+        TypeId placeholder = follow(it->second.type);
+
+        if (get<BlockedType>(placeholder))
+            emplaceType<BoundType>(asMutable(placeholder), classInstanceTy);
+    }
 
     return ClassDeclRecord{classObjectTy, classInstanceTy, std::move(memberTypes)};
 }
@@ -2854,9 +2876,23 @@ TypeId ConstraintGenerator::resolveSuperclass(const ScopePtr& scope, AstStatClas
     // * It could be a bare identifier which indicates a class type in the
     //   current scope.
 
-    auto lookupClass = [&scope, this](AstName name)
+    auto lookupClass = [&scope, this, statClass](AstName name)
     {
         auto tf = scope->lookupType(name.value);
+
+        // The current class's type is predeclared, but its superclass
+        // must still resolve against the outer scope.
+        if (name == statClass->getName() &&
+            tf.has_value() &&
+            tf->definitionLocation &&
+            *tf->definitionLocation == statClass->location)
+        {
+            if (scope->parent)
+                tf = scope->parent->lookupType(name.value);
+            else
+                tf = std::nullopt;
+        }
+
         if (!tf.has_value())
         {
             // If there is no type by this name, but there is a value, the
