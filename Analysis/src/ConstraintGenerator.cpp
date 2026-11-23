@@ -1104,7 +1104,7 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
 
             typeNameLocations[declName] = classDecl->location;
             classDeclsByName[declName] = classDecl;
-            
+
             // Predeclare the class type so it is available throughout the current scope
             TypeId initialType = arena->addType(BlockedType{});
             TypeFun initialFun{initialType};
@@ -1347,15 +1347,11 @@ ClassDeclRecord ConstraintGenerator::prototypeClass(const ScopePtr& scope, AstSt
     getMutable<ExternType>(classInstanceTy)->relation.emplace(Klass{classObjectTy});
 
     // Resolve the placeholder created during type predeclaration to the actual class instance type.
-    auto& typeBindings = classDecl->declModifier == AstStatClass::DeclModifier::Export
-        ? scope->exportedTypeBindings
-        : scope->privateTypeBindings;
+    auto& typeBindings = classDecl->declModifier == AstStatClass::DeclModifier::Export ? scope->exportedTypeBindings : scope->privateTypeBindings;
 
     auto it = typeBindings.find(className);
 
-    if (it != typeBindings.end() &&
-        it->second.definitionLocation &&
-        *it->second.definitionLocation == classDecl->location)
+    if (it != typeBindings.end() && it->second.definitionLocation && *it->second.definitionLocation == classDecl->location)
     {
         TypeId placeholder = follow(it->second.type);
 
@@ -2882,10 +2878,7 @@ TypeId ConstraintGenerator::resolveSuperclass(const ScopePtr& scope, AstStatClas
 
         // The current class's type is predeclared, but its superclass
         // must still resolve against the outer scope.
-        if (name == statClass->getName() &&
-            tf.has_value() &&
-            tf->definitionLocation &&
-            *tf->definitionLocation == statClass->location)
+        if (name == statClass->getName() && tf.has_value() && tf->definitionLocation && *tf->definitionLocation == statClass->location)
         {
             if (scope->parent)
                 tf = scope->parent->lookupType(name.value);
