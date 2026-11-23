@@ -11,7 +11,7 @@
 #include "lobject.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenExitSyncExpectedTag)
-LUAU_FASTFLAGVARIABLE(LuauCodegenDseTrackTagInvalidation)
+LUAU_FASTFLAGVARIABLE(LuauCodegenSinkConstantLoads)
 LUAU_FASTFLAG(LuauCodegenMarkUsed)
 
 namespace Luau
@@ -20,9 +20,9 @@ namespace CodeGen
 {
 
 // Result-producing instructions that pass !hasSideEffects but are still unsafe to sink into ExitSync blocks
-static bool isUnsafeToSink(IrCmd cmd)
+static bool isUnsafeToSink(IrInst& inst)
 {
-    switch (cmd)
+    switch (inst.cmd)
     {
     // VM register reads: STORE_TAG/STORE_DOUBLE/STORE_TVALUE/etc. to the same VM register
     case IrCmd::LOAD_TAG:
@@ -31,6 +31,11 @@ static bool isUnsafeToSink(IrCmd cmd)
     case IrCmd::LOAD_INT:
     case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
+        // Constants are immutable
+        if (FFlag::LuauCodegenSinkConstantLoads && OP_A(inst).kind == IrOpKind::VmConst)
+            return false;
+
+        return true;
 
     // Buffer reads: BUFFER_WRITE* to the same buffer at the same offset
     case IrCmd::BUFFER_READI8:
@@ -955,13 +960,10 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::LOAD_TAG:
         visitVmRegDefsUses(state, function, inst);
 
-        if (FFlag::LuauCodegenDseTrackTagInvalidation)
-        {
-            // Associate this LOAD_TAG with a source or the register tag
-            // Duplicate LOAD_TAG instructions would be replaced by previous optimization passes, so generally we have one source active
-            if (OP_A(inst).kind == IrOpKind::VmReg && !function.cfg.captured.regs.test(vmRegOp(OP_A(inst))))
-                state.info[vmRegOp(OP_A(inst))].tagSourceInstIdx = index;
-        }
+        // Associate this LOAD_TAG with a source or the register tag
+        // Duplicate LOAD_TAG instructions would be replaced by previous optimization passes, so generally we have one source active
+        if (OP_A(inst).kind == IrOpKind::VmReg && !function.cfg.captured.regs.test(vmRegOp(OP_A(inst))))
+            state.info[vmRegOp(OP_A(inst))].tagSourceInstIdx = index;
         break;
     case IrCmd::STORE_TAG:
         if (OP_A(inst).kind == IrOpKind::VmReg)
@@ -1165,7 +1167,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             StoreRegInfo& regInfo = state.info[reg];
 
             // Check that the LOAD_TAG instruction is still an active source of the tag in this register
-            if (!FFlag::LuauCodegenDseTrackTagInvalidation || regInfo.tagSourceInstIdx == function.getInstIndex(*load))
+            if (regInfo.tagSourceInstIdx == function.getInstIndex(*load))
                 regInfo.knownTag = function.tagOp(OP_B(inst));
         }
         break;
@@ -1553,7 +1555,7 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
         IrInst& inst = function.instructions[instIdx];
         uint32_t* exitInstUseCount = exitInstUseCounts.find(instIdx);
 
-        if (exitInstUseCount && inst.useCount == *exitInstUseCount && !hasSideEffects(inst.cmd) && !isUnsafeToSink(inst.cmd))
+        if (exitInstUseCount && inst.useCount == *exitInstUseCount && !hasSideEffects(inst.cmd) && !isUnsafeToSink(inst))
         {
             exitSyncPrivateInst.insert(instIdx);
             visitArguments(inst, recordExitUse);

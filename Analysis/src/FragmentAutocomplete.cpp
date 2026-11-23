@@ -33,9 +33,7 @@ LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauFragmentACLocalAutocompleteFix)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteIfSlurpsCond)
-LUAU_FASTFLAG(LuauSplitIceHandler)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
@@ -351,10 +349,7 @@ std::optional<Position> blockDiffStart(AstStatBlock* blockOld, AstStatBlock* blo
             // we want to start the autocomplete region at the earliest differing statement. If we return b's begin unconditionally, we might end up
             // returning a position that occurs after the cursor position (at c), which will cause fragment autocomplete to return a useless range.
             // To avoid this, we can produce a more granular diff by returning the earlier begin location instead of the old one.
-            if (FFlag::LuauFragmentACLocalAutocompleteFix)
-                return newStat->location.begin < oldStat->location.begin ? newStat->location.begin : oldStat->location.begin;
-            else
-                return oldStat->location.begin;
+            return newStat->location.begin < oldStat->location.begin ? newStat->location.begin : oldStat->location.begin;
         }
     }
 
@@ -772,7 +767,7 @@ void cloneTypesFromFragment(
         {
             if (auto res = stale->refinements.find(syms); res != stale->refinements.end())
             {
-                if (FFlag::LuauFragmentACLocalAutocompleteFix && get<NeverType>(follow(res->second)))
+                if (get<NeverType>(follow(res->second)))
                     continue;
                 destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
                 // If we've found a refinement, just break, otherwise we might end up doing the wrong thing for:
@@ -1033,7 +1028,7 @@ FragmentTypeCheckResult typecheckFragment_(
 
     /// Icehandler
     InternalErrorReporter iceHandler_{frontend.onInternalError, stale->name};
-    NotNull<InternalErrorReporter> iceHandler{FFlag::LuauSplitIceHandler ? &iceHandler_ : &frontend.iceHandler_DEPRECATED};
+    NotNull<InternalErrorReporter> iceHandler{&iceHandler_};
     /// Make the shared state for the unifier (recursion + iteration limits)
     UnifierSharedState unifierState{iceHandler};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;

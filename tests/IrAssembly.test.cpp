@@ -9,8 +9,6 @@
 
 #include <regex>
 
-LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
-
 using namespace Luau::CodeGen;
 
 static void stripLinesContaining(std::string& text, const char* needle)
@@ -655,8 +653,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedRegisters")
 {
-    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
-
     options.includeOutlinedCode = true;
     options.includeRegSpills = true;
 
@@ -729,8 +725,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedDependent")
 {
-    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
-
     options.includeOutlinedCode = true;
     options.includeRegSpills = true;
 

@@ -57,13 +57,13 @@ def _highlight_pair(removed: str, added: str) -> tuple[str, str]:
     return "".join(old_parts), "".join(new_parts)
 
 
-def unified_diff(expected_path: Path, expected: str, actual: str, *, color: bool = False) -> str:
+def unified_diff(expected_label: str, expected: str, actual: str, *, color: bool = False) -> str:
     """Format a unified diff; optional color affects only the displayed text."""
     lines = list(
         difflib.unified_diff(
             expected.splitlines(keepends=True),
             actual.splitlines(keepends=True),
-            fromfile=str(expected_path),
+            fromfile=expected_label,
             tofile="captured output",
         )
     )

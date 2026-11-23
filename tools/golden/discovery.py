@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-import re
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from .directives import directives_from_file
+from .expectations import read_snapshot
 from .models import COMMANDS, CONFIGURATIONS, GoldenError, GoldenTest, UpdateMode
-from .text import read_utf8
-
-_CONFIGURATION_PATTERN = "|".join(re.escape(config) for config in CONFIGURATIONS)
-_COMMAND_PATTERN = "|".join(re.escape(command) for command in COMMANDS)
-EXACT_NAME_RE = re.compile(
-    rf"^(?P<base>.+)\.(?P<config>{_CONFIGURATION_PATTERN})\.(?P<command>{_COMMAND_PATTERN})\.output$"
-)
 
 
 @dataclass(frozen=True)
@@ -190,33 +182,30 @@ def load_and_validate_tests(index: GoldenTestIndex, update: UpdateMode | None = 
         for entry in index.entries
     ]
 
-    known_exact: dict[Path, tuple[GoldenTest, str, str]] = {}
-    for test in tests:
-        for config in CONFIGURATIONS:
-            for command in COMMANDS:
-                known_exact[test.exact_path(config, command)] = (test, config, command)
-
-    for path in sorted(
+    # Per-permutation `.output` files would otherwise be silently ignored.
+    stray_outputs = sorted(
         (item for item in index.test_root.rglob("*.output") if item.is_file()), key=lambda item: item.as_posix()
+    )
+    if stray_outputs:
+        raise GoldenError(
+            f"unsupported exact-output file: {stray_outputs[0]}; exact outputs belong in the "
+            + "'<entry>.golden.toml' snapshot beside the test's entry point"
+        )
+
+    known_snapshots = {test.snapshot_path: test for test in tests}
+    for path in sorted(
+        (item for item in index.test_root.rglob("*.golden.toml") if item.is_file()), key=lambda item: item.as_posix()
     ):
-        if not EXACT_NAME_RE.match(path.name):
-            raise GoldenError(
-                f"malformed exact-output filename: {path}; expected "
-                + "'<entry>.<configuration>.<command>.output' using "
-                + f"configuration(s) {', '.join(CONFIGURATIONS)} and command(s) {', '.join(COMMANDS)}"
-            )
+        test = known_snapshots.get(path)
+        if test is None:
+            raise GoldenError(f"orphan golden snapshot has no golden entry point: {path}")
 
-        owner = known_exact.get(path)
-        if owner is None:
-            raise GoldenError(f"orphan exact-output file has no golden entry point: {path}")
-
-        test, config, command = owner
-        if test.directives.patterns_for(config, command):
-            raise GoldenError(
-                f"regex and exact expectations are both present for {test.test_id} {config}.{command}.output: {path}"
-            )
-
-        test.exact[(config, command)] = (path, read_utf8(path, "exact-output file"))
+        test.exact = read_snapshot(path)
+        for config, command in test.exact:
+            if test.directives.patterns_for(config, command):
+                raise GoldenError(
+                    f"regex and exact expectations are both present for {test.test_id} {config}.{command}: {path}"
+                )
 
     for test in tests:
         for config in CONFIGURATIONS:
@@ -235,7 +224,7 @@ def load_and_validate_tests(index: GoldenTestIndex, update: UpdateMode | None = 
             if test.directives.status_for(config) is None and not has_exact_output and not will_create_exact_output:
                 raise GoldenError(
                     f"{test.entry_path}: no status resolves for configuration {config} "
-                    + "and no exact-output file is present"
+                    + "and no exact output is present"
                 )
 
     return sorted(tests, key=lambda test: test.test_id)

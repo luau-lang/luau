@@ -1,0 +1,21 @@
+[flags-on]
+strict = '''
+Block 0 (entry "Entry Block"):
+  local x-0 = <expr>
+'''
+nonstrict = '''
+Block 0 (entry "Entry Block"):
+  local x-0 = <expr>
+'''
+runtime = ""
+
+[flags-off]
+strict = '''
+Block 0 (entry "Entry Block"):
+  local x-0 = <expr>
+'''
+nonstrict = '''
+Block 0 (entry "Entry Block"):
+  local x-0 = <expr>
+'''
+runtime = ""

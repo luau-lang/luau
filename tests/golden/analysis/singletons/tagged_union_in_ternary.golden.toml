@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+./analysis/singletons/tagged_union_in_ternary.luau(5,16): FunctionUnused: Function 'readFromDB' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/tagged_union_in_ternary.luau(5,16): FunctionUnused: Function 'readFromDB' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/tagged_union_in_ternary.luau(5,16): FunctionUnused: Function 'readFromDB' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/tagged_union_in_ternary.luau(5,16): FunctionUnused: Function 'readFromDB' is never used; prefix with '_' to silence
+'''

@@ -34,20 +34,14 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAGVARIABLE(LuauCompileRemoveStatLocalLoop)
-LUAU_FASTFLAGVARIABLE(LuauCompileMoveElisionFix)
-LUAU_FASTFLAGVARIABLE(LuauCompileNoDebugConst)
-LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
-LUAU_FASTFLAGVARIABLE(LuauCompileReuseLowersLimit)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauOptimizeExportTable)
 LUAU_FASTFLAGVARIABLE(LuauExportedTypesParticipateInScc)
 LUAU_FLAGVERSION(LuauExportedTypesParticipateInScc, 3)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAGVARIABLE(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileRequireNoInline)
+LUAU_FASTFLAGVARIABLE(LuauCompileCapturedCallTarget)
 LUAU_FASTFLAGVARIABLE(LuauCompileLoopUnrollNegativeZero)
 
 namespace Luau
@@ -525,8 +519,7 @@ struct Compiler
         {
             AstStat* bodyStat = stat->body.data[i];
 
-            if (FFlag::LuauCompileReuseLocalRegs)
-                popStatLocals(stat, bodyStat, 0u);
+            popStatLocals(stat, bodyStat, 0u);
 
             compileStat(bodyStat);
 
@@ -570,13 +563,6 @@ struct Compiler
 
                 bytecode.emitABC(LOP_RETURN, 0, 1, 0);
             }
-        }
-
-        if (!FFlag::LuauCompileNoDebugConst)
-        {
-            // constant folding may remove some upvalue refs from bytecode, so this puts them back
-            if (options.optimizationLevel >= 1 && options.debugLevel >= 2)
-                gatherConstUpvals(func);
         }
 
         bytecode.setDebugFunctionLineDefined(func->location.begin.line + 1);
@@ -658,7 +644,7 @@ struct Compiler
             isInlinable = false;
 
         uint64_t costModel = 0;
-        if (FFlag::LuauEmitCallFeedback && isInlinable && upvals.empty())
+        if (isInlinable && upvals.empty())
         {
             protoflags |= LPF_INLINABLE;
             costModel = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
@@ -704,8 +690,7 @@ struct Compiler
         upvals.clear(); // note: instead of std::move above, we copy & clear to preserve capacity for future pushes
         stackSize = 0;
 
-        if (FFlag::LuauCompileReuseLocalRegs)
-            freeLocalRegs.clear();
+        freeLocalRegs.clear();
 
         argCount = 0;
 
@@ -1159,13 +1144,28 @@ struct Compiler
     {
         Function* fi = functions.find(func);
 
+        RegScope rs(this);
+
+        uint8_t originalTarget = target;
+
+        if (FFlag::LuauCompileCapturedCallTarget)
+        {
+            // If some target register is captured, inlined code might write to it before its last use
+            for (size_t i = 0; i < targetCount; i++)
+            {
+                if (regCaptured[target + i])
+                {
+                    target = allocReg(expr, unsigned(targetCount));
+                    break;
+                }
+            }
+        }
+
         // We try to write result directly to the target register when possible, but there are a few blockers
         // - function captures a reference to the local that is being returned and might close it
         // - there might not be a target register (return value is unused)
         // - target register is captured and might be read before inlined function completes
         bool noTargetMoveElision = fi->returnLocalCaptured || targetCount == 0 || regCaptured[target];
-
-        RegScope rs(this);
 
         size_t oldLocals = localStack.size();
 
@@ -1344,8 +1344,7 @@ struct Compiler
         {
             AstStat* stat = func->body->body.data[i];
 
-            if (FFlag::LuauCompileReuseLocalRegs)
-                popStatLocals(func->body, stat, oldLocals);
+            popStatLocals(func->body, stat, oldLocals);
 
             compileStat(stat);
 
@@ -1381,6 +1380,12 @@ struct Compiler
         patchJumps(expr, inlineFrames.back().returnJumps, returnLabel);
 
         inlineFrames.pop_back();
+
+        if (FFlag::LuauCompileCapturedCallTarget && target != originalTarget)
+        {
+            for (size_t i = 0; i < targetCount; ++i)
+                bytecode.emitABC(LOP_MOVE, uint8_t(originalTarget + i), uint8_t(target + i), 0);
+        }
 
         // clean up constant state for future inlining attempts
         for (size_t i = 0; i < func->args.size; ++i)
@@ -1666,7 +1671,7 @@ struct Compiler
         // Without deoptimization we cannot break VARARG sequences.
         // So VARARG producer or consumer cannot be inlined, because it creates a diamond(with slow path).
         bool canInline = currentFunction->functionDepth != 0 && !multCall && !multRet;
-        if (FFlag::LuauEmitCallFeedback && (bfid < 0 && fastPcallId < 0) && canInline && !constructCall)
+        if ((bfid < 0 && fastPcallId < 0) && canInline && !constructCall)
         {
             uint32_t fbSlot = bytecode.addCallTargetSlot(uint32_t(bytecode.getInstructionCount()));
             bytecode.emitABC(LOP_CALLFB, regs, multCall ? 0 : uint8_t(expr->self + expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
@@ -2629,10 +2634,7 @@ struct Compiler
             uint8_t regs = allocReg(expr, unsigned(args.size()));
 
             for (size_t i = 0; i < args.size(); ++i)
-                if (FFlag::LuauCompileConcatTargetTop)
-                    compileExprTempTop(args[i], uint8_t(regs + i));
-                else
-                    compileExprTemp(args[i], uint8_t(regs + i));
+                compileExprTempTop(args[i], uint8_t(regs + i));
 
             bytecode.emitABC(LOP_CONCAT, target, regs, uint8_t(regs + args.size() - 1));
         }
@@ -4206,8 +4208,7 @@ struct Compiler
 
         for (size_t i = 0; i < body->body.size; ++i)
         {
-            if (FFlag::LuauCompileReuseLocalRegs)
-                popStatLocals(body, body->body.data[i], oldLocals);
+            popStatLocals(body, body->body.data[i], oldLocals);
 
             compileStat(body->body.data[i]);
 
@@ -4334,7 +4335,7 @@ struct Compiler
         }
 
         // Optimization: try to re-adjust the non-consecutive sequence into a consecutive prefix and extra moves
-        if (FFlag::LuauCompileReuseLocalRegs && !consecutive && stat->list.size > 1)
+        if (!consecutive && stat->list.size > 1)
         {
             AstArray<AstExpr*>& list = stat->list;
             bool allLocals = true;
@@ -4418,7 +4419,7 @@ struct Compiler
     void compileStatLocal(AstStatLocal* stat)
     {
         // Optimization: we don't need to allocate and assign const locals, since their uses will be constant-folded
-        if (options.optimizationLevel >= 1 && (options.debugLevel <= 1 || FFlag::LuauCompileNoDebugConst) && areLocalsRedundant(stat))
+        if (options.optimizationLevel >= 1 && areLocalsRedundant(stat))
             return;
 
         // Optimization: for 1-1 local assignments, we can reuse the register *if* neither local is mutated
@@ -4441,28 +4442,17 @@ struct Compiler
             if (!inlineFrames.empty() && inlineFrames.back().resultLocal == stat->vars.data[0])
             {
                 compileExprTemp(stat->values.data[0], inlineFrames.back().target);
-
-                if (!FFlag::LuauCompileRemoveStatLocalLoop)
-                {
-                    // evaluate extra expressions for side effects
-                    for (size_t i = stat->vars.size; i < stat->values.size; ++i)
-                        compileExprSide(stat->values.data[i]);
-                }
-
                 pushLocal(stat->vars.data[0], inlineFrames.back().target, kDefaultAllocPc);
                 return;
             }
 
-            if (FFlag::LuauCompileReuseLocalRegs)
+            uint8_t target = kInvalidReg;
+            if (tryReuseLocalReg(stat->vars.data[0], target))
             {
-                uint8_t target = kInvalidReg;
-                if (tryReuseLocalReg(stat->vars.data[0], target))
-                {
-                    uint32_t allocpc = bytecode.getDebugPC();
-                    compileExprTemp(stat->values.data[0], target);
-                    pushLocal(stat->vars.data[0], target, allocpc);
-                    return;
-                }
+                uint32_t allocpc = bytecode.getDebugPC();
+                compileExprTemp(stat->values.data[0], target);
+                pushLocal(stat->vars.data[0], target, allocpc);
+                return;
             }
         }
 
@@ -5056,10 +5046,7 @@ struct Compiler
             compileLValueUse(var, regs, /* set= */ false, stat->var);
 
             for (size_t i = 0; i < args.size(); ++i)
-                if (FFlag::LuauCompileConcatTargetTop)
-                    compileExprTempTop(args[i], uint8_t(regs + 1 + i));
-                else
-                    compileExprTemp(args[i], uint8_t(regs + 1 + i));
+                compileExprTempTop(args[i], uint8_t(regs + 1 + i));
 
             bytecode.emitABC(LOP_CONCAT, target, regs, uint8_t(regs + args.size()));
         }
@@ -5114,8 +5101,7 @@ struct Compiler
             {
                 AstStat* bodyStat = stat->body.data[i];
 
-                if (FFlag::LuauCompileReuseLocalRegs)
-                    popStatLocals(stat, bodyStat, 0u);
+                popStatLocals(stat, bodyStat, 0u);
 
                 compileStat(bodyStat);
 
@@ -5255,15 +5241,8 @@ struct Compiler
             {
                 uint8_t var = kInvalidReg;
 
-                if (FFlag::LuauCompileReuseLocalRegs)
-                {
-                    if (!tryReuseLocalReg(stat->name, var))
-                        var = allocReg(stat, 1u);
-                }
-                else
-                {
+                if (!tryReuseLocalReg(stat->name, var))
                     var = allocReg(stat, 1u);
-                }
 
                 pushLocal(stat->name, var, kDefaultAllocPc);
                 compileExprFunction(stat->func, var);
@@ -5325,28 +5304,15 @@ struct Compiler
             );
     }
 
-    void gatherConstUpvals(AstExprFunction* func)
-    {
-        LUAU_ASSERT(!FFlag::LuauCompileNoDebugConst);
-
-        ConstUpvalueVisitor visitor(this);
-        func->body->visit(&visitor);
-
-        for (AstLocal* local : visitor.upvals)
-            getUpval(local);
-    }
-
     void pushLocal(AstLocal* local, uint8_t reg, uint32_t allocpc)
     {
-        if ((FFlag::LuauCompileReuseLowersLimit ? activeLocals : localStack.size()) >= kMaxLocalCount)
+        if (activeLocals >= kMaxLocalCount)
             CompileError::raise(
                 local->location, "Out of local registers when trying to allocate %s: exceeded limit %d", local->name.value, kMaxLocalCount
             );
 
         localStack.push_back(local);
-
-        if (FFlag::LuauCompileReuseLowersLimit)
-            activeLocals++;
+        activeLocals++;
 
         Local& l = locals[local];
 
@@ -5358,9 +5324,7 @@ struct Compiler
         l.allocpc = allocpc == kDefaultAllocPc ? l.debugpc : allocpc;
 
         regCaptured[reg] = l.captured;
-
-        if (FFlag::LuauCompileReuseLocalRegs)
-            localUses[reg]++;
+        localUses[reg]++;
     }
 
     bool areLocalsCaptured(size_t start)
@@ -5435,15 +5399,10 @@ struct Compiler
     // Returns true if the local release has also freed the last use of the register assigned to it
     bool releaseLocal(Local* l)
     {
-        LUAU_ASSERT(FFlag::LuauCompileReuseLocalRegs);
-
         l->allocated = false;
 
-        if (FFlag::LuauCompileReuseLowersLimit)
-        {
-            LUAU_ASSERT(activeLocals != 0);
-            activeLocals--;
-        }
+        LUAU_ASSERT(activeLocals != 0);
+        activeLocals--;
 
         regCaptured[l->reg] = false;
 
@@ -5461,65 +5420,31 @@ struct Compiler
             Local* l = locals.find(localStack[i]);
             LUAU_ASSERT(l);
 
-            if (FFlag::LuauCompileReuseLocalRegs)
+            if (l->reused)
             {
-                if (l->reused)
-                {
-                    // Local going out of scope completely, its register can no longer be reused (array is sorted, so binary search here)
-                    auto it = std::lower_bound(
-                        freeLocalRegs.begin(),
-                        freeLocalRegs.end(),
-                        l->reg,
-                        [](const FreeLocal& el, uint8_t pred)
-                        {
-                            return el.reg < pred;
-                        }
-                    );
-                    if (it != freeLocalRegs.end() && it->reg == l->reg)
+                // Local going out of scope completely, its register can no longer be reused (array is sorted, so binary search here)
+                auto it = std::lower_bound(
+                    freeLocalRegs.begin(),
+                    freeLocalRegs.end(),
+                    l->reg,
+                    [](const FreeLocal& el, uint8_t pred)
                     {
-                        recordLocalDebugInfo(it->astLocal, &it->local, it->isArgument, bytecode.getDebugPC());
-                        freeLocalRegs.erase(it);
+                        return el.reg < pred;
                     }
-
-                    l->allocated = false;
-                    l->reused = false;
-                }
-                else if (l->allocated)
+                );
+                if (it != freeLocalRegs.end() && it->reg == l->reg)
                 {
-                    releaseLocal(l);
-                    recordLocalDebugInfo(localStack[i], l, i < argCount, bytecode.getDebugPC());
+                    recordLocalDebugInfo(it->astLocal, &it->local, it->isArgument, bytecode.getDebugPC());
+                    freeLocalRegs.erase(it);
                 }
-            }
-            else
-            {
-                LUAU_ASSERT(l->allocated);
+
                 l->allocated = false;
-
-                if (FFlag::LuauCompileReuseLowersLimit)
-                {
-                    LUAU_ASSERT(activeLocals != 0);
-                    activeLocals--;
-                }
-
-                regCaptured[l->reg] = false;
-
-                if (options.debugLevel >= 2)
-                {
-                    uint32_t debugpc = bytecode.getDebugPC();
-
-                    bytecode.pushDebugLocal(sref(localStack[i]->name), l->reg, l->debugpc, debugpc);
-                }
-
-                if (options.typeInfoLevel >= 1 && i >= argCount)
-                {
-                    uint32_t debugpc = bytecode.getDebugPC();
-                    LuauBytecodeType ty = LBC_TYPE_ANY;
-
-                    if (LuauBytecodeType* recordedTy = localTypes.find(localStack[i]))
-                        ty = *recordedTy;
-
-                    bytecode.pushLocalTypeInfo(ty, l->reg, l->allocpc, debugpc);
-                }
+                l->reused = false;
+            }
+            else if (l->allocated)
+            {
+                releaseLocal(l);
+                recordLocalDebugInfo(localStack[i], l, i < argCount, bytecode.getDebugPC());
             }
         }
 
@@ -5531,7 +5456,6 @@ struct Compiler
         if (options.optimizationLevel == 0)
             return;
 
-        LUAU_ASSERT(FFlag::LuauCompileReuseLocalRegs);
         LUAU_ASSERT(start <= localStack.size());
 
         for (size_t i = start; i < localStack.size(); ++i)
@@ -5641,8 +5565,6 @@ struct Compiler
 
     bool tryReuseLocalReg(AstLocal* local, uint8_t& reg)
     {
-        LUAU_ASSERT(FFlag::LuauCompileReuseLocalRegs);
-
         if (local->isExported || freeLocalRegs.empty())
             return false;
 

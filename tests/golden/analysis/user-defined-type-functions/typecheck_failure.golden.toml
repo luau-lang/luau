@@ -1,0 +1,11 @@
+[flags-on]
+strict = '''
+./analysis/user-defined-type-functions/typecheck_failure.luau(2,28): TypeError: Expected this to be '(boolean | string)?', but got '{number}'
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+./analysis/user-defined-type-functions/typecheck_failure.luau(2,28): TypeError: Expected this to be '(boolean | string)?', but got '{number}'
+'''
+nonstrict = ""

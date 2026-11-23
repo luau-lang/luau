@@ -1,1 +1,0 @@
-./analysis/singletons/pass_singleton_through_to_identity.luau(3,16): FunctionUnused: Function 'foobar' is never used; prefix with '_' to silence
