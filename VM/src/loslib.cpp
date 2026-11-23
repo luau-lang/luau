@@ -25,14 +25,18 @@ static time_t os_timegm(struct tm* timep)
 {
     // Julian day number calculation
     int day = timep->tm_mday;
-    int month = timep->tm_mon + 1;
-    int year = timep->tm_year + 1900;
+
+    // normalize out-of-range month numbers in input
+    int month = timep->tm_mon % 12 + 1;
+    int year = timep->tm_year + 1900 + timep->tm_mon / 12;
+    if (month <= 0)
+    {
+        month += 12;
+        year--;
+    }
 
     // year adjustment, pretend that it starts in March
-    int a = timep->tm_mon % 12 < 2 ? 1 : 0;
-
-    // also adjust for out-of-range month numbers in input
-    a -= timep->tm_mon / 12;
+    int a = month < 3 ? 1 : 0;
 
     int y = year + 4800 - a;
     int m = month + (12 * a) - 3;
