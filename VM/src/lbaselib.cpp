@@ -188,6 +188,14 @@ static int luaB_rawlen(lua_State* L)
     return 1;
 }
 
+static int luaB_rawtostring(lua_State* L)
+{
+    luaL_checkany(L, 1);
+    luaL_argcheck(L, !lua_isuserdata(L, 1), 1, "userdata not supported");
+    luaL_rawtolstring(L, 1, NULL);
+    return 1;
+}
+
 static int luaB_gcinfo(lua_State* L)
 {
     lua_pushinteger(L, lua_gc(L, LUA_GCCOUNT, 0));
@@ -397,6 +405,7 @@ static const luaL_Reg base_funcs[] = {
     {"rawget", luaB_rawget},
     {"rawset", luaB_rawset},
     {"rawlen", luaB_rawlen},
+    {"rawtostring", luaB_rawtostring},
     {"select", luaB_select},
     {"setfenv", luaB_setfenv},
     {"setmetatable", luaB_setmetatable},

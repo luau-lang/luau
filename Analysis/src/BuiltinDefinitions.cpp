@@ -556,6 +556,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         "rawset",
         "rawlen",
         "rawequal",
+        "rawtostring",
         "tonumber",
         "tostring",
         "type",

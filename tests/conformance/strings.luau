@@ -108,10 +108,41 @@ assert(#tostring('\0') == 1)
 assert(tostring(true) == "true")
 assert(tostring(false) == "false")
 
+assert(rawtostring(nil) == "nil")
+assert(rawtostring(12) == "12")
+assert(rawtostring("hello") == "hello")
+assert(rawtostring(true) == "true")
+assert(rawtostring(false) == "false")
+assert(string.find(rawtostring{}, "^table:"))
+assert(string.find(rawtostring(print), "^function:"))
+
+-- rawtostring must not invoke __tostring
+do
+    local called = false
+    local value = setmetatable({}, {
+        __tostring = function()
+            called = true
+            return "custom"
+        end
+    })
+
+    assert(rawtostring(value):find("^table:"))
+    assert(not called)
+
+    assert(tostring(value) == "custom")
+    assert(called)
+end
+
 function nothing() end
 
 assert(pcall(tostring) == false)
 assert(pcall(function() return tostring(nothing()) end) == false)
+
+assert(pcall(rawtostring) == false)
+assert(pcall(function() return rawtostring(nothing()) end) == false)
+
+-- rawtostring must reject userdata
+assert(not pcall(rawtostring, newproxy()))
 
 print('+')
 
