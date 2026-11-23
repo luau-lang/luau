@@ -17,7 +17,6 @@
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 namespace Luau
 {
@@ -1578,53 +1577,6 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
     }
     else if (get<UnionType>(right))
         return union_(right, left);
-
-    if (FFlag::LuauDecomposeIntersectionOfFreeType)
-    {
-        // There is a small peephole optimization here that allows us to transform
-        // something like `~number | number` into `unknown`.
-        if (auto leftNegation = get<NegationType>(left))
-        {
-            switch (relate(leftNegation->ty, right))
-            {
-            case Relation::Coincident:
-                // e.g. ~number | number => `unknown`
-            case Relation::Subset:
-                // e.g. ~number | (number | string) => unknown
-                return builtinTypes->unknownType;
-            case Relation::Disjoint:
-                // e.g. ~number | string
-                // We *could* transform this into the LHS, but only if the RHS
-                // does not contain an error type.
-            case Relation::Superset:
-                // e.g. ~(number | string) | string
-            case Relation::Intersects:
-                // e.g. ~(number | string) | (string | boolean)
-                break;
-            }
-        }
-
-        if (auto rightNegation = get<NegationType>(right))
-        {
-            switch (relate(left, rightNegation->ty))
-            {
-            case Relation::Coincident:
-                // e.g. number | ~number => `unknown`
-            case Relation::Superset:
-                // e.g. (number | string) | ~number => unknown
-                return builtinTypes->unknownType;
-            case Relation::Disjoint:
-                // e.g. number | ~string => `~string`
-                // We *could* transform this into the RHS, but only if the RHS
-                // does not contain an error type.
-            case Relation::Subset:
-                // e.g. (number | string) | ~string
-            case Relation::Intersects:
-                // e.g. (number | string) | ~(string | boolean)
-                break;
-            }
-        }
-    }
 
     Relation r = relate(left, right);
     if (left == right || r == Relation::Coincident || r == Relation::Superset)

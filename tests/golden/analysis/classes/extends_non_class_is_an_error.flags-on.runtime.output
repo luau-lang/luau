@@ -1,3 +1,0 @@
-./analysis/classes/extends_non_class_is_an_error.luau:5: attempt to extend a function value
-stacktrace:
-./analysis/classes/extends_non_class_is_an_error.luau:5

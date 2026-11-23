@@ -1,0 +1,17 @@
+[flags-on]
+strict = '''
+./analysis/classes/duplicate_class_definitions_are_any.luau(7,1): TypeError: Redefinition of type 'Point', previously defined at line 2
+'''
+nonstrict = '''
+./analysis/classes/duplicate_class_definitions_are_any.luau(7,1): TypeError: Redefinition of type 'Point', previously defined at line 2
+'''
+runtime = ""
+
+[flags-off]
+strict = '''
+./analysis/classes/duplicate_class_definitions_are_any.luau(7,1): TypeError: Redefinition of type 'Point', previously defined at line 2
+'''
+nonstrict = '''
+./analysis/classes/duplicate_class_definitions_are_any.luau(7,1): TypeError: Redefinition of type 'Point', previously defined at line 2
+'''
+runtime = ""

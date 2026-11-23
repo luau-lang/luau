@@ -1,1 +1,0 @@
-./analysis/property-modifiers/frozen_table_argument.luau(3,3): TypeError: Expected this to be 'number', but got 'number'; `id` is a read-only property in the latter type, but the former type requires a read-write property

@@ -1,0 +1,17 @@
+[flags-on]
+strict = '''
+./analysis/type-aliases/type_pack_in_unknown_alias.luau(1,15): TypeError: Unknown type 'Barbaz'
+'''
+nonstrict = '''
+./analysis/type-aliases/type_pack_in_unknown_alias.luau(1,15): TypeError: Unknown type 'Barbaz'
+'''
+runtime = ""
+
+[flags-off]
+strict = '''
+./analysis/type-aliases/type_pack_in_unknown_alias.luau(1,15): TypeError: Unknown type 'Barbaz'
+'''
+nonstrict = '''
+./analysis/type-aliases/type_pack_in_unknown_alias.luau(1,15): TypeError: Unknown type 'Barbaz'
+'''
+runtime = ""

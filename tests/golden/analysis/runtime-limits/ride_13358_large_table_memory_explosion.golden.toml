@@ -1,0 +1,15 @@
+[flags-on]
+strict = ""
+nonstrict = ""
+runtime = '''
+Warning: unrecognized flag 'LuauOneBitAssumedConstraintTracking'.
+Warning: unrecognized flag 'LuauNonreentrantLookupTableProp'.
+'''
+
+[flags-off]
+strict = ""
+nonstrict = ""
+runtime = '''
+Warning: unrecognized flag 'LuauOneBitAssumedConstraintTracking'.
+Warning: unrecognized flag 'LuauNonreentrantLookupTableProp'.
+'''

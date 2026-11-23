@@ -17,8 +17,6 @@
 
 #include <stdlib.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
-
 namespace Luau
 {
 
@@ -70,36 +68,24 @@ struct FindFunctionTypeIn : IterativeTypeVisitor
         // the user may be in nonstrict mode.
         //
         // On top of that we have to do a bunch of `int` casting here.
-        if (FFlag::LuauBidirectionalInferenceBetterLambdaHandling)
+        if (candidate == nullptr)
         {
-            if (candidate == nullptr)
-            {
-                candidate = get<FunctionType>(ty);
-                ambiguous = false;
-                return false;
-            }
-
-            int candidateDistance = abs(int(size(candidate->argTypes)) - numberOfLambdaParameters);
-            int thisDistance = abs(int(size(ftv.argTypes)) - numberOfLambdaParameters);
-
-            if (thisDistance < candidateDistance)
-            {
-                candidate = get<FunctionType>(ty);
-                ambiguous = false;
-            }
-            else if (thisDistance == candidateDistance)
-            {
-                ambiguous = true;
-            }
+            candidate = get<FunctionType>(ty);
+            ambiguous = false;
+            return false;
         }
-        else
+
+        int candidateDistance = abs(int(size(candidate->argTypes)) - numberOfLambdaParameters);
+        int thisDistance = abs(int(size(ftv.argTypes)) - numberOfLambdaParameters);
+
+        if (thisDistance < candidateDistance)
         {
-            if (candidate == nullptr ||
-                abs(int(size(candidate->argTypes)) - numberOfLambdaParameters) > abs(int(size(ftv.argTypes)) - numberOfLambdaParameters))
-            {
-                candidate = get<FunctionType>(ty);
-                return false;
-            }
+            candidate = get<FunctionType>(ty);
+            ambiguous = false;
+        }
+        else if (thisDistance == candidateDistance)
+        {
+            ambiguous = true;
         }
         return false;
     }
@@ -292,21 +278,12 @@ struct BidirectionalTypePusher
                 }
 
 
-                if (FFlag::LuauBidirectionalInferenceBetterLambdaHandling)
-                {
-                    // When multiple union arms have the same arg count, it's
-                    // ambiguous. Don't bind the return type so the solver can infer
-                    // it from the body.
-                    if (!ffti.ambiguous && !exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
-                        !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
-                        solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
-                }
-                else
-                {
-                    if (!exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
-                        !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
-                        solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
-                }
+                // When multiple union arms have the same arg count, it's
+                // ambiguous. Don't bind the return type so the solver can infer
+                // it from the body.
+                if (!ffti.ambiguous && !exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
+                    !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
+                    solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
             }
         }
 

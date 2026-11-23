@@ -1,1 +1,0 @@
-./analysis/property-modifiers/frozen_table_string_field.luau(3,1): TypeError: Expected this to be 'string', but got 'string'; `name` is a read-only property in the latter type, but the former type requires a read-write property

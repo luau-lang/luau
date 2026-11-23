@@ -131,8 +131,6 @@ private:
     TypeId lookupExpectedType(AstExpr* expr) const;
     TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena) const;
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena);
-    // Clip with LuauDontUseInnermostScope
-    Scope* findInnermostScope_DEPRECATED(Location location) const;
     void visit(AstStat* stat);
     void visit(AstStatIf* ifStatement);
     void visit(AstStatWhile* whileStatement);

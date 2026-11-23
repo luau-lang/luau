@@ -63,8 +63,6 @@ LUAU_FASTFLAG(LuauCodegenUserdataDirect)
 LUAU_FASTFLAG(LuauPromoteProto)
 LUAU_FASTFLAG(LuauBytecodeFold)
 LUAU_FASTFLAG(LuauBytecodeSlotAlloc)
-LUAU_FASTFLAG(LuauCodegenA64BitlrotateSelf)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCodegenFastcallAnalysisLimit)
 LUAU_FASTFLAG(LuauCodegenMarkUsed)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
@@ -77,13 +75,11 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
 LUAU_FASTFLAG(LuauPcallErrorContinuationReentry)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 LUAU_FASTFLAG(LuauBufferCage)
 LUAU_FASTFLAG(LuauCoroutineFinally)
 LUAU_FASTFLAG(LuauCoroutineFinallyAnalysis)
-LUAU_FASTFLAG(LuauCodegenDseTrackTagInvalidation)
 LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
@@ -1519,7 +1515,6 @@ TEST_CASE("Attrib")
 // Exercises the runtime JIT inliner with constant folding
 TEST_CASE("JitInliner")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauBytecodeFold{FFlag::LuauBytecodeFold, true};
     ScopedFastFlag luauBytecodeSlotAlloc{FFlag::LuauBytecodeSlotAlloc, true};
     ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
@@ -1677,8 +1672,6 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
-    ScopedFastFlag luauCodegenA64BitlrotateSelf{FFlag::LuauCodegenA64BitlrotateSelf, true};
-
     runConformance("bitwise.luau");
 }
 
@@ -2293,7 +2286,6 @@ TEST_CASE("LazyLoad")
         {FFlag::LuauCoroutineFinally, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauEmitCallFeedback, true},
     };
 
     runConformance("lazyload.luau");
@@ -4968,7 +4960,6 @@ TEST_CASE("Native")
 {
     ScopedFastFlag luauCodegenMarkUsed{FFlag::LuauCodegenMarkUsed, true};
     ScopedFastFlag reloadLargeConstOffset{FFlag::LuauCodegenA64ReloadLargeConstOffset, true};
-    ScopedFastFlag luauCodegenDseTrackTagInvalidation{FFlag::LuauCodegenDseTrackTagInvalidation, true};
     ScopedFastFlag luauCodegenCmpAnySideEffecting{FFlag::LuauCodegenCmpAnySideEffecting, true};
     ScopedFastFlag luauCodegenFastcallAnalysisLimit{FFlag::LuauCodegenFastcallAnalysisLimit, true};
 
@@ -5446,7 +5437,6 @@ TEST_CASE("Classes")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauEmitCallFeedback, true},
     };
 
     runConformance("classes.luau");
@@ -6097,7 +6087,6 @@ TEST_CASE("ClassInheritanceRepeatedCallMemberOffsetCorruption")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauEmitCallFeedback, true},
     };
 
     StateRef globalState(luaL_newstate(), lua_close);
@@ -6155,7 +6144,6 @@ TEST_CASE("SandboxFreezesVectorMetatable")
 
 TEST_CASE("JitInlinerLongJump")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     std::string source;
     source += "local function target(x) return x + 1 end\n";

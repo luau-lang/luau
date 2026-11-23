@@ -1,1 +1,0 @@
-./meta/use_magic_types.luau(8,7): LocalUnused: Variable 'bar' is never used; prefix with '_' to silence

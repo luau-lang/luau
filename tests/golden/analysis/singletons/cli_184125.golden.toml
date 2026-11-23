@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+./analysis/singletons/cli_184125.luau(4,16): FunctionUnused: Function 'Func' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/cli_184125.luau(4,16): FunctionUnused: Function 'Func' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/cli_184125.luau(4,16): FunctionUnused: Function 'Func' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/cli_184125.luau(4,16): FunctionUnused: Function 'Func' is never used; prefix with '_' to silence
+'''

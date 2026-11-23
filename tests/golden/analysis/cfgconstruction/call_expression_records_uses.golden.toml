@@ -1,0 +1,37 @@
+[flags-on]
+strict = '''
+Block 0 (entry "Entry Block"):
+  local f-0 = <expr>
+  local x-0 = <expr>
+  local y-0 = <expr>
+'''
+nonstrict = '''
+Block 0 (entry "Entry Block"):
+  local f-0 = <expr>
+  local x-0 = <expr>
+  local y-0 = <expr>
+'''
+runtime = '''
+./analysis/cfgconstruction/call_expression_records_uses.luau:5: attempt to call a nil value
+stacktrace:
+./analysis/cfgconstruction/call_expression_records_uses.luau:5
+'''
+
+[flags-off]
+strict = '''
+Block 0 (entry "Entry Block"):
+  local f-0 = <expr>
+  local x-0 = <expr>
+  local y-0 = <expr>
+'''
+nonstrict = '''
+Block 0 (entry "Entry Block"):
+  local f-0 = <expr>
+  local x-0 = <expr>
+  local y-0 = <expr>
+'''
+runtime = '''
+./analysis/cfgconstruction/call_expression_records_uses.luau:5: attempt to call a nil value
+stacktrace:
+./analysis/cfgconstruction/call_expression_records_uses.luau:5
+'''
