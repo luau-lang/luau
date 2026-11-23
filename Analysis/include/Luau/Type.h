@@ -687,6 +687,7 @@ struct TypeFunctionInstanceType
     UserDefinedFunctionData userFuncData;
 
     TypeFunctionInstanceState state = TypeFunctionInstanceState::Unsolved;
+    bool appliedByConstraintGenerator = false;
 
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,
