@@ -359,6 +359,10 @@ void StateDot::visitChildren(TypeId ty, int index)
                 // then it's invalid syntax. If it's inside, then escaping is super noisy.
                 res = "string: " + escape(ss->value);
             }
+            else if (const NumberSingleton* ns = get<NumberSingleton>(&t))
+            {
+                res = "number: " + std::to_string(ns->value);
+            }
             else if (const BooleanSingleton* bs = get<BooleanSingleton>(&t))
             {
                 res = "boolean: ";

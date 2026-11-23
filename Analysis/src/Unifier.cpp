@@ -1667,6 +1667,9 @@ void Unifier::tryUnifySingletons(TypeId subTy, TypeId superTy)
     if (superPrim && superPrim->type == PrimitiveType::Boolean && get<BooleanSingleton>(subSingleton) && variance == Covariant)
         return;
 
+    if (FFlag::LuauNumberSingletonsSupport && superPrim && superPrim->type == PrimitiveType::Number && get<NumberSingleton>(subSingleton) && variance == Covariant)
+        return;
+
     if (superPrim && superPrim->type == PrimitiveType::String && get<StringSingleton>(subSingleton) && variance == Covariant)
         return;
 

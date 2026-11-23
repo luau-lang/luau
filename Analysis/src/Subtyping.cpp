@@ -2053,7 +2053,7 @@ SubtypingResult Subtyping::isCovariantWith(
 {
     if (get<StringSingleton>(subSingleton) && superPrim->type == PrimitiveType::String)
         return {true};
-    else if (FFlag::LuauNumberSingletonsSupport && get<BooleanSingleton>(subSingleton) && superPrim->type == PrimitiveType::Number)
+    else if (FFlag::LuauNumberSingletonsSupport && get<NumberSingleton>(subSingleton) && superPrim->type == PrimitiveType::Number)
         return {true};
     else if (get<BooleanSingleton>(subSingleton) && superPrim->type == PrimitiveType::Boolean)
         return {true};

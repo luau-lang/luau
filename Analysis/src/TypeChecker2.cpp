@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <math.h>
 
 #include "Luau/Simplify.h"
 
@@ -1869,14 +1870,35 @@ void TypeChecker2::visit(AstExprConstantBool* expr)
 
 void TypeChecker2::visit(AstExprConstantNumber* expr)
 {
-#if defined(LUAU_ENABLE_ASSERT)
-    const TypeId bestType = builtinTypes->numberType;
-    const TypeId inferredType = lookupType(expr);
-    NotNull<Scope> scope{stack.back()};
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        // numbers use specialized inference logic for singleton typeArguments, which can lead to real type errors here.
 
-    const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
-    LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
+        const TypeId bestType = floor(expr->value) == expr->value ? module->internalTypes->addType(SingletonType{NumberSingleton{int64_t(expr->value)}}) : builtinTypes->numberType;
+        const TypeId inferredType = lookupType(expr);
+        NotNull<Scope> scope{stack.back()};
+
+        SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
+        if (!isErrorSuppressing(expr->location, inferredType))
+        {
+            if (!r.isSubtype)
+                reportError(TypeMismatch{inferredType, bestType}, expr->location);
+            for (auto& e : r.errors)
+                e.location = expr->location;
+            reportErrors(r.errors);
+        }
+    }
+    else
+    {
+#if defined(LUAU_ENABLE_ASSERT)
+        const TypeId bestType = builtinTypes->numberType;
+        const TypeId inferredType = lookupType(expr);
+        NotNull<Scope> scope{stack.back()};
+
+        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
 #endif
+    }
 }
 
 void TypeChecker2::visit(AstExprConstantString* expr)

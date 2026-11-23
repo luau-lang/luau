@@ -182,9 +182,9 @@ bool isSubtype(const NormalizedNumberType& subNumber, const NormalizedNumberType
         // NOTE: This case catches the trivial `number <: number`,
         // as this is two intersections where the singleton part
         // is empty (`unknown`).
-        for (const auto& [name, ty] : superNumber.singletons)
+        for (const auto& [num, ty] : superNumber.singletons)
         {
-            if (subNumber.singletons.count(name) == 0)
+            if (subNumber.singletons.count(num) == 0)
                 return false;
         }
         return true;
@@ -197,9 +197,9 @@ bool isSubtype(const NormalizedNumberType& subNumber, const NormalizedNumberType
         //
         //  1 | 2 <: 1 | 2 | 3
         //
-        for (const auto& [name, ty] : subNumber.singletons)
+        for (const auto& [num, ty] : subNumber.singletons)
         {
-            if (superNumber.singletons.count(name) == 0)
+            if (superNumber.singletons.count(num) == 0)
                 return false;
         }
         return true;
@@ -214,9 +214,9 @@ bool isSubtype(const NormalizedNumberType& subNumber, const NormalizedNumberType
         //
         // ... we just need to check that _none_ of the singletons in the
         // subNumber are represented in the superNumber.
-        for (const auto& [name, ty] : subNumber.singletons)
+        for (const auto& [num, ty] : subNumber.singletons)
         {
-            if (superNumber.singletons.count(name) != 0)
+            if (superNumber.singletons.count(num) != 0)
                 return false;
         }
         return true;
@@ -2426,6 +2426,17 @@ void Normalizer::subtractSingleton(NormalizedType& here, TypeId ty)
                 here.strings.singletons.erase(it);
         }
     }
+    else if (const NumberSingleton* ns = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && ns)
+    {
+        if (here.numbers.isCofinite)
+            here.numbers.singletons.insert({ns->value, ty});
+        else
+        {
+            auto it = here.numbers.singletons.find(ns->value);
+            if (it != here.numbers.singletons.end())
+                here.numbers.singletons.erase(it);
+        }
+    }
     else if (const BooleanSingleton* bs = get<BooleanSingleton>(stv))
     {
         if (get<NeverType>(here.booleans))
@@ -3840,6 +3851,11 @@ NormalizationResult Normalizer::intersectNormalWithTy(
 
         if (get<BooleanSingleton>(stv))
             here.booleans = intersectionOfBools(booleans, there);
+        else if (const NumberSingleton* nstv = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && nstv)
+        {
+            if (here.numbers.includes(nstv->value))
+                here.numbers.singletons.insert({nstv->value, there});
+        }
         else if (const StringSingleton* sstv = get<StringSingleton>(stv))
         {
             if (strings.includes(sstv->value))
