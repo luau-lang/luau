@@ -26,7 +26,6 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
@@ -347,56 +346,8 @@ static void autocompleteProps(
         return;
     seen.insert(ty);
 
-    auto DEPRECATED_isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type)
-    {
-        if (indexType == PropIndexType::Key)
-            return false;
-
-        bool calledWithSelf = indexType == PropIndexType::Colon;
-
-        auto isCompatibleCall = [typeArena, builtinTypes, &module, rootTy, calledWithSelf](const FunctionType* ftv)
-        {
-            // Strong match with definition is a success
-            if (calledWithSelf == ftv->hasSelf)
-                return true;
-
-            // Calls on extern types require strict match between how function is declared and how it's called
-            if (get<ExternType>(rootTy))
-                return false;
-
-            // When called with ':', but declared without 'self', it is invalid if a function has incompatible first argument or no arguments at all
-            // When called with '.', but declared with 'self', it is considered invalid if first argument is compatible
-            if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
-            {
-                if (checkTypeMatch(module, rootTy, *firstArgTy, NotNull{module.getModuleScope().get()}, typeArena, builtinTypes))
-                    return calledWithSelf;
-            }
-
-            return !calledWithSelf;
-        };
-
-        if (const FunctionType* ftv = get<FunctionType>(type))
-            return !isCompatibleCall(ftv);
-
-        // For intersections, any part that is successful makes the whole call successful
-        if (const IntersectionType* itv = get<IntersectionType>(type))
-        {
-            for (auto subType : itv->parts)
-            {
-                if (const FunctionType* ftv = get<FunctionType>(Luau::follow(subType)))
-                {
-                    if (isCompatibleCall(ftv))
-                        return false;
-                }
-            }
-        }
-
-        return calledWithSelf;
-    };
-
-    // Classification used only when FFlag::LuauAutocompleteDotMethodConversion is enabled. Splits
-    // the wrong-indexer case into "wrong, but auto-fixable by rewriting '.' to ':'" vs. "wrong for
-    // some other reason", and otherwise mirrors isWrongIndexer.
+    // Splits the wrong-indexer case into "wrong, but auto-fixable by rewriting '.' to ':'" vs.
+    // "wrong for some other reason".
     enum class IndexerStatus
     {
         Ok,
@@ -490,19 +441,10 @@ static void autocompleteProps(
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(ty, nodes, typeCorrect);
 
-                bool replaceDot = false;
-                bool wrong = false;
-                if (FFlag::LuauAutocompleteDotMethodConversion)
-                {
-                    IndexerStatus s = classifyIndexer(type);
-                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
-                    wrong = (s == IndexerStatus::WrongOther);
-                }
-                else
-                {
-                    wrong = DEPRECATED_isWrongIndexer(type);
-                }
-                bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
+                IndexerStatus s = classifyIndexer(type);
+                const bool replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                const bool wrong = (s == IndexerStatus::WrongOther);
+                const bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
 
                 result[stringSingleton->value] = AutocompleteEntry{
                     AutocompleteEntryKind::String,
@@ -546,16 +488,9 @@ static void autocompleteProps(
 
                 bool replaceDot = false;
                 bool wrong = false;
-                if (FFlag::LuauAutocompleteDotMethodConversion)
-                {
-                    IndexerStatus s = classifyIndexer(type);
-                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
-                    wrong = (s == IndexerStatus::WrongOther);
-                }
-                else
-                {
-                    wrong = DEPRECATED_isWrongIndexer(type);
-                }
+                IndexerStatus s = classifyIndexer(type);
+                replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                wrong = (s == IndexerStatus::WrongOther);
                 bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
 
                 result[name] = AutocompleteEntry{

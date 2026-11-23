@@ -130,10 +130,12 @@ inline int getJumpTarget(uint32_t insn, uint32_t pc)
         return -1;
 }
 
-inline bool isFallthrough(LuauOpcode op)
+inline bool isFallthrough(LuauOpcode op, uint8_t skipC = 0)
 {
     switch (op)
     {
+    case LOP_LOADB:
+        return skipC == 0;
     case LOP_RETURN:
     case LOP_JUMP:
     case LOP_JUMPBACK:

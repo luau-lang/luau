@@ -25,7 +25,6 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAG(LuauFragmentACLocalAutocompleteFix)
 LUAU_FASTFLAG(LuauAutocompleteIfSlurpsCond)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
@@ -2557,7 +2556,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_inside_of_function_parameter")
 {
-    ScopedFastFlag sff{FFlag::LuauFragmentACLocalAutocompleteFix, true};
     const std::string source = R"(--!strict
 type Foo = { x: number, y: string }
 

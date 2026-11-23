@@ -1,0 +1,19 @@
+[flags-on]
+strict = '''
+./analysis/user-defined-type-functions/negation.luau(5,27): TypeError: Expected this to be '~(false?)', but got 'false'; 
+`false` cannot be `~(false?)`
+./analysis/user-defined-type-functions/negation.luau(5,7): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/user-defined-type-functions/negation.luau(5,7): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/user-defined-type-functions/negation.luau(5,27): TypeError: Expected this to be '~(false?)', but got 'false'; 
+`false` cannot be `~(false?)`
+./analysis/user-defined-type-functions/negation.luau(5,7): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/user-defined-type-functions/negation.luau(5,7): LocalUnused: Variable 'x' is never used; prefix with '_' to silence
+'''

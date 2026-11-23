@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+_luau_print (9, 9): ({ read getItem: (number) -> (never, ...unknown) }, number) -> ()
+
+'''
+nonstrict = ""
+runtime = ""
+
+[flags-off]
+strict = '''
+_luau_print (9, 9): ({ read getItem: (number) -> (never, ...unknown) }, number) -> ()
+
+'''
+nonstrict = ""
+runtime = ""

@@ -1,0 +1,13 @@
+[flags-on]
+strict = '''
+./analysis/property-modifiers/frozen_table_number_field.luau(3,8): TypeError: Expected this to be 'number', but got 'number'; `id` is a read-only property in the latter type, but the former type requires a read-write property
+'''
+nonstrict = ""
+runtime = ""
+
+[flags-off]
+strict = '''
+./analysis/property-modifiers/frozen_table_number_field.luau(3,8): TypeError: Expected this to be 'number', but got 'number'; `id` is a read-only property in the latter type, but the former type requires a read-write property
+'''
+nonstrict = ""
+runtime = ""

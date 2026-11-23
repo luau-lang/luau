@@ -13,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 struct Unifier2Fixture
 {
@@ -135,7 +134,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_binds_free_supertype_tail_pack")
 
 TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_intersection_in_ub_from_union")
 {
-    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+    // TODO CLI-168953: `never` is incorrect here.
     // 'a
     TypeId freeTy = arena.addType(FreeType{&scope, builtinTypes.neverType, builtinTypes.unknownType});
     // 'a & ~(false?)
@@ -144,7 +143,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_intersection_in_ub_from_unio
     TypeId superTy = arena.addType(UnionType{{builtinTypes.numberType, builtinTypes.nilType}});
     u2.unify(subTy, superTy);
 
-    CHECK("('a <: (false | number)?)" == toString(freeTy));
+    CHECK("('a <: never)" == toString(freeTy));
 }
 
 TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_lb_from_intersection")
@@ -162,7 +161,6 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_lb_from_intersection")
 
 TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_result_of_or_expr")
 {
-    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
     // This test simulates the result of unifying something like:
     //
     //  local function foobar(x, y): string
@@ -173,9 +171,11 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_result_of_or_expr")
     //
     //  ('X & ~(false?)) | 'Y <: string
     //
-    // ... and the final bounds ...
+    // ... which _should_ result in the final bounds ...
     //
     //  'X <: string | false | nil, 'Y <: string
+    //
+    // Except TODO CLI-168953: `string` is overly constraining here.
 
     // 'X
     TypeId freeTyX = arena.addType(FreeType{&scope, builtinTypes.neverType, builtinTypes.unknownType});
@@ -188,13 +188,12 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_result_of_or_expr")
     // ('X & ~(false)?) | 'Y <: string
     TypeId subTy = arena.addType(UnionType{{orLhs, freeTyY}});
     u2.unify(subTy, builtinTypes.stringType);
-    CHECK("('a <: (false | string)?)" == toString(freeTyX));
+    CHECK("('a <: string)" == toString(freeTyX));
     CHECK("('b <: string)" == toString(freeTyY));
 }
 
 TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_result_of_and_expr")
 {
-    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
     // This test simulates the result of unifying something like:
     //
     //  local function foobar(x, y): string
@@ -208,6 +207,8 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_result_of_and_expr")
     // ... and the final bounds ...
     //
     //  'X <: string | ~(false?), 'Y <: string
+    //
+    // Except TODO CLI-168953: `string` is overly constraining here.
 
     // 'X
     TypeId freeTyX = arena.addType(FreeType{&scope, builtinTypes.neverType, builtinTypes.unknownType});
@@ -220,8 +221,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_result_of_and_expr")
     // ('X & false?) | 'Y <: string
     TypeId subTy = arena.addType(UnionType{{andLhs, freeTyY}});
     u2.unify(subTy, builtinTypes.stringType);
-    // Not an amazing type, this should really be `'a <: ~(false?)`
-    CHECK("('a <: string | ~(false?))" == toString(freeTyX));
+    CHECK("('a <: string)" == toString(freeTyX));
     CHECK("('b <: string)" == toString(freeTyY));
 }
 

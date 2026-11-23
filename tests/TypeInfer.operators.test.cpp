@@ -14,7 +14,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -402,8 +401,6 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_basic")
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_op")
 {
-    ScopedFastFlag sff{FFlag::LuauCompoundAssignSeedsAstTypes, true};
-
     CheckResult result = check(R"(
         local s = 10
         s += true
@@ -426,8 +423,6 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_op")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_reports_invalid_vector_arithmetic")
 {
-    ScopedFastFlag sff{FFlag::LuauCompoundAssignSeedsAstTypes, true};
-
     CheckResult result = check(R"(
         local x = vector.zero
         x = x + 1
@@ -458,8 +453,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_reports_invalid_vector_arith
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")
 {
-    ScopedFastFlag sff{FFlag::LuauCompoundAssignSeedsAstTypes, true};
-
     CheckResult result = check(R"(
         local s = 'hello'
         s += 10

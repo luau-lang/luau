@@ -6,8 +6,8 @@
 #include "BytecodeGraphSerializer.h"
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauCostModel)
 LUAU_FASTFLAGVARIABLE(LuauInlinerNamecallSelfFromMove)
+LUAU_FASTFLAGVARIABLE(LuauBytecodeLoadbSkip)
 
 namespace Luau
 {
@@ -285,11 +285,8 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
         }
     }
 
-    if (FFlag::LuauCostModel)
-    {
-        if ((fn.flags & LPF_INLINABLE) != 0)
-            readVarInt64(data, offset);
-    }
+    if ((fn.flags & LPF_INLINABLE) != 0)
+        readVarInt64(data, offset);
 
     std::vector<uint32_t> insnsPC;
     BytecodeGraphParser<BcVmConst> graphParser(fn);

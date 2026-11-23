@@ -1,0 +1,13 @@
+[flags-on]
+strict = '''
+_luau_print (3, 17): "foo"
+
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+_luau_print (3, 17): "foo"
+
+'''
+nonstrict = ""

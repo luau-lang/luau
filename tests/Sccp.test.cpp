@@ -3,13 +3,43 @@
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeDump.h"
 #include "Luau/BytecodeGraph.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
 using namespace Luau;
 using namespace Luau::Bytecode;
 
+LUAU_FASTFLAG(LuauBytecodeLoadbSkip)
+
 TEST_SUITE_BEGIN("Sccp");
+
+TEST_CASE("loadb_unconditional_target_is_live_for_both_boolean_values")
+{
+    ScopedFastFlag skip{FFlag::LuauBytecodeLoadbSkip, true};
+    CompTimeBcFunction fn;
+    fn.numparams = 1;
+    fn.maxstacksize = 2;
+    BcOp entry = fn.entryBlock = fn.addBlock(), no = fn.addBlock(), yes = fn.addBlock(), merge = fn.addBlock();
+    fn.exitBlock = fn.addBlock();
+    fn.addInst(LOP_JUMPIF, entry, {{BcOpKind::VmReg, 0}, yes});
+    fn.addEdge(entry, yes, BcBlockEdgeKind::Branch);
+    fn.addEdge(entry, no, BcBlockEdgeKind::Fallthrough);
+    BcOp a = fn.addInst(LOP_LOADB, no, {fn.addImmBool(false), merge}, Reg(1));
+    fn.addEdge(no, merge, BcBlockEdgeKind::Branch);
+    BcOp b = fn.addInst(LOP_LOADB, yes, {fn.addImmBool(true)}, Reg(1));
+    fn.addEdge(yes, merge, BcBlockEdgeKind::Fallthrough);
+    BcOp phi = fn.addPhi(merge, {a, b}, Reg(1));
+    fn.addInst(LOP_RETURN, merge, {fn.addImmInt(1), phi});
+    fn.addEdge(merge, fn.exitBlock, BcBlockEdgeKind::Fallthrough);
+    BcVmConstImpl impl(fn);
+    Sccp<BcVmConst> sccp(fn, &impl);
+    CHECK_EQ(sccp.jumpTargets(fn.inst(a)).size(), 1);
+    sccp.propagate();
+    CHECK_EQ(sccp.state.operandLattice(phi).kind, Constness::NotAConstant);
+    sccp.rewrite();
+    CHECK_FALSE(fn.blockOp(merge).phis.empty());
+}
 
 TEST_CASE("sccp_does_not_fold_boolean_ordering")
 {

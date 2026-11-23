@@ -44,15 +44,14 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalAnalysis)
-LUAU_FLAGVERSION(LuauExperimentalIfLocalAnalysis, 2)
+LUAU_FLAGVERSION(LuauExperimentalIfLocalAnalysis, 3)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
-LUAU_FASTFLAGVARIABLE(LuauUnconditionallyVisitTypeAliasParams)
 LUAU_FASTFLAGVARIABLE(LuauBanGlobalsInTypeFunctions)
-LUAU_FLAGVERSION(LuauBanGlobalsInTypeFunctions, 2)
+LUAU_FLAGVERSION(LuauBanGlobalsInTypeFunctions, 3)
 LUAU_FASTFLAGVARIABLE(LuauFillInUninitializedGlobals)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalAnalysis)
+LUAU_FLAGVERSION(LuauExperimentalWhileLocalAnalysis, 2)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntaxSupport)
 
 namespace Luau
@@ -1803,7 +1802,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatWhile* whil
             builtinTypes->typeFunctions->refineFunc, {baseType, builtinTypes->truthyType}, {}, whileScope, while_->conditionLocal->location
         );
 
-        whileScope->bindings[while_->conditionLocal] = Binding{boundType, while_->conditionLocal->location};
+        whileScope->bindings[while_->conditionLocal] = Binding{baseType, while_->conditionLocal->location};
 
         DefId def = dfg->getDef(while_->conditionLocal);
         whileScope->lvalueTypes[def] = boundType;
@@ -2176,7 +2175,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifState
                 builtinTypes->typeFunctions->refineFunc, {baseType, builtinTypes->truthyType}, {}, thenScope, ifStatement->conditionLocal->location
             );
 
-            thenScope->bindings[ifStatement->conditionLocal] = Binding{boundType, ifStatement->conditionLocal->location};
+            thenScope->bindings[ifStatement->conditionLocal] = Binding{baseType, ifStatement->conditionLocal->location};
 
             DefId def = dfg->getDef(ifStatement->conditionLocal);
             thenScope->lvalueTypes[def] = boundType;
@@ -2690,20 +2689,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
         }
         else if (AstExprGlobal* globalName = statClass->exprName->as<AstExprGlobal>())
         {
-            std::optional<TypeId> existingClassTy = follow(lookup(scope, globalName->location, def));
-
-            if (!existingClassTy)
-                ice->ice("prepopulateGlobalScope did not populate a global name", globalName->location);
-
-            if (const BlockedType* bt = get<BlockedType>(*existingClassTy); bt && uninitializedGlobals.contains(globalName->name))
+            if (std::optional<TypeId> existingClassTy = follow(lookup(scope, globalName->location, def)))
             {
-                LUAU_ASSERT(bt->getOwner() == nullptr);
-                uninitializedGlobals.erase(globalName->name);
-                emplaceType<BoundType>(asMutable(*existingClassTy), boundTy);
-            }
+                if (const BlockedType* bt = get<BlockedType>(*existingClassTy); bt && uninitializedGlobals.contains(globalName->name))
+                {
+                    LUAU_ASSERT(bt->getOwner() == nullptr);
+                    uninitializedGlobals.erase(globalName->name);
+                    emplaceType<BoundType>(asMutable(*existingClassTy), boundTy);
+                }
 
-            scope->bindings[globalName->name] = Binding{boundTy, globalName->location};
-            scope->lvalueTypes[def] = boundTy;
+                scope->bindings[globalName->name] = Binding{boundTy, globalName->location};
+                scope->lvalueTypes[def] = boundTy;
+            }
         }
     }
     else
@@ -3242,36 +3239,18 @@ InferencePack ConstraintGenerator::checkExprCall(
 
         TypeId resultTy = nullptr;
 
-        if (FFlag::LuauSetmetatableOverrides)
+        if (isTableUnion(target))
         {
-            if (isTableUnion(target))
-            {
-                const UnionType* targetUnion = get<UnionType>(target);
-                UnionBuilder ub{arena, builtinTypes};
+            const UnionType* targetUnion = get<UnionType>(target);
+            UnionBuilder ub{arena, builtinTypes};
 
-                for (TypeId ty : targetUnion)
-                    ub.add(arena->addType(MetatableType{findSetmetatableTargetOf(ty), mt}));
+            for (TypeId ty : targetUnion)
+                ub.add(arena->addType(MetatableType{findSetmetatableTargetOf(ty), mt}));
 
-                resultTy = ub.build();
-            }
-            else
-                resultTy = arena->addType(MetatableType{findSetmetatableTargetOf(target), mt});
+            resultTy = ub.build();
         }
         else
-        {
-            if (isTableUnion(target))
-            {
-                const UnionType* targetUnion = get<UnionType>(target);
-                UnionBuilder ub{arena, builtinTypes};
-
-                for (TypeId ty : targetUnion)
-                    ub.add(arena->addType(MetatableType{ty, mt}));
-
-                resultTy = ub.build();
-            }
-            else
-                resultTy = arena->addType(MetatableType{target, mt});
-        }
+            resultTy = arena->addType(MetatableType{findSetmetatableTargetOf(target), mt});
 
         module->astTypes[call] = resultTy;
 
@@ -3893,7 +3872,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifEls
             builtinTypes->typeFunctions->refineFunc, {baseType, builtinTypes->truthyType}, {}, thenScope, ifElse->conditionLocal->location
         );
 
-        thenScope->bindings[ifElse->conditionLocal] = Binding{boundType, ifElse->conditionLocal->location};
+        thenScope->bindings[ifElse->conditionLocal] = Binding{baseType, ifElse->conditionLocal->location};
 
         DefId def = dfg->getDef(ifElse->conditionLocal);
         thenScope->lvalueTypes[def] = boundType;
@@ -4724,125 +4703,63 @@ TypeId ConstraintGenerator::resolveReferenceType(
         alias = scope->lookupType(ref->name.value);
     }
 
-    if (FFlag::LuauUnconditionallyVisitTypeAliasParams)
+    std::vector<TypeId> parameters;
+    std::vector<TypePackId> packParameters;
+
+    for (const AstTypeOrPack& p : ref->parameters)
     {
-        std::vector<TypeId> parameters;
-        std::vector<TypePackId> packParameters;
-
-        for (const AstTypeOrPack& p : ref->parameters)
+        // We do not enforce the ordering of typeArguments vs. type packs here;
+        // that is done in the parser.
+        if (p.type)
         {
-            // We do not enforce the ordering of typeArguments vs. type packs here;
-            // that is done in the parser.
-            if (p.type)
-            {
-                parameters.push_back(resolveType_(scope, p.type, /* inTypeArguments */ true));
-            }
-            else if (p.typePack)
-            {
-                TypePackId tp = resolveTypePack_(scope, p.typePack, /*inTypeArguments*/ true);
+            parameters.push_back(resolveType_(scope, p.type, /* inTypeArguments */ true));
+        }
+        else if (p.typePack)
+        {
+            TypePackId tp = resolveTypePack_(scope, p.typePack, /*inTypeArguments*/ true);
 
-                // If we need more regular typeArguments, we can use single
-                // element type packs to fill those in. Alias might be `nullopt`
-                // here, if we're referring to an unknown type alias, so check
-                // that first.
-                if (alias && parameters.size() < alias->typeParams.size() && size(tp) == 1 && finite(tp) && first(tp))
-                    parameters.push_back(*first(tp));
-                else
-                    packParameters.push_back(tp);
-            }
+            // If we need more regular typeArguments, we can use single
+            // element type packs to fill those in. Alias might be `nullopt`
+            // here, if we're referring to an unknown type alias, so check
+            // that first.
+            if (alias && parameters.size() < alias->typeParams.size() && size(tp) == 1 && finite(tp) && first(tp))
+                parameters.push_back(*first(tp));
             else
-            {
-                // This indicates a parser bug: one of these two pointers
-                // should be set.
-                LUAU_ASSERT(false);
-            }
-        }
-
-        if (!alias)
-        {
-            // We failed to look up the alias at all. The type checker will
-            // report the lookup failure when it visits the type later.
-            module->astTypeReferenceLookupFailures.insert(ty);
-            result = builtinTypes->errorType;
-            if (replaceErrorWithFresh)
-                result = freshType(scope, Polarity::Mixed);
-        }
-        else if (alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
-        {
-            // We have an alias, but there are no arguments, nor does this
-            // alias require any.
-            result = alias->type;
+                packParameters.push_back(tp);
         }
         else
         {
-            // We have an alias, but we need to resolve the arguments.
-            result = arena->addType(PendingExpansionType{ref->prefix, ref->name, std::move(parameters), std::move(packParameters)});
-
-            // If we're not in a type argument context, we need to create a constraint that expands this.
-            // The dispatching of the above constraint will queue up additional constraints for nested
-            // type function applications.
-            if (!inTypeArguments)
-                addConstraint(scope, ty->location, TypeAliasExpansionConstraint{/* target */ result});
+            // This indicates a parser bug: one of these two pointers
+            // should be set.
+            LUAU_ASSERT(false);
         }
+    }
+
+    if (!alias)
+    {
+        // We failed to look up the alias at all. The type checker will
+        // report the lookup failure when it visits the type later.
+        module->astTypeReferenceLookupFailures.insert(ty);
+        result = builtinTypes->errorType;
+        if (replaceErrorWithFresh)
+            result = freshType(scope, Polarity::Mixed);
+    }
+    else if (alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
+    {
+        // We have an alias, but there are no arguments, nor does this
+        // alias require any.
+        result = alias->type;
     }
     else
     {
+        // We have an alias, but we need to resolve the arguments.
+        result = arena->addType(PendingExpansionType{ref->prefix, ref->name, std::move(parameters), std::move(packParameters)});
 
-        if (alias.has_value())
-        {
-            // If the alias is not generic, we don't need to set up a blocked type and an instantiation constraint
-            if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
-            {
-                result = alias->type;
-            }
-            else
-            {
-                std::vector<TypeId> parameters;
-                std::vector<TypePackId> packParameters;
-
-                for (const AstTypeOrPack& p : ref->parameters)
-                {
-                    // We do not enforce the ordering of typeArguments vs. type packs here;
-                    // that is done in the parser.
-                    if (p.type)
-                    {
-                        parameters.push_back(resolveType_(scope, p.type, /* inTypeArguments */ true));
-                    }
-                    else if (p.typePack)
-                    {
-                        TypePackId tp = resolveTypePack_(scope, p.typePack, /*inTypeArguments*/ true);
-
-                        // If we need more regular typeArguments, we can use single element type packs to fill those in
-                        if (parameters.size() < alias->typeParams.size() && size(tp) == 1 && finite(tp) && first(tp))
-                            parameters.push_back(*first(tp));
-                        else
-                            packParameters.push_back(tp);
-                    }
-                    else
-                    {
-                        // This indicates a parser bug: one of these two pointers
-                        // should be set.
-                        LUAU_ASSERT(false);
-                    }
-                }
-
-                result = arena->addType(PendingExpansionType{ref->prefix, ref->name, std::move(parameters), std::move(packParameters)});
-
-                // If we're not in a type argument context, we need to create a constraint that expands this.
-                // The dispatching of the above constraint will queue up additional constraints for nested
-                // type function applications.
-                if (!inTypeArguments)
-                    addConstraint(scope, ty->location, TypeAliasExpansionConstraint{/* target */ result});
-            }
-        }
-        else
-        {
-            // The type checker will report the lookup failure when it visits the type later.
-            module->astTypeReferenceLookupFailures.insert(ty);
-            result = builtinTypes->errorType;
-            if (replaceErrorWithFresh)
-                result = freshType(scope, Polarity::Mixed);
-        }
+        // If we're not in a type argument context, we need to create a constraint that expands this.
+        // The dispatching of the above constraint will queue up additional constraints for nested
+        // type function applications.
+        if (!inTypeArguments)
+            addConstraint(scope, ty->location, TypeAliasExpansionConstraint{/* target */ result});
     }
 
     if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result)))

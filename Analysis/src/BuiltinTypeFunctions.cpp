@@ -24,8 +24,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
-LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
@@ -2353,13 +2351,10 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         if (metatableMetamethod)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-        if (FFlag::LuauSetmetatableOverrides)
-        {
-            // If there's already a metatable here then grab the underlying
-            // table instead.
-            if (auto mt = get<MetatableType>(table))
-                table = mt->table;
-        }
+        // If there's already a metatable here then grab the underlying
+        // table instead.
+        if (auto mt = get<MetatableType>(table))
+            table = mt->table;
 
         TypeId withMetatable = ctx->arena->addType(MetatableType{table, metatableTy});
 
@@ -2380,13 +2375,10 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         if (metatableMetamethod)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-        if (FFlag::LuauSetmetatableOverrides)
-        {
-            // If there's already a metatable here then grab the underlying
-            // table instead.
-            if (auto mt = get<MetatableType>(componentTy))
-                componentTy = mt->table;
-        }
+        // If there's already a metatable here then grab the underlying
+        // table instead.
+        if (auto mt = get<MetatableType>(componentTy))
+            componentTy = mt->table;
 
         TypeId withMetatable = ctx->arena->addType(MetatableType{componentTy, metatableTy});
         SimplifyResult simplified = simplifyUnion(ctx->builtins, ctx->arena, result, withMetatable);

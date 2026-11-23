@@ -40,7 +40,6 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
-LUAU_FASTFLAGVARIABLE(LuauBetterMetatableStringification)
 
 namespace Luau
 {
@@ -892,33 +891,18 @@ struct TypeStringifier
 
     void operator()(TypeId ty, const MetatableType& mtv)
     {
-        if (!FFlag::LuauBetterMetatableStringification)
-            state.result.invalid = true;
-
         if (!state.exhaustive && mtv.syntheticName)
         {
             state.emitAndRecordSpan(*mtv.syntheticName, ty);
             return;
         }
 
-        if (FFlag::LuauBetterMetatableStringification)
-        {
-            state.emit("setmetatable<");
-            stringify(mtv.table);
-            state.emit(",");
-            state.newline();
-            stringify(mtv.metatable);
-            state.emit(">");
-        }
-        else
-        {
-            state.emit("{ @metatable ");
-            stringify(mtv.metatable);
-            state.emit(",");
-            state.newline();
-            stringify(mtv.table);
-            state.emit(" }");
-        }
+        state.emit("setmetatable<");
+        stringify(mtv.table);
+        state.emit(",");
+        state.newline();
+        stringify(mtv.metatable);
+        state.emit(">");
     }
 
     void operator()(TypeId ty, const ExternType& etv)

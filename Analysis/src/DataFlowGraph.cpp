@@ -14,6 +14,7 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
+LUAU_FASTFLAG(LuauBanGlobalsInTypeFunctions)
 LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 
 namespace Luau
@@ -832,12 +833,65 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatTypeAlias* t)
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatTypeFunction* f)
 {
-    DfgScope* unreachable = makeChildScope();
-    PushScope ps{scopeStack, unreachable};
+    if (FFlag::LuauBanGlobalsInTypeFunctions)
+    {
+        // !!! Warning, a challenger approaches !!!
+        //
+        // Type functions exist in an *entirely* different environment from
+        // other values:
+        //  - Normal globals and upvalues cannot be accessed, and the global
+        //    environment is frozen.
+        //  - We conspire to have type aliases be accessible as globals from
+        //    each environment, plus libraries like `types` and helper
+        //    functions like pcall.
+        //
+        // This matters because sharing state would mean that the globals
+        // referenced inside type functions would appear to be part of the
+        // "same" value, which is not true, for example:
+        //
+        //      do
+        //        type F = number
+        //        type function f()
+        //            return F
+        //        end
+        //      end
+        //
+        //      do
+        //        type F = string
+        //        type function f()
+        //            return F
+        //        end
+        //      end
+        //
+        // ... the two `F`s here are actually _entirely disjoint values_. They
+        // don't refer to the same global!
+        //
+        // In the model where aliases are rendered as globals inside type
+        // functions, which is what we do to support actually _running_ user
+        // defined type functions, then our best bet is to to stub out the
+        // environment for type functions like so.
+        ScopeStack temp{scopes.front().get()};
+        DenseHashMap<Symbol, FunctionCapture> tempCaptures;
+        std::swap(temp, scopeStack);
+        std::swap(tempCaptures, captures);
+        {
+            DfgScope* unreachable = makeChildScope();
+            PushScope ps{scopeStack, unreachable};
+            visitExpr(f->body);
+        }
+        std::swap(temp, scopeStack);
+        std::swap(tempCaptures, captures);
+        return ControlFlow::None;
+    }
+    else
+    {
+        DfgScope* unreachable = makeChildScope();
+        PushScope ps{scopeStack, unreachable};
 
-    visitExpr(f->body);
+        visitExpr(f->body);
 
-    return ControlFlow::None;
+        return ControlFlow::None;
+    }
 }
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareGlobal* d)

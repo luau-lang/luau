@@ -15,7 +15,7 @@
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
+LUAU_FASTFLAG(LuauSupportNegationOfIntersectionType)
 
 using namespace Luau;
 
@@ -1169,7 +1169,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+    ScopedFastFlag _{FFlag::LuauSupportNegationOfIntersectionType, true};
 
     IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
     ib.add(getBuiltins()->numberType);
@@ -1191,7 +1191,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_2")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sff{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+    ScopedFastFlag _{FFlag::LuauSupportNegationOfIntersectionType, true};
 
     IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
     ib.add(getBuiltins()->unknownType);
@@ -1213,7 +1213,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_3")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+    ScopedFastFlag _{FFlag::LuauSupportNegationOfIntersectionType, true};
 
     IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
     ib.add(getBuiltins()->neverType);
@@ -1235,7 +1235,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negation_of_testable_intersection_type_4")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDecomposeIntersectionOfFreeType, true};
+    ScopedFastFlag _{FFlag::LuauSupportNegationOfIntersectionType, true};
 
     IntersectionBuilder ib{NotNull{&arena}, NotNull{getBuiltins()}};
     auto fooTy = arena.addType(SingletonType{StringSingleton{"foo"}});

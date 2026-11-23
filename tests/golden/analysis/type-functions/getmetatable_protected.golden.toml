@@ -1,0 +1,7 @@
+[flags-on]
+strict = ""
+nonstrict = ""
+
+[flags-off]
+strict = ""
+nonstrict = ""

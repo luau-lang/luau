@@ -1,0 +1,17 @@
+[flags-on]
+strict = '''
+./analysis/singletons/enums_using_singletons_mismatch.luau(2,20): TypeError: Expected this to be '"bar" | "baz" | "foo"', but got '"bang"'
+./analysis/singletons/enums_using_singletons_mismatch.luau(2,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/enums_using_singletons_mismatch.luau(2,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/enums_using_singletons_mismatch.luau(2,20): TypeError: Expected this to be '"bar" | "baz" | "foo"', but got '"bang"'
+./analysis/singletons/enums_using_singletons_mismatch.luau(2,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/enums_using_singletons_mismatch.luau(2,7): LocalUnused: Variable 'a' is never used; prefix with '_' to silence
+'''

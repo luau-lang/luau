@@ -10,7 +10,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 
 namespace
 {
@@ -65,7 +64,6 @@ struct SimplifyFixture : Fixture
 
     // This only affects type stringification.
     ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff2{FFlag::LuauDecomposeIntersectionOfFreeType, true};
 
     SimplifyFixture()
     {

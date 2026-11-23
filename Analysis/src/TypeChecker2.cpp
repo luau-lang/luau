@@ -13,6 +13,7 @@
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
 #include "Luau/OverloadResolver.h"
+#include "Luau/StackPusher.h"
 #include "Luau/Subtyping.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
@@ -36,10 +37,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAGVARIABLE(LuauSkipUnusedTypeTraversals)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
-LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
-LUAU_FASTFLAGVARIABLE(LuauDontUseInnermostScope)
-LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
@@ -56,41 +53,6 @@ namespace Luau
 // TODO move these
 using PrintLineProc = void (*)(const std::string&);
 extern PrintLineProc luauPrintLine;
-
-/* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
- * TypeChecker2 uses this to maintain knowledge about which scope encloses every
- * given AstNode.
- */
-struct StackPusher
-{
-    std::vector<NotNull<Scope>>* stack;
-    NotNull<Scope> scope;
-
-    explicit StackPusher(std::vector<NotNull<Scope>>& stack, Scope* scope)
-        : stack(&stack)
-        , scope(scope)
-    {
-        stack.push_back(NotNull{scope});
-    }
-
-    ~StackPusher()
-    {
-        if (stack)
-        {
-            LUAU_ASSERT(stack->back() == scope);
-            stack->pop_back();
-        }
-    }
-
-    StackPusher(const StackPusher&) = delete;
-    StackPusher&& operator=(const StackPusher&) = delete;
-
-    StackPusher(StackPusher&& other)
-        : stack(std::exchange(other.stack, nullptr))
-        , scope(other.scope)
-    {
-    }
-};
 
 struct PropertyTypes
 {
@@ -537,9 +499,7 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         NotNull{module->internalTypes.get()}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping
     };
 
-    ErrorVec errors =
-        reduceTypeFunctions(instance, location, NotNull{&context}, true, FFlag::LuauTypeFunctionsAbsenceCache ? &typeFunctionAbsenceCache : nullptr)
-            .errors;
+    ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true, &typeFunctionAbsenceCache).errors;
     if (!isErrorSuppressing(location, instance))
         reportErrors(std::move(errors));
     return instance;
@@ -649,29 +609,6 @@ TypePackId TypeChecker2::reconstructPack(AstArray<AstExpr*> exprs, TypeArena& ar
     return arena.addTypePack(TypePack{std::move(head), tail});
 }
 
-Scope* TypeChecker2::findInnermostScope_DEPRECATED(Location location) const
-{
-    LUAU_ASSERT(!FFlag::LuauDontUseInnermostScope);
-    Scope* bestScope = module->getModuleScope().get();
-
-    bool didNarrow;
-    do
-    {
-        didNarrow = false;
-        for (auto scope : bestScope->children)
-        {
-            if (scope->location.encloses(location))
-            {
-                bestScope = scope.get();
-                didNarrow = true;
-                break;
-            }
-        }
-    } while (didNarrow && bestScope->children.size() > 0);
-
-    return bestScope;
-}
-
 void TypeChecker2::visit(AstStat* stat)
 {
     auto pusher = pushStack(stat);
@@ -777,7 +714,7 @@ void TypeChecker2::visit(AstStatContinue*) {}
 
 void TypeChecker2::visit(AstStatReturn* ret)
 {
-    Scope* scope = FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(ret->location);
+    Scope* scope = stack.back();
 
     TypePackId expectedRetType = scope->returnType;
     if (ret->list.size == 0)
@@ -1341,12 +1278,6 @@ void TypeChecker2::visit(AstStatAssign* assign)
 
 void TypeChecker2::visit(AstStatCompoundAssign* stat)
 {
-    if (!FFlag::LuauCompoundAssignSeedsAstTypes)
-    {
-        AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
-        visit(&fake, stat);
-    }
-
     TypeId* resultTy = module->astCompoundAssignResultTypes.find(stat);
 
     if (module->constraintGenerationDidNotComplete && !resultTy)
@@ -1354,13 +1285,10 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
 
     LUAU_ASSERT(resultTy);
 
-    if (FFlag::LuauCompoundAssignSeedsAstTypes)
-    {
-        AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
-        module->astTypes[&fake] = *resultTy;
-        visit(&fake, stat);
-        module->astTypes.erase(&fake);
-    }
+    AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
+    module->astTypes[&fake] = *resultTy;
+    visit(&fake, stat);
+    module->astTypes.erase(&fake);
 
     TypeId varTy = lookupType(stat->var);
 
@@ -1413,20 +1341,9 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
     if (!module->astScopes.contains(stat))
         return;
 
-    if (FFlag::LuauDontUseInnermostScope)
-    {
-        auto scope = stack.back();
-        if (auto loc = scope->isInvalidTypeAlias(stat->name.value))
-            reportError(RecursiveRestraintViolation{}, *loc);
-    }
-    else
-    {
-        if (const Scope* scope = findInnermostScope_DEPRECATED(stat->location))
-        {
-            if (auto loc = scope->isInvalidTypeAlias(stat->name.value))
-                reportError(RecursiveRestraintViolation{}, *loc);
-        }
-    }
+    auto scope = stack.back();
+    if (auto loc = scope->isInvalidTypeAlias(stat->name.value))
+        reportError(RecursiveRestraintViolation{}, *loc);
 
     visitGenerics(stat->generics, stat->genericPacks);
     visit(stat->type);
@@ -1465,7 +1382,7 @@ void TypeChecker2::visit(AstStatDeclareExternType* stat)
 
 void TypeChecker2::checkExtendsClause(AstStatClass* stat)
 {
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(stat->location)};
+    NotNull<Scope> scope{stack.back()};
 
     // The extends clause technically contains an expression, so we expect
     // lookupType() to yield to us a class type (not an instance type!)
@@ -1733,15 +1650,15 @@ bool TypeChecker2::FindUninitializedAccesses::visit(AstExprTypeAssertion* expr)
 
 bool TypeChecker2::FindUninitializedAccesses::visit(AstExprCall* call)
 {
-    if (superConstructor == nullptr || superConstructor != checker->lookupType(call->func))
+    if (superConstructor == nullptr || superConstructor != checker->lookupType(call->func) || call->args.size == 0)
         return true;
 
     bool superConstructorCalled = false;
-    AstExpr* const* arg = call->args.begin() + 1;
+    AstExpr* const* arg = call->args.begin();
     if (const AstExprLocal* local = (*arg)->as<AstExprLocal>(); local && local->local == self)
         superConstructorCalled = true;
 
-    for (; arg != call->args.end(); ++arg)
+    for (++arg; arg != call->args.end(); ++arg)
         (*arg)->visit(this);
 
     if (superConstructorCalled)
@@ -1799,15 +1716,15 @@ void TypeChecker2::visitConstructor(AstStatClass* stat, const AstClassMethod* me
     {
         const Property& constructor = superInstanceEtv->props.at("__init");
         LUAU_ASSERT(constructor.readTy);
-        superConstructor = *constructor.readTy;
+        superConstructor = follow(*constructor.readTy);
     }
 
     FindUninitializedAccesses finder{self, NotNull{&uninitializedFields}, std::move(methodNames), superConstructor, NotNull{this}};
 
     for (auto stat : method->function->body->body)
     {
-        // We only check assignments which are executed unconditionally
-        if (auto assignment = stat->as<AstStatAssign>())
+        // We check assignments which are executed unconditionally if super constructor was called or doesn't exist
+        if (auto assignment = stat->as<AstStatAssign>(); assignment && finder.superConstructor == nullptr)
         {
             // First search initializers for offending field accesses
             for (auto expr : assignment->values)
@@ -1924,7 +1841,7 @@ void TypeChecker2::visit(AstExprConstantNil* expr)
 #if defined(LUAU_ENABLE_ASSERT)
     TypeId actualType = lookupType(expr);
     TypeId expectedType = builtinTypes->nilType;
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(expr->location)};
+    NotNull<Scope> scope{stack.back()};
 
     SubtypingResult r = subtyping->isSubtype(actualType, expectedType, scope);
     LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
@@ -1937,7 +1854,7 @@ void TypeChecker2::visit(AstExprConstantBool* expr)
 
     const TypeId bestType = expr->value ? builtinTypes->trueType : builtinTypes->falseType;
     const TypeId inferredType = lookupType(expr);
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(expr->location)};
+    NotNull<Scope> scope{stack.back()};
 
     SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
     if (!r.isErrorSuppressing)
@@ -1955,7 +1872,7 @@ void TypeChecker2::visit(AstExprConstantNumber* expr)
 #if defined(LUAU_ENABLE_ASSERT)
     const TypeId bestType = builtinTypes->numberType;
     const TypeId inferredType = lookupType(expr);
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(expr->location)};
+    NotNull<Scope> scope{stack.back()};
 
     const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
     LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
@@ -1968,7 +1885,7 @@ void TypeChecker2::visit(AstExprConstantString* expr)
 
     const TypeId bestType = module->internalTypes->addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
     const TypeId inferredType = lookupType(expr);
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(expr->location)};
+    NotNull<Scope> scope{stack.back()};
 
     SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
     if (!isErrorSuppressing(expr->location, inferredType))
@@ -2034,7 +1951,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
 {
     TypePack args;
     std::vector<AstExpr*> argExprs;
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(call->location)};
+    NotNull<Scope> scope{stack.back()};
     argExprs.reserve(call->args.size + 1);
 
     TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
@@ -2111,8 +2028,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         for (size_t idx = 0; idx < call->args.size; ++idx)
         {
             AstExpr* argExpr = call->args.data[idx];
-            if (FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks)
-                argExprs.push_back(argExpr);
+            argExprs.push_back(argExpr);
 
             if (idx + selfOffset < paramsHead.size())
             {
@@ -2137,8 +2053,6 @@ void TypeChecker2::visitCall(AstExprCall* call)
             }
 
             TypeId argExprType = lookupType(argExpr);
-            if (!FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks)
-                argExprs.push_back(argExpr);
             if (idx + selfOffset >= paramsHead.size() || isErrorSuppressing(argExpr->location, argExprType))
                 args.head.push_back(argExprType);
             else
@@ -3295,7 +3209,7 @@ void TypeChecker2::visitGenerics(AstArray<AstGenericType*> generics, AstArray<As
 
 void TypeChecker2::visit(AstType* ty)
 {
-    std::optional<StackPusher> osp = FFlag::LuauDontUseInnermostScope ? pushStack(ty) : std::nullopt;
+    std::optional<StackPusher> osp = pushStack(ty);
 
     TypeId* resolvedTy = module->astResolvedTypes.find(ty);
     if (resolvedTy)
@@ -3334,7 +3248,7 @@ void TypeChecker2::visit(AstTypeReference* ty)
             visit(param.typePack);
     }
 
-    Scope* scope = FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(ty->location);
+    Scope* scope = stack.back();
     LUAU_ASSERT(scope);
 
     std::optional<TypeFun> alias = (ty->prefix) ? scope->lookupImportedType(ty->prefix->value, ty->name.value) : scope->lookupType(ty->name.value);
@@ -3539,7 +3453,7 @@ void TypeChecker2::visit(AstTypePackVariadic* tp)
 
 void TypeChecker2::visit(AstTypePackGeneric* tp)
 {
-    Scope* scope = FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(tp->location);
+    Scope* scope = stack.back();
     LUAU_ASSERT(scope);
 
     if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
@@ -3787,7 +3701,7 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
 
 bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType)
 {
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(expr->location)};
+    NotNull<Scope> scope{stack.back()};
     TypeId exprTy = follow(lookupType(expr));
 
     expectedType = follow(expectedType);
@@ -3935,7 +3849,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     bool isArrayLike = false;
     if (expectedTableType->indexer)
     {
-        NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(expr->location)};
+        NotNull<Scope> scope{stack.back()};
 
         auto result = subtyping->isSubtype(/* subTy */ builtinTypes->numberType, /* superTy */ expectedTableType->indexer->indexType, scope);
         isArrayLike = result.isSubtype || isErrorSuppressing(expr->location, expectedTableType->indexer->indexType);
@@ -4016,7 +3930,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
 
 bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location)
 {
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(location)};
+    NotNull<Scope> scope{stack.back()};
     SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
 
     if (r.isErrorSuppressing)
@@ -4037,7 +3951,7 @@ bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location
 
 bool TypeChecker2::testIsSubtype(TypePackId subTy, TypePackId superTy, Location location)
 {
-    NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(location)};
+    NotNull<Scope> scope{stack.back()};
     SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope, {});
 
     if (!isErrorSuppressing(location, subTy))
@@ -4080,7 +3994,7 @@ void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId pr
 
     const Location& iterFuncLocation = forInStat.values.data[0]->location;
 
-    const NotNull<Scope> scope{FFlag::LuauDontUseInnermostScope ? stack.back() : findInnermostScope_DEPRECATED(iterFuncLocation)};
+    const NotNull<Scope> scope{stack.back()};
     SubtypingResult r = subtyping->isSubtype(iterFunc, prospectiveFunc, scope);
 
     if (!isErrorSuppressing(iterFuncLocation, iterFunc))

@@ -1,1 +1,0 @@
-./analysis/classes/cyclic_inheritance.luau(3,22): UninitializedLocal: Variable 'B' defined at line 2 is never initialized or assigned; initialize with 'nil' to silence

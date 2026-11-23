@@ -27,10 +27,13 @@ from .discovery import (
 from .executables import resolve_executables
 from .execution import execute_configuration, run_command
 from .expectations import (
+    format_snapshot,
+    read_snapshot,
     remove_actual_outputs,
     update_configuration,
     validate_configuration,
     write_actual_outputs,
+    write_snapshot,
 )
 from .models import (
     COMMANDS,
@@ -179,18 +182,62 @@ class DirectiveTests(unittest.TestCase):
                     _ = directives_from_file(path)
 
 
+class SnapshotFormatTests(unittest.TestCase):
+    def test_round_trips_arbitrary_output(self) -> None:
+        samples = (
+            "",
+            "\n",
+            "no trailing newline",
+            "line\n",
+            "ends in quote'",
+            "ends in two quotes''",
+            "embedded ''' triple quote\n",
+            "''' leading triple quote",
+            'backslash \\ and "double" quotes\n',
+            "\ttabbed\n",
+            "control \x00 \x1b[31m \x7f characters\n",
+            "non-ASCII: λ → 日本\n",
+        )
+        for sample in samples:
+            with self.subTest(sample=sample), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / "case.golden.toml"
+                outputs = {("flags-on", "runtime"): sample}
+                _write(path, format_snapshot(outputs))
+
+                self.assertEqual(outputs, read_snapshot(path))
+
+    def test_plain_output_uses_readable_literal_strings(self) -> None:
+        self.assertEqual(
+            "[flags-on]\nruntime = '''\nsay \"hi\" \\ there\n'''\n",
+            format_snapshot({("flags-on", "runtime"): 'say "hi" \\ there\n'}),
+        )
+
+    def test_orders_by_matrix_and_omits_empty_tables(self) -> None:
+        outputs = {
+            ("flags-off", "runtime"): "",
+            ("flags-off", "strict"): "",
+            ("flags-on", "nonstrict"): "",
+        }
+
+        self.assertEqual(
+            '[flags-on]\nnonstrict = ""\n\n[flags-off]\nstrict = ""\nruntime = ""\n',
+            format_snapshot(outputs),
+        )
+        self.assertEqual("", format_snapshot({}))
+
+
 class DiscoveryTests(unittest.TestCase):
     def test_status_is_optional_with_exact_output_for_each_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             # A file with no directive is a test; its output resolves the outcome.
             _write(root / "case.luau", "return true\n")
-            _write(root / "case.flags-on.strict.output")
+            _write(root / "case.golden.toml", '[flags-on]\nstrict = ""\n')
 
             with self.assertRaisesRegex(GoldenError, "no status resolves.*flags-off"):
                 _ = load_and_validate_tests(discover_test_index(root))
 
-            _write(root / "case.flags-off.nonstrict.output")
+            _write(root / "case.golden.toml", '[flags-on]\nstrict = ""\n\n[flags-off]\nnonstrict = ""\n')
             tests = load_and_validate_tests(discover_test_index(root))
 
             self.assertEqual(["case"], [test.test_id for test in tests])
@@ -396,32 +443,43 @@ class DiscoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _write(root / "case.luau", "--!golden ok\n")
-            _write(root / "missing.flags-on.runtime.output", "orphan\n")
-            with self.assertRaisesRegex(GoldenError, "orphan exact-output"):
+            _write(root / "missing.golden.toml", "[flags-on]\nruntime = 'orphan'\n")
+            with self.assertRaisesRegex(GoldenError, "orphan golden snapshot"):
                 _ = load_and_validate_tests(discover_test_index(root))
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _write(root / "case.luau", "--!golden status: ok, runtime.output: /value/\n")
-            _write(root / "case.flags-on.runtime.output", "value\n")
-            with self.assertRaisesRegex(GoldenError, "regex and exact"):
+            _write(root / "case.golden.toml", "[flags-on]\nruntime = 'value'\n")
+            with self.assertRaisesRegex(GoldenError, "regex and exact.*flags-on.runtime"):
                 _ = load_and_validate_tests(discover_test_index(root))
 
-    def test_rejects_malformed_exact_output_filenames(self) -> None:
-        malformed_names = (
-            "case.flags-on.strcit.output",
-            "case.falgs-on.strict.output",
-            "case.strict.output",
-            "notes.output",
+    def test_rejects_malformed_snapshots(self) -> None:
+        malformed = (
+            ("[flags-on]\nstrcit = ''\n", "unknown command 'strcit'"),
+            ("[falgs-on]\nstrict = ''\n", "unknown configuration 'falgs-on'"),
+            ("strict = ''\n", "unknown configuration 'strict'"),
+            ("flags-on = 'value'\n", r"\[flags-on\] must be a table"),
+            ("[flags-on]\nstrict = 1\n", "flags-on.strict must be a string"),
+            ("[flags-on]\nstrict = '''\n", "invalid TOML"),
         )
-        for name in malformed_names:
-            with tempfile.TemporaryDirectory() as temporary, self.subTest(name=name):
+        for contents, message in malformed:
+            with tempfile.TemporaryDirectory() as temporary, self.subTest(contents=contents):
                 root = Path(temporary)
                 _write(root / "case.luau", "--!golden ok\n")
-                _write(root / name)
+                _write(root / "case.golden.toml", contents)
 
-                with self.assertRaisesRegex(GoldenError, "malformed exact-output filename"):
+                with self.assertRaisesRegex(GoldenError, message):
                     _ = load_and_validate_tests(discover_test_index(root))
+
+    def test_rejects_per_permutation_output_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _write(root / "case.luau", "--!golden ok\n")
+            _write(root / "case.flags-on.strict.output")
+
+            with self.assertRaisesRegex(GoldenError, "unsupported exact-output file.*golden.toml"):
+                _ = load_and_validate_tests(discover_test_index(root))
 
     def test_rejects_empty_suite_and_invalid_exact_utf8(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(GoldenError, "suite is empty"):
@@ -430,7 +488,7 @@ class DiscoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _write(root / "case.luau", "--!golden ok\n")
-            _ = (root / "case.flags-on.runtime.output").write_bytes(b"\xff")
+            _ = (root / "case.golden.toml").write_bytes(b"[flags-on]\nruntime = '\xff'\n")
             with self.assertRaisesRegex(GoldenError, "not valid UTF-8"):
                 _ = load_and_validate_tests(discover_test_index(root))
 
@@ -604,12 +662,12 @@ class DiffTests(unittest.TestCase):
             with mock.patch.object(stream, "isatty", return_value=True):
                 self.assertFalse(diff_color_enabled(stream, {}))
             self.assertEqual(
-                unified_diff(Path("expected"), "old\n", "new\n"),
-                unified_diff(Path("expected"), "old\n", "new\n", color=True),
+                unified_diff("expected", "old\n", "new\n"),
+                unified_diff("expected", "old\n", "new\n", color=True),
             )
 
     def test_replacement_highlights_only_changed_characters(self) -> None:
-        diff = unified_diff(Path("expected"), "value: cat!\n", "value: cot?\n", color=True)
+        diff = unified_diff("expected", "value: cat!\n", "value: cot?\n", color=True)
 
         self.assertIn("\x1b[31m--- expected\x1b[0m\n", diff)
         self.assertIn("\x1b[32m+++ captured output\x1b[0m\n", diff)
@@ -625,7 +683,7 @@ class DiffTests(unittest.TestCase):
             ("removed\n", "", "\x1b[38;5;16m\x1b[48;5;224m-removed\x1b[0m\n"),
         ):
             with self.subTest(expected=expected, actual=actual):
-                self.assertIn(line, unified_diff(Path("expected"), expected, actual, color=True))
+                self.assertIn(line, unified_diff("expected", expected, actual, color=True))
 
     def test_color_preserves_unified_diff_text(self) -> None:
         context = "".join(f"context {index}\n" for index in range(10))
@@ -642,14 +700,14 @@ class DiffTests(unittest.TestCase):
             ("before\n" + context + "after\n", "BEFORE\n" + context + "AFTER\n"),
         ):
             with self.subTest(expected=expected, actual=actual):
-                plain = unified_diff(Path("expected"), expected, actual)
-                colored = unified_diff(Path("expected"), expected, actual, color=True)
+                plain = unified_diff("expected", expected, actual)
+                colored = unified_diff("expected", expected, actual, color=True)
                 self.assertEqual(plain, re.sub(r"\x1b\[[0-9;]*m", "", colored))
 
     def test_long_lines_skip_character_matching(self) -> None:
         expected = "x" * (text.MAX_HIGHLIGHT_LINE_LENGTH + 1) + "\n"
         actual = "y" + expected
-        diff = unified_diff(Path("expected"), expected, actual, color=True)
+        diff = unified_diff("expected", expected, actual, color=True)
 
         self.assertIn("\x1b[38;5;16m\x1b[48;5;224m-" + expected.removesuffix("\n") + "\x1b[0m\n", diff)
         self.assertIn("\x1b[38;5;16m\x1b[48;5;194m+" + actual.removesuffix("\n") + "\x1b[0m\n", diff)
@@ -666,8 +724,10 @@ class DiffTests(unittest.TestCase):
             with self.subTest(is_terminal=is_terminal, environ=environ), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 test = _test_case(root)
-                for config in CONFIGURATIONS:
-                    _write(test.exact_path(config, "strict"), "value: old\n")
+                _write(
+                    test.snapshot_path,
+                    format_snapshot({(config, "strict"): "value: old\n" for config in CONFIGURATIONS}),
+                )
                 errors = io.StringIO()
                 output = io.StringIO()
                 with (
@@ -690,10 +750,13 @@ class DiffTests(unittest.TestCase):
                 self.assertEqual(enabled, "\x1b[48;5;224m" in errors.getvalue())
                 self.assertEqual(enabled, "\x1b[48;5;194m" in errors.getvalue())
                 self.assertNotIn("\x1b[", output.getvalue())
+                actual = read_snapshot(test.actual_path)
+                expected = read_snapshot(test.snapshot_path)
                 for config in CONFIGURATIONS:
                     self.assertIn(f"[{config}] exact output mismatch", errors.getvalue())
-                    self.assertEqual("value: new\n", test.actual_path(config, "strict").read_text(encoding="utf-8"))
-                    self.assertEqual("value: old\n", test.exact_path(config, "strict").read_text(encoding="utf-8"))
+                    self.assertIn(f"case.golden.toml [{config}.strict]", errors.getvalue())
+                    self.assertEqual("value: new\n", actual[(config, "strict")])
+                    self.assertEqual("value: old\n", expected[(config, "strict")])
 
 
 class ValidationAndUpdateTests(unittest.TestCase):
@@ -701,8 +764,7 @@ class ValidationAndUpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             test = _test_case(root, "")
-            exact_path = test.exact_path("flags-on", "strict")
-            test.exact[("flags-on", "strict")] = (exact_path, "exact\n")
+            test.exact[("flags-on", "strict")] = "exact\n"
             result = _result(strict_output="exact\n", strict_code=1, nonstrict_code=1, runtime_code=1)
 
             self.assertEqual([], validate_configuration(test, "flags-on", result, None))
@@ -711,8 +773,7 @@ class ValidationAndUpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             test = _test_case(root, "status: fail, strict.output: /expected diagnostic/")
-            exact_path = test.exact_path("flags-on", "runtime")
-            test.exact[("flags-on", "runtime")] = (exact_path, "exact\n")
+            test.exact[("flags-on", "runtime")] = "exact\n"
 
             passing = _result(strict_output="expected diagnostic\n", runtime_output="exact\n", strict_code=1)
             self.assertEqual([], validate_configuration(test, "flags-on", passing, None))
@@ -732,76 +793,84 @@ class ValidationAndUpdateTests(unittest.TestCase):
             result = _result(strict_output="keep\n")
 
             validation = validate_configuration(test, "flags-on", result, update)
-            errors, written = update_configuration(test, "flags-on", result, update)
+            updated = update_configuration(test, "flags-on", result, update)
 
             self.assertEqual([], validation)
-            self.assertEqual([], errors)
-            self.assertEqual(0, written)
-            self.assertFalse(test.exact_path("flags-on", "strict").exists())
-            self.assertFalse(test.exact_path("flags-on", "runtime").exists())
+            self.assertEqual(0, updated)
+            self.assertEqual({}, test.exact)
 
-    def test_targeted_update_creates_empty_output_file(self) -> None:
+    def test_targeted_update_creates_empty_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             test = _test_case(root)
             update = UpdateMode("targeted", frozenset(("nonstrict",)))
 
-            errors, written = update_configuration(test, "flags-on", _result(), update)
+            updated = update_configuration(test, "flags-on", _result(), update)
 
-            self.assertEqual([], errors)
-            self.assertEqual(1, written)
-            self.assertEqual(b"", test.exact_path("flags-on", "nonstrict").read_bytes())
+            self.assertEqual(1, updated)
+            self.assertIsNone(write_snapshot(test))
+            self.assertEqual('[flags-on]\nnonstrict = ""\n', test.snapshot_path.read_text(encoding="utf-8"))
+            self.assertEqual({("flags-on", "nonstrict"): ""}, read_snapshot(test.snapshot_path))
 
-    def test_update_all_only_rewrites_existing_exact_files(self) -> None:
+    def test_update_all_only_rewrites_existing_exact_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             test = _test_case(root)
-            existing = test.exact_path("flags-off", "runtime")
-            _write(existing, "old\n")
-            test.exact[("flags-off", "runtime")] = (existing, "old\n")
+            test.exact[("flags-off", "runtime")] = "old\n"
+            test.exact[("flags-on", "strict")] = "untouched\n"
             update = UpdateMode("all-existing", frozenset(COMMANDS))
             result = _result(runtime_output="new\n", strict_output="not-created\n")
 
             self.assertEqual([], validate_configuration(test, "flags-off", result, update))
-            errors, written = update_configuration(test, "flags-off", result, update)
+            updated = update_configuration(test, "flags-off", result, update)
 
-            self.assertEqual([], errors)
-            self.assertEqual(1, written)
-            self.assertEqual("new\n", existing.read_text(encoding="utf-8"))
-            self.assertFalse(test.exact_path("flags-off", "strict").exists())
+            self.assertEqual(1, updated)
+            self.assertIsNone(write_snapshot(test))
+            # Outputs from configurations that were not rerun survive the rewrite.
+            self.assertEqual(
+                {("flags-off", "runtime"): "new\n", ("flags-on", "strict"): "untouched\n"},
+                read_snapshot(test.snapshot_path),
+            )
 
-    def test_harness_failure_skips_all_writes_for_configuration(self) -> None:
+    def test_harness_failure_skips_all_updates_for_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             test = _test_case(root)
+            test.exact[("flags-on", "runtime")] = "old\n"
             result = _result()
             result.commands["strict"].harness_error = "spawn failed"
             update = UpdateMode("targeted", frozenset(COMMANDS))
 
             errors = validate_configuration(test, "flags-on", result, update)
-            update_errors, written = update_configuration(test, "flags-on", result, update)
+            updated = update_configuration(test, "flags-on", result, update)
 
             self.assertEqual(1, len(errors))
-            self.assertEqual([], update_errors)
-            self.assertEqual(0, written)
-            self.assertEqual([], list(root.glob("*.output")))
+            self.assertEqual(0, updated)
+            self.assertEqual({("flags-on", "runtime"): "old\n"}, test.exact)
 
     def test_write_actual_dumps_output_and_skips_harness_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             test = _test_case(root)
-            result = _result(strict_output="strict\n", nonstrict_output="nonstrict\n", runtime_output="runtime\n")
-            result.commands["runtime"].harness_error = "timed out"
+            flags_on = _result(strict_output="strict\n", nonstrict_output="nonstrict\n", runtime_output="runtime\n")
+            flags_on.commands["runtime"].harness_error = "timed out"
+            flags_off = _result(runtime_output="off\n")
 
-            errors, written = write_actual_outputs(test, "flags-on", result)
+            error = write_actual_outputs(test, {"flags-on": flags_on, "flags-off": flags_off})
 
-            self.assertEqual([], errors)
-            self.assertEqual(2, written)
-            self.assertEqual("strict\n", test.actual_path("flags-on", "strict").read_text(encoding="utf-8"))
-            self.assertEqual("nonstrict\n", test.actual_path("flags-on", "nonstrict").read_text(encoding="utf-8"))
+            self.assertIsNone(error)
             # A harness failure captured nothing worth dumping.
-            self.assertFalse(test.actual_path("flags-on", "runtime").exists())
-            # The `.output.tmp` files must not masquerade as exact-output files.
+            self.assertEqual(
+                {
+                    ("flags-on", "strict"): "strict\n",
+                    ("flags-on", "nonstrict"): "nonstrict\n",
+                    ("flags-off", "strict"): "",
+                    ("flags-off", "nonstrict"): "",
+                    ("flags-off", "runtime"): "off\n",
+                },
+                read_snapshot(test.actual_path),
+            )
+            # The `.golden.toml.tmp` file must not masquerade as a snapshot.
             self.assertEqual(
                 ["case"],
                 [found.test_id for found in load_and_validate_tests(discover_test_index(root))],
@@ -810,16 +879,16 @@ class ValidationAndUpdateTests(unittest.TestCase):
     def test_remove_actual_outputs_deletes_only_tmp_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            kept = root / "case.flags-on.strict.output"
-            _write(kept, "expected\n")
-            _write(root / "case.flags-on.strict.output.tmp", "captured\n")
-            _write(root / "nested" / "other.flags-off.runtime.output.tmp", "captured\n")
+            kept = root / "case.golden.toml"
+            _write(kept, "[flags-on]\nstrict = 'expected'\n")
+            _write(root / "case.golden.toml.tmp", "[flags-on]\nstrict = 'captured'\n")
+            _write(root / "nested" / "other.golden.toml.tmp", "[flags-off]\nruntime = 'captured'\n")
 
             errors, removed = remove_actual_outputs(root)
 
             self.assertEqual([], errors)
             self.assertEqual(2, removed)
-            self.assertEqual([], list(root.rglob("*.output.tmp")))
+            self.assertEqual([], list(root.rglob("*.golden.toml.tmp")))
             # A committed expectation never carries the `.tmp` suffix, so it survives.
             self.assertTrue(kept.exists())
 
@@ -968,11 +1037,10 @@ commands:
                 )
 
             self.assertEqual(0, code)
-            for config in CONFIGURATIONS:
-                self.assertEqual(
-                    "snapshot\n",
-                    (root / f"case.{config}.strict.output").read_text(encoding="utf-8"),
-                )
+            self.assertEqual(
+                {(config, "strict"): "snapshot\n" for config in CONFIGURATIONS},
+                read_snapshot(root / "case.golden.toml"),
+            )
 
     def test_unknown_path_precedes_incomplete_suite_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1021,12 +1089,10 @@ commands:
 
             self.assertEqual(0, code)
             for test_id in ("analysis/tables/array", "analysis/tables/nested/index"):
-                entry = root / f"{test_id}.luau"
-                for config in CONFIGURATIONS:
-                    self.assertEqual(
-                        "snapshot\n",
-                        entry.with_name(f"{entry.stem}.{config}.strict.output").read_text(encoding="utf-8"),
-                    )
+                self.assertEqual(
+                    {(config, "strict"): "snapshot\n" for config in CONFIGURATIONS},
+                    read_snapshot(root / f"{test_id}.golden.toml"),
+                )
 
     def test_targeted_update_accepts_config_list(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1048,9 +1114,10 @@ commands:
                 )
 
             self.assertEqual(0, code)
-            for config in CONFIGURATIONS:
-                for command in ("strict", "nonstrict"):
-                    self.assertTrue((root / f"case.{config}.{command}.output").is_file())
+            self.assertEqual(
+                {(config, command) for config in CONFIGURATIONS for command in ("strict", "nonstrict")},
+                set(read_snapshot(root / "case.golden.toml")),
+            )
 
     def test_targeted_update_accepts_repeated_configs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1079,17 +1146,21 @@ commands:
                 )
 
             self.assertEqual(0, code)
-            for config in CONFIGURATIONS:
-                for command in ("strict", "nonstrict"):
-                    self.assertTrue((root / f"case.{config}.{command}.output").is_file())
+            self.assertEqual(
+                {(config, command) for config in CONFIGURATIONS for command in ("strict", "nonstrict")},
+                set(read_snapshot(root / "case.golden.toml")),
+            )
 
     def test_update_all_accepts_config_list(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "tests" / "golden"
             _write(root / "case.luau", "--!golden ok\nreturn true\n")
-            for config in CONFIGURATIONS:
-                for command in ("strict", "nonstrict"):
-                    _write(root / f"case.{config}.{command}.output", "old\n")
+            _write(
+                root / "case.golden.toml",
+                format_snapshot(
+                    {(config, command): "old\n" for config in CONFIGURATIONS for command in ("strict", "nonstrict")}
+                ),
+            )
             executables = Executables(Path("luau"), Path("luau-analyze"))
 
             with (
@@ -1106,12 +1177,14 @@ commands:
                 )
 
             self.assertEqual(0, code)
-            for config in CONFIGURATIONS:
-                for command in ("strict", "nonstrict"):
-                    self.assertEqual(
-                        "new\n" if command == "strict" else "",
-                        (root / f"case.{config}.{command}.output").read_text(encoding="utf-8"),
-                    )
+            self.assertEqual(
+                {
+                    (config, command): "new\n" if command == "strict" else ""
+                    for config in CONFIGURATIONS
+                    for command in ("strict", "nonstrict")
+                },
+                read_snapshot(root / "case.golden.toml"),
+            )
 
     def test_dump_flag_writes_tmp_files_without_affecting_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1134,25 +1207,23 @@ commands:
 
             # A passing comparison run stays passing; the flag only records output.
             self.assertEqual(0, code)
-            for config in CONFIGURATIONS:
-                self.assertEqual(
-                    "captured\n",
-                    (root / f"case.{config}.strict.output.tmp").read_text(encoding="utf-8"),
-                )
-                for command in ("nonstrict", "runtime"):
-                    self.assertEqual(
-                        "",
-                        (root / f"case.{config}.{command}.output.tmp").read_text(encoding="utf-8"),
-                    )
-            # Nothing exact was written -- only the throwaway files.
-            self.assertEqual([], list(root.glob("*.output")))
+            self.assertEqual(
+                {
+                    (config, command): "captured\n" if command == "strict" else ""
+                    for config in CONFIGURATIONS
+                    for command in COMMANDS
+                },
+                read_snapshot(root / "case.golden.toml.tmp"),
+            )
+            # Nothing exact was written -- only the throwaway file.
+            self.assertFalse((root / "case.golden.toml").exists())
 
     def test_clean_removes_tmp_files_without_running(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "tests" / "golden"
             _write(root / "case.luau", "--!golden ok\nreturn true\n")
-            _write(root / "case.flags-on.strict.output.tmp", "captured\n")
-            _write(root / "nested" / "case.flags-off.runtime.output.tmp", "captured\n")
+            _write(root / "case.golden.toml.tmp", "[flags-on]\nstrict = 'captured'\n")
+            _write(root / "nested" / "case.golden.toml.tmp", "[flags-off]\nruntime = 'captured'\n")
 
             buffer = io.StringIO()
             # No executables are mocked: --clean must short-circuit before resolving them.
@@ -1166,9 +1237,9 @@ commands:
                 )
 
             self.assertEqual(0, code)
-            self.assertEqual([], list(root.rglob("*.output.tmp")))
+            self.assertEqual([], list(root.rglob("*.golden.toml.tmp")))
             self.assertTrue((root / "case.luau").exists())
-            self.assertIn("removed 2 .output.tmp file(s)", buffer.getvalue())
+            self.assertIn("removed 2 .golden.toml.tmp file(s)", buffer.getvalue())
 
     def test_clean_rejects_test_ids_and_conflicting_modes(self) -> None:
         for argv in (["--clean", "case"], ["--clean", "--dump"], ["--clean", "--update-all=all"]):

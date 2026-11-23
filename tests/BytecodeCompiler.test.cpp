@@ -6,6 +6,9 @@
 #include "Luau/BytecodeWire.h"
 #include "Luau/Compiler.h"
 #include "Luau/Parser.h"
+#include "Luau/Sccp.h"
+#include "lua.h"
+#include "lualib.h"
 
 #include <optional>
 
@@ -16,8 +19,7 @@
 using namespace Luau;
 using namespace Luau::Bytecode;
 
-LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
+LUAU_FASTFLAG(LuauBytecodeLoadbSkip)
 
 namespace
 {
@@ -205,9 +207,66 @@ struct BytecodeCompilerFixture
 
 TEST_SUITE_BEGIN("BytecodeCompiler");
 
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "comparison_materialization_has_no_loadb_fallthrough")
+{
+    ScopedFastFlag skip{FFlag::LuauBytecodeLoadbSkip, true};
+    auto fn = buildBytecode(R"(
+        local function lessThan(a, b)
+            return a < b
+        end
+    )");
+    REQUIRE(fn);
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function lessThan($arg0, $arg1) line 2 maxstacksize: 3 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  %0 = JUMPIFLT R0, R1, bb_2
+
+bb_3:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_4 [branch]
+  %1 = LOADB false, bb_4                                     ; uses: phi.0
+
+bb_2:
+; predecessors: bb_0 [branch]
+; successors: bb_4 [fallthrough]
+  %2 = LOADB true                                            ; uses: phi.0
+
+bb_4:
+; predecessors: bb_3 [branch], bb_2 [fallthrough]
+; successors: bb_1 [fallthrough]
+  phi.0 = %1 from bb_3, %2 from bb_2                         ; uses: %3
+  %3 = RETURN 1, phi.0
+
+bb_1 (exit):
+; predecessors: bb_4 [fallthrough]
+)"
+    );
+    CHECK(verifyUseConsistency(*fn));
+    BcVmConstImpl impl(*fn);
+    foldConstants(*fn, impl);
+    CHECK(verifyUseConsistency(*fn));
+    BytecodeBuilder output;
+    REQUIRE(!toFunctionBytecode(output, *fn).empty());
+    output.setMainFunction(0);
+    output.finalize();
+    std::string bytecode = output.getBytecode();
+    std::unique_ptr<lua_State, decltype(&lua_close)> state(luaL_newstate(), lua_close);
+    for (bool expected : {false, true})
+    {
+        REQUIRE_EQ(luau_load(state.get(), "loadb", bytecode.data(), bytecode.size(), 0), 0);
+        lua_pushnumber(state.get(), expected ? 1 : 3);
+        lua_pushnumber(state.get(), 2);
+        REQUIRE_EQ(lua_pcall(state.get(), 2, 1, 0), 0);
+        CHECK_EQ(lua_toboolean(state.get(), -1) != 0, expected);
+        lua_pop(state.get(), 1);
+    }
+}
+
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "numeric_for_loop_backedge")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     std::optional<CompTimeBcFunction> fn = buildBytecode(R"(
         for index = 1, limit do
@@ -251,7 +310,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "generic_for_loop")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     std::optional<CompTimeBcFunction> fn = buildBytecode(R"(
         for key, value in iterate() do
@@ -299,7 +357,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "nested_numeric_for_loops")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     std::optional<CompTimeBcFunction> fn = buildBytecode(R"(
         for outer = 1, outerLimit do
@@ -360,7 +417,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "from_function_bytecode")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         function fn(a, b)
@@ -407,7 +463,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "repeat_until_loop")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         function fn()
@@ -455,7 +510,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         function fn()
@@ -517,7 +571,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "nested_loops")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         function fn()
@@ -595,9 +648,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     auto fn = buildBytecode(R"(
         local function x()
             local a, b = f()
@@ -627,7 +677,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         local function fn(n)
@@ -759,7 +808,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "def_use_chains")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         local function fn(a, b, c)
@@ -793,7 +841,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "loop_invariant_inst_phi_collapse")
 {
-    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
 
     auto fn = buildBytecode(R"(
         local function fn(a, b)
@@ -971,7 +1018,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "inheriting_classes_bytecode_roundtri
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauCompileReuseLocalRegs, true},
     };
 
     std::string_view source = R"(
@@ -1196,7 +1242,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_short_limits")
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "call_feedback_slots")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string_view source = R"(
         function fn()
