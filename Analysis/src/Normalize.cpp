@@ -2161,7 +2161,9 @@ NormalizationResult Normalizer::unionNormalWithTy(
     }
     else if (const SingletonType* stv = get<SingletonType>(there))
     {
-        if (const NumberSingleton* nstv = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && nstv)
+        if (get<BooleanSingleton>(stv))
+            here.booleans = unionOfBools(here.booleans, there);
+        else if (const NumberSingleton* nstv = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && nstv)
         {
             if (here.numbers.isCofinite)
             {
