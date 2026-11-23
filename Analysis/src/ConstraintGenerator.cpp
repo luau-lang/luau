@@ -52,6 +52,7 @@ LUAU_FLAGVERSION(LuauBanGlobalsInTypeFunctions, 3)
 LUAU_FASTFLAGVARIABLE(LuauFillInUninitializedGlobals)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalAnalysis)
 LUAU_FLAGVERSION(LuauExperimentalWhileLocalAnalysis, 2)
+LUAU_FASTFLAGVARIABLE(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -5021,6 +5022,13 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
             result = builtinTypes->trueType;
         else
             result = builtinTypes->falseType;
+    }
+    else if (auto numberAnnotation = ty->as<AstTypeSingletonNumber>())
+    {
+        if (FFlag::LuauNumberSingletonsSupport)
+            result = arena->addType(SingletonType(NumberSingleton{numberAnnotation->value}));
+        else
+            reportError(numberAnnotation->location, GenericError{"Number singletons are not enabled."});
     }
     else if (auto stringAnnotation = ty->as<AstTypeSingletonString>())
     {

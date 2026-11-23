@@ -44,6 +44,7 @@ LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckGeneralizedIterationSoundness)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckUseNotIterable)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -4171,7 +4172,15 @@ PropertyTypes TypeChecker2::lookupProp(
     if (normValid)
         fetch(norm->nils);
     if (normValid)
-        fetch(norm->numbers);
+    {
+        if (FFlag::LuauNumberSingletonsSupport)
+        {
+            if (!norm->numbers.isNever())
+                fetch(builtinTypes->numberType);
+        }
+        else
+            fetch(norm->numbers_DEPRECATED);
+    }
     if (normValid && !norm->strings.isNever())
         fetch(builtinTypes->stringType);
     if (normValid)

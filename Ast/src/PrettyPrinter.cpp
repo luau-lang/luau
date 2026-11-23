@@ -2129,6 +2129,10 @@ struct Printer
         {
             writer.keyword(a->value ? "true" : "false");
         }
+        else if (const auto& a = typeAnnotation.as<AstTypeSingletonNumber>())
+        {
+            writer.string(std::to_string(a->value));
+        }
         else if (const auto& a = typeAnnotation.as<AstTypeSingletonString>())
         {
             if (const auto cstNode = lookupCstNode<CstTypeSingletonString>(a))

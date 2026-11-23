@@ -22,6 +22,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizeFunctionIntersections)
 LUAU_FASTFLAGVARIABLE(LuauSupportNegationOfIntersectionType)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -59,6 +60,58 @@ struct FuelInitializer
             normalizer->clearFuel();
     }
 };
+
+NormalizedNumberType::NormalizedNumberType() {}
+
+NormalizedNumberType::NormalizedNumberType(bool isCofinite, std::map<int64_t, TypeId> singletons)
+    : isCofinite(isCofinite)
+    , singletons(std::move(singletons))
+{
+}
+
+void NormalizedNumberType::resetToNumber()
+{
+    isCofinite = true;
+    singletons.clear();
+}
+
+void NormalizedNumberType::resetToNever()
+{
+    isCofinite = false;
+    singletons.clear();
+}
+
+bool NormalizedNumberType::isNever() const
+{
+    return !isCofinite && singletons.empty();
+}
+
+bool NormalizedNumberType::isNumber() const
+{
+    return isCofinite && singletons.empty();
+}
+
+bool NormalizedNumberType::isUnion() const
+{
+    return !isCofinite;
+}
+
+bool NormalizedNumberType::isIntersection() const
+{
+    return isCofinite;
+}
+
+bool NormalizedNumberType::includes(int64_t num) const
+{
+    if (isNumber())
+        return true;
+    else if (isUnion() && singletons.count(num))
+        return true;
+    else if (isIntersection() && !singletons.count(num))
+        return true;
+    else
+        return false;
+}
 
 NormalizedStringType::NormalizedStringType() {}
 
@@ -110,6 +163,69 @@ bool NormalizedStringType::includes(const std::string& str) const
         return true;
     else
         return false;
+}
+
+const NormalizedNumberType NormalizedNumberType::never;
+
+bool isSubtype(const NormalizedNumberType& subNumber, const NormalizedNumberType& superNumber)
+{
+    if (subNumber.isIntersection() && superNumber.isIntersection())
+    {
+        // If we have two intersections, then we check that there's
+        // no exclusion in the superset that's also not excluded
+        // in the subset. For example, consider:
+        //
+        //  number & ~1 & ~2 & ~3 </: number & ~1 & ~3
+        //
+        // ... subNumber excludes `2` but superNumber does not.
+        //
+        // NOTE: This case catches the trivial `number <: number`,
+        // as this is two intersections where the singleton part
+        // is empty (`unknown`).
+        for (const auto& [name, ty] : superNumber.singletons)
+        {
+            if (subNumber.singletons.count(name) == 0)
+                return false;
+        }
+        return true;
+    }
+
+    if (subNumber.isUnion() && superNumber.isUnion())
+    {
+        // If we have two unions, then we check that every singleton in the
+        // subNumber is accounted for in the superNumber, as in:
+        //
+        //  1 | 2 <: 1 | 2 | 3
+        //
+        for (const auto& [name, ty] : subNumber.singletons)
+        {
+            if (superNumber.singletons.count(name) == 0)
+                return false;
+        }
+        return true;
+    }
+
+    if (subNumber.isUnion() && superNumber.isIntersection())
+    {
+        // If the subNumber is a union and the superNumber is an intersection, then
+        // we have something of the form:
+        //
+        //  1 | 2 | 3 <: number & ~4 & ~5 & ~6
+        //
+        // ... we just need to check that _none_ of the singletons in the
+        // subNumber are represented in the superNumber.
+        for (const auto& [name, ty] : subNumber.singletons)
+        {
+            if (superNumber.singletons.count(name) != 0)
+                return false;
+        }
+        return true;
+    }
+
+    // If the subNumber is an intersection and the superNumber is a union,
+    // then we cannot possibly represent the union that would actually
+    // be a supertype (it would be an infinite set).
+    return false;
 }
 
 const NormalizedStringType NormalizedStringType::never;
@@ -236,7 +352,8 @@ NormalizedType::NormalizedType(NotNull<BuiltinTypes> builtinTypes)
     , booleans(builtinTypes->neverType)
     , errors(builtinTypes->neverType)
     , nils(builtinTypes->neverType)
-    , numbers(builtinTypes->neverType)
+    , numbers(NormalizedNumberType::never)
+    , numbers_DEPRECATED(builtinTypes->neverType)
     , strings{NormalizedStringType::never}
     , threads(builtinTypes->neverType)
     , buffers(builtinTypes->neverType)
@@ -249,8 +366,13 @@ bool NormalizedType::isUnknown() const
         return true;
 
     // Otherwise, we can still be unknown!
-    bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) && isNumber(numbers) &&
+    bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) &&
                             strings.isString() && isThread(threads) && isBuffer(buffers);
+
+    if (FFlag::LuauNumberSingletonsSupport)
+        hasAllPrimitives = hasAllPrimitives && numbers.isNumber();
+    else
+        hasAllPrimitives = hasAllPrimitives && isNumber(numbers_DEPRECATED);
 
     // Check is extern type
     bool isTopExternType = false;
@@ -349,7 +471,10 @@ bool NormalizedType::hasNils() const
 
 bool NormalizedType::hasNumbers() const
 {
-    return !get<NeverType>(numbers);
+    if (FFlag::LuauNumberSingletonsSupport)
+        return !numbers.isNever();
+    else
+        return !get<NeverType>(numbers_DEPRECATED);
 }
 
 bool NormalizedType::hasStrings() const
@@ -413,9 +538,14 @@ bool NormalizedType::isNil() const
 static bool isShallowInhabited(const NormalizedType& norm)
 {
     // This test is just a shallow check, for example it returns `true` for `{ p : never }`
-    return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.externTypes.isNever() || !get<NeverType>(norm.errors) ||
-           !get<NeverType>(norm.nils) || !get<NeverType>(norm.numbers) || !norm.strings.isNever() || !get<NeverType>(norm.threads) ||
-           !get<NeverType>(norm.buffers) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
+    if (FFlag::LuauNumberSingletonsSupport)
+        return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.externTypes.isNever() || !get<NeverType>(norm.errors) ||
+               !get<NeverType>(norm.nils) || !norm.numbers.isNever() || !norm.strings.isNever() || !get<NeverType>(norm.threads) ||
+               !get<NeverType>(norm.buffers) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
+    else
+        return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.externTypes.isNever() || !get<NeverType>(norm.errors) ||
+               !get<NeverType>(norm.nils) || !get<NeverType>(norm.numbers_DEPRECATED) || !norm.strings.isNever() || !get<NeverType>(norm.threads) ||
+               !get<NeverType>(norm.buffers) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
 }
 
 NormalizationResult Normalizer::isInhabited(const NormalizedType* norm)
@@ -440,10 +570,20 @@ NormalizationResult Normalizer::isInhabited(const NormalizedType* norm, DenseHas
 
     consumeFuel();
 
-    if (!get<NeverType>(norm->tops) || !get<NeverType>(norm->booleans) || !get<NeverType>(norm->errors) || !get<NeverType>(norm->nils) ||
-        !get<NeverType>(norm->numbers) || !get<NeverType>(norm->threads) || !get<NeverType>(norm->buffers) || !norm->externTypes.isNever() ||
-        !norm->strings.isNever() || !norm->functions.isNever())
-        return NormalizationResult::True;
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        if (!get<NeverType>(norm->tops) || !get<NeverType>(norm->booleans) || !get<NeverType>(norm->errors) || !get<NeverType>(norm->nils) ||
+            !get<NeverType>(norm->threads) || !get<NeverType>(norm->buffers) || !norm->externTypes.isNever() || !norm->numbers.isNever() ||
+            !norm->strings.isNever() || !norm->functions.isNever())
+            return NormalizationResult::True;
+    }
+    else
+    {
+        if (!get<NeverType>(norm->tops) || !get<NeverType>(norm->booleans) || !get<NeverType>(norm->errors) || !get<NeverType>(norm->nils) ||
+            !get<NeverType>(norm->numbers_DEPRECATED) || !get<NeverType>(norm->threads) || !get<NeverType>(norm->buffers) || !norm->externTypes.isNever() ||
+            !norm->strings.isNever() || !norm->functions.isNever())
+            return NormalizationResult::True;
+    }
 
     for (const auto& [_, intersect] : norm->tyvars)
     {
@@ -672,7 +812,7 @@ static bool isNormalizedNil(TypeId ty)
         return false;
 }
 
-static bool isNormalizedNumber(TypeId ty)
+static bool isNormalizedNumber_DEPRECATED(TypeId ty)
 {
     if (get<NeverType>(ty))
         return true;
@@ -680,6 +820,30 @@ static bool isNormalizedNumber(TypeId ty)
         return ptv->type == PrimitiveType::Number;
     else
         return false;
+}
+
+static bool isNormalizedNumber(const NormalizedNumberType& ty)
+{
+    if (ty.isNumber())
+        return true;
+
+    for (auto& [num, ty] : ty.singletons)
+    {
+        if (const SingletonType* stv = get<SingletonType>(ty))
+        {
+            if (const NumberSingleton* nstv = get<NumberSingleton>(stv))
+            {
+                if (nstv->value != num)
+                    return false;
+            }
+            else
+                return false;
+        }
+        else
+            return false;
+    }
+
+    return true;
 }
 
 static bool isNormalizedString(const NormalizedStringType& ty)
@@ -844,7 +1008,10 @@ static void assertInvariant(const NormalizedType& norm)
     LUAU_ASSERT(areNormalizedExternTypes(norm.externTypes));
     LUAU_ASSERT(isNormalizedError(norm.errors));
     LUAU_ASSERT(isNormalizedNil(norm.nils));
-    LUAU_ASSERT(isNormalizedNumber(norm.numbers));
+    if (FFlag::LuauNumberSingletonsSupport)
+        LUAU_ASSERT(isNormalizedNumber(norm.numbers));
+    else
+        LUAU_ASSERT(isNormalizedNumber_DEPRECATED(norm.numbers_DEPRECATED));
     LUAU_ASSERT(isNormalizedString(norm.strings));
     LUAU_ASSERT(isNormalizedThread(norm.threads));
     LUAU_ASSERT(isNormalizedBuffer(norm.buffers));
@@ -1004,7 +1171,10 @@ void Normalizer::clearNormal(NormalizedType& norm)
     norm.externTypes.resetToNever();
     norm.errors = builtinTypes->neverType;
     norm.nils = builtinTypes->neverType;
-    norm.numbers = builtinTypes->neverType;
+    if (FFlag::LuauNumberSingletonsSupport)
+        norm.numbers.resetToNever();
+    else
+        norm.numbers_DEPRECATED = builtinTypes->neverType;
     norm.strings.resetToNever();
     norm.threads = builtinTypes->neverType;
     norm.buffers = builtinTypes->neverType;
@@ -1375,6 +1545,53 @@ void Normalizer::unionExternTypes(NormalizedExternType& heres, const NormalizedE
     }
 }
 
+void Normalizer::unionNumbers(NormalizedNumberType& here, const NormalizedNumberType& there)
+{
+    LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+    consumeFuel();
+
+    if (there.isNumber())
+        here.resetToNumber();
+    else if (here.isUnion() && there.isUnion())
+        here.singletons.insert(there.singletons.begin(), there.singletons.end());
+    else if (here.isUnion() && there.isIntersection())
+    {
+        here.isCofinite = true;
+        for (const auto& pair : there.singletons)
+        {
+            auto it = here.singletons.find(pair.first);
+            if (it != end(here.singletons))
+                here.singletons.erase(it);
+            else
+                here.singletons.insert(pair);
+        }
+    }
+    else if (here.isIntersection() && there.isUnion())
+    {
+        for (const auto& [name, ty] : there.singletons)
+            here.singletons.erase(name);
+    }
+    else if (here.isIntersection() && there.isIntersection())
+    {
+        auto iter = begin(here.singletons);
+        auto endIter = end(here.singletons);
+
+        while (iter != endIter)
+        {
+            if (!there.singletons.count(iter->first))
+            {
+                auto eraseIt = iter;
+                ++iter;
+                here.singletons.erase(eraseIt);
+            }
+            else
+                ++iter;
+        }
+    }
+    else
+        LUAU_ASSERT(!"Unreachable");
+}
+
 void Normalizer::unionStrings(NormalizedStringType& here, const NormalizedStringType& there)
 {
     consumeFuel();
@@ -1735,7 +1952,11 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
 
     here.errors = (get<NeverType>(there.errors) ? here.errors : there.errors);
     here.nils = (get<NeverType>(there.nils) ? here.nils : there.nils);
-    here.numbers = (get<NeverType>(there.numbers) ? here.numbers : there.numbers);
+
+    if (FFlag::LuauNumberSingletonsSupport)
+        unionNumbers(here.numbers, there.numbers);
+    else
+        here.numbers_DEPRECATED = (get<NeverType>(there.numbers_DEPRECATED) ? here.numbers_DEPRECATED : there.numbers_DEPRECATED);
     unionStrings(here.strings, there.strings);
     here.threads = (get<NeverType>(there.threads) ? here.threads : there.threads);
     here.buffers = (get<NeverType>(there.buffers) ? here.buffers : there.buffers);
@@ -1914,7 +2135,12 @@ NormalizationResult Normalizer::unionNormalWithTy(
         else if (ptv->type == PrimitiveType::NilType)
             here.nils = there;
         else if (ptv->type == PrimitiveType::Number)
-            here.numbers = there;
+        {
+            if (FFlag::LuauNumberSingletonsSupport)
+                here.numbers.resetToNumber();
+            else
+                here.numbers_DEPRECATED = there;
+        }
         else if (ptv->type == PrimitiveType::String)
             here.strings.resetToString();
         else if (ptv->type == PrimitiveType::Thread)
@@ -1935,8 +2161,17 @@ NormalizationResult Normalizer::unionNormalWithTy(
     }
     else if (const SingletonType* stv = get<SingletonType>(there))
     {
-        if (get<BooleanSingleton>(stv))
-            here.booleans = unionOfBools(here.booleans, there);
+        if (const NumberSingleton* nstv = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && nstv)
+        {
+            if (here.numbers.isCofinite)
+            {
+                auto it = here.numbers.singletons.find(nstv->value);
+                if (it != here.numbers.singletons.end())
+                    here.numbers.singletons.erase(it);
+            }
+            else
+                here.numbers.singletons.insert({nstv->value, there});
+        }
         else if (const StringSingleton* sstv = get<StringSingleton>(stv))
         {
             if (here.strings.isCofinite)
@@ -2049,7 +2284,14 @@ std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& her
     }
 
     result.nils = get<NeverType>(here.nils) ? builtinTypes->nilType : builtinTypes->neverType;
-    result.numbers = get<NeverType>(here.numbers) ? builtinTypes->numberType : builtinTypes->neverType;
+
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        result.numbers = here.numbers;
+        result.numbers.isCofinite = !result.numbers.isCofinite;
+    }
+    else
+        result.numbers_DEPRECATED = get<NeverType>(here.numbers_DEPRECATED) ? builtinTypes->numberType : builtinTypes->neverType;
 
     result.strings = here.strings;
     result.strings.isCofinite = !result.strings.isCofinite;
@@ -2143,7 +2385,10 @@ void Normalizer::subtractPrimitive(NormalizedType& here, TypeId ty)
         here.booleans = builtinTypes->neverType;
         break;
     case PrimitiveType::Number:
-        here.numbers = builtinTypes->neverType;
+        if (FFlag::LuauNumberSingletonsSupport)
+            here.numbers.resetToNever();
+        else
+            here.numbers_DEPRECATED = builtinTypes->neverType;
         break;
     case PrimitiveType::String:
         here.strings.resetToNever();
@@ -2515,6 +2760,75 @@ void Normalizer::intersectExternTypesWithShape(NormalizedExternType& heres, Type
     // TODO: we may want to look into some more deduplication here.
     if (!isCoincident)
         heres.shapeExtensions.insert(there);
+}
+
+void Normalizer::intersectNumbers(NormalizedNumberType& here, const NormalizedNumberType& there)
+{
+    LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+    consumeFuel();
+
+    /* There are 9 cases to worry about here
+         Normalized Left    | Normalized Right
+       C1 number            | number              ===> trivial
+       C2 number - {u_1,..} | number              ===> trivial
+       C3 {u_1, ..}         | number              ===> trivial
+       C4 number            | number - {v_1, ..}  ===> number - {v_1, ..}
+       C5 number - {u_1,..} | number - {v_1, ..}  ===> number - ({u_s} U {v_s})
+       C6 {u_1, ..}         | number - {v_1, ..}  ===> {u_s} - {v_s}
+       C7 number            | {v_1, ..}           ===> {v_s}
+       C8 number - {u_1,..} | {v_1, ..}           ===> {v_s} - {u_s}
+       C9 {u_1, ..}         | {v_1, ..}           ===> {u_s} ∩ {v_s}
+    */
+    // Case 1,2,3
+    if (there.isNumber())
+        return;
+    // Case 4, Case 7
+    else if (here.isNumber())
+    {
+        here.singletons.clear();
+        for (const auto& [key, type] : there.singletons)
+            here.singletons[key] = type;
+        here.isCofinite = here.isCofinite && there.isCofinite;
+    }
+    // Case 5
+    else if (here.isIntersection() && there.isIntersection())
+    {
+        here.isCofinite = true;
+        for (const auto& [key, type] : there.singletons)
+            here.singletons[key] = type;
+    }
+    // Case 6
+    else if (here.isUnion() && there.isIntersection())
+    {
+        here.isCofinite = false;
+        for (const auto& [key, _] : there.singletons)
+            here.singletons.erase(key);
+    }
+    // Case 8
+    else if (here.isIntersection() && there.isUnion())
+    {
+        here.isCofinite = false;
+        std::map<int64_t, TypeId> result(there.singletons);
+        for (const auto& [key, _] : here.singletons)
+            result.erase(key);
+        here.singletons = result;
+    }
+    // Case 9
+    else if (here.isUnion() && there.isUnion())
+    {
+        here.isCofinite = false;
+        std::map<int64_t, TypeId> result;
+        result.insert(here.singletons.begin(), here.singletons.end());
+        result.insert(there.singletons.begin(), there.singletons.end());
+        for (auto it = result.begin(); it != result.end();)
+            if (!here.singletons.count(it->first) || !there.singletons.count(it->first))
+                it = result.erase(it);
+            else
+                ++it;
+        here.singletons = result;
+    }
+    else
+        LUAU_ASSERT(0 && "Internal Error - unrecognized case");
 }
 
 void Normalizer::intersectStrings(NormalizedStringType& here, const NormalizedStringType& there)
@@ -3296,7 +3610,10 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     intersectExternTypes(here.externTypes, there.externTypes);
     here.errors = (get<NeverType>(there.errors) ? there.errors : here.errors);
     here.nils = (get<NeverType>(there.nils) ? there.nils : here.nils);
-    here.numbers = (get<NeverType>(there.numbers) ? there.numbers : here.numbers);
+    if (FFlag::LuauNumberSingletonsSupport)
+        intersectNumbers(here.numbers, there.numbers);
+    else
+        here.numbers_DEPRECATED = (get<NeverType>(there.numbers_DEPRECATED) ? there.numbers_DEPRECATED : here.numbers_DEPRECATED);
     intersectStrings(here.strings, there.strings);
     here.threads = (get<NeverType>(there.threads) ? there.threads : here.threads);
     here.buffers = (get<NeverType>(there.buffers) ? there.buffers : here.buffers);
@@ -3480,7 +3797,8 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     {
         TypeId booleans = here.booleans;
         TypeId nils = here.nils;
-        TypeId numbers = here.numbers;
+        TypeId numbers_DEPRECATED = here.numbers_DEPRECATED;
+        NormalizedNumberType numbers = std::move(here.numbers);
         NormalizedStringType strings = std::move(here.strings);
         NormalizedFunctionType functions = std::move(here.functions);
         TypeId threads = here.threads;
@@ -3494,7 +3812,12 @@ NormalizationResult Normalizer::intersectNormalWithTy(
         else if (ptv->type == PrimitiveType::NilType)
             here.nils = nils;
         else if (ptv->type == PrimitiveType::Number)
-            here.numbers = numbers;
+        {
+            if (FFlag::LuauNumberSingletonsSupport)
+                here.numbers = std::move(numbers);
+            else
+                here.numbers_DEPRECATED = numbers_DEPRECATED;
+        }
         else if (ptv->type == PrimitiveType::String)
             here.strings = std::move(strings);
         else if (ptv->type == PrimitiveType::Thread)
@@ -3736,8 +4059,30 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     }
     if (!get<NeverType>(norm.nils))
         result.push_back(norm.nils);
-    if (!get<NeverType>(norm.numbers))
-        result.push_back(norm.numbers);
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        if (norm.numbers.isNumber())
+            result.push_back(builtinTypes->numberType);
+        else if (norm.numbers.isUnion())
+        {
+            for (auto& [_, ty] : norm.numbers.singletons)
+                result.push_back(ty);
+        }
+        else if (norm.numbers.isIntersection())
+        {
+            std::vector<TypeId> parts;
+            parts.push_back(builtinTypes->numberType);
+            for (const auto& [name, ty] : norm.numbers.singletons)
+                parts.push_back(arena->addType(NegationType{ty}));
+
+            result.push_back(arena->addType(IntersectionType{std::move(parts)}));
+        }
+    }
+    else
+    {
+        if (!get<NeverType>(norm.numbers_DEPRECATED))
+            result.push_back(norm.numbers_DEPRECATED);
+    }
     if (norm.strings.isString())
         result.push_back(builtinTypes->stringType);
     else if (norm.strings.isUnion())

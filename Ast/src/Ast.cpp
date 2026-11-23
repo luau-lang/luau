@@ -1423,6 +1423,17 @@ void AstTypeSingletonBool::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+AstTypeSingletonNumber::AstTypeSingletonNumber(const Location& location, int64_t value)
+    : AstType(ClassIndex(), location)
+    , value(value)
+{
+}
+
+void AstTypeSingletonNumber::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
 AstTypeSingletonString::AstTypeSingletonString(const Location& location, const AstArray<char>& value)
     : AstType(ClassIndex(), location)
     , value(value)

@@ -122,6 +122,8 @@ void TypeArena::recordSingletonStats(const NotNull<SingletonType> singleton)
 
         if constexpr (std::is_same_v<T, BooleanSingleton>)
             boolSingletonsMinted += 1;
+        else if constexpr (std::is_same_v<T, NumberSingleton>)
+            numberSingletonsMinted += 1;
         else if constexpr (std::is_same_v<T, StringSingleton>)
         {
             strSingletonsMinted += 1;

@@ -1443,6 +1443,8 @@ void DataFlowGraphBuilder::visitType(AstType* t)
         return visitType(e);
     else if (t->is<AstTypeSingletonBool>())
         return; // ok
+    else if (t->is<AstTypeSingletonNumber>())
+        return; // ok
     else if (t->is<AstTypeSingletonString>())
         return; // ok
     else if (auto g = t->as<AstTypeGroup>())

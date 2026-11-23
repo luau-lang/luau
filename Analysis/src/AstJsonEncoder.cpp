@@ -1218,6 +1218,19 @@ struct AstJsonEncoder : public AstVisitor
         return false;
     }
 
+    bool visit(class AstTypeSingletonNumber* node) override
+    {
+        writeNode(
+            node,
+            "AstTypeSingletonNumber",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
+        return false;
+    }
+
     bool visit(class AstTypeSingletonString* node) override
     {
         writeNode(

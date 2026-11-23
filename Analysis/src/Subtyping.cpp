@@ -29,7 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingSkipUnreadReasoning)
 LUAU_FASTFLAGVARIABLE(LuauOnlyCheckWidthSubtypingForReadOnlyProperty)
 LUAU_FASTFLAGVARIABLE(LuauOneBitAssumedConstraintTracking)
 LUAU_FASTFLAGVARIABLE(LuauErrorSuppressionForIndexers)
-
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -1966,6 +1966,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
         // "foo" </: ¬string
         if (get<StringSingleton>(p.first) && p.second->type == PrimitiveType::String)
             result = {false};
+        // 1 </: ¬number
+        else if (FFlag::LuauNumberSingletonsSupport && get<NumberSingleton>(p.first) && p.second->type == PrimitiveType::String)
+            result = {false};
         // false </: ¬boolean
         else if (get<BooleanSingleton>(p.first) && p.second->type == PrimitiveType::Boolean)
             result = {false};
@@ -1978,6 +1981,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     else if (auto p = get2<PrimitiveType, SingletonType>(subTy, negatedTy))
     {
         if (p.first->type == PrimitiveType::String && get<StringSingleton>(p.second))
+            result = {false};
+        else if (FFlag::LuauNumberSingletonsSupport && p.first->type == PrimitiveType::Number && get<NumberSingleton>(p.second))
             result = {false};
         else if (p.first->type == PrimitiveType::Boolean && get<BooleanSingleton>(p.second))
             result = {false};
@@ -2047,6 +2052,8 @@ SubtypingResult Subtyping::isCovariantWith(
 )
 {
     if (get<StringSingleton>(subSingleton) && superPrim->type == PrimitiveType::String)
+        return {true};
+    else if (FFlag::LuauNumberSingletonsSupport && get<BooleanSingleton>(subSingleton) && superPrim->type == PrimitiveType::Number)
         return {true};
     else if (get<BooleanSingleton>(subSingleton) && superPrim->type == PrimitiveType::Boolean)
         return {true};
@@ -2734,7 +2741,15 @@ SubtypingResult Subtyping::isCovariantWith(
                        .orElse(isCovariantWith(env, subNorm->externTypes, superNorm->tables, scope)));
     result.andAlso(isCovariantWith(env, subNorm->errors, superNorm->errors, scope));
     result.andAlso(isCovariantWith(env, subNorm->nils, superNorm->nils, scope));
-    result.andAlso(isCovariantWith(env, subNorm->numbers, superNorm->numbers, scope));
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        auto subResult = std::make_unique<SubtypingResult>(SubtypingResult{false});
+        subResult->orElse(isCovariantWith(env, subNorm->strings, superNorm->strings, scope));
+        subResult->orElse(isCovariantWith(env, subNorm->strings, superNorm->tables, scope));
+        result.andAlso(std::move(*subResult));
+    }
+    else
+        result.andAlso(isCovariantWith(env, subNorm->numbers, superNorm->numbers, scope));
     if (FFlag::LuauRefactorStringSemanticSubtyping)
     {
         auto subResult = std::make_unique<SubtypingResult>(SubtypingResult{false});
@@ -2806,6 +2821,17 @@ SubtypingResult Subtyping::isCovariantWith(
     }
 
     return {true};
+}
+
+SubtypingResult Subtyping::isCovariantWith(
+    SubtypingEnvironment& env,
+    const NormalizedNumberType& subNumber,
+    const NormalizedNumberType& superNumber,
+    NotNull<Scope> scope
+)
+{
+    bool isSubtype = Luau::isSubtype(subNumber, superNumber);
+    return {isSubtype};
 }
 
 SubtypingResult Subtyping::isCovariantWith(

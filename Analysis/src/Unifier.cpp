@@ -18,6 +18,7 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -1047,9 +1048,17 @@ void Unifier::tryUnifyNormalizedTypes(
         if (!get<PrimitiveType>(superNorm.nils))
             return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
 
-    if (get<PrimitiveType>(subNorm.numbers))
-        if (!get<PrimitiveType>(superNorm.numbers))
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        if (!isSubtype(subNorm.strings, superNorm.strings))
             return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
+    }
+    else
+    {
+        if (get<PrimitiveType>(subNorm.numbers_DEPRECATED))
+            if (!get<PrimitiveType>(superNorm.numbers_DEPRECATED))
+                return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
+    }
 
     if (!isSubtype(subNorm.strings, superNorm.strings))
         return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});

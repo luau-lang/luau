@@ -40,6 +40,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -663,6 +664,8 @@ struct TypeStringifier
     {
         if (const BooleanSingleton* bs = Luau::get<BooleanSingleton>(&stv))
             state.emit(bs->value ? "true" : "false");
+        else if (const NumberSingleton* ns = Luau::get<NumberSingleton>(&stv))
+            state.emit(std::to_string(ns->value));
         else if (const StringSingleton* ss = Luau::get<StringSingleton>(&stv))
         {
             state.emit("\"");
