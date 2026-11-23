@@ -128,6 +128,10 @@ struct FrontendOptions
     std::function<void(const SourceModule& sourceModule, const Luau::Module& module)> customModuleCheck;
 
     bool collectTypeAllocationStats = false;
+
+    // Width of the 'vector' type in the builtin definitions, to match LUA_VECTOR_SIZE.
+    // Read by registerBuiltinGlobals.
+    VectorSize vectorSize = VectorSize::Three;
 };
 
 struct CheckResult

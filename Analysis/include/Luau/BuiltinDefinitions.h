@@ -80,7 +80,7 @@ void attachMagicFunction(TypeId ty, std::shared_ptr<MagicFunction> magic);
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol = std::nullopt);
 void assignPropDocumentationSymbols(TableType::Props& props, const std::string& baseName);
 
-std::string getBuiltinDefinitionSource();
+std::string getBuiltinDefinitionSource(VectorSize vectorSize = VectorSize::Three);
 std::string getTypeFunctionDefinitionSource();
 
 void addGlobalBinding(GlobalTypes& globals, const std::string& name, TypeId ty, const std::string& packageName);
