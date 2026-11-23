@@ -11,7 +11,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(LuauRefactorAutocompleteAncestry)
-LUAU_FASTFLAGVARIABLE(LuauFindFullAncestryLooksIntoTypePacks)
 
 namespace Luau
 {
@@ -201,7 +200,7 @@ bool FindFullAncestry::visit(AstType* type)
 
 bool FindFullAncestry::visit(AstTypePack* pack)
 {
-    if (FFlag::LuauFindFullAncestryLooksIntoTypePacks && includeTypes)
+    if (includeTypes)
         return visit(static_cast<AstNode*>(pack));
     else
         return false;

@@ -20,4 +20,4 @@ __pycache__
 .clangd
 
 # Golden-test captured outputs for user debugging
-*.output.tmp
+*.golden.toml.tmp

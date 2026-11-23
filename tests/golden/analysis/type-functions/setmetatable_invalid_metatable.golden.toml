@@ -1,0 +1,11 @@
+[flags-on]
+strict = '''
+./analysis/type-functions/setmetatable_invalid_metatable.luau(1,16): TypeError: Type function instance setmetatable<{  }, string> is uninhabited
+'''
+nonstrict = ""
+
+[flags-off]
+strict = '''
+./analysis/type-functions/setmetatable_invalid_metatable.luau(1,16): TypeError: Type function instance setmetatable<{  }, string> is uninhabited
+'''
+nonstrict = ""

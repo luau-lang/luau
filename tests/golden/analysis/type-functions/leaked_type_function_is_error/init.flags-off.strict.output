@@ -1,1 +1,0 @@
-./analysis/type-functions/leaked_type_function_is_error/init.luau(3,23): TypeError: Table type '{  }' not compatible with type '{ label: *error-type* }' because the former is missing field 'label'

@@ -1,3 +1,0 @@
-./analysis/cfgconstruction/call_expression_records_uses.luau:5: attempt to call a nil value
-stacktrace:
-./analysis/cfgconstruction/call_expression_records_uses.luau:5

@@ -46,8 +46,6 @@ LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
 LUAU_FLAGVERSION(LuauTraverseScopeToFunction, 2)
-LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
-LUAU_FASTFLAG(LuauDecomposeIntersectionOfFreeType)
 LUAU_FASTFLAGVARIABLE(LuauEqualityConstraintBinds)
 LUAU_FASTFLAGVARIABLE(LuauNonreentrantLookupTableProp)
 LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
@@ -701,42 +699,20 @@ void ConstraintSolver::initFreeTypeTracking()
         unsolvedConstraints.emplace_back(c);
         NotNull<const Constraint> borrow{c.get()};
 
-        if (FFlag::LuauReferenceCountInitializerIsIterative)
+        auto [types, typePacks] = c->getMaybeMutatedTypesIn(arena);
+
+        for (auto ty : types)
         {
-            auto [types, typePacks] = c->getMaybeMutatedTypesIn(arena);
-
-            for (auto ty : types)
-            {
-                cgraph->addDependencyOf(borrow.get(), ty);
-                if (FFlag::DebugLuauLogSolver)
-                    printf("Type %s depends on constraint %s\n", toString(ty, opts).c_str(), toString(*c, opts).c_str());
-            }
-
-            for (auto tp : typePacks)
-            {
-                cgraph->addDependencyOf(borrow.get(), tp);
-                if (FFlag::DebugLuauLogSolver)
-                    printf("Type pack %s depends on constraint %s\n", toString(tp, opts).c_str(), toString(*c, opts).c_str());
-            }
+            cgraph->addDependencyOf(borrow.get(), ty);
+            if (FFlag::DebugLuauLogSolver)
+                printf("Type %s depends on constraint %s\n", toString(ty, opts).c_str(), toString(*c, opts).c_str());
         }
-        else
+
+        for (auto tp : typePacks)
         {
-
-            auto [types, typePacks] = c->getMaybeMutatedTypes_DEPRECATED();
-
-            for (auto ty : types)
-            {
-                cgraph->addDependencyOf(borrow.get(), ty);
-                if (FFlag::DebugLuauLogSolver)
-                    printf("Type %s depends on constraint %s\n", toString(ty, opts).c_str(), toString(*c, opts).c_str());
-            }
-
-            for (auto tp : typePacks)
-            {
-                cgraph->addDependencyOf(borrow.get(), tp);
-                if (FFlag::DebugLuauLogSolver)
-                    printf("Type pack %s depends on constraint %s\n", toString(tp, opts).c_str(), toString(*c, opts).c_str());
-            }
+            cgraph->addDependencyOf(borrow.get(), tp);
+            if (FFlag::DebugLuauLogSolver)
+                printf("Type pack %s depends on constraint %s\n", toString(tp, opts).c_str(), toString(*c, opts).c_str());
         }
     }
 }
@@ -914,33 +890,12 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
 
 bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Constraint> constraint)
 {
-    if (FFlag::LuauDecomposeIntersectionOfFreeType)
-    {
-        auto subTy = follow(c.subType);
-        auto superTy = follow(c.superType);
+    if (isBlocked(c.subType))
+        return block(c.subType, constraint);
+    else if (isBlocked(c.superType))
+        return block(c.superType, constraint);
 
-        // In either of these cases, the constraint is vacuous and it doesn't
-        // matter that the other type is blocked, so early return.
-        if (is<NeverType>(subTy) || is<UnknownType>(superTy))
-            return true;
-
-        if (isBlocked(subTy))
-            return block(subTy, constraint);
-
-        if (isBlocked(superTy))
-            return block(superTy, constraint);
-
-        unify(constraint, subTy, superTy);
-    }
-    else
-    {
-        if (isBlocked(c.subType))
-            return block(c.subType, constraint);
-        else if (isBlocked(c.superType))
-            return block(c.superType, constraint);
-
-        unify(constraint, c.subType, c.superType);
-    }
+    unify(constraint, c.subType, c.superType);
 
     return true;
 }

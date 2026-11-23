@@ -12,6 +12,7 @@
 #include <utility>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauBytecodeLoadbSkip)
 
 namespace Luau
 {
@@ -131,8 +132,16 @@ struct BytecodeGraphParser
 
             if (blockByPC.count(i) != 0)
             {
-                if (isFallthrough(op))
-                    addSuccessor(currentBlock, blockByPC[i], BcBlockEdgeKind::Fallthrough);
+                if (FFlag::LuauBytecodeLoadbSkip)
+                {
+                    if (isFallthrough(op, LUAU_INSN_C(insn)))
+                        addSuccessor(currentBlock, blockByPC[i], BcBlockEdgeKind::Fallthrough);
+                }
+                else
+                {
+                    if (isFallthrough(op))
+                        addSuccessor(currentBlock, blockByPC[i], BcBlockEdgeKind::Fallthrough);
+                }
                 currentBlock = blockByPC[i];
             }
             instructionCount++;

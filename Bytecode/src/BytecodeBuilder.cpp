@@ -13,7 +13,6 @@
 #include <string.h>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 
 namespace Luau
 {
@@ -992,24 +991,17 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
         writeByte(ss, 0);
     }
 
-    if (FFlag::LuauEmitCallFeedback || FFlag::DebugLuauUserDefinedClasses)
-    {
-        // Feedback Slots
-        writeVarInt(ss, fbSlots.size());
+    // Feedback Slots
+    writeVarInt(ss, fbSlots.size());
 
-        for (FeedbackSlot& slot : fbSlots)
-        {
-            writeByte(ss, slot.kind);
-
-            if (slot.kind == LFT_CALLTARGET)
-                writeVarInt(ss, slot.callTarget.pc);
-            else if (slot.kind == LFT_CONSTRUCT)
-                writeVarInt(ss, slot.construct.shape);
-        }
-    }
-    else
+    for (FeedbackSlot& slot : fbSlots)
     {
-        writeVarInt(ss, 0); // Empty feedback vector
+        writeByte(ss, slot.kind);
+
+        if (slot.kind == LFT_CALLTARGET)
+            writeVarInt(ss, slot.callTarget.pc);
+        else if (slot.kind == LFT_CONSTRUCT)
+            writeVarInt(ss, slot.construct.shape);
     }
 
     if ((flags & LPF_INLINABLE) != 0)
@@ -2008,7 +2000,6 @@ void BytecodeBuilder::validateVariadic() const
 
         if (op == LOP_CALL || op == LOP_CALLFB)
         {
-            LUAU_ASSERT(FFlag::LuauEmitCallFeedback || op != LOP_CALLFB);
             // note: calls may end one variadic sequence and start a new one
 
             if (LUAU_INSN_B(insn) == 0)

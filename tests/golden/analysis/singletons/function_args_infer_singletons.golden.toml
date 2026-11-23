@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+./analysis/singletons/function_args_infer_singletons.luau(5,7): LocalUnused: Variable 'e' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/function_args_infer_singletons.luau(5,7): LocalUnused: Variable 'e' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/function_args_infer_singletons.luau(5,7): LocalUnused: Variable 'e' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/function_args_infer_singletons.luau(5,7): LocalUnused: Variable 'e' is never used; prefix with '_' to silence
+'''

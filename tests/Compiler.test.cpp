@@ -24,18 +24,14 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauCompileTableFoldFix)
-LUAU_FASTFLAG(LuauCompileNoDebugConst)
-LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauOptimizeExportTable)
 LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauCompileTableBuiltinsCreateClear)
-LUAU_FASTFLAG(LuauCompileReuseLowersLimit)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauCompileCapturedCallTarget)
 LUAU_FASTFLAG(LuauCompileLoopUnrollNegativeZero)
 
 using namespace Luau;
@@ -311,7 +307,6 @@ RETURN R1 1
 
 TEST_CASE("BasicFunctionCall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
@@ -439,7 +434,6 @@ L1: RETURN R1 -1
 
 TEST_CASE("FakeImportCall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     const char* source = "math = {} function math.max() return 0 end function test() return math.max(1, 2) end";
 
@@ -487,8 +481,6 @@ RETURN R0 0
 
 TEST_CASE("ConcatChainOptimization")
 {
-    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
-
     CHECK_EQ("\n" + compileFunction0("local a, b = ...; return a .. b"), R"(
 GETVARARGS R0 2
 MOVE R3 R0
@@ -519,8 +511,6 @@ RETURN R3 1
 
 TEST_CASE("ConcatTopRegisterUse")
 {
-    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
-
     CHECK_EQ("\n" + compileFunction0("local a, b = ...; return '{a=' .. tostring(a) .. ' b=' .. tostring(b) .. '}'"), R"(
 GETVARARGS R0 2
 LOADK R3 K0 ['{a=']
@@ -541,8 +531,6 @@ RETURN R2 1
 
 TEST_CASE("ConcatTopRegisterUseShorthand")
 {
-    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
-
     CHECK_EQ("\n" + compileFunction0("local a = \"hello \" local b, c = ...; a ..= tostring(a) .. tostring(b) return a"), R"(
 LOADK R0 K0 ['hello ']
 GETVARARGS R1 2
@@ -664,7 +652,6 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
@@ -1260,7 +1247,6 @@ RETURN R0 1
 
 TEST_CASE("CaptureSelf")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
@@ -2479,7 +2465,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueUntil")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // it's valid to use locals defined inside the loop in until expression if they're defined before continue
     CHECK_EQ("\n" + compileFunction0("repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until r < 0.5"), R"(
@@ -3108,7 +3093,6 @@ RETURN R1 1
 
 TEST_CASE("JumpFold")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // jump-to-return folding to return
     CHECK_EQ("\n" + compileFunction0("return a and 1 or 0"), R"(
@@ -3374,7 +3358,6 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -3932,10 +3915,6 @@ RETURN R1 1
 
 TEST_CASE("DebugLocals")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
-
     const char* source = R"(
 function foo(e, f, x, y, z)
     local a = 1 + x
@@ -4019,8 +3998,6 @@ local 11 (inner): reg 6, start pc 43 line 21, end pc 43 line 21
 
 TEST_CASE("DebugLocals2")
 {
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
-
     const char* source = R"(
 function foo(x, y)
     repeat
@@ -4051,9 +4028,6 @@ local 3 (y): reg 1, start pc 0 line 4, end pc 2 line 6
 
 TEST_CASE("DebugLocals3")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
-
     const char* source = R"(
 function foo(x, y, z, w)
     repeat
@@ -4093,8 +4067,6 @@ local 7 (w): reg 3, start pc 0 line 4, end pc 5 line 8
 
 TEST_CASE("DebugLocalInlineUndoEmit")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local x = ...
 local function f()
@@ -4202,9 +4174,6 @@ RETURN R0 0
 
 TEST_CASE("DebugTypes")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local up: number = 2
 
@@ -5017,9 +4986,6 @@ TEST_CASE("OutOfLocals")
 
 TEST_CASE("NoLimitOnReusedLocals")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-    ScopedFastFlag luauCompileReuseLowersLimit{FFlag::LuauCompileReuseLowersLimit, true};
-
     std::string source;
 
     for (int i = 0; i < 1000; ++i)
@@ -5388,7 +5354,6 @@ TEST_CASE("CompileBytecode")
 
 TEST_CASE("NestedNamecall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -6947,7 +6912,6 @@ TEST_CASE("LoopUnrollCostBuiltins")
         {FInt::LuauCompileLoopUnrollThreshold, 25},
         {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
     CHECK_EQ(
@@ -7262,7 +7226,6 @@ RETURN R1 1
 
 TEST_CASE("InlineProhibitedRecursion")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     // we can't inline recursive invocations of functions in the functions
     // this is actually profitable in certain cases, but it complicates the compiler as it means a local has multiple registers/values
 
@@ -7733,8 +7696,6 @@ RETURN R2 1
 )"
     );
 
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     // note that mutation and capture might be inside internal control flow
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8200,6 +8161,94 @@ RETURN R5 1
     );
 }
 
+TEST_CASE("InlineCapturedCallTarget")
+{
+    ScopedFastFlag luauCompileCapturedCallTarget{FFlag::LuauCompileCapturedCallTarget, true};
+
+    // Inlining cannot store result into the target register if it is captured and might be used to compute the return value
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function test()
+    local f
+    f = function() f = nil end
+    f = (function() return f() end)()
+    return f
+end
+)",
+                   2,
+                   2
+               ),
+        R"(
+LOADNIL R0
+NEWCLOSURE R0 P0
+CAPTURE REF R0
+MOVE R1 R0
+CALLFB R1 0 1 [0]
+MOVE R0 R1
+CLOSEUPVALS R0
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local callee
+local function invoke()
+    return callee()
+end
+
+local function test()
+    local f
+    callee = function() f = nil end
+    f = invoke()
+    return f
+end
+)",
+                   2,
+                   2
+               ),
+        R"(
+LOADNIL R0
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+SETUPVAL R1 U0
+GETUPVAL R1 U0
+CALLFB R1 0 1 [0]
+MOVE R0 R1
+CLOSEUPVALS R0
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function test(g, f)
+    holder = function() return f end
+    f = (function() return g(f) end)()
+    return f
+end
+)",
+                   2,
+                   2
+               ),
+        R"(
+NEWCLOSURE R2 P0
+CAPTURE REF R1
+SETGLOBAL R2 K0 ['holder']
+MOVE R2 R0
+MOVE R3 R1
+CALLFB R2 1 1 [0]
+MOVE R1 R2
+CLOSEUPVALS R1
+RETURN R1 1
+)"
+    );
+}
+
 TEST_CASE("InlineRecurseArguments")
 {
     // the example looks silly but we preserve it verbatim as it was found by fuzzer for a previous version of the compiler
@@ -8579,7 +8628,6 @@ RETURN R1 1
 
 TEST_CASE("InlineNonConstInitializers")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8773,8 +8821,6 @@ CALL R6 2 1
 L1: RETURN R0 0
 )"
     );
-
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     // inline builtins
     CHECK_EQ(
@@ -9118,7 +9164,6 @@ RETURN R1 2
 
 TEST_CASE("InlineOnlyRemoveTerminatingJump")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -9609,8 +9654,6 @@ MOVE R2 R0
 RETURN R2 1
 )"
     );
-
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     // Non-captured local move arrives at the ADDK arguments directly
     CHECK_EQ(
@@ -10214,8 +10257,6 @@ RETURN R0 0
 
 TEST_CASE("ReturnConsecutive")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     // we can return a single local directly
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -12084,7 +12125,6 @@ L1: RETURN R0 0
 
 TEST_CASE("ConstStringFolding")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(R"(return "" .. "")", 0, 2),
@@ -12319,7 +12359,6 @@ TEST_CASE("ClassDeclWithAmbiguousGlobal")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauEmitCallFeedback, true},
     };
 
     std::string source = R"(
@@ -12359,7 +12398,6 @@ TEST_CASE("ClassDeclWithExplicitCtor")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauEmitCallFeedback, true},
     };
 
     std::string source = R"(
@@ -13204,7 +13242,6 @@ TEST_CASE("ClassPrivateFieldIndexGlobal")
 TEST_CASE("ClassConstructedInsidePrivateMethod")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag reuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     std::string source = R"(
         class Vec
@@ -13282,7 +13319,6 @@ RETURN R0 0
 TEST_CASE("ClassPrivateStaticMethodNamecallOnClassObject")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag reuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     std::string source = R"(
         class StaticNamecall
@@ -13916,7 +13952,6 @@ RETURN R1 1
 // We do not optimize these as tracking escapes through returns is challenging
 TEST_CASE("FoldConstTablePropsReturnLocal")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -14567,7 +14602,6 @@ RETURN R0 0
 TEST_CASE("ConstClass")
 {
     ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag reuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
@@ -15033,7 +15067,6 @@ TEST_CASE("ClassNestingExceedsUpvalueLimit")
 TEST_CASE("ClassConstruction")
 {
     ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     CHECK_EQ(
         "\n" + compileFunction0Constants(R"(
@@ -15705,8 +15738,6 @@ L1: RETURN R0 0
 
 TEST_CASE("LocalRegisterReuse")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a, b, c = ...
 
@@ -15751,8 +15782,6 @@ local 5 (n): reg 2, start pc 8 line 12, end pc 9 line 12
 
 TEST_CASE("LocalRegisterReuseFunction")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a, b, c = ...
 
@@ -15811,8 +15840,6 @@ local 7 (n): reg 3, start pc 14 line 18, end pc 15 line 18
 
 TEST_CASE("LocalRegisterReuseUnused")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a = ...
 
@@ -15847,8 +15874,6 @@ local 3 (z): reg 1, start pc 5 line 8, end pc 5 line 8
 
 TEST_CASE("LocalRegisterReuseAliasedLocalsDoesNotDuplicateRegisters")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a, x, y = ...
 local b = a
@@ -15887,8 +15912,6 @@ local 7 (keep): reg 1, start pc 4 line 8, end pc 5 line 8
 
 TEST_CASE("LocalRegisterReuseUnrolledLocals")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -15913,8 +15936,6 @@ RETURN R0 0
 
 TEST_CASE("LocalRegisterReuseGroup")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local a, x = ...
@@ -15933,8 +15954,6 @@ RETURN R3 1
 
 TEST_CASE("LocalRegisterReuseInlinedLocals")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(

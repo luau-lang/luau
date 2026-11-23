@@ -1,0 +1,5 @@
+[flags-on]
+nonstrict = ""
+
+[flags-off]
+nonstrict = ""

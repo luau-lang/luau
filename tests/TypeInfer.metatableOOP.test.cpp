@@ -16,7 +16,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauSetmetatableOverrides)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -834,8 +833,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Instance = { Name: string }
 
@@ -957,8 +954,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
-
     CheckResult result = check(R"(
         local root = {}
         local mt1 = { __index = { propA = 42 } }
@@ -991,8 +986,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
 
     CheckResult result = check(R"(
         type MT1 = { __index: { propA: number } }
