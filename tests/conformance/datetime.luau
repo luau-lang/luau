@@ -34,6 +34,8 @@ assert(os.time({ year = 2000, month = 6, day = -100, hour = 0, min = 0, sec = 0}
 assert(os.time({ year = 2000, month = 6, day = 1000, hour = 0, min = 0, sec = 0}) == 1046131200)
 assert(os.time({ year = 2000, month = -60, day = 10, hour = 0, min = 0, sec = 0}) == 787017600)
 assert(os.time({ year = 2000, month = 60, day = 10, hour = 0, min = 0, sec = 0}) == 1102636800)
+assert(os.time({ year = 2024, month = -10, day = 1, hour = 0, min = 0, sec = 0}) == 1675209600)
+assert(os.time({ year = 2026, month = -22, day = 1, hour = 0, min = 0, sec = 0}) == 1706745600)
 
 assert(os.time({ year = 2000, month = 6, day = 10, hour = 0, min = 0, sec = -86400000}) == 874195200)
 assert(os.time({ year = 2000, month = 6, day = 10, hour = 0, min = 0, sec = 86400000}) == 1046995200)
