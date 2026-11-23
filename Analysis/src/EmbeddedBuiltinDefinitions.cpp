@@ -748,10 +748,13 @@ static void buildCoroutineDefinitions(TypeDefBuilder& builder)
         table.registerProp("finally", "(co: thread, callback: (status: \"finished\" | \"error\" | \"cancelled\", ...any) -> ()) -> ()");
 }
 
-static void buildTableDefinitions(TypeDefBuilder& builder)
+static void buildTableDefinitions(TypeDefBuilder& builder, SolverMode solverMode)
 {
-    builder.declareFunction("getmetatable", {"T"}, {{"obj", "T"}}, {"getmetatable<T>"});
-    builder.declareFunction("setmetatable", {"T", "MT"}, {{"t", "T"}, {"mt", "MT"}}, {"setmetatable<T, MT"});
+    if (solverMode == SolverMode::New)
+    {
+        builder.declareFunction("getmetatable", {"T"}, {{"obj", "T"}}, {"getmetatable<T>"});
+        builder.declareFunction("setmetatable", {"T", "MT"}, {{"t", "T"}, {"mt", "MT"}}, {"setmetatable<T, MT"});
+    }
 
     TableLikeDefinition table = builder.declareTablePartial("table");
     table.registerProp("concat", "<V>(t: {V}, sep: string?, i: number?, j: number?) -> string");
@@ -874,7 +877,7 @@ static void buildClassDefinitions(TypeDefBuilder& builder)
     }
 }
 
-std::string buildBuiltinTypeDefinitions()
+std::string buildBuiltinTypeDefinitions(SolverMode solverMode)
 {
     TypeDefBuilder builder;
     buildBaseDefinitions(builder);
@@ -882,7 +885,7 @@ std::string buildBuiltinTypeDefinitions()
     buildMathDefinitions(builder);
     buildOsDefinitions(builder);
     buildCoroutineDefinitions(builder);
-    buildTableDefinitions(builder);
+    buildTableDefinitions(builder, solverMode);
     buildDebugDefinitions(builder);
     buildUtf8Definitions(builder);
     buildBufferDefinitions(builder);
