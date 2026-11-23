@@ -1,0 +1,9 @@
+[flags-on]
+strict = ""
+nonstrict = ""
+runtime = ""
+
+[flags-off]
+strict = ""
+nonstrict = ""
+runtime = ""

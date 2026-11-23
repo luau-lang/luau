@@ -27,8 +27,6 @@ LUAU_FASTINTVARIABLE(DebugLuauTypeFunctionRuntimeHeapLimit, 0)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 
-LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
-
 namespace Luau
 {
 
@@ -126,21 +124,12 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstS
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    if (FFlag::LuauUdtfTerseChunkNames)
-    {
-        std::string chunkName = name.value;
-        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
+    std::string chunkName = name.value;
+    chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
 
-        // Load bytecode into Luau state
-        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
-            return error;
-    }
-    else
-    {
-        // Load bytecode into Luau state
-        if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
-            return error;
-    }
+    // Load bytecode into Luau state
+    if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+        return error;
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError_DEPRECATED(L, name.value, lua_resume(L, nullptr, 0)))
@@ -224,21 +213,12 @@ std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTy
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
-    if (FFlag::LuauUdtfTerseChunkNames)
-    {
-        std::string chunkName = name.value;
-        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
+    std::string chunkName = name.value;
+    chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "name"]` with just `name`
 
-        // Load bytecode into Luau state
-        if (auto error = checkResultForError(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
-            return error;
-    }
-    else
-    {
-        // Load bytecode into Luau state
-        if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
-            return error;
-    }
+    // Load bytecode into Luau state
+    if (auto error = checkResultForError(L, name.value, luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
+        return error;
 
     // Execute the global function which should return our user-defined type function
     if (auto error = checkResultForError(L, name.value, lua_resume(L, nullptr, 0)))
@@ -795,7 +775,7 @@ static int getNegatedValue(lua_State* L)
     return 1;
 }
 
-// Luau: `types.newtable(props: {[type]: type | { read: type, write: type }}?, indexer: {index: type, readresult: type, writeresult: type}?,
+// Luau: `types.newtable(props: {[type]: type | { read: type, write: type }}?, indexer: {index: type, readresult: type, writeresult: type?}?,
 // metatable: type?) -> type` Returns the type instance representing table
 static int createTable(lua_State* L)
 {

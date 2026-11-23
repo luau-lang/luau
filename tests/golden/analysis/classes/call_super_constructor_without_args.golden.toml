@@ -1,0 +1,13 @@
+[flags-on]
+strict = '''
+./analysis/classes/call_super_constructor_without_args.luau(9,9): TypeError: Argument count mismatch. Function expects 1 to 2 arguments, but none are specified
+'''
+nonstrict = ""
+runtime = ""
+
+[flags-off]
+strict = '''
+./analysis/classes/call_super_constructor_without_args.luau(9,9): TypeError: Argument count mismatch. Function expects 1 to 2 arguments, but none are specified
+'''
+nonstrict = ""
+runtime = ""

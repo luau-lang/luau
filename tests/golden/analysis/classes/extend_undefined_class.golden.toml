@@ -1,0 +1,21 @@
+[flags-on]
+strict = '''
+./analysis/classes/extend_undefined_class.luau(3,19): TypeError: Unknown global 'nope_not_defined'; consider assigning to it first
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extend_undefined_class.luau:3: attempt to extend a nil value
+stacktrace:
+./analysis/classes/extend_undefined_class.luau:3
+'''
+
+[flags-off]
+strict = '''
+./analysis/classes/extend_undefined_class.luau(3,19): TypeError: Unknown global 'nope_not_defined'; consider assigning to it first
+'''
+nonstrict = ""
+runtime = '''
+./analysis/classes/extend_undefined_class.luau:3: attempt to extend a nil value
+stacktrace:
+./analysis/classes/extend_undefined_class.luau:3
+'''

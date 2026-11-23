@@ -4,8 +4,6 @@
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenImprovedExitSync)
-
 namespace Luau
 {
 namespace CodeGen
@@ -287,10 +285,7 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
                 {
                     IrCmd forwardCmd = inst.cmd == IrCmd::NUM_TO_UINT ? IrCmd::UINT_TO_NUM : IrCmd::INT_TO_NUM;
 
-                    if (FFlag::LuauCodegenImprovedExitSync)
-                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd, /* lazy */ false, OP_A(inst).index});
-                    else
-                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd});
+                    function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd, /* lazy */ false, OP_A(inst).index});
 
                     vmRegDependent[reg] = instIdx;
 
@@ -342,10 +337,7 @@ void IrValueLocationTracking::recordRestoreOp(uint32_t instIdx, IrOp location)
 
             if (!captured)
             {
-                if (FFlag::LuauCodegenImprovedExitSync)
-                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd, /* lazy */ false, instIdx});
-                else
-                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
+                function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd, /* lazy */ false, instIdx});
 
                 if (logger && logger->options.includeRegSpills)
                     logger->formatAppendWithPrefix("  ; %%%u can be restored from R%d%s\n", depInstIdx, reg, getConversionCmdSuffix(inst.cmd));

@@ -24,11 +24,9 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTINT(LuauNormalizerInitialFuel)
-LUAU_FASTFLAG(LuauIterativeTypeSearcher);
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -484,26 +482,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * 
     )LUAU";
 
     std::ignore = check(src);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        // Clip this test with LuauIterativeTypeSearcher
-        {FFlag::LuauIterativeTypeSearcher, false},
-    };
-
-    ScopedFastInt sfi{FInt::LuauGenericCounterMaxSteps, 1};
-
-    CheckResult result = check(R"(
-        local function get(scale)
-            print(scale.Do.Re.Mi)
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("<T>({ read Do: { read Re: { read Mi: T } } }) -> ()", toString(requireType("get")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_subtyping" * doctest::timeout(LUAU_TIMEOUT))

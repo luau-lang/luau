@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -886,8 +885,6 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 {
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
 
     CheckResult result = check(R"(
         local function f(t): { x: number } | { x: string }

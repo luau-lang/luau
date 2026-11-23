@@ -1,0 +1,15 @@
+[flags-on]
+strict = '''
+./analysis/singletons/tagged_unions_using_singletons.luau(6,7): LocalUnused: Variable 'c' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/tagged_unions_using_singletons.luau(6,7): LocalUnused: Variable 'c' is never used; prefix with '_' to silence
+'''
+
+[flags-off]
+strict = '''
+./analysis/singletons/tagged_unions_using_singletons.luau(6,7): LocalUnused: Variable 'c' is never used; prefix with '_' to silence
+'''
+nonstrict = '''
+./analysis/singletons/tagged_unions_using_singletons.luau(6,7): LocalUnused: Variable 'c' is never used; prefix with '_' to silence
+'''

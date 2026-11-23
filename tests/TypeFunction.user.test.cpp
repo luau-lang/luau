@@ -12,8 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
-LUAU_FASTFLAG(LuauUdtfTerseChunkNames)
+LUAU_FASTFLAG(LuauEZAddBuiltins)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -627,7 +626,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negation_methods_work")
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_negation_inner")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
 type function pass(t)
@@ -799,8 +797,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
         local function ok(idx: gettable<>): never return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    TypeMismatch* tm = nullptr;
+    if (FFlag::LuauEZAddBuiltins)
+    {
+        tm = get<TypeMismatch>(result.errors[1]);
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    }
+    else
+    {
+        tm = get<TypeMismatch>(result.errors[0]);
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    }
+
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{ [boolean]: string, number: string }");
 }
@@ -831,8 +839,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_metatable_methods_work")
         local function ok(idx: getmetatable<>): never return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    TypeMismatch* tm = nullptr;
+    if (FFlag::LuauEZAddBuiltins)
+    {
+        tm = get<TypeMismatch>(result.errors[2]);
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+    }
+    else
+    {
+        tm = get<TypeMismatch>(result.errors[0]);
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    }
+
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{boolean}");
 }
@@ -985,8 +1003,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
         local function ok(idx: checkmut<>): never return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    TypeMismatch* tm = nullptr;
+    if (FFlag::LuauEZAddBuiltins)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        tm = get<TypeMismatch>(result.errors[1]);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        tm = get<TypeMismatch>(result.errors[0]);
+    }
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "setmetatable<{  }, {boolean}>");
 }
@@ -994,7 +1021,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-
     CheckResult result = check(R"(
         type function getcopy()
             local indexer = {
@@ -1017,8 +1043,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
         local function ok(idx: getcopy<>): never return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    TypeMismatch* tm = nullptr;
+    if (FFlag::LuauEZAddBuiltins)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        tm = get<TypeMismatch>(result.errors[1]);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        tm = get<TypeMismatch>(result.errors[0]);
+    }
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "setmetatable<{  }, { [number]: boolean, string: number }>");
 }
@@ -1046,7 +1081,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_simple_cyclic_serialization_works")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_metatable")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function badmetatable()
@@ -1097,8 +1131,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_user_error_is_reported")
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
-
     CheckResult result = check(R"(
         type function errors_if_string(arg)
             if arg:is("string") then
@@ -1120,8 +1152,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_call_metamethod")
 {
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function hello(arg)
@@ -1164,7 +1194,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_eq_metamethod")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_type_cant_call_get_props")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function hello(arg)
@@ -1228,7 +1257,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_3")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         -- this function should not see 'fourth' function when invoked from 'third' that sees it
@@ -1322,7 +1350,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function illegal(arg)
@@ -1433,8 +1460,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_type_methods_on_types")
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
-
     CheckResult result = check(R"(
         type function test(x)
             return if (types :: any).is(x, "number") then types.string else types.boolean
@@ -1449,7 +1474,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_type_methods_on_types")
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_types_functions_on_type")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function test(x)
@@ -1465,7 +1489,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_types_functions_on_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_metatable_writes")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function test(x)
@@ -1483,7 +1506,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_metatable_writes")
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_eq_field")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function test(x)
@@ -1770,8 +1792,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_error")
 {
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -2120,7 +2140,6 @@ local function ok(idx: get<>): false return idx end
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_1")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
 type function get()
@@ -2726,7 +2745,6 @@ local function ok(idx: get<>): number return idx end
 TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_not_enough_arguments")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
 type Test<A, B> = (a: A, b: B) -> A
@@ -2765,8 +2783,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_reduction_errors")
 {
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
 type Test<T, U> = setmetatable<T, U>
@@ -3005,7 +3021,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_cannot_try_to_mutate_type_aliases")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type myType = {}
@@ -3164,7 +3179,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_alias_call_serialize_null_deref")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type Big<T> = {
@@ -3222,7 +3236,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastInt serdeLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function copy_complex(arg)
@@ -3282,7 +3295,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -3304,7 +3316,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult result = check(R"(
         type function extra_arg()
@@ -3575,7 +3586,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
 TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult results = check(R"(
         type alias = {}
@@ -3593,7 +3603,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag terseChunkNames{FFlag::LuauUdtfTerseChunkNames, true};
 
     CheckResult results = check(R"(
         type function foo(ty)
@@ -3679,8 +3688,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_when_serializing_environment_but_not_arguments")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauTypeFunctionsReturnAfterAllSerialized, true};
 
     CheckResult result = check(R"(
         local a: any

@@ -15,7 +15,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauFindFullAncestryLooksIntoTypePacks)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauExportTypecheckTypepacks)
@@ -1506,7 +1505,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_mismatch_errors")
 TEST_CASE_FIXTURE(BuiltinsFixture, "findAstAncestryOfPosition_descends_into_AstTypePacks")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauFindFullAncestryLooksIntoTypePacks, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::LuauExportValueTypecheck, true},
