@@ -1549,4 +1549,36 @@ end
     )"));
 }
 
+TEST_CASE_FIXTURE(ClassesFixture, "class_type_before_declaration")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+local function useFoo(foo: Foo): Foo
+    return foo
+end
+
+class Foo
+    public bar: number
+end
+    )"));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_type_hoisting_preserves_superclass_shadowing")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+local open class Foo
+    public a: number
+end
+
+do
+    local class Foo extends Foo
+        public b: number
+    end
+
+    local function getA(foo: Foo): number
+        return foo.a
+    end
+end
+    )"));
+}
+
 TEST_SUITE_END();
