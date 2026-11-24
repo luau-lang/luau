@@ -10,6 +10,7 @@ LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauEZAddBuiltins)
+LUAU_FASTFLAGVARIABLE(LuauNarrowSelectSignature)
 
 namespace Luau
 {
@@ -625,7 +626,12 @@ static void buildBaseDefinitions(TypeDefBuilder& builder)
     builder.declareFunction(
         "xpcall", {"E", "A...", "R1...", "R2..."}, {{"f", "(A...) -> R1..."}, {"err", "(E) -> R2..."}, {"...", "A..."}}, "(boolean, R1...)"
     );
-    builder.declareFunction("select", {"A..."}, {{"i", "string | number"}, {"...", "A..."}}, "...any");
+    builder.declareFunction(
+        "select",
+        {"A..."},
+        {{"i", FFlag::LuauNarrowSelectSignature ? "number | \"#\"" : "string | number"}, {"...", "A..."}},
+        "...any"
+    );
     builder.declareCheckedFunction("newproxy", {{"mt", "boolean?"}}, "any");
     builder.declareFunction("unpack", {"V"}, {{"tab", "{V}"}, {"i", "number?"}, {"j", "number?"}}, "...V");
 }

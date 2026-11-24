@@ -12,6 +12,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
+LUAU_FASTFLAG(LuauEZAddBuiltins)
+LUAU_FASTFLAG(LuauNarrowSelectSignature)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1001,6 +1003,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_on_variadic")
     CHECK_EQ("any", toString(requireType("a")));
     CHECK_EQ("any", toString(requireType("b")));
     CHECK_EQ("any", toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_rejects_arbitrary_strings")
+{
+    ScopedFastFlag builtins{FFlag::LuauEZAddBuiltins, true};
+    ScopedFastFlag flag{FFlag::LuauNarrowSelectSignature, true};
+
+    CheckResult result = check(R"(
+        select("invalid", 42)
+
+        local function f(index: string)
+            select(index, 42)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_accepts_hash_string")
+{
+    ScopedFastFlag builtins{FFlag::LuauEZAddBuiltins, true};
+    ScopedFastFlag flag{FFlag::LuauNarrowSelectSignature, true};
+
+    CheckResult result = check(R"(
+        local value: number = select("#", 27)
+        local selected: string = select(1, "value")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_report_all_type_errors_at_correct_positions")
