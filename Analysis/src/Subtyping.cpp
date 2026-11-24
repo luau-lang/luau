@@ -1967,8 +1967,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
         if (get<StringSingleton>(p.first) && p.second->type == PrimitiveType::String)
             result = {false};
         // 1 </: ¬number
-        else if (FFlag::LuauNumberSingletonsSupport && get<NumberSingleton>(p.first) && p.second->type == PrimitiveType::String)
+        else if (get<NumberSingleton>(p.first) && p.second->type == PrimitiveType::Number)
+        {
+            LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
             result = {false};
+        }
         // false </: ¬boolean
         else if (get<BooleanSingleton>(p.first) && p.second->type == PrimitiveType::Boolean)
             result = {false};
@@ -1982,8 +1985,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     {
         if (p.first->type == PrimitiveType::String && get<StringSingleton>(p.second))
             result = {false};
-        else if (FFlag::LuauNumberSingletonsSupport && p.first->type == PrimitiveType::Number && get<NumberSingleton>(p.second))
+        else if (p.first->type == PrimitiveType::Number && get<NumberSingleton>(p.second))
+        {
+            LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
             result = {false};
+        }
         else if (p.first->type == PrimitiveType::Boolean && get<BooleanSingleton>(p.second))
             result = {false};
         else
@@ -2053,8 +2059,11 @@ SubtypingResult Subtyping::isCovariantWith(
 {
     if (get<StringSingleton>(subSingleton) && superPrim->type == PrimitiveType::String)
         return {true};
-    else if (FFlag::LuauNumberSingletonsSupport && get<NumberSingleton>(subSingleton) && superPrim->type == PrimitiveType::Number)
+    else if (get<NumberSingleton>(subSingleton) && superPrim->type == PrimitiveType::Number)
+    {
+        LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
         return {true};
+    }
     else if (get<BooleanSingleton>(subSingleton) && superPrim->type == PrimitiveType::Boolean)
         return {true};
     else

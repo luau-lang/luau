@@ -2163,8 +2163,9 @@ NormalizationResult Normalizer::unionNormalWithTy(
     {
         if (get<BooleanSingleton>(stv))
             here.booleans = unionOfBools(here.booleans, there);
-        else if (const NumberSingleton* nstv = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && nstv)
+        else if (const NumberSingleton* nstv = get<NumberSingleton>(stv))
         {
+            LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
             if (here.numbers.isCofinite)
             {
                 auto it = here.numbers.singletons.find(nstv->value);
@@ -2428,8 +2429,10 @@ void Normalizer::subtractSingleton(NormalizedType& here, TypeId ty)
                 here.strings.singletons.erase(it);
         }
     }
-    else if (const NumberSingleton* ns = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && ns)
+    else if (const NumberSingleton* ns = get<NumberSingleton>(stv))
     {
+        LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+
         if (here.numbers.isCofinite)
             here.numbers.singletons.insert({ns->value, ty});
         else
@@ -3853,8 +3856,10 @@ NormalizationResult Normalizer::intersectNormalWithTy(
 
         if (get<BooleanSingleton>(stv))
             here.booleans = intersectionOfBools(booleans, there);
-        else if (const NumberSingleton* nstv = get<NumberSingleton>(stv); FFlag::LuauNumberSingletonsSupport && nstv)
+        else if (const NumberSingleton* nstv = get<NumberSingleton>(stv); nstv)
         {
+            LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+
             if (here.numbers.includes(nstv->value))
                 here.numbers.singletons.insert({nstv->value, there});
         }

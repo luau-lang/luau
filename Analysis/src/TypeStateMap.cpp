@@ -17,6 +17,8 @@
 
 LUAU_FASTINTVARIABLE(LuauMaxCFGDataflowIterations, 2);
 LUAU_FASTFLAG(DebugLuauLogCFG)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
+
 namespace Luau
 {
 
@@ -371,6 +373,11 @@ TypeId TypeStateMap::getDiscriminantOf(const NarrowingConstraint& constraint)
                 [&](const StringSingletonValue& stringValue) -> TypeId
                 {
                     return arena->addType(SingletonType{StringSingleton{stringValue.value}});
+                },
+                [&](const NumberSingletonValue& numberValue) -> TypeId
+                {
+                    LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+                    return arena->addType(SingletonType{NumberSingleton{numberValue.value}});
                 },
                 [&](const BooleanSingletonValue& booleanValue) -> TypeId
                 {

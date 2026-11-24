@@ -13,6 +13,8 @@
 
 #include <optional>
 
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
+
 namespace Luau
 {
 
@@ -116,6 +118,16 @@ struct StringSingletonValue
     }
 };
 
+struct NumberSingletonValue
+{
+    int64_t value;
+
+    bool operator==(const NumberSingletonValue& other) const
+    {
+        return value == other.value;
+    }
+};
+
 struct BooleanSingletonValue
 {
     bool value;
@@ -134,7 +146,7 @@ struct NilSingletonValue
     }
 };
 
-using SingletonValue = Variant<StringSingletonValue, BooleanSingletonValue, NilSingletonValue>;
+using SingletonValue = Variant<StringSingletonValue, NumberSingletonValue, BooleanSingletonValue, NilSingletonValue>;
 
 struct SingletonEq
 {
@@ -183,6 +195,11 @@ struct std::hash<Luau::NarrowingConstraint>
             Luau::hashCombine(seed, std::hash<int>()(value.index()));
             if (auto* stringValue = value.get_if<Luau::StringSingletonValue>())
                 Luau::hashCombine(seed, std::hash<std::string>()(stringValue->value));
+            else if (auto* numberValue = value.get_if<Luau::NumberSingletonValue>())
+            {
+                LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+                Luau::hashCombine(seed, std::hash<int64_t>()(numberValue->value));
+            }
             else if (auto* booleanValue = value.get_if<Luau::BooleanSingletonValue>())
                 Luau::hashCombine(seed, std::hash<bool>()(booleanValue->value));
         };

@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauNumberSingletonsSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -2044,6 +2045,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_assignment_lvalue")
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_type_annotation")
 {
+    ScopedFastFlag noNumberSingletons{FFlag::LuauNumberSingletonsSyntax, false};
     matchParseError("local a : 2 = 2", "Expected type, got '2'");
 }
 

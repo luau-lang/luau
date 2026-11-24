@@ -2131,7 +2131,7 @@ struct Printer
         }
         else if (const auto& a = typeAnnotation.as<AstTypeSingletonNumber>())
         {
-            writer.string(std::to_string(a->value));
+            writer.symbol(std::to_string(a->value));
         }
         else if (const auto& a = typeAnnotation.as<AstTypeSingletonString>())
         {
