@@ -2719,6 +2719,11 @@ static bool isOkToCompare(
     else if (!normLeft->strings.isNever() && !normRight->strings.isNever())
         return true;
 
+    // Comparisons between different number singleton typeArguments is allowed even
+    // if their intersection is technically uninhabited.
+    else if (!normLeft->numbers.isNever() && !normRight->numbers.isNever())
+        return true;
+
     return false;
 };
 

@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -444,12 +445,18 @@ local t = table.pack(f())
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 {
+    ScopedFastFlag numberSingletons{FFlag::LuauNumberSingletonsSupport, true};
+
     CheckResult result = check(R"(
         local t = table.pack(1, 2, true)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("{ [number]: boolean | number, n: number }", toString(requireType("t")));
+
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("{ [number]: boolean | number | number, n: number }", toString(requireType("t")));
+    else
+        CHECK_EQ("{ [number]: boolean | number, n: number }", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")

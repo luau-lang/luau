@@ -401,7 +401,7 @@ bool NormalizedType::isUnknown() const
     return get<NeverType>(errors) && hasAllPrimitives && isTopExternType && isTopTable && functions.isTop;
 }
 
-bool NormalizedType::isExactlyNumber() const
+bool NormalizedType::isSubtypeOfNumber() const
 {
     return hasNumbers() && !hasTops() && !hasBooleans() && !hasExternTypes() && !hasErrors() && !hasNils() && !hasStrings() && !hasThreads() &&
            !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
@@ -3850,6 +3850,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     else if (const SingletonType* stv = get<SingletonType>(there))
     {
         TypeId booleans = here.booleans;
+        NormalizedNumberType numbers = std::move(here.numbers);
         NormalizedStringType strings = std::move(here.strings);
 
         clearNormal(here);
@@ -3860,7 +3861,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
         {
             LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
 
-            if (here.numbers.includes(nstv->value))
+            if (numbers.includes(nstv->value))
                 here.numbers.singletons.insert({nstv->value, there});
         }
         else if (const StringSingleton* sstv = get<StringSingleton>(stv))

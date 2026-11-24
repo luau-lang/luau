@@ -2751,14 +2751,9 @@ SubtypingResult Subtyping::isCovariantWith(
     result.andAlso(isCovariantWith(env, subNorm->errors, superNorm->errors, scope));
     result.andAlso(isCovariantWith(env, subNorm->nils, superNorm->nils, scope));
     if (FFlag::LuauNumberSingletonsSupport)
-    {
-        auto subResult = std::make_unique<SubtypingResult>(SubtypingResult{false});
-        subResult->orElse(isCovariantWith(env, subNorm->strings, superNorm->strings, scope));
-        subResult->orElse(isCovariantWith(env, subNorm->strings, superNorm->tables, scope));
-        result.andAlso(std::move(*subResult));
-    }
-    else
         result.andAlso(isCovariantWith(env, subNorm->numbers, superNorm->numbers, scope));
+    else
+        result.andAlso(isCovariantWith(env, subNorm->numbers_DEPRECATED, superNorm->numbers_DEPRECATED, scope));
     if (FFlag::LuauRefactorStringSemanticSubtyping)
     {
         auto subResult = std::make_unique<SubtypingResult>(SubtypingResult{false});

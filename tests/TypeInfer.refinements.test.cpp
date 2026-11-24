@@ -6,6 +6,7 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
@@ -16,6 +17,8 @@ LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
+LUAU_FASTFLAG(LuauNumberSingletonsSyntax)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 using namespace Luau;
 
@@ -758,6 +761,8 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_another_lvalue")
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
 {
+    ScopedFastFlag numberSingletons[]{{FFlag::LuauNumberSingletonsSyntax, true}, {FFlag::LuauNumberSingletonsSupport, true}};
+
     CheckResult result = check(R"(
         local function f(a: (string | number)?)
             if a == 1 then
@@ -770,8 +775,16 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == 1;
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
+    if (!FFlag::DebugLuauForceOldSolver)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "1"); // a == 1;
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "((number & ~1) | string)?"); // a ~= 1
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == 1;
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")

@@ -310,12 +310,12 @@ struct NormalizedType
     // IsType functions
     bool isUnknown() const;
     /// Returns true if the type is exactly a number. Behaves like Type::isNumber()
-    bool isExactlyNumber() const;
+    bool isSubtypeOfNumber() const;
 
-    /// Returns true if the type is a subtype of string(it could be a singleton). Behaves like Type::isString()
+    /// Returns true if the type is a subtype of string (it could be a singleton). Behaves like Type::isString()
     bool isSubtypeOfString() const;
 
-    /// Returns true if the type is a subtype of boolean(it could be a singleton). Behaves like Type::isBoolean()
+    /// Returns true if the type is a subtype of boolean (it could be a singleton). Behaves like Type::isBoolean()
     bool isSubtypeOfBooleans() const;
 
     /// Returns true if the type is a subtype of `table`.

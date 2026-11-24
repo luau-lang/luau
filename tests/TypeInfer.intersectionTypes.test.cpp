@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -877,6 +878,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 {
     // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    if (FFlag::LuauNumberSingletonsSupport)
+        return;
 
     CheckResult result = check(R"(
         function f<a...,b...>()

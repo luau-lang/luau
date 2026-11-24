@@ -16,6 +16,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauSupportNegationOfIntersectionType)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 using namespace Luau;
 
@@ -1002,19 +1003,23 @@ TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "normalize_is_exactly_number")
 {
+    ScopedFastFlag numberSingletons{FFlag::LuauNumberSingletonsSupport, true};
+
+    TypeId one = arena.addType(SingletonType{NumberSingleton{1}});
     std::shared_ptr<const NormalizedType> number = normalize(getBuiltins()->numberType);
-    // 1. all types for which Types::number say true for, NormalizedType::isExactlyNumber should say true as well
-    CHECK(Luau::isNumber(getBuiltins()->numberType) == number->isExactlyNumber());
-    // 2. isExactlyNumber should handle cases like `number & number`
+    // 1. all types for which Types::number say true for, NormalizedType::isSubtypeOfNumber should say true as well
+    CHECK(Luau::isNumber(getBuiltins()->numberType) == number->isSubtypeOfNumber());
+    CHECK(Luau::isNumber(one) == normalize(one)->isSubtypeOfNumber());
+    // 2. isSubtypeOfNumber should handle cases like `number & number`
     TypeId intersection = arena.addType(IntersectionType{{getBuiltins()->numberType, getBuiltins()->numberType}});
     std::shared_ptr<const NormalizedType> normIntersection = normalize(intersection);
-    CHECK(normIntersection->isExactlyNumber());
+    CHECK(normIntersection->isSubtypeOfNumber());
 
-    // 3. isExactlyNumber should reject things that are definitely not precisely numbers `number | any`
+    // 3. isSubtypeOfNumber should reject things that are definitely not precisely numbers `number | any`
 
     TypeId yoonion = arena.addType(UnionType{{getBuiltins()->anyType, getBuiltins()->numberType}});
     std::shared_ptr<const NormalizedType> unionIntersection = normalize(yoonion);
-    CHECK(!unionIntersection->isExactlyNumber());
+    CHECK(!unionIntersection->isSubtypeOfNumber());
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "normalize_unknown")
