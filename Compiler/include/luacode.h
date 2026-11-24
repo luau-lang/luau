@@ -6,7 +6,11 @@
 
 // can be used to reconfigure visibility/exports for public APIs
 #ifndef LUACODE_API
+#if defined(__cplusplus) && defined(LUAU_EXTERN_C)
+#define LUACODE_API extern "C"
+#else
 #define LUACODE_API extern
+#endif
 #endif
 
 typedef struct lua_CompileOptions lua_CompileOptions;

@@ -3,7 +3,11 @@
 
 // Can be used to reconfigure visibility/exports for public APIs
 #ifndef LUACODEGEN_API
+#if defined(__cplusplus) && defined(LUAU_EXTERN_C)
+#define LUACODEGEN_API extern "C"
+#else
 #define LUACODEGEN_API extern
+#endif
 #endif
 
 typedef struct lua_State lua_State;
