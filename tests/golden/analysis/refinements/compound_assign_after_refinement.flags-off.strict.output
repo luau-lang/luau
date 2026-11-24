@@ -1,0 +1,3 @@
+./analysis/refinements/compound_assign_after_refinement.luau(6,5): TypeError: Expected this to be 'string & ~""', but got 'string'; 
+`string` cannot be `~""`
+./analysis/refinements/compound_assign_after_refinement.luau(26,5): TypeError: Expected this to be '""', but got 'string'
