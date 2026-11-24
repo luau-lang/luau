@@ -4,9 +4,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// can be used to reconfigure visibility/exports for public APIs
+// define LUACODE_API to override public api linkage and visibility
 #ifndef LUACODE_API
-#define LUACODE_API extern
+#if defined(LUAU_EXTERN_C) && LUAU_EXTERN_C && defined(__cplusplus)
+#define LUACODE_API_LINKAGE extern "C"
+#else
+#define LUACODE_API_LINKAGE extern
+#endif
+
+#ifndef LUACODE_API_VISIBILITY
+#define LUACODE_API_VISIBILITY
+#endif
+
+#define LUACODE_API LUACODE_API_LINKAGE LUACODE_API_VISIBILITY
 #endif
 
 typedef struct lua_CompileOptions lua_CompileOptions;
