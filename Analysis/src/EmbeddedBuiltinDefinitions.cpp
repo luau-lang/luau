@@ -10,6 +10,7 @@ LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauEZAddBuiltins)
+LUAU_FASTFLAGVARIABLE(LuauNewSolverNewDefinitions)
 
 namespace Luau
 {
@@ -465,12 +466,12 @@ declare class: {
 }
 )CLASS_SRC";
 
-std::string buildBuiltinTypeDefinitions();
+std::string buildBuiltinTypeDefinitions(SolverMode solver);
 
-std::string getBuiltinDefinitionSource()
+std::string getBuiltinDefinitionSource(SolverMode solver)
 {
     if (FFlag::LuauEZAddBuiltins)
-        return buildBuiltinTypeDefinitions();
+        return buildBuiltinTypeDefinitions(SolverMode solver);
     else
     {
         std::string result = kBuiltinDefinitionBaseSrc;
@@ -747,8 +748,14 @@ static void buildCoroutineDefinitions(TypeDefBuilder& builder)
         table.registerProp("finally", "(co: thread, callback: (status: \"finished\" | \"error\" | \"cancelled\", ...any) -> ()) -> ()");
 }
 
-static void buildTableDefinitions(TypeDefBuilder& builder)
+static void buildTableDefinitions(TypeDefBuilder& builder, SolverMode solverMode)
 {
+    if (solverMode == SolverMode::New)
+    {
+        builder.declareFunction("getmetatable", {"T"}, {{"obj", "T"}}, {"getmetatable<T>"});
+        builder.declareFunction("setmetatable", {"T", "MT"}, {{"t", "T"}, {"mt", "MT"}}, {"setmetatable<T, MT"});
+    }
+
     TableLikeDefinition table = builder.declareTablePartial("table");
     table.registerProp("concat", "<V>(t: {V}, sep: string?, i: number?, j: number?) -> string");
     table.registerProp("insert", "(<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, pos: number, value: V) -> ())");
@@ -870,7 +877,7 @@ static void buildClassDefinitions(TypeDefBuilder& builder)
     }
 }
 
-std::string buildBuiltinTypeDefinitions()
+std::string buildBuiltinTypeDefinitions(SolverMode solverMode)
 {
     TypeDefBuilder builder;
     buildBaseDefinitions(builder);
@@ -878,7 +885,7 @@ std::string buildBuiltinTypeDefinitions()
     buildMathDefinitions(builder);
     buildOsDefinitions(builder);
     buildCoroutineDefinitions(builder);
-    buildTableDefinitions(builder);
+    buildTableDefinitions(builder, solverMode);
     buildDebugDefinitions(builder);
     buildUtf8Definitions(builder);
     buildBufferDefinitions(builder);
