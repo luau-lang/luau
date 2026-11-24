@@ -13,8 +13,6 @@
 #include "lua.h"
 #include "lualib.h"
 
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsReturnAfterAllSerialized)
-
 namespace Luau
 {
 
@@ -350,12 +348,9 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     resetTypeFunctionState(L);
 
-    if (FFlag::LuauTypeFunctionsReturnAfterAllSerialized)
-    {
-        // If something in our environment failed to serialize, return an error.
-        if (!runtimeBuilder->errors.empty())
-            return {std::nullopt, Reduction::Erroneous, {}, {}, toString(runtimeBuilder->errors.front())};
-    }
+    // If something in our environment failed to serialize, return an error.
+    if (!runtimeBuilder->errors.empty())
+        return {std::nullopt, Reduction::Erroneous, {}, {}, toString(runtimeBuilder->errors.front())};
 
     // Push serialized arguments onto the stack
     for (auto typeParam : typeParams)

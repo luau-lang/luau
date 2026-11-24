@@ -161,8 +161,8 @@ static int dumpControlFlowGraphs(const std::vector<std::string>& paths)
             continue;
         }
 
-        Luau::CFG::CFGAllocator cfgAllocator;
-        auto cfg = Luau::CFG::CFGBuilder::makeCFG(Luau::NotNull{&cfgAllocator}, parseResult.root);
+        Luau::CFGAllocator cfgAllocator;
+        auto cfg = Luau::CFGBuilder::makeCFG(Luau::NotNull{&cfgAllocator}, parseResult.root);
         printf("%s", Luau::dumpCFG(*cfg).c_str());
     }
 

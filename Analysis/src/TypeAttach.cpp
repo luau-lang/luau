@@ -22,15 +22,6 @@ static char* allocateString(Luau::Allocator& allocator, std::string_view content
     return result;
 }
 
-template<typename... Data>
-static char* allocateString(Luau::Allocator& allocator, const char* format, Data... data)
-{
-    int len = snprintf(nullptr, 0, format, data...);
-    char* result = (char*)allocator.allocate(len + 1);
-    snprintf(result, len + 1, format, data...);
-    return result;
-}
-
 using SyntheticNames = std::unordered_map<const void*, char*>;
 
 namespace Luau
@@ -100,8 +91,6 @@ public:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("boolean"), std::nullopt, Location());
         case PrimitiveType::Number:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("number"), std::nullopt, Location());
-        case PrimitiveType::Integer:
-            return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("integer"), std::nullopt, Location());
         case PrimitiveType::String:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("string"), std::nullopt, Location());
         case PrimitiveType::Thread:

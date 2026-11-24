@@ -24,10 +24,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauRefineNotNilWaitsForBlockedTarget)
-LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
-LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAG(LuauOneBitAssumedConstraintTracking)
 
 namespace Luau
 {
@@ -130,11 +128,18 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
         ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->scope, ctx->ice, ctx->limits, location
     );
 
-    DenseHashSet<TypeId> uniqueTypes;
-    OverloadResolution resolution = resolver->resolveOverload(fnTy, argsPack, location, NotNull{&uniqueTypes}, /* useFreeTypeBounds */ false);
+    OverloadResolution resolution = resolver->resolveOverload(fnTy, argsPack, location, /* useFreeTypeBounds */ false);
 
-    if (resolution.ok.empty() && resolution.potentialOverloads.empty())
-        return std::nullopt;
+    if (FFlag::LuauOneBitAssumedConstraintTracking)
+    {
+        if (resolution.ok.empty() && resolution.potentialOverloads.empty())
+            return std::nullopt;
+    }
+    else
+    {
+        if (resolution.ok.empty() && resolution.potentialOverloads_DEPRECATED.empty())
+            return std::nullopt;
+    }
 
     SelectedOverload selected = resolution.getUnambiguousOverload();
 
@@ -1300,27 +1305,24 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
 
-                if (FFlag::LuauRefineNotNilWaitsForBlockedTarget)
+                std::vector<TypeId> blocked;
+                for (TypeId ty : result.blockedTypes)
                 {
-                    std::vector<TypeId> blocked;
-                    for (TypeId ty : result.blockedTypes)
-                    {
-                        if (is<BlockedType, PendingExpansionType>(follow(ty)))
-                            blocked.push_back(ty);
-                    }
-
-                    if (auto ut = get<UnionType>(follow(target)))
-                    {
-                        for (TypeId option : ut)
-                        {
-                            if (isBlockedOrUnsolvedType(follow(option)))
-                                blocked.push_back(option);
-                        }
-                    }
-
-                    if (!blocked.empty())
-                        return {nullptr, std::move(blocked)};
+                    if (is<BlockedType, PendingExpansionType>(follow(ty)))
+                        blocked.push_back(ty);
                 }
+
+                if (auto ut = get<UnionType>(follow(target)))
+                {
+                    for (TypeId option : ut)
+                    {
+                        if (isBlockedOrUnsolvedType(follow(option)))
+                            blocked.push_back(option);
+                    }
+                }
+
+                if (!blocked.empty())
+                    return {nullptr, std::move(blocked)};
 
                 return {result.result, {}};
             }
@@ -2349,13 +2351,10 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         if (metatableMetamethod)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-        if (FFlag::LuauSetmetatableOverrides)
-        {
-            // If there's already a metatable here then grab the underlying
-            // table instead.
-            if (auto mt = get<MetatableType>(table))
-                table = mt->table;
-        }
+        // If there's already a metatable here then grab the underlying
+        // table instead.
+        if (auto mt = get<MetatableType>(table))
+            table = mt->table;
 
         TypeId withMetatable = ctx->arena->addType(MetatableType{table, metatableTy});
 
@@ -2376,13 +2375,10 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         if (metatableMetamethod)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-        if (FFlag::LuauSetmetatableOverrides)
-        {
-            // If there's already a metatable here then grab the underlying
-            // table instead.
-            if (auto mt = get<MetatableType>(componentTy))
-                componentTy = mt->table;
-        }
+        // If there's already a metatable here then grab the underlying
+        // table instead.
+        if (auto mt = get<MetatableType>(componentTy))
+            componentTy = mt->table;
 
         TypeId withMetatable = ctx->arena->addType(MetatableType{componentTy, metatableTy});
         SimplifyResult simplified = simplifyUnion(ctx->builtins, ctx->arena, result, withMetatable);

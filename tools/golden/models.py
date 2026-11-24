@@ -83,18 +83,19 @@ class GoldenTest:
     entry_path: Path
     entry_argument: str
     directives: DirectiveSpec
-    exact: dict[tuple[str, str], tuple[Path, str]] = field(default_factory=dict)
+    exact: dict[tuple[str, str], str] = field(default_factory=dict)
 
-    def exact_path(self, config: str, command: str) -> Path:
-        return self.entry_path.with_name(f"{self.entry_path.stem}.{config}.{command}.output")
+    @property
+    def snapshot_path(self) -> Path:
+        return self.entry_path.with_name(f"{self.entry_path.stem}.golden.toml")
 
-    def actual_path(self, config: str, command: str) -> Path:
+    @property
+    def actual_path(self) -> Path:
         # Captured output for a run, written beside (and sorting next to) the
-        # expected `.output` so the two can be diffed directly. The `.tmp`
-        # suffix keeps discovery's `*.output` glob from picking these up and is
-        # gitignored so throwaway captures cannot be committed.
-        exact = self.exact_path(config, command)
-        return exact.with_name(f"{exact.name}.tmp")
+        # expected `.golden.toml` so the two can be diffed directly. The `.tmp`
+        # suffix keeps discovery's `*.golden.toml` glob from picking these up and
+        # is gitignored so throwaway captures cannot be committed.
+        return self.snapshot_path.with_name(f"{self.snapshot_path.name}.tmp")
 
 
 @dataclass

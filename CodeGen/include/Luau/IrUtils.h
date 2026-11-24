@@ -7,7 +7,7 @@
 
 #include <optional>
 
-LUAU_FASTFLAG(LuauCodegenUpdateSafeEnvList)
+LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 
 namespace Luau
 {
@@ -108,9 +108,9 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
     case IrCmd::FALLBACK_SETTABLEKS:
     case IrCmd::FALLBACK_NAMECALL:
     case IrCmd::FALLBACK_FORGPREP:
-        return true;
     case IrCmd::INVOKE_FASTPCALL:
-        return FFlag::LuauCodegenUpdateSafeEnvList;
+    case IrCmd::INVOKE_NAMECALL:
+        return true;
     default:
         break;
     }
@@ -127,6 +127,9 @@ inline bool isPseudo(IrCmd cmd)
 inline bool hasSideEffects(IrCmd cmd)
 {
     if (cmd == IrCmd::INVOKE_FASTCALL)
+        return true;
+
+    if (FFlag::LuauCodegenCmpAnySideEffecting && cmd == IrCmd::CMP_ANY)
         return true;
 
     if (isPseudo(cmd))
@@ -210,6 +213,12 @@ bool isCustomUserdataBytecodeType(uint8_t ty);
 
 // Check that 'ty' is 'expected' or 'any'
 bool isExpectedOrUnknownBytecodeType(uint8_t ty, LuauBytecodeType expected);
+
+// Tag recorded at runtime on the register at the bytecode instruction
+LuauBytecodeType getTagFeedback(const IrFunction& function, int pcpos, int reg);
+
+// Userdata recorded at runtime on the register at the bytecode instruction
+std::optional<BytecodeUserdataFeedback> getUserdataFeedback(const IrFunction& function, int pcpos, int reg);
 
 HostMetamethod tmToHostMetamethod(int tm);
 

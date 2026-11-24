@@ -131,8 +131,6 @@ private:
     TypeId lookupExpectedType(AstExpr* expr) const;
     TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena) const;
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena);
-    // Clip with LuauDontUseInnermostScope
-    Scope* findInnermostScope_DEPRECATED(Location location) const;
     void visit(AstStat* stat);
     void visit(AstStatIf* ifStatement);
     void visit(AstStatWhile* whileStatement);
@@ -159,8 +157,8 @@ private:
     void visit(AstStatDeclareExternType* stat);
     void checkExtendsClause(AstStatClass* stat);
     void visit(AstStatClass* stat);
-    void visitConstructor(AstStatClass* stat, const AstClassMethod* method);
-    void checkMemberOverrides(AstStatClass* stat);
+    void visitConstructor(AstStatClass* stat, const AstClassMethod* method, const ExternType* superInstanceEtv);
+    void checkMemberOverrides(AstStatClass* stat, const ExternType* superInstanceEtv);
     void checkPropertyOverride(AstStatClass* stat, const AstClassProperty* property, const ExternType* superInstanceEtv);
     void checkMethodOverride(AstStatClass* stat, const AstClassMethod* method, const ExternType* superInstanceEtv);
     void visit(AstStatError* stat);
@@ -169,7 +167,6 @@ private:
     void visit(AstExprConstantNil* expr);
     void visit(AstExprConstantBool* expr);
     void visit(AstExprConstantNumber* expr);
-    void visit(AstExprConstantInteger* expr);
     void visit(AstExprConstantString* expr);
     void visit(AstExprLocal* expr);
     void visit(AstExprGlobal* expr);
@@ -264,6 +261,43 @@ private:
         size_t argHeadSize,
         Location callLocation
     );
+
+    // Nested in TypeChecker2 so we can use lookupExpr
+    struct FindUninitializedAccesses : public AstVisitor
+    {
+        NotNull<AstLocal> self;
+        NotNull<DenseHashSet<std::string>> uninitializedFields;
+        DenseHashSet<std::string> methodNames;
+
+        std::optional<AstExpr*> violatingRef;
+        DenseHashMap<std::string, AstExpr*> violatingFields;
+
+        // NULL if there is no base class constructor or it's been called
+        TypeId superConstructor;
+        NotNull<TypeChecker2> checker;
+
+        FindUninitializedAccesses(
+            AstLocal* self,
+            NotNull<DenseHashSet<std::string>> uninitializedFields,
+            DenseHashSet<std::string> methodNames,
+            TypeId superConstructor,
+            NotNull<TypeChecker2> checker
+        )
+            : self(self)
+            , uninitializedFields(uninitializedFields)
+            , methodNames(std::move(methodNames))
+            , superConstructor(superConstructor)
+            , checker(checker)
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+        }
+
+        bool visit(AstExprLocal* local) override;
+        bool visit(AstExprIndexName* indexName) override;
+        bool visit(AstExprIndexExpr* indexName) override;
+        bool visit(AstExprTypeAssertion* expr) override;
+        bool visit(AstExprCall* call) override;
+    };
 };
 
 } // namespace Luau

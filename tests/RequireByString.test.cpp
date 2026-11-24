@@ -28,8 +28,6 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauBytecodeCostModel)
 LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 
 TEST_SUITE_BEGIN("RequireByStringTests");
@@ -1115,8 +1113,6 @@ TEST_CASE("RequireExportClass")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     // we create a new fixture so the new lua_State has the class library
@@ -1134,8 +1130,6 @@ TEST_CASE("RequireExportClassChildWithoutParent")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     ReplWithPathFixture fixture;
@@ -1152,8 +1146,6 @@ TEST_CASE("RequireExportClassBothExported")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     ReplWithPathFixture fixture;
@@ -1170,8 +1162,6 @@ TEST_CASE("RequireExportClassMultiLevel")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
     };
 
     ReplWithPathFixture fixture;

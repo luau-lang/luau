@@ -15,650 +15,9 @@
 #include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
-#include "Luau/VisitType.h"
-
-LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
-LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAGVARIABLE(LuauIterativeTypeSearcher)
-LUAU_FLAGVERSION(LuauIterativeTypeSearcher, 2)
 
 namespace Luau
 {
-
-struct FreeTypeSearcher_DEPRECATED : TypeVisitor
-{
-    NotNull<Scope> scope;
-    NotNull<DenseHashSet<TypeId>> cachedTypes;
-
-    explicit FreeTypeSearcher_DEPRECATED(NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeVisitor("FreeTypeSearcher", /* skipBoundTypes */ true)
-        , scope(scope)
-        , cachedTypes(cachedTypes)
-    {
-    }
-
-    bool isWithinFunction = false;
-    Polarity polarity = Polarity::Positive;
-
-    void flip()
-    {
-        polarity = invert(polarity);
-    }
-
-    DenseHashSet<const void*> seenPositive;
-    DenseHashSet<const void*> seenNegative;
-
-    bool seenWithCurrentPolarity(const void* ty)
-    {
-        switch (polarity)
-        {
-        case Polarity::Positive:
-        {
-            if (seenPositive.contains(ty))
-                return true;
-
-            seenPositive.insert(ty);
-            return false;
-        }
-        case Polarity::Negative:
-        {
-            if (seenNegative.contains(ty))
-                return true;
-
-            seenNegative.insert(ty);
-            return false;
-        }
-        case Polarity::Mixed:
-        {
-            if (seenPositive.contains(ty) && seenNegative.contains(ty))
-                return true;
-
-            seenPositive.insert(ty);
-            seenNegative.insert(ty);
-            return false;
-        }
-        default:
-            LUAU_ASSERT(!"Unreachable");
-        }
-
-        return false;
-    }
-
-    InsertionOrderedMap<TypeId, GeneralizationParams<TypeId>> types;
-    InsertionOrderedMap<TypePackId, GeneralizationParams<TypePackId>> typePacks;
-
-    // Holds both free and unsealed tables.  We walk this set to close them all up.
-    OrderedSet<TypeId> unsealedTables;
-
-    bool visit(TypeId ty) override
-    {
-        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
-            return false;
-
-        LUAU_ASSERT(ty);
-        return true;
-    }
-
-    bool visit(TypeId ty, const FreeType& ft) override
-    {
-        if (!subsumes(scope, ft.scope))
-            return true;
-
-        GeneralizationParams<TypeId>& params = types[ty];
-        ++params.useCount;
-
-        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
-            return false;
-
-        if (!isWithinFunction)
-            params.foundOutsideFunctions = true;
-
-        params.polarity |= polarity;
-
-        return true;
-    }
-
-    bool visit(TypeId ty, const TableType& tt) override
-    {
-        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
-            return false;
-
-        if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
-            unsealedTables.insert(ty);
-
-        for (const auto& [_name, prop] : tt.props)
-        {
-            if (prop.isReadOnly())
-            {
-                traverse(*prop.readTy);
-            }
-            else if (prop.isWriteOnly())
-            {
-                Polarity p = polarity;
-                polarity = Polarity::Negative;
-                traverse(*prop.writeTy);
-                polarity = p;
-            }
-            else if (prop.isShared())
-            {
-                Polarity p = polarity;
-                polarity = Polarity::Mixed;
-                traverse(*prop.readTy);
-                polarity = p;
-            }
-            else
-            {
-                LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
-
-                traverse(*prop.readTy);
-                Polarity p = polarity;
-                polarity = Polarity::Negative;
-                traverse(*prop.writeTy);
-                polarity = p;
-            }
-        }
-
-        if (tt.indexer)
-        {
-            // {[K]: V} is equivalent to three functions: get, set, and iterate
-            //
-            // (K) -> V
-            // (K, V) -> ()
-            // () -> {K}
-            //
-            // K and V therefore both have mixed polarity.
-
-            const Polarity p = polarity;
-            polarity = Polarity::Mixed;
-            traverse(tt.indexer->indexType);
-            traverse(tt.indexer->indexResultType);
-            polarity = p;
-        }
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const FunctionType& ft) override
-    {
-        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
-            return false;
-
-        const bool oldValue = isWithinFunction;
-        isWithinFunction = true;
-
-        flip();
-        traverse(ft.argTypes);
-        flip();
-
-        traverse(ft.retTypes);
-
-        isWithinFunction = oldValue;
-
-        return false;
-    }
-
-    bool visit(TypeId, const ExternType&) override
-    {
-        return false;
-    }
-
-    bool visit(TypePackId tp, const FreeTypePack& ftp) override
-    {
-        if (seenWithCurrentPolarity(tp))
-            return false;
-
-        if (!subsumes(scope, ftp.scope))
-            return true;
-
-        GeneralizationParams<TypePackId>& params = typePacks[tp];
-        ++params.useCount;
-
-        if (!isWithinFunction)
-            params.foundOutsideFunctions = true;
-
-        params.polarity |= polarity;
-
-        return true;
-    }
-};
-
-// We keep a running set of types that will not change under generalization and
-// only have outgoing references to types that are the same.  We use this to
-// short circuit generalization.  It improves performance quite a lot.
-//
-// We do this by tracing through the type and searching for types that are
-// uncacheable. If a type has a reference to an uncacheable type, it is itself
-// uncacheable.
-//
-// If a type has no outbound references to uncacheable types, we add it to the
-// cache.
-//
-// Clip this with `LuauIterativeTypeSearcher`
-struct TypeCacher_DEPRECATED : TypeOnceVisitor
-{
-    NotNull<DenseHashSet<TypeId>> cachedTypes;
-
-    DenseHashSet<TypeId> uncacheable;
-    DenseHashSet<TypePackId> uncacheablePacks;
-
-    explicit TypeCacher_DEPRECATED(NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeOnceVisitor("TypeCacher", /* skipBoundTypes */ true)
-        , cachedTypes(cachedTypes)
-    {
-    }
-
-    void cache(TypeId ty) const
-    {
-        cachedTypes->insert(follow(ty));
-    }
-
-    bool isCached(TypeId ty) const
-    {
-        return cachedTypes->contains(follow(ty));
-    }
-
-    void markUncacheable(TypeId ty)
-    {
-        uncacheable.insert(follow(ty));
-    }
-
-    void markUncacheable(TypePackId tp)
-    {
-        uncacheablePacks.insert(follow(tp));
-    }
-
-    bool isUncacheable(TypeId ty) const
-    {
-        return uncacheable.contains(follow(ty));
-    }
-
-    bool isUncacheable(TypePackId tp) const
-    {
-        return uncacheablePacks.contains(follow(tp));
-    }
-
-    bool visit(TypeId ty) override
-    {
-        // NOTE: `TypeCacher` should explicitly visit _all_ types and type packs,
-        // otherwise it's prone to marking types that cannot be cached as
-        // cacheable.
-        LUAU_ASSERT(false);
-        LUAU_UNREACHABLE();
-    }
-
-    bool visit(TypeId ty, const FreeType& ft) override
-    {
-        // Free types are never cacheable.
-        LUAU_ASSERT(!isCached(ty));
-
-        if (!isUncacheable(ty))
-        {
-            traverse(ft.lowerBound);
-            traverse(ft.upperBound);
-
-            markUncacheable(ty);
-        }
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const GenericType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const ErrorType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const PrimitiveType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const SingletonType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const BlockedType&) override
-    {
-        markUncacheable(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const PendingExpansionType&) override
-    {
-        markUncacheable(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const FunctionType& ft) override
-    {
-        if (isCached(ty) || isUncacheable(ty))
-            return false;
-
-        traverse(ft.argTypes);
-        traverse(ft.retTypes);
-        for (TypeId gen : ft.generics)
-            traverse(gen);
-
-        bool uncacheable = false;
-
-        if (isUncacheable(ft.argTypes))
-            uncacheable = true;
-
-        else if (isUncacheable(ft.retTypes))
-            uncacheable = true;
-
-        for (TypeId argTy : ft.argTypes)
-        {
-            if (isUncacheable(argTy))
-            {
-                uncacheable = true;
-                break;
-            }
-        }
-
-        for (TypeId retTy : ft.retTypes)
-        {
-            if (isUncacheable(retTy))
-            {
-                uncacheable = true;
-                break;
-            }
-        }
-
-        for (TypeId g : ft.generics)
-        {
-            if (isUncacheable(g))
-            {
-                uncacheable = true;
-                break;
-            }
-        }
-
-        if (uncacheable)
-            markUncacheable(ty);
-        else
-            cache(ty);
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const TableType& tt) override
-    {
-        if (isCached(ty) || isUncacheable(ty))
-            return false;
-
-        if (tt.boundTo)
-        {
-            traverse(*tt.boundTo);
-            if (isUncacheable(*tt.boundTo))
-            {
-                markUncacheable(ty);
-                return false;
-            }
-        }
-
-        bool uncacheable = false;
-
-        // This logic runs immediately after generalization, so any remaining
-        // unsealed tables are assuredly not cacheable.  They may yet have
-        // properties added to them.
-        if (tt.state == TableState::Free || tt.state == TableState::Unsealed)
-            uncacheable = true;
-
-        for (const auto& [_name, prop] : tt.props)
-        {
-            if (prop.readTy)
-            {
-                traverse(*prop.readTy);
-
-                if (isUncacheable(*prop.readTy))
-                    uncacheable = true;
-            }
-            if (prop.writeTy && prop.writeTy != prop.readTy)
-            {
-                traverse(*prop.writeTy);
-
-                if (isUncacheable(*prop.writeTy))
-                    uncacheable = true;
-            }
-        }
-
-        if (tt.indexer)
-        {
-            traverse(tt.indexer->indexType);
-            if (isUncacheable(tt.indexer->indexType))
-                uncacheable = true;
-
-            traverse(tt.indexer->indexResultType);
-            if (isUncacheable(tt.indexer->indexResultType))
-                uncacheable = true;
-        }
-
-        if (uncacheable)
-            markUncacheable(ty);
-        else
-            cache(ty);
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const MetatableType& mtv) override
-    {
-        traverse(mtv.table);
-        traverse(mtv.metatable);
-        if (isUncacheable(mtv.table) || isUncacheable(mtv.metatable))
-            markUncacheable(ty);
-        else
-            cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const ExternType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const AnyType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const NoRefineType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const UnionType& ut) override
-    {
-        if (isUncacheable(ty) || isCached(ty))
-            return false;
-
-        bool uncacheable = false;
-
-        for (TypeId partTy : ut.options)
-        {
-            traverse(partTy);
-
-            uncacheable |= isUncacheable(partTy);
-        }
-
-        if (uncacheable)
-            markUncacheable(ty);
-        else
-            cache(ty);
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const IntersectionType& it) override
-    {
-        if (isUncacheable(ty) || isCached(ty))
-            return false;
-
-        bool uncacheable = false;
-
-        for (TypeId partTy : it.parts)
-        {
-            traverse(partTy);
-
-            uncacheable |= isUncacheable(partTy);
-        }
-
-        if (uncacheable)
-            markUncacheable(ty);
-        else
-            cache(ty);
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const UnknownType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const NeverType&) override
-    {
-        cache(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const NegationType& nt) override
-    {
-        if (!isCached(ty) && !isUncacheable(ty))
-        {
-            traverse(nt.ty);
-
-            if (isUncacheable(nt.ty))
-                markUncacheable(ty);
-            else
-                cache(ty);
-        }
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
-    {
-        if (isCached(ty) || isUncacheable(ty))
-            return false;
-
-        bool uncacheable = false;
-
-        for (TypeId argTy : tfit.typeArguments)
-        {
-            traverse(argTy);
-
-            if (isUncacheable(argTy))
-                uncacheable = true;
-        }
-
-        for (TypePackId argPack : tfit.packArguments)
-        {
-            traverse(argPack);
-
-            if (isUncacheable(argPack))
-                uncacheable = true;
-        }
-
-        if (uncacheable)
-            markUncacheable(ty);
-        else
-            cache(ty);
-
-        return false;
-    }
-
-    bool visit(TypePackId tp) override
-    {
-        // NOTE: `TypeCacher` should explicitly visit _all_ types and type packs,
-        // otherwise it's prone to marking types that cannot be cached as
-        // cacheable, which will segfault down the line.
-        LUAU_ASSERT(false);
-        LUAU_UNREACHABLE();
-    }
-
-    bool visit(TypePackId tp, const FreeTypePack&) override
-    {
-        markUncacheable(tp);
-        return false;
-    }
-
-    bool visit(TypePackId tp, const GenericTypePack& gtp) override
-    {
-        return true;
-    }
-
-    bool visit(TypePackId tp, const ErrorTypePack& etp) override
-    {
-        return true;
-    }
-
-    bool visit(TypePackId tp, const VariadicTypePack& vtp) override
-    {
-        if (isUncacheable(tp))
-            return false;
-
-        traverse(vtp.ty);
-
-        if (isUncacheable(vtp.ty))
-            markUncacheable(tp);
-
-        return false;
-    }
-
-    bool visit(TypePackId tp, const BlockedTypePack&) override
-    {
-        markUncacheable(tp);
-        return false;
-    }
-
-    bool visit(TypePackId tp, const TypeFunctionInstanceTypePack&) override
-    {
-        markUncacheable(tp);
-        return false;
-    }
-
-    bool visit(TypePackId tp, const BoundTypePack& btp) override
-    {
-        traverse(btp.boundTo);
-        if (isUncacheable(btp.boundTo))
-            markUncacheable(tp);
-        return false;
-    }
-
-    bool visit(TypePackId tp, const TypePack& typ) override
-    {
-        bool uncacheable = false;
-        for (TypeId ty : typ.head)
-        {
-            traverse(ty);
-            uncacheable |= isUncacheable(ty);
-        }
-        if (typ.tail)
-        {
-            traverse(*typ.tail);
-            uncacheable |= isUncacheable(*typ.tail);
-        }
-        if (uncacheable)
-            markUncacheable(tp);
-        return false;
-    }
-};
 
 namespace
 {
@@ -730,47 +89,6 @@ void removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Ty
     tr.process(haystack);
 }
 
-struct FreeTypeFinder_DEPRECATED : TypeOnceVisitor
-{
-    NotNull<TypeArena> arena;
-    TypeIds freeTys;
-
-    explicit FreeTypeFinder_DEPRECATED(NotNull<TypeArena> arena)
-        : TypeOnceVisitor("FreeTypeFinder", /*skipBoundTypes*/ true)
-        , arena(arena)
-    {
-    }
-
-    bool visit(TypeId ty, const FreeType&) override
-    {
-        if (ty->owningArena != arena)
-            return false;
-
-        freeTys.insert(ty);
-        return true;
-    }
-
-    bool visit(TypeId ty, const TableType&) override
-    {
-        return false;
-    }
-
-    bool visit(TypeId ty, const MetatableType&) override
-    {
-        return false;
-    }
-
-    bool visit(TypeId ty, const FunctionType&) override
-    {
-        return false;
-    }
-
-    bool visit(TypeId ty, const ExternType&) override
-    {
-        return false;
-    }
-};
-
 struct FreeTypeFinder : IterativeTypeVisitor
 {
     NotNull<TypeArena> arena;
@@ -822,37 +140,18 @@ TypeId getDirectFreeNeighbor(TypeId ty)
 
 void collapseInvariantFreeType(NotNull<TypeArena> arena, TypeId ty)
 {
-    if (FFlag::LuauIterativeTypeSearcher)
+    FreeTypeFinder ftf{arena};
+    ftf.run(ty);
+
+    for (TypeId t : ftf.freeTys)
     {
-        FreeTypeFinder ftf{arena};
-        ftf.run(ty);
+        const FreeType* ft = get<FreeType>(t);
+        LUAU_ASSERT(ft);
 
-        for (TypeId t : ftf.freeTys)
-        {
-            const FreeType* ft = get<FreeType>(t);
-            LUAU_ASSERT(ft);
-
-            auto ub = follow(ft->upperBound);
-            auto lb = follow(ft->lowerBound);
-            if (ub == lb && ub != t)
-                emplaceType<BoundType>(asMutable(t), ub);
-        }
-    }
-    else
-    {
-        FreeTypeFinder_DEPRECATED ftf{arena};
-        ftf.traverse(ty);
-
-        for (TypeId t : ftf.freeTys)
-        {
-            const FreeType* ft = get<FreeType>(t);
-            LUAU_ASSERT(ft);
-
-            auto ub = follow(ft->upperBound);
-            auto lb = follow(ft->lowerBound);
-            if (ub == lb && ub != t)
-                emplaceType<BoundType>(asMutable(t), ub);
-        }
+        auto ub = follow(ft->upperBound);
+        auto lb = follow(ft->lowerBound);
+        if (ub == lb && ub != t)
+            emplaceType<BoundType>(asMutable(t), ub);
     }
 }
 
@@ -1390,7 +689,7 @@ GeneralizationResult<TypePackId> generalizeTypePack(
     return {tp, /*wasReplacedByGeneric*/ false};
 }
 
-void sealTable(NotNull<Scope> scope, TypeId ty, TableState targetState)
+void sealTable(NotNull<Scope> scope, TypeId ty)
 {
     TableType* tableTy = getMutable<TableType>(follow(ty));
     if (!tableTy)
@@ -1400,12 +699,7 @@ void sealTable(NotNull<Scope> scope, TypeId ty, TableState targetState)
         return;
 
     if (tableTy->state == TableState::Unsealed || tableTy->state == TableState::Free)
-    {
-        if (FFlag::DebugLuauExactTableTypes)
-            tableTy->state = targetState;
-        else
-            tableTy->state = TableState::Sealed;
-    }
+        tableTy->state = TableState::Sealed;
 }
 
 std::optional<TypeId> generalize(
@@ -1422,342 +716,87 @@ std::optional<TypeId> generalize(
     if (ty->owningArena != arena || ty->persistent)
         return ty;
 
-    if (FFlag::LuauIterativeTypeSearcher)
+    FindTypesWithPolarity ftwp{arena, scope};
+    ftwp.run(ty);
+
+    FunctionType* functionTy = getMutable<FunctionType>(ty);
+    auto pushGeneric = [&](TypeId t)
     {
-        FindTypesWithPolarity ftwp{arena, scope};
-        ftwp.run(ty);
+        if (functionTy)
+            functionTy->generics.push_back(t);
+    };
 
-        FunctionType* functionTy = getMutable<FunctionType>(ty);
-        auto pushGeneric = [&](TypeId t)
-        {
-            if (functionTy)
-                functionTy->generics.push_back(t);
-        };
+    auto pushGenericPack = [&](TypePackId tp)
+    {
+        if (functionTy)
+            functionTy->genericPacks.push_back(tp);
+    };
 
-        auto pushGenericPack = [&](TypePackId tp)
-        {
-            if (functionTy)
-                functionTy->genericPacks.push_back(tp);
-        };
+    if (!generalizationTarget)
+        collapseFreeTypeCycles(arena, builtinTypes, ftwp.types);
 
-        if (!generalizationTarget)
-            collapseFreeTypeCycles(arena, builtinTypes, ftwp.types);
+    auto generalizeJustOne = [&](TypeId freeTy, const auto& params)
+    {
+        if (!get<FreeType>(follow(freeTy)))
+            return GeneralizationResult<TypeId>{};
 
-        auto generalizeJustOne = [&](TypeId freeTy, const auto& params)
-        {
-            if (!get<FreeType>(follow(freeTy)))
-                return GeneralizationResult<TypeId>{};
+        GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
 
-            GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
-
-            if (res.resourceLimitsExceeded)
-                return res;
-
-            if (res && res.wasReplacedByGeneric)
-                pushGeneric(*res.result);
-
+        if (res.resourceLimitsExceeded)
             return res;
-        };
 
-        if (generalizationTarget)
+        if (res && res.wasReplacedByGeneric)
+            pushGeneric(*res.result);
+
+        return res;
+    };
+
+    if (generalizationTarget)
+    {
+        auto it = ftwp.types.find(*generalizationTarget);
+        if (it != ftwp.types.end())
         {
-            auto it = ftwp.types.find(*generalizationTarget);
-            if (it != ftwp.types.end())
-            {
-                const auto [freeTy, params] = *it;
-                auto res = generalizeJustOne(freeTy, params);
-                if (res.resourceLimitsExceeded)
-                    return std::nullopt;
-            }
-        }
-        else
-        {
-            for (const auto& [freeTy, params] : ftwp.types)
-            {
-                auto res = generalizeJustOne(freeTy, params);
-                if (res.resourceLimitsExceeded)
-                    return std::nullopt;
-            }
-        }
-
-        for (TypeId unsealedTableTy : ftwp.unsealedTables)
-        {
-            if (generalizationTarget && unsealedTableTy != *generalizationTarget)
-                continue;
-
-            TableState targetState = TableState::Sealed;
-            if (FFlag::DebugLuauExactTableTypes)
-            {
-                if (auto tt = get<TableType>(unsealedTableTy); tt && tt->state == TableState::Unsealed)
-                    targetState = TableState::Exact;
-            }
-
-            sealTable(scope, unsealedTableTy, targetState);
-        }
-
-        for (const auto& [freePackId, params] : ftwp.typePacks)
-        {
-            TypePackId freePack = follow(freePackId);
-            if (!generalizationTarget)
-            {
-                GeneralizationResult<TypePackId> generalizedTp = generalizeTypePack(arena, builtinTypes, scope, freePack, params);
-
-                if (generalizedTp.resourceLimitsExceeded)
-                    return std::nullopt;
-
-                if (generalizedTp && generalizedTp.wasReplacedByGeneric)
-                    pushGenericPack(freePack);
-            }
+            const auto [freeTy, params] = *it;
+            auto res = generalizeJustOne(freeTy, params);
+            if (res.resourceLimitsExceeded)
+                return std::nullopt;
         }
     }
     else
     {
-
-        FreeTypeSearcher_DEPRECATED fts{scope, cachedTypes};
-        fts.traverse(ty);
-
-        FunctionType* functionTy = getMutable<FunctionType>(ty);
-        auto pushGeneric = [&](TypeId t)
+        for (const auto& [freeTy, params] : ftwp.types)
         {
-            if (functionTy)
-                functionTy->generics.push_back(t);
-        };
-
-        auto pushGenericPack = [&](TypePackId tp)
-        {
-            if (functionTy)
-                functionTy->genericPacks.push_back(tp);
-        };
-
-        if (!generalizationTarget)
-            collapseFreeTypeCycles(arena, builtinTypes, fts.types);
-
-        auto generalizeJustOne = [&](TypeId freeTy, const auto& params)
-        {
-            if (!get<FreeType>(follow(freeTy)))
-                return GeneralizationResult<TypeId>{};
-
-            GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
-
+            auto res = generalizeJustOne(freeTy, params);
             if (res.resourceLimitsExceeded)
-                return res;
-
-            if (res && res.wasReplacedByGeneric)
-                pushGeneric(*res.result);
-
-            return res;
-        };
-
-        if (generalizationTarget)
-        {
-            auto it = fts.types.find(*generalizationTarget);
-            if (it != fts.types.end())
-            {
-                const auto [freeTy, params] = *it;
-                auto res = generalizeJustOne(freeTy, params);
-                if (res.resourceLimitsExceeded)
-                    return std::nullopt;
-            }
-        }
-        else
-        {
-            for (const auto& [freeTy, params] : fts.types)
-            {
-                auto res = generalizeJustOne(freeTy, params);
-                if (res.resourceLimitsExceeded)
-                    return std::nullopt;
-            }
-        }
-
-        for (TypeId unsealedTableTy : fts.unsealedTables)
-        {
-            if (generalizationTarget && unsealedTableTy != *generalizationTarget)
-                continue;
-
-            TableState targetState = TableState::Sealed;
-            if (FFlag::DebugLuauExactTableTypes)
-            {
-                if (auto tt = get<TableType>(unsealedTableTy); tt && tt->state == TableState::Unsealed)
-                    targetState = TableState::Exact;
-            }
-
-            sealTable(scope, unsealedTableTy, targetState);
-        }
-
-        for (const auto& [freePackId, params] : fts.typePacks)
-        {
-            TypePackId freePack = follow(freePackId);
-            if (!generalizationTarget)
-            {
-                GeneralizationResult<TypePackId> generalizedTp = generalizeTypePack(arena, builtinTypes, scope, freePack, params);
-
-                if (generalizedTp.resourceLimitsExceeded)
-                    return std::nullopt;
-
-                if (generalizedTp && generalizedTp.wasReplacedByGeneric)
-                    pushGenericPack(freePack);
-            }
+                return std::nullopt;
         }
     }
 
-    if (!FFlag::LuauIterativeTypeSearcher)
+    for (TypeId unsealedTableTy : ftwp.unsealedTables)
     {
-        TypeCacher_DEPRECATED cacher{cachedTypes};
-        cacher.traverse(ty);
+        if (generalizationTarget && unsealedTableTy != *generalizationTarget)
+            continue;
+
+        sealTable(scope, unsealedTableTy);
+    }
+
+    for (const auto& [freePackId, params] : ftwp.typePacks)
+    {
+        TypePackId freePack = follow(freePackId);
+        if (!generalizationTarget)
+        {
+            GeneralizationResult<TypePackId> generalizedTp = generalizeTypePack(arena, builtinTypes, scope, freePack, params);
+
+            if (generalizedTp.resourceLimitsExceeded)
+                return std::nullopt;
+
+            if (generalizedTp && generalizedTp.wasReplacedByGeneric)
+                pushGenericPack(freePack);
+        }
     }
 
     return ty;
 }
-
-struct GenericCounter_DEPRECATED : TypeVisitor
-{
-    struct CounterState
-    {
-        size_t count = 0;
-        Polarity polarity = Polarity::None;
-    };
-
-    // This traversal does need to walk into types multiple times because we
-    // care about generics that are only referred to once. If a type is present
-    // more than once, however, we don't care exactly how many times, so we also
-    // track counts in our "seen set."
-    DenseHashMap<TypeId, size_t> seenCounts;
-
-    NotNull<DenseHashSet<TypeId>> cachedTypes;
-    DenseHashMap<TypeId, CounterState> generics;
-    DenseHashMap<TypePackId, CounterState> genericPacks;
-
-    Polarity polarity = Polarity::Positive;
-
-    int steps = 0;
-    bool hitLimits = false;
-
-    explicit GenericCounter_DEPRECATED(NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeVisitor("GenericCounter", /* skipBoundTypes */ true)
-        , cachedTypes(cachedTypes)
-    {
-    }
-
-    void checkLimits()
-    {
-        steps++;
-        hitLimits |= steps > FInt::LuauGenericCounterMaxSteps;
-    }
-
-    bool visit(TypeId ty) override
-    {
-        checkLimits();
-        return !hitLimits;
-    }
-
-
-    bool visit(TypeId ty, const FunctionType& ft) override
-    {
-        checkLimits();
-
-        if (ty->persistent)
-            return false;
-
-        size_t& seenCount = seenCounts[ty];
-        if (seenCount > 1)
-            return false;
-
-        ++seenCount;
-
-        polarity = invert(polarity);
-        traverse(ft.argTypes);
-        polarity = invert(polarity);
-        traverse(ft.retTypes);
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const TableType& tt) override
-    {
-        checkLimits();
-
-        if (ty->persistent)
-            return false;
-
-        size_t& seenCount = seenCounts[ty];
-        if (seenCount > 1)
-            return false;
-        ++seenCount;
-
-        const Polarity previous = polarity;
-
-        for (const auto& [_name, prop] : tt.props)
-        {
-            if (prop.isReadOnly())
-            {
-                traverse(*prop.readTy);
-            }
-            else if (prop.isWriteOnly())
-            {
-                Polarity p = polarity;
-                polarity = Polarity::Negative;
-                traverse(*prop.writeTy);
-                polarity = p;
-            }
-            else if (prop.isShared())
-            {
-                Polarity p = polarity;
-                polarity = Polarity::Mixed;
-                traverse(*prop.readTy);
-                polarity = p;
-            }
-            else
-            {
-                LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
-
-                traverse(*prop.readTy);
-                Polarity p = polarity;
-                polarity = Polarity::Negative;
-                traverse(*prop.writeTy);
-                polarity = p;
-            }
-        }
-
-        if (tt.indexer)
-        {
-            polarity = Polarity::Mixed;
-            traverse(tt.indexer->indexType);
-            traverse(tt.indexer->indexResultType);
-            polarity = previous;
-        }
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const ExternType&) override
-    {
-        return false;
-    }
-
-    bool visit(TypeId ty, const GenericType&) override
-    {
-        auto state = generics.find(ty);
-        if (state)
-        {
-            ++state->count;
-            state->polarity |= polarity;
-        }
-
-        return false;
-    }
-
-    bool visit(TypePackId tp, const GenericTypePack&) override
-    {
-        auto state = genericPacks.find(tp);
-        if (state)
-        {
-            ++state->count;
-            state->polarity |= polarity;
-        }
-
-        return false;
-    }
-};
 
 void pruneUnnecessaryGenerics(
     NotNull<TypeArena> arena,
@@ -1777,278 +816,169 @@ void pruneUnnecessaryGenerics(
     if (!functionTy)
         return;
 
-    if (FFlag::LuauIterativeTypeSearcher)
+    FindTypesWithPolarity ftwp{arena, scope};
+    ftwp.run(ty);
+
+    DenseHashSet<TypeId> seenTypes;
+    DenseHashSet<TypePackId> seenPacks;
+
+    // It is sometimes the case that a pack in the generic list will become a
+    // pack that (transitively) has a generic tail.  If it does, we need to add
+    // that generic tail to the generic pack list.
+    for (size_t i = 0; i < functionTy->genericPacks.size(); ++i)
     {
-        FindTypesWithPolarity ftwp{arena, scope};
-        ftwp.run(ty);
+        TypePackId genericPack = follow(functionTy->genericPacks[i]);
 
-        DenseHashSet<TypeId> seenTypes;
-        DenseHashSet<TypePackId> seenPacks;
+        TypePackId tail = getTail(genericPack);
 
-        // It is sometimes the case that a pack in the generic list will become a
-        // pack that (transitively) has a generic tail.  If it does, we need to add
-        // that generic tail to the generic pack list.
-        for (size_t i = 0; i < functionTy->genericPacks.size(); ++i)
+        if (tail != genericPack)
+            functionTy->genericPacks.push_back(tail);
+    }
+
+    for (auto it = functionTy->generics.begin(); it != functionTy->generics.end();)
+    {
+        TypeId generic = follow(*it);
+        auto genericTy = getMutable<GenericType>(generic);
+
+        if (!genericTy)
         {
-            TypePackId genericPack = follow(functionTy->genericPacks[i]);
-
-            TypePackId tail = getTail(genericPack);
-
-            if (tail != genericPack)
-                functionTy->genericPacks.push_back(tail);
+            // This type is no longer generic, clip it.
+            it = functionTy->generics.erase(it);
+            continue;
         }
 
-        for (auto it = functionTy->generics.begin(); it != functionTy->generics.end();)
+        if (seenTypes.contains(generic))
         {
-            TypeId generic = follow(*it);
-            auto genericTy = getMutable<GenericType>(generic);
-
-            if (!genericTy)
-            {
-                // This type is no longer generic, clip it.
-                it = functionTy->generics.erase(it);
-                continue;
-            }
-
-            if (seenTypes.contains(generic))
-            {
-                it = functionTy->generics.erase(it);
-                continue;
-            }
-
-            if (arena.get() != generic->owningArena)
-            {
-                // This was a band-aid fix that we never actually followed up on.
-                // We should never see generics from other arenas flowing
-                // into the generics of a function we're trying to generalize.
-                it++;
-                continue;
-            }
-
-            auto entry = ftwp.types.find(generic);
-
-            if (genericTy->explicitName)
-            {
-                // Well, the user said this should be generic, so it's generic.
-                seenTypes.insert(generic);
-                if (entry != ftwp.types.end())
-                    genericTy->polarity = entry->second.polarity;
-                it++;
-                continue;
-            }
-
-            if (entry == ftwp.types.end())
-            {
-                // We didn't see this generic ... at all ... so clip it.
-                it = functionTy->generics.erase(it);
-                continue;
-            }
-
-            switch (entry->second.polarity)
-            {
-            case Polarity::Positive:
-                // If we've only seen this generic in a positive position, then we can clip it to `never`.
-                emplaceType<BoundType>(asMutable(generic), builtinTypes->neverType);
-                it = functionTy->generics.erase(it);
-                break;
-
-            case Polarity::Negative:
-                // If we've only seen this generic in a negative position, then we can clip it to `unknown`.
-                emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
-                it = functionTy->generics.erase(it);
-                break;
-
-            case Polarity::Mixed:
-                genericTy->polarity = Polarity::Mixed;
-                seenTypes.insert(generic);
-                it++;
-                break;
-
-            case Polarity::None:
-            case Polarity::Unknown:
-                // If we have an entry in `ftwp.types`, then we should have
-                // recorded *a* polarity.
-                LUAU_ASSERT(!"Unexpected polarity.");
-                it++;
-                break;
-            }
+            it = functionTy->generics.erase(it);
+            continue;
         }
 
-        for (auto it = functionTy->genericPacks.begin(); it != functionTy->genericPacks.end();)
+        if (arena.get() != generic->owningArena)
         {
-            TypePackId generic = follow(*it);
+            // This was a band-aid fix that we never actually followed up on.
+            // We should never see generics from other arenas flowing
+            // into the generics of a function we're trying to generalize.
+            it++;
+            continue;
+        }
 
-            auto genericTy = getMutable<GenericTypePack>(generic);
+        auto entry = ftwp.types.find(generic);
 
-            if (!genericTy)
-            {
-                // This type is no longer generic, clip it.
-                it = functionTy->genericPacks.erase(it);
-                continue;
-            }
+        if (genericTy->explicitName)
+        {
+            // Well, the user said this should be generic, so it's generic.
+            seenTypes.insert(generic);
+            if (entry != ftwp.types.end())
+                genericTy->polarity = entry->second.polarity;
+            it++;
+            continue;
+        }
 
-            if (seenPacks.contains(generic))
-            {
-                it = functionTy->genericPacks.erase(it);
-                continue;
-            }
+        if (entry == ftwp.types.end())
+        {
+            // We didn't see this generic ... at all ... so clip it.
+            it = functionTy->generics.erase(it);
+            continue;
+        }
 
-            if (arena.get() != generic->owningArena)
-            {
-                // This was a band-aid fix that we never actually followed up on.
-                // We should never see generics from other arenas flowing
-                // into the generics of a function we're trying to generalize.
-                it++;
-                continue;
-            }
+        switch (entry->second.polarity)
+        {
+        case Polarity::Positive:
+            // If we've only seen this generic in a positive position, then we can clip it to `never`.
+            emplaceType<BoundType>(asMutable(generic), builtinTypes->neverType);
+            it = functionTy->generics.erase(it);
+            break;
 
-            auto entry = ftwp.typePacks.find(generic);
+        case Polarity::Negative:
+            // If we've only seen this generic in a negative position, then we can clip it to `unknown`.
+            emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
+            it = functionTy->generics.erase(it);
+            break;
 
-            if (genericTy->explicitName)
-            {
-                // Well, the user said this should be generic, so it's generic.
-                seenPacks.insert(generic);
-                if (entry != ftwp.typePacks.end())
-                    genericTy->polarity = entry->second.polarity;
-                it++;
-                continue;
-            }
+        case Polarity::Mixed:
+            genericTy->polarity = Polarity::Mixed;
+            seenTypes.insert(generic);
+            it++;
+            break;
 
-            if (entry == ftwp.typePacks.end())
-            {
-                // We didn't see this generic ... at all ... so clip it.
-                it = functionTy->genericPacks.erase(it);
-                continue;
-            }
-
-            switch (entry->second.polarity)
-            {
-            case Polarity::Positive:
-            case Polarity::Negative:
-                // We *could* use `never...` as the pack here, not much of a point.
-                emplaceTypePack<BoundTypePack>(asMutable(generic), builtinTypes->unknownTypePack);
-                it = functionTy->genericPacks.erase(it);
-                break;
-
-            case Polarity::Mixed:
-                genericTy->polarity = Polarity::Mixed;
-                seenPacks.insert(generic);
-                it++;
-                break;
-
-            case Polarity::None:
-            case Polarity::Unknown:
-                LUAU_ASSERT(!"Unimplemented");
-                it++;
-                break;
-            }
+        case Polarity::None:
+        case Polarity::Unknown:
+            // If we have an entry in `ftwp.types`, then we should have
+            // recorded *a* polarity.
+            LUAU_ASSERT(!"Unexpected polarity.");
+            it++;
+            break;
         }
     }
-    else
+
+    for (auto it = functionTy->genericPacks.begin(); it != functionTy->genericPacks.end();)
     {
+        TypePackId generic = follow(*it);
 
-        // If a generic has no explicit name and is only referred to in one place in
-        // the function's signature, it can be replaced with unknown.
+        auto genericTy = getMutable<GenericTypePack>(generic);
 
-        GenericCounter_DEPRECATED counter{cachedTypes};
-        for (TypeId generic : functionTy->generics)
+        if (!genericTy)
         {
-            generic = follow(generic);
-            auto g = get<GenericType>(generic);
-            if (g && !g->explicitName)
-                counter.generics[generic] = {};
+            // This type is no longer generic, clip it.
+            it = functionTy->genericPacks.erase(it);
+            continue;
         }
 
-        // It is sometimes the case that a pack in the generic list will become a
-        // pack that (transitively) has a generic tail.  If it does, we need to add
-        // that generic tail to the generic pack list.
-        for (size_t i = 0; i < functionTy->genericPacks.size(); ++i)
+        if (seenPacks.contains(generic))
         {
-            TypePackId genericPack = follow(functionTy->genericPacks[i]);
-
-            TypePackId tail = getTail(genericPack);
-
-            if (tail != genericPack)
-                functionTy->genericPacks.push_back(tail);
-
-            if (auto g = get<GenericTypePack>(tail); g && !g->explicitName)
-                counter.genericPacks[genericPack] = {};
+            it = functionTy->genericPacks.erase(it);
+            continue;
         }
 
-        counter.traverse(ty);
-
-        if (!counter.hitLimits)
+        if (arena.get() != generic->owningArena)
         {
-            for (const auto& [generic, state] : counter.generics)
-            {
-                if (state.count == 1 && state.polarity != Polarity::Mixed)
-                {
-                    if (arena.get() != generic->owningArena)
-                        continue;
-                    emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
-                }
-            }
+            // This was a band-aid fix that we never actually followed up on.
+            // We should never see generics from other arenas flowing
+            // into the generics of a function we're trying to generalize.
+            it++;
+            continue;
         }
 
-        // Remove duplicates and types that aren't actually generics.
-        DenseHashSet<TypeId> seen;
-        auto it = std::remove_if(
-            functionTy->generics.begin(),
-            functionTy->generics.end(),
-            [&](TypeId ty)
-            {
-                ty = follow(ty);
-                if (seen.contains(ty))
-                    return true;
-                seen.insert(ty);
+        auto entry = ftwp.typePacks.find(generic);
 
-                if (!counter.hitLimits)
-                {
-                    auto state = counter.generics.find(ty);
-                    if (state && state->count == 0)
-                        return true;
-                }
-
-                return !get<GenericType>(ty);
-            }
-        );
-
-        functionTy->generics.erase(it, functionTy->generics.end());
-
-
-        if (!counter.hitLimits)
+        if (genericTy->explicitName)
         {
-            for (const auto& [genericPack, state] : counter.genericPacks)
-            {
-                if (state.count == 1)
-                    emplaceTypePack<BoundTypePack>(asMutable(genericPack), builtinTypes->unknownTypePack);
-            }
+            // Well, the user said this should be generic, so it's generic.
+            seenPacks.insert(generic);
+            if (entry != ftwp.typePacks.end())
+                genericTy->polarity = entry->second.polarity;
+            it++;
+            continue;
         }
 
+        if (entry == ftwp.typePacks.end())
+        {
+            // We didn't see this generic ... at all ... so clip it.
+            it = functionTy->genericPacks.erase(it);
+            continue;
+        }
 
-        DenseHashSet<TypePackId> seen2;
-        auto it2 = std::remove_if(
-            functionTy->genericPacks.begin(),
-            functionTy->genericPacks.end(),
-            [&](TypePackId tp)
-            {
-                tp = follow(tp);
-                if (seen2.contains(tp))
-                    return true;
-                seen2.insert(tp);
+        switch (entry->second.polarity)
+        {
+        case Polarity::Positive:
+        case Polarity::Negative:
+            // We *could* use `never...` as the pack here, not much of a point.
+            emplaceTypePack<BoundTypePack>(asMutable(generic), builtinTypes->unknownTypePack);
+            it = functionTy->genericPacks.erase(it);
+            break;
 
-                if (!counter.hitLimits)
-                {
-                    auto state = counter.genericPacks.find(tp);
-                    if (state && state->count == 0)
-                        return true;
-                }
+        case Polarity::Mixed:
+            genericTy->polarity = Polarity::Mixed;
+            seenPacks.insert(generic);
+            it++;
+            break;
 
-                return !get<GenericTypePack>(tp);
-            }
-        );
-
-        functionTy->genericPacks.erase(it2, functionTy->genericPacks.end());
+        case Polarity::None:
+        case Polarity::Unknown:
+            LUAU_ASSERT(!"Unimplemented");
+            it++;
+            break;
+        }
     }
 }
 

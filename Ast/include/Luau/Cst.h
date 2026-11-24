@@ -104,16 +104,6 @@ public:
     AstArray<char> value;
 };
 
-class CstExprConstantInteger : public CstNode
-{
-public:
-    LUAU_CST_RTTI(CstExprConstantInteger)
-
-    explicit CstExprConstantInteger(const AstArray<char>& value);
-
-    AstArray<char> value;
-};
-
 class CstExprConstantString : public CstNode
 {
 public:
@@ -347,6 +337,17 @@ public:
     explicit CstStatIf(Position annotationColonPosition);
 
     // Colon before the `if local`/`if const` binding's type annotation
+    Position annotationColonPosition;
+};
+
+class CstStatWhile : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstStatWhile)
+
+    explicit CstStatWhile(Position annotationColonPosition);
+
+    // Colon before the `while local` binding's type annotation
     Position annotationColonPosition;
 };
 

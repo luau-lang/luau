@@ -25,20 +25,13 @@
 #include <optional>
 #include <vector>
 
-LUAU_FASTFLAG(LuauBetterMetatableStringification);
-
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 LUAU_FASTFLAG(DebugLuauForceAllOldSolverTests)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
-LUAU_FASTFLAG(DebugLuauForceExactTables)
-LUAU_FASTFLAG(DebugLuauRunFailingExactTableTests)
 
 LUAU_FASTFLAG(DebugLuauAlwaysShowConstraintSolvingIncomplete);
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauBetterInferredGenericNames)
-LUAU_FASTFLAG(LuauSplitIceHandler)
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, !FFlag::DebugLuauForceAllNewSolverTests};
 
@@ -50,14 +43,6 @@ LUAU_FASTFLAG(LuauSplitIceHandler)
 
 #define LUAU_CONCAT_IMPL(x, y) x##y
 #define LUAU_CONCAT(x, y) LUAU_CONCAT_IMPL(x, y)
-
-#define DOES_NOT_PASS_WITH_EXACT_TABLES() \
-    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauExactTableTypes, FFlag::DebugLuauRunFailingExactTableTests}; \
-    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__){FFlag::DebugLuauParseExactTables, FFlag::DebugLuauRunFailingExactTableTests}; \
-    ScopedFastFlag LUAU_CONCAT(sff_, __COUNTER__) \
-    { \
-        FFlag::DebugLuauForceExactTables, FFlag::DebugLuauRunFailingExactTableTests \
-    }
 
 // If CALLGRIND is on, then disable the timeout (doctest treats a timeout of 0 as disabled).
 #ifdef CALLGRIND
@@ -199,12 +184,7 @@ struct Fixture
     // This makes sure that errant cases of constraint solving failing to complete still pop up in tests.
     ScopedFastFlag sff_DebugLuauAlwaysShowConstraintSolvingIncomplete{FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, true};
 
-    ScopedFastFlag sff_LuauBetterMetatableStringification{FFlag::LuauBetterMetatableStringification, true};
     ScopedFastFlag sff_LuauBetterInferredGenericNames{FFlag::LuauBetterInferredGenericNames, true};
-    ScopedFastFlag sff_LuauSplitIceHandler{FFlag::LuauSplitIceHandler, true};
-
-    ScopedFastFlag sff_ParseExactTables{FFlag::DebugLuauParseExactTables, FFlag::DebugLuauForceExactTables};
-    ScopedFastFlag sff_ExactTableTypes{FFlag::DebugLuauExactTableTypes, FFlag::DebugLuauForceExactTables};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
@@ -230,6 +210,8 @@ struct Fixture
     void registerTestTypes();
 
     LoadDefinitionFileResult loadDefinition(const std::string& source, bool forAutocomplete = false);
+    LoadDefinitionFileResult tryLoadDefinition(const std::string& source, bool forAutocomplete = false);
+
     // TODO: test theory about dynamic dispatch
     NotNull<BuiltinTypes> getBuiltins();
     const BuiltinTypeFunctions& getBuiltinTypeFunctions();

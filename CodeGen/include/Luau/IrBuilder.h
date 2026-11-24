@@ -30,9 +30,11 @@ struct IrBuilder
 
     bool isInternalBlock(IrOp block);
     void beginBlock(IrOp block);
+    IrCounterSet& getBlockCounterSet(IrOp block);
 
     void loadAndCheckTag(IrOp loc, uint8_t tag, IrOp fallback);
     void checkSafeEnv(int pcpos);
+    IrCounterSet& addUpdateCounters();
 
     // Clones all instructions into the current block
     // Source block that is cloned cannot use values coming in from a predecessor

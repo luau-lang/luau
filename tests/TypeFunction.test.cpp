@@ -15,7 +15,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 struct TypeFunctionFixture : Fixture
@@ -1065,8 +1064,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_metatable_should_not_crash_index")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_generic_types")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1421,8 +1418,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_len_type_function_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1441,8 +1436,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable_2")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1467,8 +1460,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatable_with_metatable_metamethod")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1965,8 +1956,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation_with_defaults")
 
 TEST_CASE_FIXTURE(Fixture, "cli_184124_recursive_restraint_violation_from_devforum")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type TypeA<A... = ()> = { Func: (self: TypeA<A...>, func: (A...) -> ()) -> () }
         type TypeB<A = any> = { Value: TypeA<TypeB<A>> }
@@ -2129,8 +2118,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_negation_of_nontestable_type_doesnt_cras
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
-
     CheckResult result = check(R"(
         type function tf()
             local dn = types.negationof(types.unionof(types.newfunction(), types.number))
@@ -2147,8 +2134,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_negation_of_nontestable_type_doesnt_cras
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt_crash_2")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
 
     CheckResult result = check(R"(
         type function mknot()
@@ -2167,8 +2152,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt_crash_3")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
 
     CheckResult result = check(R"(
         type function tf()

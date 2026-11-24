@@ -33,9 +33,8 @@ LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauFragmentACLocalAutocompleteFix)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteIfSlurpsCond)
-LUAU_FASTFLAG(LuauSplitIceHandler)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 
 namespace Luau
 {
@@ -350,10 +349,7 @@ std::optional<Position> blockDiffStart(AstStatBlock* blockOld, AstStatBlock* blo
             // we want to start the autocomplete region at the earliest differing statement. If we return b's begin unconditionally, we might end up
             // returning a position that occurs after the cursor position (at c), which will cause fragment autocomplete to return a useless range.
             // To avoid this, we can produce a more granular diff by returning the earlier begin location instead of the old one.
-            if (FFlag::LuauFragmentACLocalAutocompleteFix)
-                return newStat->location.begin < oldStat->location.begin ? newStat->location.begin : oldStat->location.begin;
-            else
-                return oldStat->location.begin;
+            return newStat->location.begin < oldStat->location.begin ? newStat->location.begin : oldStat->location.begin;
         }
     }
 
@@ -486,11 +482,22 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                     else if (auto classDecl = stat->as<AstStatClass>())
                     {
                         LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-                        // We need to include the class name as part of the
-                        // locals so that within the fragment the class name
-                        // is defined.
-                        localStack.push_back(classDecl->name);
-                        localMap[classDecl->name->name] = classDecl->name;
+                        // If it exists, we include the associated local as part of locals so that within the fragment the class name is defined
+
+                        if (classDecl->declModifier == AstStatClass::DeclModifier::None)
+                        {
+                            if (const AstExprLocal* local = classDecl->exprName->as<AstExprLocal>())
+                            {
+                                localStack.push_back(local->local);
+                                localMap[local->local->name] = local->local;
+                            }
+                        }
+                        else
+                        {
+                            localStack.push_back(classDecl->localName);
+                            localMap[classDecl->localName->name] = classDecl->localName;
+                        }
+
                         if (classDecl->location.containsClosed(cursorPos))
                         {
                             AstExprFunction* currentMethod = nullptr;
@@ -544,6 +551,17 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
             {
                 localStack.push_back(ifStat->conditionLocal);
                 localMap[ifStat->conditionLocal->name] = ifStat->conditionLocal;
+            }
+        }
+
+        // Add the `while local` binding to the local map if the cursor is in the body of the `AstStatWhile`
+        if (FFlag::LuauExperimentalWhileLocalAnalysis)
+        {
+            if (auto whileStat = node->as<AstStatWhile>();
+                whileStat && whileStat->conditionLocal && whileStat->body->location.containsClosed(cursorPos))
+            {
+                localStack.push_back(whileStat->conditionLocal);
+                localMap[whileStat->conditionLocal->name] = whileStat->conditionLocal;
             }
         }
     }
@@ -749,7 +767,7 @@ void cloneTypesFromFragment(
         {
             if (auto res = stale->refinements.find(syms); res != stale->refinements.end())
             {
-                if (FFlag::LuauFragmentACLocalAutocompleteFix && get<NeverType>(follow(res->second)))
+                if (get<NeverType>(follow(res->second)))
                     continue;
                 destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
                 // If we've found a refinement, just break, otherwise we might end up doing the wrong thing for:
@@ -1010,7 +1028,7 @@ FragmentTypeCheckResult typecheckFragment_(
 
     /// Icehandler
     InternalErrorReporter iceHandler_{frontend.onInternalError, stale->name};
-    NotNull<InternalErrorReporter> iceHandler{FFlag::LuauSplitIceHandler ? &iceHandler_ : &frontend.iceHandler_DEPRECATED};
+    NotNull<InternalErrorReporter> iceHandler{&iceHandler_};
     /// Make the shared state for the unifier (recursion + iteration limits)
     UnifierSharedState unifierState{iceHandler};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;

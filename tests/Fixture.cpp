@@ -34,11 +34,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
 
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(DebugLuauParseExactTables)
-LUAU_FASTFLAG(DebugLuauExactTableTypes)
-
-LUAU_FASTFLAGVARIABLE(DebugLuauForceExactTables)
-LUAU_FASTFLAGVARIABLE(DebugLuauRunFailingExactTableTests)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -692,7 +687,7 @@ void Fixture::validateErrors(const std::vector<Luau::TypeError>& errors)
     }
 }
 
-LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source, bool forAutocomplete)
+LoadDefinitionFileResult Fixture::tryLoadDefinition(const std::string& source, bool forAutocomplete)
 {
     GlobalTypes& globals = forAutocomplete ? getFrontend().globalsForAutocomplete : getFrontend().globals;
     unfreeze(globals.globalTypes);
@@ -700,6 +695,12 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source, bool
         globals, globals.globalScope, source, "@test", /* captureComments */ false, /* typecheckForAutocomplete */ forAutocomplete
     );
     freeze(globals.globalTypes);
+    return result;
+}
+
+LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source, bool forAutocomplete)
+{
+    LoadDefinitionFileResult result = tryLoadDefinition(source, forAutocomplete);
 
     if (result.module)
         dumpErrors(result.module);
@@ -1052,8 +1053,6 @@ doctest::String toString(TableState state)
         return "TableState::Free";
     case TableState::Generic:
         return "TableState::Generic";
-    case TableState::Exact:
-        return "TableState::Exact";
 
     default:
         LUAU_ASSERT(0);

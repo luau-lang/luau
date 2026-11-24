@@ -1,2 +1,0 @@
-./analysis/classes/incompatible_method_override_is_an_error.luau(10,14): TypeError: Method 'method' on class 'Child' is not a compatible override of the method inherited from superclass 'Base'
-./analysis/classes/incompatible_method_override_is_an_error.luau(18,14): TypeError: Method 'method' on class 'GrandChild' is not a compatible override of the method inherited from superclass 'Base'

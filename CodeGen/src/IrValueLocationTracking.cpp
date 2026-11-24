@@ -4,8 +4,6 @@
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenImprovedExitSync)
-
 namespace Luau
 {
 namespace CodeGen
@@ -115,7 +113,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
@@ -134,6 +131,10 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::INVOKE_FASTPCALL:
         // Even if result count is limited, all registers starting from function (ra) might be modified
         invalidateRestoreVmRegs(vmRegOp(OP_A(inst)), -1);
+        break;
+    case IrCmd::INVOKE_NAMECALL:
+        // Even if result count is limited, all registers starting from function (ra) might be modified
+        invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), -1);
         break;
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
@@ -177,7 +178,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::LOAD_TAG:
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
-    case IrCmd::LOAD_INT64:
     case IrCmd::LOAD_INT:
     case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
@@ -186,7 +186,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::JUMP_IF_TRUTHY:
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
-    case IrCmd::SELECT_INT64:
     case IrCmd::SET_TABLE:
     case IrCmd::SET_UPVALUE:
     case IrCmd::INTERRUPT:
@@ -241,7 +240,6 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
-    case IrCmd::LOAD_INT64:
     case IrCmd::LOAD_TVALUE:
         if (OP_A(inst).kind == IrOpKind::VmReg)
             invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
@@ -251,7 +249,6 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_INT64:
     case IrCmd::STORE_TVALUE:
         // If this is not the last use of the stored value, we can restore it from this new location
         // Additionally, even if it's a last use, it might allow its argument to be restored
@@ -288,10 +285,7 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
                 {
                     IrCmd forwardCmd = inst.cmd == IrCmd::NUM_TO_UINT ? IrCmd::UINT_TO_NUM : IrCmd::INT_TO_NUM;
 
-                    if (FFlag::LuauCodegenImprovedExitSync)
-                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd, /* lazy */ false, OP_A(inst).index});
-                    else
-                        function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd});
+                    function.recordRestoreLocation(instIdx, {ownerLoc.op, IrValueKind::Double, forwardCmd, /* lazy */ false, OP_A(inst).index});
 
                     vmRegDependent[reg] = instIdx;
 
@@ -343,10 +337,7 @@ void IrValueLocationTracking::recordRestoreOp(uint32_t instIdx, IrOp location)
 
             if (!captured)
             {
-                if (FFlag::LuauCodegenImprovedExitSync)
-                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd, /* lazy */ false, instIdx});
-                else
-                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
+                function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd, /* lazy */ false, instIdx});
 
                 if (logger && logger->options.includeRegSpills)
                     logger->formatAppendWithPrefix("  ; %%%u can be restored from R%d%s\n", depInstIdx, reg, getConversionCmdSuffix(inst.cmd));
@@ -383,7 +374,6 @@ void IrValueLocationTracking::invalidateRestoreOp(IrOp location, bool skipValueI
                 case IrValueKind::Double:
                 case IrValueKind::Pointer:
                 case IrValueKind::Int:
-                case IrValueKind::Int64:
                     return;
                 default:
                     break;

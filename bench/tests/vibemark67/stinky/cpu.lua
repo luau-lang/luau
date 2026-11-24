@@ -5,6 +5,7 @@
 -- SP or XZR depending on the instruction.
 
 local Int = require("./integer")
+type integer = Int.Int64
 local Memory = require("./memory")
 
 local CPU = {}

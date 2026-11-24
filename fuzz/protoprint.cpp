@@ -928,6 +928,12 @@ struct ProtoToLuau
     void print(const luau::StatWhile& stat)
     {
         source += "while ";
+        if (stat.has_condition_local())
+        {
+            source += stat.condition_is_const() ? "const " : "local ";
+            print(stat.condition_local());
+            source += " = ";
+        }
         print(stat.cond());
         source += " do\n";
 

@@ -3,6 +3,19 @@
 const INLINING_THREASHOLD = 64
 
 do
+    local function positive(n)
+        return n > 0
+    end
+    local function caller(n)
+        return positive(n) and 7 or 11
+    end
+    for i = 1, INLINING_THREASHOLD do
+        assert(caller(-i) == 11)
+        assert(caller(i) == 7)
+    end
+end
+
+do
     local function compute(a, b)
         local c = a + b
         local d = c * 4.0

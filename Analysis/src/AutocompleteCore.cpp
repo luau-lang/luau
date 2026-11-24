@@ -26,11 +26,11 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -346,56 +346,8 @@ static void autocompleteProps(
         return;
     seen.insert(ty);
 
-    auto DEPRECATED_isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type)
-    {
-        if (indexType == PropIndexType::Key)
-            return false;
-
-        bool calledWithSelf = indexType == PropIndexType::Colon;
-
-        auto isCompatibleCall = [typeArena, builtinTypes, &module, rootTy, calledWithSelf](const FunctionType* ftv)
-        {
-            // Strong match with definition is a success
-            if (calledWithSelf == ftv->hasSelf)
-                return true;
-
-            // Calls on extern types require strict match between how function is declared and how it's called
-            if (get<ExternType>(rootTy))
-                return false;
-
-            // When called with ':', but declared without 'self', it is invalid if a function has incompatible first argument or no arguments at all
-            // When called with '.', but declared with 'self', it is considered invalid if first argument is compatible
-            if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
-            {
-                if (checkTypeMatch(module, rootTy, *firstArgTy, NotNull{module.getModuleScope().get()}, typeArena, builtinTypes))
-                    return calledWithSelf;
-            }
-
-            return !calledWithSelf;
-        };
-
-        if (const FunctionType* ftv = get<FunctionType>(type))
-            return !isCompatibleCall(ftv);
-
-        // For intersections, any part that is successful makes the whole call successful
-        if (const IntersectionType* itv = get<IntersectionType>(type))
-        {
-            for (auto subType : itv->parts)
-            {
-                if (const FunctionType* ftv = get<FunctionType>(Luau::follow(subType)))
-                {
-                    if (isCompatibleCall(ftv))
-                        return false;
-                }
-            }
-        }
-
-        return calledWithSelf;
-    };
-
-    // Classification used only when FFlag::LuauAutocompleteDotMethodConversion is enabled. Splits
-    // the wrong-indexer case into "wrong, but auto-fixable by rewriting '.' to ':'" vs. "wrong for
-    // some other reason", and otherwise mirrors isWrongIndexer.
+    // Splits the wrong-indexer case into "wrong, but auto-fixable by rewriting '.' to ':'" vs.
+    // "wrong for some other reason".
     enum class IndexerStatus
     {
         Ok,
@@ -489,19 +441,10 @@ static void autocompleteProps(
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(ty, nodes, typeCorrect);
 
-                bool replaceDot = false;
-                bool wrong = false;
-                if (FFlag::LuauAutocompleteDotMethodConversion)
-                {
-                    IndexerStatus s = classifyIndexer(type);
-                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
-                    wrong = (s == IndexerStatus::WrongOther);
-                }
-                else
-                {
-                    wrong = DEPRECATED_isWrongIndexer(type);
-                }
-                bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
+                IndexerStatus s = classifyIndexer(type);
+                const bool replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                const bool wrong = (s == IndexerStatus::WrongOther);
+                const bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
 
                 result[stringSingleton->value] = AutocompleteEntry{
                     AutocompleteEntryKind::String,
@@ -545,16 +488,9 @@ static void autocompleteProps(
 
                 bool replaceDot = false;
                 bool wrong = false;
-                if (FFlag::LuauAutocompleteDotMethodConversion)
-                {
-                    IndexerStatus s = classifyIndexer(type);
-                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
-                    wrong = (s == IndexerStatus::WrongOther);
-                }
-                else
-                {
-                    wrong = DEPRECATED_isWrongIndexer(type);
-                }
+                IndexerStatus s = classifyIndexer(type);
+                replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                wrong = (s == IndexerStatus::WrongOther);
                 bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
 
                 result[name] = AutocompleteEntry{
@@ -1659,6 +1595,38 @@ static bool autocompleteIfElseExpression(
     }
 }
 
+// True when the cursor could start an `if local`/`while local` binding: the condition is empty or a single name.
+static bool canStartConditionBinding(const AstNode* node, const std::vector<AstNode*>& ancestry, Position position)
+{
+    LUAU_ASSERT(FFlag::LuauExperimentalWhileLocalSyntax && FFlag::LuauExperimentalIfLocalSyntax);
+
+    if (ancestry.size() < 2)
+        return false;
+
+    const AstNode* parent = ancestry.rbegin()[1];
+    const AstExpr* condition = nullptr;
+    bool missingBodyKeyword = false;
+    if (const AstStatWhile* statWhile = parent->as<AstStatWhile>(); statWhile && !statWhile->conditionLocal)
+    {
+        condition = statWhile->condition;
+        missingBodyKeyword = !statWhile->hasDo;
+    }
+    else if (const AstStatIf* statIf = parent->as<AstStatIf>(); statIf && !statIf->conditionLocal)
+    {
+        condition = statIf->condition;
+        missingBodyKeyword = !statIf->thenLocation;
+    }
+
+    if (!condition)
+        return false;
+
+    // An empty condition parses as an error expression past the cursor, so the ancestry ends at the body block.
+    if (node->is<AstStatBlock>())
+        return missingBodyKeyword && condition->is<AstExprError>() && position <= condition->location.end;
+
+    return condition->location == node->location && (node->is<AstExprGlobal>() || node->is<AstExprLocal>() || node->is<AstExprError>());
+}
+
 static AutocompleteContext autocompleteExpression(
     const Module& module,
     NotNull<BuiltinTypes> builtinTypes,
@@ -1755,6 +1723,12 @@ static AutocompleteContext autocompleteExpression(
         result["nil"] = {AutocompleteEntryKind::Keyword, builtinTypes->nilType, false, false, correctForNil};
         result["not"] = {AutocompleteEntryKind::Keyword};
         result["function"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false, correctForFunction};
+
+        if (FFlag::LuauExperimentalWhileLocalSyntax && FFlag::LuauExperimentalIfLocalSyntax && canStartConditionBinding(node, ancestry, position))
+        {
+            result["local"] = {AutocompleteEntryKind::Keyword};
+            result["const"] = {AutocompleteEntryKind::Keyword};
+        }
 
         if (auto ty = findExpectedTypeAt(module, node, position))
             autocompleteStringSingleton(*ty, true, node, position, result);
@@ -2294,6 +2268,12 @@ AutocompleteResult autocomplete_(
     }
     else if (AstStatIf* statIf = node->as<AstStatIf>(); FFlag::LuauExperimentalIfLocalSyntax && statIf && statIf->conditionLocal &&
                                                         statIf->conditionEqualsLocation && position >= statIf->conditionEqualsLocation->end)
+    {
+        return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
+    }
+    else if (AstStatWhile* statWhile = node->as<AstStatWhile>();
+             FFlag::LuauExperimentalWhileLocalSyntax && statWhile && statWhile->conditionLocal && statWhile->conditionEqualsLocation &&
+             position >= statWhile->conditionEqualsLocation->end && (!statWhile->hasDo || position < statWhile->doLocation.begin))
     {
         return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     }

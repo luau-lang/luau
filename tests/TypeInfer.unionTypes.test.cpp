@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -884,12 +883,8 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
 
     CheckResult result = check(R"(
         local function f(t): { x: number } | { x: string }
@@ -1049,8 +1044,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_union_bounds")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2134")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         local function addIndex <A, B, C> (op: ((value: A) -> B, array: {A}) -> {C})
             return function <K> (idxOp: (key: K, value: A) -> B, tbl: { [K]: A })
@@ -1081,13 +1074,12 @@ TEST_CASE_FIXTURE(Fixture, "oss_2134")
 
         local mapTest = addIndex(map)
         local mapResult = mapTest(mapWithIndex, myArr)
-    )");    LUAU_REQUIRE_NO_ERRORS(result);
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "oss_2393")
 {
-    DOES_NOT_PASS_WITH_EXACT_TABLES();
-
     CheckResult result = check(R"(
         --!strict
 
@@ -1103,7 +1095,8 @@ TEST_CASE_FIXTURE(Fixture, "oss_2393")
         end
 
         process(ex)
-    )");    LUAU_REQUIRE_NO_ERRORS(result);
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2025")

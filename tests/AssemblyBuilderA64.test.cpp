@@ -427,6 +427,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
     SINGLE_COMPARE(faddp(s29, s28), 0x7E30DB9D);
     SINGLE_COMPARE(faddp(d29, d28), 0x7E70DB9D);
 
+    SINGLE_COMPARE(faddp(q29, q29, q28), 0x6E3CD7BD);
+
     SINGLE_COMPARE(frinta(d1, d2), 0x1E664041);
     SINGLE_COMPARE(frintm(d1, d2), 0x1E654041);
     SINGLE_COMPARE(frintp(d1, d2), 0x1E64C041);
@@ -743,6 +745,54 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Nop")
         },
         {0xD503201F, 0xD503201F, 0xD503201F}
     ));
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FarDataReferences")
+{
+    // Note: offset is based on the distance from code to data
+    // This can cause an 8 byte increase between constants to appear as an extra page offset increase
+    struct TestCase
+    {
+        uint32_t padding;
+        std::vector<uint32_t> instructions;
+    } cases[] = {
+        // adr x0, #0xfffffffffff00010
+        // adr x1, #0xfffffffffff00008
+        {(1 << 20) - 24, {0x10800080, 0x10800021}},
+
+        // adr x0, #0xfffffffffff00004
+        // adrp x1, #0xfffffffffff00000 ; -256 pages
+        // add x1, x1, #4080
+        {(1 << 20) - 12, {0x10800020, 0x90fff801, 0x913fc021}},
+
+        // adrp x0, #0xfffffffffff00000 ; -256 pages
+        // add x0, x0, #4088
+        // adrp x1, #0xffffffffffeff000 ; -257 pages
+        // add x1, x1, #4080
+        {(1 << 20) - 8, {0x90fff800, 0x913fe000, 0xf0fff7e1, 0x913fc021}},
+
+        // adrp x0, #0xffffffffffeff000 ; -257 pages
+        // add x0, x0, #4088
+        // adrp x1, #0xffffffffffeff000 ; -257 pages
+        // add x1, x1, #4080
+        {(1 << 20) + 4, {0xf0fff7e0, 0x913fe000, 0xf0fff7e1, 0x913fc021}},
+    };
+
+    for (const TestCase& test : cases)
+    {
+        AssemblyBuilderA64 build(/* logger= */ nullptr, /* features= */ 0);
+
+        build.nop(test.padding);
+
+        build.adr(x0, 0.1);
+        build.adr(x1, 0.3);
+        CHECK(build.finalize());
+
+        REQUIRE(build.code.size() == test.padding / 4 + test.instructions.size());
+
+        for (size_t i = 0; i < test.instructions.size(); ++i)
+            CHECK(build.code[test.padding / 4 + i] == test.instructions[i]);
+    }
 }
 
 TEST_SUITE_END();

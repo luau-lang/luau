@@ -259,6 +259,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
     Analysis/include/Luau/Simplify.h
+    Analysis/include/Luau/StackPusher.h
     Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
@@ -412,7 +413,6 @@ target_sources(Luau.VM PRIVATE
     VM/src/ludata.cpp
     VM/src/lutf8lib.cpp
     VM/src/lveclib.cpp
-    VM/src/lintlib.cpp
     VM/src/lvmexecute.cpp
     VM/src/lclass.cpp
     VM/src/lclasslib.cpp
@@ -625,7 +625,6 @@ if(TARGET Luau.CLI.Test)
         CLI/src/Repl.cpp
         CLI/src/ReplRequirer.cpp
 
-        tests/ClassRuntimeErrors.test.cpp
         tests/ReplWithPathFixture.h
         tests/ReplWithPathFixture.cpp
         tests/RegisterCallbacks.h

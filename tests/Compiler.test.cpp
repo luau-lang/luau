@@ -23,25 +23,16 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCompileTableFoldFix)
-LUAU_FASTFLAG(LuauIntegerFastcalls)
-LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
-LUAU_FASTFLAG(LuauCompileMoveElision)
-LUAU_FASTFLAG(LuauCompileNoDebugConst)
-LUAU_FASTFLAG(LuauCompileMoveElisionFix)
-LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauOptimizeExportTable)
-LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
-LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
-LUAU_FASTFLAG(LuauCompileReuseLocalRegs)
 LUAU_FASTFLAG(LuauCompileTableBuiltinsCreateClear)
-LUAU_FASTFLAG(LuauCompileReuseLowersLimit)
+LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
+LUAU_FASTFLAG(LuauCompileCapturedCallTarget)
+LUAU_FASTFLAG(LuauCompileLoopUnrollNegativeZero)
 
 using namespace Luau;
 
@@ -237,6 +228,8 @@ TEST_CASE("BytecodeIsStable")
     CHECK(LBF_TOSTRING == 63);
     CHECK(LBF_BUFFER_WRITEF64 == 77);
     CHECK(LBF_VECTOR_MAX == 88);
+    CHECK(LBF_TABLE_CREATE == 133);
+    CHECK(LBF_TABLE_CLEAR == 134);
 
     // Bytecode capture type (serialized & in-memory)
     CHECK(LCT_UPVAL == 2); // bytecode v1
@@ -247,6 +240,9 @@ TEST_CASE("BytecodeIsStable")
     // Bytecode type encoding (serialized & in-memory)
     // Note: these *can* change retroactively *if* type version is bumped, but probably shouldn't
     LUAU_ASSERT(LBC_TYPE_BUFFER == 9); // type version 1
+    CHECK(LBC_TYPE_INTEGER_DEPRECATED == 10); // reserved serialized ID for the retired integer type
+    CHECK(LBC_TYPE_CLASS == 11);
+    CHECK(LBC_TYPE_OBJECT == 12);
 }
 
 TEST_CASE("CompileToBytecode")
@@ -311,7 +307,6 @@ RETURN R1 1
 
 TEST_CASE("BasicFunctionCall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
@@ -439,7 +434,6 @@ L1: RETURN R1 -1
 
 TEST_CASE("FakeImportCall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     const char* source = "math = {} function math.max() return 0 end function test() return math.max(1, 2) end";
 
@@ -487,8 +481,6 @@ RETURN R0 0
 
 TEST_CASE("ConcatChainOptimization")
 {
-    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
-
     CHECK_EQ("\n" + compileFunction0("local a, b = ...; return a .. b"), R"(
 GETVARARGS R0 2
 MOVE R3 R0
@@ -519,8 +511,6 @@ RETURN R3 1
 
 TEST_CASE("ConcatTopRegisterUse")
 {
-    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
-
     CHECK_EQ("\n" + compileFunction0("local a, b = ...; return '{a=' .. tostring(a) .. ' b=' .. tostring(b) .. '}'"), R"(
 GETVARARGS R0 2
 LOADK R3 K0 ['{a=']
@@ -541,8 +531,6 @@ RETURN R2 1
 
 TEST_CASE("ConcatTopRegisterUseShorthand")
 {
-    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
-
     CHECK_EQ("\n" + compileFunction0("local a = \"hello \" local b, c = ...; a ..= tostring(a) .. tostring(b) return a"), R"(
 LOADK R0 K0 ['hello ']
 GETVARARGS R1 2
@@ -664,7 +652,6 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
@@ -967,7 +954,7 @@ TEST_CASE("DumpConstantClass")
     CHECK_EQ(
         "\n" + compileFunctionConstants(
                    R"(
-open class Animal
+local open class Animal
     public species: string
 
     function live(self)
@@ -975,7 +962,7 @@ open class Animal
     end
 end
 
-class Cat extends Animal
+local class Cat extends Animal
     public breed: string
 
     function describe(self)
@@ -1260,7 +1247,6 @@ RETURN R0 1
 
 TEST_CASE("CaptureSelf")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
@@ -1936,8 +1922,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorCompare")
 {
-    ScopedFastFlag luauCompileNoFoldVectorEqW{FFlag::LuauCompileNoFoldVectorEqW, true};
-
     CHECK_EQ("\n" + compileFunction("local a, b = vector.create(1, 2, 3), vector.create(1, 2, 4); return a == a, a ~= b", 0, 2), R"(
 LOADB R0 1
 LOADB R1 1
@@ -2481,7 +2465,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueUntil")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // it's valid to use locals defined inside the loop in until expression if they're defined before continue
     CHECK_EQ("\n" + compileFunction0("repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until r < 0.5"), R"(
@@ -3110,7 +3093,6 @@ RETURN R1 1
 
 TEST_CASE("JumpFold")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // jump-to-return folding to return
     CHECK_EQ("\n" + compileFunction0("return a and 1 or 0"), R"(
@@ -3376,7 +3358,6 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -3934,10 +3915,6 @@ RETURN R1 1
 
 TEST_CASE("DebugLocals")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
-
     const char* source = R"(
 function foo(e, f, x, y, z)
     local a = 1 + x
@@ -4021,8 +3998,6 @@ local 11 (inner): reg 6, start pc 43 line 21, end pc 43 line 21
 
 TEST_CASE("DebugLocals2")
 {
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
-
     const char* source = R"(
 function foo(x, y)
     repeat
@@ -4053,9 +4028,6 @@ local 3 (y): reg 1, start pc 0 line 4, end pc 2 line 6
 
 TEST_CASE("DebugLocals3")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
-
     const char* source = R"(
 function foo(x, y, z, w)
     repeat
@@ -4095,9 +4067,6 @@ local 7 (w): reg 3, start pc 0 line 4, end pc 5 line 8
 
 TEST_CASE("DebugLocalInlineUndoEmit")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local x = ...
 local function f()
@@ -4142,8 +4111,6 @@ L1: RETURN R3 1
 
 TEST_CASE("DebugLocalInlineUndoEmit2")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     const char* source = R"(
 local function id(x) return x end
 local _
@@ -4207,9 +4174,6 @@ RETURN R0 0
 
 TEST_CASE("DebugTypes")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local up: number = 2
 
@@ -5022,9 +4986,6 @@ TEST_CASE("OutOfLocals")
 
 TEST_CASE("NoLimitOnReusedLocals")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-    ScopedFastFlag luauCompileReuseLowersLimit{FFlag::LuauCompileReuseLowersLimit, true};
-
     std::string source;
 
     for (int i = 0; i < 1000; ++i)
@@ -5393,7 +5354,6 @@ TEST_CASE("CompileBytecode")
 
 TEST_CASE("NestedNamecall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -6374,6 +6334,32 @@ RETURN R0 0
     );
 }
 
+TEST_CASE("LoopUnrollNegativeZero")
+{
+    ScopedFastFlag luauCompileLoopUnrollNegativeZero{FFlag::LuauCompileLoopUnrollNegativeZero, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+for i = -0, 1 do
+    consume(i)
+end
+)",
+                   0,
+                   2
+               ),
+        R"(
+GETIMPORT R0 1 [consume]
+LOADK R1 K2 [-0]
+CALL R0 1 0
+GETIMPORT R0 1 [consume]
+LOADN R1 1
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+
 TEST_CASE("LoopUnrollNested")
 {
     // we can unroll nested loops just fine
@@ -6926,7 +6912,6 @@ TEST_CASE("LoopUnrollCostBuiltins")
         {FInt::LuauCompileLoopUnrollThreshold, 25},
         {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
     CHECK_EQ(
@@ -7241,7 +7226,6 @@ RETURN R1 1
 
 TEST_CASE("InlineProhibitedRecursion")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     // we can't inline recursive invocations of functions in the functions
     // this is actually profitable in certain cases, but it complicates the compiler as it means a local has multiple registers/values
 
@@ -7312,8 +7296,6 @@ RETURN R1 1
 
 TEST_CASE("InlineNestedLoops")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // functions with basic loops get inlined
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7405,8 +7387,6 @@ RETURN R1 1
 
 TEST_CASE("InlineMutate")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // if the argument is mutated, it gets a register even if the value is constant
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7506,8 +7486,6 @@ RETURN R1 1
 
 TEST_CASE("InlineUpval")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // if the argument is an upvalue, we naturally need to copy it to a local
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7589,8 +7567,6 @@ RETURN R1 1
 
 TEST_CASE("InlineCapture")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // if the argument is captured by a nested closure, normally we can rely on capture by value
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7720,8 +7696,6 @@ RETURN R2 1
 )"
     );
 
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     // note that mutation and capture might be inside internal control flow
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7826,8 +7800,6 @@ RETURN R1 -1
 
 TEST_CASE("InlineArgMismatch")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // when inlining a function, we must respect all the usual rules
 
     // caller might not have enough arguments
@@ -8189,6 +8161,94 @@ RETURN R5 1
     );
 }
 
+TEST_CASE("InlineCapturedCallTarget")
+{
+    ScopedFastFlag luauCompileCapturedCallTarget{FFlag::LuauCompileCapturedCallTarget, true};
+
+    // Inlining cannot store result into the target register if it is captured and might be used to compute the return value
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function test()
+    local f
+    f = function() f = nil end
+    f = (function() return f() end)()
+    return f
+end
+)",
+                   2,
+                   2
+               ),
+        R"(
+LOADNIL R0
+NEWCLOSURE R0 P0
+CAPTURE REF R0
+MOVE R1 R0
+CALLFB R1 0 1 [0]
+MOVE R0 R1
+CLOSEUPVALS R0
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local callee
+local function invoke()
+    return callee()
+end
+
+local function test()
+    local f
+    callee = function() f = nil end
+    f = invoke()
+    return f
+end
+)",
+                   2,
+                   2
+               ),
+        R"(
+LOADNIL R0
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+SETUPVAL R1 U0
+GETUPVAL R1 U0
+CALLFB R1 0 1 [0]
+MOVE R0 R1
+CLOSEUPVALS R0
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function test(g, f)
+    holder = function() return f end
+    f = (function() return g(f) end)()
+    return f
+end
+)",
+                   2,
+                   2
+               ),
+        R"(
+NEWCLOSURE R2 P0
+CAPTURE REF R1
+SETGLOBAL R2 K0 ['holder']
+MOVE R2 R0
+MOVE R3 R1
+CALLFB R2 1 1 [0]
+MOVE R1 R2
+CLOSEUPVALS R1
+RETURN R1 1
+)"
+    );
+}
+
 TEST_CASE("InlineRecurseArguments")
 {
     // the example looks silly but we preserve it verbatim as it was found by fuzzer for a previous version of the compiler
@@ -8395,8 +8455,6 @@ L3: RETURN R0 0
 
 TEST_CASE("InlineHiddenMutation")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // when the argument is assigned inside the function, we can't reuse the local
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8570,7 +8628,6 @@ RETURN R1 1
 
 TEST_CASE("InlineNonConstInitializers")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8765,8 +8822,6 @@ L1: RETURN R0 0
 )"
     );
 
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     // inline builtins
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8906,8 +8961,6 @@ RETURN R1 1
 
 TEST_CASE("InlineConstConditionals")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // the most expensive part does not participate in cost model if branches are const
     CHECK_EQ(
         "\n" + compileFunction(
@@ -9077,8 +9130,6 @@ RETURN R1 5
 
 TEST_CASE("InlineLoopIteration")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -9113,7 +9164,6 @@ RETURN R1 2
 
 TEST_CASE("InlineOnlyRemoveTerminatingJump")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -9481,8 +9531,6 @@ RETURN R2 1
 
 TEST_CASE("InlineElideTemporaries")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // 'id' elides the move by pointing the argument at the target and 'accum' elides the move by pointing the local 's' to the target
     CHECK_EQ(
         "\n" + compileFunction(
@@ -9606,8 +9654,6 @@ MOVE R2 R0
 RETURN R2 1
 )"
     );
-
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     // Non-captured local move arrives at the ADDK arguments directly
     CHECK_EQ(
@@ -9855,8 +9901,6 @@ RETURN R4 1
 
 TEST_CASE("InlineElideCaptured")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // Locals captured by reference cannot elide the move
     CHECK_EQ(
         "\n" + compileFunction(
@@ -10062,8 +10106,6 @@ RETURN R4 1
 
 TEST_CASE("InlineElideAliased")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // Argument storage cannot alias the result target when result construction may overwrite it before the argument is read
     CHECK_EQ(
         "\n" + compileFunction(
@@ -10153,8 +10195,6 @@ RETURN R0 2
 )"
     );
 
-    ScopedFastFlag luauCompileMoveElisionFix{FFlag::LuauCompileMoveElisionFix, true};
-
     // Target register cannot be used if it's still needed to evaluate the argument
     CHECK_EQ(
         "\n" + compileFunction(
@@ -10186,8 +10226,6 @@ RETURN R2 1
 
 TEST_CASE("InlineNoElideWhenNoTarget")
 {
-    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
-
     // there is no target register when return values are not used, so no move elision is needed
     CHECK_EQ(
         "\n" + compileFunction(
@@ -10219,8 +10257,6 @@ RETURN R0 0
 
 TEST_CASE("ReturnConsecutive")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     // we can return a single local directly
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -12089,7 +12125,6 @@ L1: RETURN R0 0
 
 TEST_CASE("ConstStringFolding")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction(R"(return "" .. "")", 0, 2),
@@ -12267,7 +12302,7 @@ TEST_CASE("ClassDeclBasic")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-        class Point
+        local class Point
             public x: number
             public y: number
         end
@@ -12288,7 +12323,7 @@ TEST_CASE("ClassDeclWithMethod")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-        class Point
+        local class Point
             public x: number
             public y: number
             function magnitude(self)
@@ -12324,11 +12359,10 @@ TEST_CASE("ClassDeclWithAmbiguousGlobal")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauEmitCallFeedback, true},
     };
 
     std::string source = R"(
-        class Point
+        local class Point
             public x: number
             public y: number
             function print(self)
@@ -12364,11 +12398,10 @@ TEST_CASE("ClassDeclWithExplicitCtor")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauEmitCallFeedback, true},
     };
 
     std::string source = R"(
-        class Point
+        local class Point
             public x: number
             public y: number
             function __init(self, x, y)
@@ -12378,14 +12411,14 @@ TEST_CASE("ClassDeclWithExplicitCtor")
         end
         return { Point = Point }
     )";
-    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
-    CHECK(R"(
+
+    CHECK_EQ("\n" + compileFunction(source.c_str(), 0, 0, 0), R"(
 SETTABLEKS R1 R0 K0 ['x']
 SETTABLEKS R2 R0 K1 ['y']
 RETURN R0 0
-)" == res0);
-    auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
-    CHECK(res1 == R"(
+)");
+
+    CHECK_EQ("\n" + compileFunction(source.c_str(), 1, 0, 0), R"(
 NEWCLASS R0 no_base K4 0 [class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 [public] ['__init']
@@ -12439,6 +12472,7 @@ NEWCLASSMEMBER R0 R1 [public] ['getX']
 NEWCLOSURE R1 P1
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['getY']
+SETGLOBAL R0 K0 ['Point']
 RETURN R0 0
 )");
 }
@@ -12482,9 +12516,10 @@ NEWCLASS R0 no_base K3 0 [class Point (public fields: 0, public methods: 2, priv
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['magnitude']
-GETGLOBAL R1 K4 ['print']
-MOVE R2 R0
-CALL R1 1 0
+SETGLOBAL R0 K0 ['Point']
+GETGLOBAL R0 K4 ['print']
+GETGLOBAL R1 K0 ['Point']
+CALL R0 1 0
 RETURN R0 0
 )");
 }
@@ -12527,6 +12562,7 @@ NEWCLASS R0 no_base K5 0 [class Account (public fields: 2, public methods: 2, pr
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['peek']
+SETGLOBAL R0 K0 ['Account']
 RETURN R0 0
 )");
 }
@@ -12576,6 +12612,7 @@ NEWCLASSMEMBER R0 R1 1 [private]
 NEWCLOSURE R1 P2
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['pick']
+SETGLOBAL R0 K0 ['C']
 RETURN R0 0
 )");
 }
@@ -12618,6 +12655,7 @@ NEWCLASSMEMBER R0 R1 0 [private]
 NEWCLOSURE R1 P1
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['get']
+SETGLOBAL R0 K0 ['C']
 RETURN R0 0
 )");
 }
@@ -12656,6 +12694,7 @@ NEWCLASS R0 no_base K3 0 [class Point (public fields: 0, public methods: 2, priv
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['describe']
+SETGLOBAL R0 K0 ['Point']
 RETURN R0 0
 )");
 }
@@ -12686,15 +12725,15 @@ TEST_CASE("ClassPrivateFieldInNestedClosure")
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-GETUPVAL R0 U0
-GETPRIVATEFIELD R0 R0 U1 0 [instance]
+GETUPVAL R0 U1
+GETPRIVATEFIELD R0 R0 U0 0 [instance]
 RETURN R0 1
 )");
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
 NEWCLOSURE R1 P0
-CAPTURE VAL R0
 CAPTURE UPVAL U0
+CAPTURE VAL R0
 RETURN R1 1
 )");
 
@@ -12703,6 +12742,7 @@ NEWCLASS R0 no_base K3 0 [class Point (public fields: 0, public methods: 2, priv
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['makeGetter']
+SETGLOBAL R0 K0 ['Point']
 RETURN R0 0
 )");
 }
@@ -12736,7 +12776,8 @@ RETURN R1 1
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
 NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, private fields: 1, private methods: 0)]
-NEWCLOSURE R1 P0
+SETGLOBAL R0 K0 ['Point']
+NEWCLOSURE R0 P0
 RETURN R0 0
 )");
 }
@@ -12857,10 +12898,11 @@ NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, priv
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['__init']
-MOVE R1 R0
-LOADK R2 K3 [3]
-LOADK R3 K4 [4]
-CALL R1 2 1
+SETGLOBAL R0 K0 ['Point']
+GETGLOBAL R0 K0 ['Point']
+LOADK R1 K3 [3]
+LOADK R2 K4 [4]
+CALL R0 2 1
 RETURN R0 0
 )");
 }
@@ -12961,8 +13003,9 @@ TEST_CASE("ClassPrivateFieldAssignmentInNestedClosure")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
         class Point
             private _x: number
             function makeSetter(self)
@@ -12971,13 +13014,29 @@ TEST_CASE("ClassPrivateFieldAssignmentInNestedClosure")
                 end
             end
         end
-    )"),
-        R"(
-GETUPVAL R1 U0
-SETPRIVATEFIELD R0 R1 U1 0
+    )");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETUPVAL R1 U1
+SETPRIVATEFIELD R0 R1 U0 0
 RETURN R0 0
-)"
-    );
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLOSURE R1 P0
+CAPTURE UPVAL U0
+CAPTURE VAL R0
+RETURN R1 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+NEWCLASS R0 no_base K3 0 [class Point (public fields: 0, public methods: 2, private fields: 1, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['makeSetter']
+SETGLOBAL R0 K0 ['Point']
+RETURN R0 0
+)");
 }
 
 TEST_CASE("ClassPrivateFieldAssignmentOnOtherInstance")
@@ -13107,7 +13166,7 @@ TEST_CASE("ClassUndeclaredPrivateFieldAssignmentProducesError")
     }
     catch (const std::exception& e)
     {
-        CHECK(std::string(e.what()) == "Attempt to assign undefined private field");
+        CHECK(std::string(e.what()) == "Attempt to access undefined private field");
     }
 }
 
@@ -13131,7 +13190,7 @@ TEST_CASE("ClassPrivateFieldAssignmentWithNoPrivateMembersProducesError")
     }
     catch (const std::exception& e)
     {
-        CHECK(std::string(e.what()) == "Attempt to assign private field of a class with no private fields");
+        CHECK(std::string(e.what()) == "Attempt to access undefined private field");
     }
 }
 
@@ -13183,7 +13242,6 @@ TEST_CASE("ClassPrivateFieldIndexGlobal")
 TEST_CASE("ClassConstructedInsidePrivateMethod")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag reuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     std::string source = R"(
         class Vec
@@ -13213,7 +13271,7 @@ TEST_CASE("ClassConstructedInsidePrivateMethod")
     // _scaled: the class name resolves to the captured class upvalue, so the construction inside a
     // private method is an ordinary call on that upvalue.
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-GETUPVAL R2 U0
+GETGLOBAL R2 K0 ['Vec']
 GETPRIVATEFIELD R4 R0 U0 0 [instance]
 MUL R3 R4 R1
 GETPRIVATEFIELD R5 R0 U0 1 [instance]
@@ -13243,16 +13301,17 @@ RETURN R1 -1
     // main chunk: the class is built in a local that every method captures by reference, which is the
     // upvalue the private accesses above index through.
     CHECK_EQ("\n" + bcb.dumpFunction(3), R"(
-NEWCLASS R0 no_base K6 0 [class Vec (public fields: 0, public methods: 2, private fields: 2, private methods: 1)]
-DUPCLOSURE R1 K1 ['_scaled']
+NEWCLASS R0 no_base K3 0 [class Vec (public fields: 0, public methods: 2, private fields: 2, private methods: 1)]
+NEWCLOSURE R1 P0
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 0 [private]
-DUPCLOSURE R1 K2 ['__init']
+NEWCLOSURE R1 P1
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['__init']
-DUPCLOSURE R1 K4 ['double']
+NEWCLOSURE R1 P2
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['double']
+SETGLOBAL R0 K0 ['Vec']
 RETURN R0 0
 )");
 }
@@ -13260,7 +13319,6 @@ RETURN R0 0
 TEST_CASE("ClassPrivateStaticMethodNamecallOnClassObject")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag reuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     std::string source = R"(
         class StaticNamecall
@@ -13301,7 +13359,7 @@ RETURN R0 0
     // GETPRIVATEFIELD writes the callee into. The instance form (self:_method()) instead uses the
     // receiver's own local register as the source and so does not alias the callee register.
     CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
-GETUPVAL R1 U0
+GETGLOBAL R1 K0 ['StaticNamecall']
 GETPRIVATEFIELD R1 R1 U0 0 [static] [namecall]
 CALL R1 1 -1
 RETURN R1 -1
@@ -13309,114 +13367,17 @@ RETURN R1 -1
 
     // main chunk
     CHECK_EQ("\n" + bcb.dumpFunction(3), R"(
-NEWCLASS R0 no_base K6 0 [class StaticNamecall (public fields: 0, public methods: 2, private fields: 1, private methods: 1)]
+NEWCLASS R0 no_base K4 0 [class StaticNamecall (public fields: 0, public methods: 2, private fields: 1, private methods: 1)]
 DUPCLOSURE R1 K1 ['_receiver']
 NEWCLASSMEMBER R0 R1 0 [private]
-DUPCLOSURE R1 K2 ['__init']
+NEWCLOSURE R1 P1
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['__init']
-DUPCLOSURE R1 K4 ['staticReceiver']
+NEWCLOSURE R1 P2
 CAPTURE VAL R0
 NEWCLASSMEMBER R0 R1 [public] ['staticReceiver']
+SETGLOBAL R0 K0 ['StaticNamecall']
 RETURN R0 0
-)");
-}
-
-TEST_CASE("IntegerType")
-{
-    if (!FFlag::LuauIntegerType2)
-        return;
-
-    // i suffix
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
-local a = 123i
-return a
-)"),
-        R"(
-LOADK R0 K0 [123]
-RETURN R0 1
-)"
-    );
-
-    // separators
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
-local a = 1_000_000i
-return a
-)"),
-        R"(
-LOADK R0 K0 [1000000]
-RETURN R0 1
-)"
-    );
-
-    // hex
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
-local a = 0xABABi
-return a
-)"),
-        R"(
-LOADK R0 K0 [43947]
-RETURN R0 1
-)"
-    );
-
-    // binary
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
-local a = 0b100101i
-return a
-)"),
-        R"(
-LOADK R0 K0 [37]
-RETURN R0 1
-)"
-    );
-
-    // Has to be exactly representable; overflow is a parse error
-
-    std::string source1 = "local a = 9999999999999999999999999i";
-    std::string source2 = "local a = 2.37i";
-
-    std::string bc1 = Luau::compile(source1);
-    std::string bc2 = Luau::compile(source2);
-
-    // 0 acts as a special marker for error bytecode
-    CHECK_EQ(bc1[0], 0);
-    CHECK_EQ(bc2[0], 0);
-}
-
-TEST_CASE("IntegerBcb")
-{
-    ScopedFastFlag luauInteger{FFlag::LuauIntegerType2, true};
-    ScopedFastFlag luauCompileNoDebugConst{FFlag::LuauCompileNoDebugConst, true};
-
-    const char* source = R"(
-function foo(x)
-local a = 123i
-if x then a = 456i end
-return a
-end)";
-
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types);
-    bcb.setDumpSource(source);
-
-    Luau::CompileOptions options;
-
-    options.typeInfoLevel = 1;
-    options.optimizationLevel = 1;
-
-    Luau::compileOrThrow(bcb, source, options);
-
-    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-R1: integer from 0 to 4
-LOADK R1 K0 [123]
-JUMPIFNOT R0 L0
-LOADK R1 K1 [456]
-L0: RETURN R1 1
 )");
 }
 
@@ -13991,7 +13952,6 @@ RETURN R1 1
 // We do not optimize these as tracking escapes through returns is challenging
 TEST_CASE("FoldConstTablePropsReturnLocal")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -14116,47 +14076,6 @@ FASTCALL1 134 R0 L0
 MOVE R2 R0
 GETIMPORT R1 2 [table.clear]
 CALL R1 1 0
-L0: RETURN R0 0
-)"
-    );
-}
-
-TEST_CASE("BufferIntegerFastcall")
-{
-    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
-    ScopedFastFlag luauIntegerBufferFastcalls{FFlag::LuauIntegerBufferFastcalls, true};
-
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
-local b = buffer.create(16)
-return buffer.readinteger(b, 0)
-)"),
-        R"(
-GETIMPORT R0 2 [buffer.create]
-LOADN R1 16
-CALL R0 1 1
-FASTCALL2K 131 R0 K3 L0 [0]
-MOVE R2 R0
-LOADK R3 K3 [0]
-GETIMPORT R1 5 [buffer.readinteger]
-CALL R1 2 -1
-L0: RETURN R1 -1
-)"
-    );
-
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
-local b, v = ...
-buffer.writeinteger(b, 0, v)
-)"),
-        R"(
-GETVARARGS R0 2
-LOADN R4 0
-FASTCALL3 132 R0 R4 R1 L0
-MOVE R3 R0
-MOVE R5 R1
-GETIMPORT R2 2 [buffer.writeinteger]
-CALL R2 3 0
 L0: RETURN R0 0
 )"
     );
@@ -14361,7 +14280,7 @@ TEST_CASE("LBCConstantRegressionTest")
     CHECK_EQ(LBC_CONSTANT_CLOSURE, 6);
     CHECK_EQ(LBC_CONSTANT_VECTOR, 7);
     CHECK_EQ(LBC_CONSTANT_TABLE_WITH_CONSTANTS, 8);
-    CHECK_EQ(LBC_CONSTANT_INTEGER, 9);
+    CHECK_EQ(LBC_CONSTANT_INTEGER_DEPRECATED, 9);
     CHECK_EQ(LBC_CONSTANT_CLASS_SHAPE, 10);
     CHECK_EQ(LBC_CONSTANT_VECTORD, 11);
 
@@ -14434,7 +14353,7 @@ export class Point
     public y: number
 end
 
-local p = Point.new({x = 1, y = 2})
+local p = Point {x = 1, y = 2}
 )",
                    0,
                    2
@@ -14442,11 +14361,12 @@ local p = Point.new({x = 1, y = 2})
         R"(
 NEWTABLE R1 0 0
 NEWCLASS R0 no_base K4 0 [class Point (public fields: 2, public methods: 1, private fields: 0, private methods: 0)]
-GETTABLEKS R2 R0 K5 ['new']
-DUPTABLE R3 8
+MOVE R2 R0
+CONSTRUCT R3 R2 slot 0
+FINCONSTRUCT R3 L0
 CALL R2 1 1
-SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R3 11 [table.freeze]
+L0: SETTABLEKS R0 R1 K0 ['Point']
+GETIMPORT R3 10 [table.freeze]
 MOVE R4 R1
 CALL R3 1 1
 RETURN R3 1
@@ -14498,11 +14418,11 @@ TEST_CASE("ClassInheritanceBasic")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-open class Animal
+local open class Animal
     public species: string
 end
 
-class Cat extends Animal
+local class Cat extends Animal
     public breed: string
 end
 
@@ -14525,7 +14445,7 @@ TEST_CASE("ClassInheritanceWithMethods")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-open class Animal
+local open class Animal
     public species: string
 
     function live(self)
@@ -14533,7 +14453,7 @@ open class Animal
     end
 end
 
-class Cat extends Animal
+local class Cat extends Animal
     public breed: string
 
     function describe(self)
@@ -14579,23 +14499,22 @@ TEST_CASE("ClassInheritanceMultiLevel")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-open class A
+local open class A
     public x: number
 end
 
-open class B extends A
+local open class B extends A
     public y: number
 end
 
-class C extends B
+local class C extends B
     public z: number
 end
 
 print(C)
     )";
 
-    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
-    CHECK(R"(
+    CHECK_EQ("\n" + compileFunction(source.c_str(), 0, 0, 0), R"(
 NEWCLASS R0 no_base K3 1 [class A (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
 NEWCLASS R1 R0 K6 1 [class B (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
 NEWCLASS R2 R1 K9 0 [class C (public fields: 1, public methods: 1, private fields: 0, private methods: 0)]
@@ -14603,7 +14522,7 @@ GETGLOBAL R3 K10 ['print']
 MOVE R4 R2
 CALL R3 1 0
 RETURN R0 0
-)" == res0);
+)");
 }
 
 TEST_CASE("ExportClassInheritance")
@@ -14615,7 +14534,7 @@ TEST_CASE("ExportClassInheritance")
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
-open class Animal
+local open class Animal
     public species: string
 end
 
@@ -14642,9 +14561,9 @@ TEST_CASE("ExtendShadowedClass")
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
-class _ end
+local class _ end
 local _
-class l0 extends _
+local class l0 extends _
 end
 )"),
         R"(
@@ -14656,15 +14575,503 @@ RETURN R0 0
     );
 }
 
+TEST_CASE("CyclicInheritanceDoesntWork")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local B
+open class A extends B
+end
+
+open class B extends A
+end
+)"),
+        R"(
+LOADNIL R0
+NEWCLASS R1 R0 K2 1 [class A (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+SETGLOBAL R1 K0 ['A']
+GETGLOBAL R1 K0 ['A']
+NEWCLASS R0 R1 K4 1 [class B (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ConstClass")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
+const class Point
+    public x: number
+    function origin()
+        return Point { x = 0 }
+    end
+end
+local function getPoint()
+    return Point
+end
+return Point, getPoint
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETUPVAL R0 U0
+CONSTRUCT R1 R0 slot 0
+FINCONSTRUCT R1 L0
+CALL R0 1 -1
+L0: RETURN R0 -1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+GETUPVAL R0 U0
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+NEWCLASS R0 no_base K5 0 [class Point (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
+DUPCLOSURE R1 K2 ['origin']
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['origin']
+DUPCLOSURE R1 K6 ['getPoint']
+CAPTURE VAL R0
+RETURN R0 2
+)");
+}
+
+TEST_CASE("GlobalClassReferencedInMethod")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
+class Point
+    public x: number
+    function origin()
+        return Point { x = 0 }
+    end
+end
+return Point
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETGLOBAL R0 K0 ['Point']
+CONSTRUCT R1 R0 slot 0
+FINCONSTRUCT R1 L0
+CALL R0 1 -1
+L0: RETURN R0 -1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R0 no_base K5 0 [class Point (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
+DUPCLOSURE R1 K2 ['origin']
+NEWCLASSMEMBER R0 R1 [public] ['origin']
+SETGLOBAL R0 K0 ['Point']
+GETGLOBAL R0 K0 ['Point']
+RETURN R0 1
+)");
+}
+
+TEST_CASE("ClassAssignsToUpvalue")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local Point
+local function define()
+    class Point
+    end
+end
+define()
+return Point
+)"),
+        R"(
+NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+SETUPVAL R0 U0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ClassOverwritesLocal")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local Point = 1
+class Point
+end
+return Point
+)",
+                   0,
+                   2
+               ),
+        R"(
+LOADN R0 1
+NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("ClassAssignsToLocalInNestedBlock")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local Point
+if ... then
+    class Point
+    end
+end
+return Point
+)"),
+        R"(
+LOADNIL R0
+GETVARARGS R1 1
+JUMPIFNOT R1 L0
+NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+L0: RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("ClassOverwritesLocalItExtends")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // NEWCLASS writes its target before reading the base, so the class can't be compiled directly into the base's register
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local Foo = ...
+class Foo extends Foo
+end
+return Foo
+)"),
+        R"(
+GETVARARGS R0 1
+NEWCLASS R1 R0 K2 0 [class Foo (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+MOVE R0 R1
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("ClassLocalDeclaredAfterContinueUsedInUntil")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    try
+    {
+        Luau::BytecodeBuilder bcb;
+        Luau::compileOrThrow(bcb, R"(
+repeat
+    if ... then continue end
+
+    local class Foo end
+until Foo
+)");
+
+        CHECK(!"Expected CompileError");
+    }
+    catch (Luau::CompileError& e)
+    {
+        CHECK_EQ(e.getLocation().begin.line + 1, 6);
+        CHECK_EQ(
+            std::string(e.what()), "Local Foo used in the repeat..until condition is undefined because continue statement on line 3 jumps over it"
+        );
+    }
+}
+
+TEST_CASE("ClassPrivateFieldClosureInUntilAfterContinue")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // The closure's upvalue list starts with a class placeholder that the continue/until validation must skip
+    Luau::BytecodeBuilder bcb;
+    Luau::compileOrThrow(bcb, R"(
+local class C
+    private _x
+
+    public function f(self, c)
+        repeat
+            if c then continue end
+        until (function() return self._x end)()
+    end
+end
+return C
+)");
+}
+
+TEST_CASE("LocalClassInFunction")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
+local function make(n)
+    local class Counter
+        public count: number
+        function reset(self)
+            self.count = n
+        end
+    end
+    return Counter
+end
+return make
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETUPVAL R1 U0
+SETTABLEKS R1 R0 K0 ['count']
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R1 no_base K4 0 [class Counter (public fields: 1, public methods: 2, private fields: 0, private methods: 0)]
+NEWCLOSURE R2 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R1 R2 [public] ['reset']
+RETURN R1 1
+)");
+}
+
+TEST_CASE("LocalClassShadowedInDoBlock")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local class Point
+end
+do
+    local class Point
+    end
+    print(Point)
+end
+print(Point)
+)"),
+        R"(
+NEWCLASS R0 no_base K2 0 [class Point (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+NEWCLASS R1 no_base K3 0 [class Point (public fields: 0, public methods: 1, private fields: 0, private methods: 0)]
+GETIMPORT R2 5 [print]
+MOVE R3 R1
+CALL R2 1 0
+GETIMPORT R1 5 [print]
+MOVE R2 R0
+CALL R1 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("LocalClassInLoop")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
+local classes = {}
+for i = 1, 3 do
+    local class Point
+        function index()
+            return i
+        end
+    end
+    classes[i] = Point
+end
+return classes
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETUPVAL R0 U0
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWTABLE R0 0 3
+LOADN R3 1
+LOADN R1 3
+LOADN R2 1
+FORNPREP R1 L1
+L0: NEWCLASS R4 no_base K3 0 [class Point (public fields: 0, public methods: 2, private fields: 0, private methods: 0)]
+NEWCLOSURE R5 P0
+CAPTURE VAL R3
+NEWCLASSMEMBER R4 R5 [public] ['index']
+SETTABLE R4 R0 R3
+FORNLOOP R1 L0
+L1: RETURN R0 1
+)");
+}
+
+TEST_CASE("NestedClassShadowsPrivate")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
+local class Outer
+    public function oMeth()
+        local class Inner
+            private _x
+            function iMeth(self)
+                return self._x
+            end
+        end
+    end
+end
+)");
+
+    // iMeth
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETPRIVATEFIELD R1 R0 U1 0 [instance]
+RETURN R1 1
+)");
+
+    // oMeth
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R0 no_base K3 0 [class Inner (public fields: 0, public methods: 2, private fields: 1, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE UPVAL U0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['iMeth']
+RETURN R0 0
+)");
+
+    // main: oMeth closure doesn't capture Outer as an upvalue despite lexically containing a private field access because the private belongs to
+    // Inner
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+NEWCLASS R0 no_base K3 0 [class Outer (public fields: 0, public methods: 2, private fields: 0, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['oMeth']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("NestedClassPrivateFieldAccessOnInstanceUpvalue")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
+local class Outer
+    private _x
+
+    public function classMaker(inst)
+        local class Inner
+            private _y
+
+            public function doStuff(self)
+                return self._y + inst._x
+            end
+        end
+        return Inner
+    end
+end
+)");
+
+    // Inner.doStuff: self._y resolves against Inner (U1), while inst._x resolves against Outer (U0) through the captured inst (U2)
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETPRIVATEFIELD R2 R0 U1 0 [instance]
+GETUPVAL R3 U2
+GETPRIVATEFIELD R3 R3 U0 0 [instance]
+ADD R1 R2 R3
+RETURN R1 1
+)");
+
+    // Outer.classMaker: Outer is forwarded from classMaker's own upvalue, followed by Inner, then the ordinary inst upvalue
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+NEWCLASS R1 no_base K3 0 [class Inner (public fields: 0, public methods: 2, private fields: 1, private methods: 0)]
+NEWCLOSURE R2 P0
+CAPTURE UPVAL U0
+CAPTURE VAL R1
+CAPTURE VAL R0
+NEWCLASSMEMBER R1 R2 [public] ['doStuff']
+RETURN R1 1
+)");
+
+    // main
+    CHECK_EQ("\n" + bcb.dumpFunction(2), R"(
+NEWCLASS R0 no_base K3 0 [class Outer (public fields: 0, public methods: 2, private fields: 1, private methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+NEWCLASSMEMBER R0 R1 [public] ['classMaker']
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ClassNestingDepthLimit")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = rep("local class C function f() ", 257) + rep("end end ", 257);
+
+    try
+    {
+        Luau::BytecodeBuilder bcb;
+        Luau::compileOrThrow(bcb, source);
+        FAIL("Expected compile error");
+    }
+    catch (const Luau::CompileError& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Class nest exceeded the maximum depth of 256");
+    }
+}
+
+// A method that accesses a private field captures one upvalue per enclosing class
+static std::string makeNestedPrivateAccessSource(int depth)
+{
+    std::string source = rep("local class C public function f(self) ", depth - 1);
+    source += "local class C private _x public function f(self) return self._x end end ";
+    source += rep("end end ", depth - 1);
+    return source;
+}
+
+TEST_CASE("ClassNestingWithinUpvalueLimit")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    Luau::BytecodeBuilder bcb;
+    Luau::compileOrThrow(bcb, makeNestedPrivateAccessSource(199));
+}
+
+TEST_CASE("ClassNestingExceedsUpvalueLimit")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    try
+    {
+        Luau::BytecodeBuilder bcb;
+        Luau::compileOrThrow(bcb, makeNestedPrivateAccessSource(200));
+        FAIL("Expected compile error");
+    }
+    catch (const Luau::CompileError& e)
+    {
+        CHECK(std::string(e.what()).find("exceeded limit 200") != std::string::npos);
+    }
+}
+
 TEST_CASE("ClassConstruction")
 {
     ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
 
     CHECK_EQ(
         "\n" + compileFunction0Constants(R"(
 local x, y = ...
-class Point
+local class Point
     public x
     public y
 end
@@ -14728,7 +15135,6 @@ L3: RETURN R3 4
 TEST_CASE("NoFastcallConstruction")
 {
     ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag luauCompileFastpcall{FFlag::LuauCompileFastpcall, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -14746,8 +15152,6 @@ L0: RETURN R0 0
 
 TEST_CASE("ProtectedCalls")
 {
-    ScopedFastFlag luauCompileFastpcall{FFlag::LuauCompileFastpcall, true};
-
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local a, b = ...
@@ -15268,10 +15672,72 @@ RETURN R0 1
     );
 }
 
+TEST_CASE("WhileLocal")
+{
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            while local x = getValue() do
+                print(x)
+            end
+        )"),
+        R"(
+L0: GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L1
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+JUMPBACK L0
+L1: RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("WhileLocalConstantFalse")
+{
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
+
+    // A constant-false condition means the body never runs, so nothing is emitted for the loop.
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            while local x = false do
+                print(x)
+            end
+        )"),
+        R"(
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("WhileConst")
+{
+    ScopedFastFlag sff{FFlag::LuauExperimentalWhileLocalSyntax, true};
+
+    // `while const` should be identical to `while local`
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            while const x = getValue() do
+                print(x)
+            end
+        )"),
+        R"(
+L0: GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L1
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+JUMPBACK L0
+L1: RETURN R0 0
+)"
+    );
+}
+
 TEST_CASE("LocalRegisterReuse")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a, b, c = ...
 
@@ -15316,8 +15782,6 @@ local 5 (n): reg 2, start pc 8 line 12, end pc 9 line 12
 
 TEST_CASE("LocalRegisterReuseFunction")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a, b, c = ...
 
@@ -15376,8 +15840,6 @@ local 7 (n): reg 3, start pc 14 line 18, end pc 15 line 18
 
 TEST_CASE("LocalRegisterReuseUnused")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a = ...
 
@@ -15412,8 +15874,6 @@ local 3 (z): reg 1, start pc 5 line 8, end pc 5 line 8
 
 TEST_CASE("LocalRegisterReuseAliasedLocalsDoesNotDuplicateRegisters")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     const char* source = R"(
 local a, x, y = ...
 local b = a
@@ -15452,8 +15912,6 @@ local 7 (keep): reg 1, start pc 4 line 8, end pc 5 line 8
 
 TEST_CASE("LocalRegisterReuseUnrolledLocals")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -15478,8 +15936,6 @@ RETURN R0 0
 
 TEST_CASE("LocalRegisterReuseGroup")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local a, x = ...
@@ -15498,8 +15954,6 @@ RETURN R3 1
 
 TEST_CASE("LocalRegisterReuseInlinedLocals")
 {
-    ScopedFastFlag luauCompileReuseLocalRegs{FFlag::LuauCompileReuseLocalRegs, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(

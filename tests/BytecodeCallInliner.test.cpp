@@ -11,6 +11,7 @@
 #include "Luau/Sccp.h"
 
 #include <optional>
+#include <unordered_set>
 
 #include "Fixture.h"
 
@@ -19,7 +20,6 @@
 using namespace Luau;
 using namespace Luau::Bytecode;
 
-LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauInlinerNamecallSelfFromMove)
 
 namespace
@@ -216,6 +216,46 @@ struct BytecodeInlinerFixture
         return result;
     }
 
+    std::optional<std::pair<BcOp, BcOp>> findDanglingPhiOperand(const CompTimeBcFunction& fn)
+    {
+        std::unordered_set<BcOp, BcOpHash> livePhis;
+        for (const BcBlock& block : fn.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (const BcOp& phiOp : block.phis)
+                livePhis.insert(phiOp);
+        }
+
+        auto dangles = [&](BcOp operand)
+        {
+            return operand.kind == BcOpKind::Phi && livePhis.count(operand) == 0;
+        };
+
+        for (const BcBlock& block : fn.blocks)
+        {
+            if (block.flags & BcBlockFlag::Dead)
+                continue;
+            for (const BcOp& phiOp : block.phis)
+            {
+                for (BcOp operand : fn.phis[phiOp.index].ops)
+                {
+                    if (dangles(operand))
+                        return std::make_pair(phiOp, operand);
+                }
+            }
+            for (const BcOp& instOp : block.ops)
+            {
+                for (BcOp operand : fn.instructions[instOp.index].ops)
+                {
+                    if (dangles(operand))
+                        return std::make_pair(instOp, operand);
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
     std::vector<std::string> strings;
 };
 
@@ -225,7 +265,6 @@ TEST_SUITE_BEGIN("BytecodeInliner");
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -270,7 +309,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_undercall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -320,7 +358,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_under_return")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -359,7 +396,6 @@ RETURN R1 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "namecall_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag namecallSelfFromMove{FFlag::LuauInlinerNamecallSelfFromMove, true};
 
     /*
@@ -423,7 +459,6 @@ RETURN R3 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "early_return_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -479,7 +514,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "multi_return_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -538,7 +572,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "var_return_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // If target contains vararg returns it cannot be inlined.
     REQUIRE(!compileAndInline(R"(
@@ -555,7 +588,6 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "var_return_inlining")
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -618,7 +650,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -667,7 +698,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining_nil_factory")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -720,7 +750,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -779,7 +808,6 @@ RETURN R0 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage_2")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -837,7 +865,6 @@ RETURN R0 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "loop_phis")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -905,7 +932,6 @@ RETURN R1 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "preserve_loop_phi_registers_when_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     auto res = compileAndInline(R"(
         local function inlinee(t)
@@ -951,7 +977,6 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "preserve_loop_phi_registers_when_inli
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "retain_target_on_block_split")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     /*
         Function 0 (inlinee):
@@ -1010,7 +1035,6 @@ L3: RETURN R1 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1048,7 +1072,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_chained")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // Multiple arithmetic ops that should all fold
     std::string result = inlineAndPrint(
@@ -1087,7 +1110,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_div_by_zero")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // Division by zero should fold to inf
     std::string result = inlineAndPrint(
@@ -1124,7 +1146,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branch")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1164,7 +1185,6 @@ RETURN R1 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branches")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1204,7 +1224,6 @@ RETURN R0 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_for_loop")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1251,7 +1270,6 @@ RETURN R1 1
 // tests JUMPIF(NOT)LT path in evaluateComparisonCondition
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_ordering_branch")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1289,7 +1307,6 @@ RETURN R0 1
 // JUMPIFEQ equality comparison folding
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_equality_branch")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1328,7 +1345,6 @@ RETURN R0 1
 // constant string argument compared against a string literal tests evaluateXeqkCondition
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_string_equality")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1367,7 +1383,6 @@ RETURN R0 1
 // the missing parameter is treated as a LOADNIL, which SCCP can fold to prune `return 1`
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_nil_argument")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1406,7 +1421,6 @@ RETURN R0 1
 //  when the caller passes runtime values, no operand is constant, so the inlined ADD must survive unfolded
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "does_not_fold_runtime_arguments")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::string result = inlineAndPrint(
         R"(
@@ -1525,7 +1539,6 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "graph_builds_loop_exit_phi_for_downst
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_inlinee_with_vararg")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(R"(
@@ -1553,7 +1566,6 @@ RETURN R0 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_setlist")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(R"(
@@ -1579,7 +1591,6 @@ RETURN R0 0
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_for_loop")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(R"(
@@ -1614,7 +1625,6 @@ RETURN R0 0
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_in_loops_phi")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(R"(
@@ -1648,7 +1658,6 @@ L4: RETURN R0 0
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_block")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
         local function caller()
@@ -1695,7 +1704,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_scc")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
         local function caller(x)
@@ -1745,7 +1753,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_projection_in_return_phi")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(R"(
@@ -1775,7 +1782,6 @@ RETURN R1 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_sub_constant_lhs_is_negation_not_move")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(
@@ -1808,7 +1814,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_div_constant_lhs_one_is_reciprocal_not_move")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(
@@ -1841,7 +1846,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_jumpxeqkb_bool_immediate_value")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     REQUIRE_EQ(
         "\n" + inlineAndPrint(
@@ -1874,7 +1878,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_removes_inlined_moves")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     std::string_view src = R"(
         local function inlinee(a, b)
             return a + (b or 42)
@@ -1943,51 +1946,8 @@ RETURN R2 1
 )");
 }
 
-TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_preserves_fastcall_and_loop_layouts")
-{
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, false};
-
-    std::vector<CompTimeBcFunction> graphs = buildGraphs(
-        R"(
-        local function sumValues(values)
-            local total = math.abs(values.x)
-            for _, value in pairs(values) do
-                total += value
-            end
-            return total
-        end
-
-        return sumValues
-    )",
-        2
-    );
-
-    CompTimeBcFunction* function = nullptr;
-    for (CompTimeBcFunction& graph : graphs)
-        if (graph.debugname == "sumValues")
-            function = &graph;
-    REQUIRE(function);
-
-    SlotAllocationResult allocation = allocateSlots(*function);
-    CHECK_FALSE(allocation);
-    CHECK_EQ("\n" + printFunction(*function), R"(
-GETTABLEKS R2 R0 K0 ['x']
-FASTCALL1 2 R2 L0
-GETIMPORT R1 3 [math.abs]
-CALL R1 1 1
-L0: GETIMPORT R2 5 [pairs]
-MOVE R3 R0
-CALL R2 1 3
-FORGPREP_NEXT R2 L2
-L1: ADD R1 R1 R6
-L2: FORGLOOP R2 L1 2
-RETURN R1 1
-)");
-}
-
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_preserves_required_parallel_copies")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     std::string_view src = R"(
         local function inlinee(a, b)
             local c = a
@@ -2056,7 +2016,6 @@ RETURN R2 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_generic_for_key_value_pair_in_frame")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
         local function inlinee(values)
@@ -2093,7 +2052,6 @@ RETURN R1 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_all_generic_for_results_in_frame")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
         local function inlinee(values)
@@ -2118,7 +2076,6 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_all_generic_for
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_unread_call_results_in_frame")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // most results are never read, so inlining materializes no projection for them, yet CALL still writes all five
     std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
@@ -2221,7 +2178,6 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_newclass_superc
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "slot_allocation_keeps_inlined_namecall_self_in_register")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag namecallSelfFromMove{FFlag::LuauInlinerNamecallSelfFromMove, true};
 
     std::optional<std::pair<CompTimeBcFunction, CompTimeBcFunction>> result = compileAndInline(R"(
@@ -2266,7 +2222,6 @@ RETURN R3 1
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "folds_inlined_function_with_dead_loop")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     auto res = compileAndInline(R"(
         local function inlinee(l0, ...)
@@ -2293,7 +2248,6 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "folds_inlined_function_with_dead_loop
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "feedback_slots_after_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     auto res = compileAndInline(
         R"(
@@ -2356,7 +2310,6 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "inlinee_feedback_slots_after_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     auto res = compileAndInline(
         R"(
@@ -2422,11 +2375,10 @@ bb_1 (exit):
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "construct_feedback_slot_after_inlining")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag debugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
 
     auto res = compileAndInline(R"(
-        class Point
+        local class Point
             public x
             public y
         end
@@ -2488,6 +2440,31 @@ bb_1 (exit):
 ; predecessors: bb_3 [fallthrough]
 )"
     );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "parser_does_not_reference_removed_phi")
+{
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function f7(a8)
+            for _ = 0, 4 do
+                local function f12() end
+                for _ = 0, 4 do
+                    local C14 = {}
+                    C14.__index = C14
+                    setmetatable(C14, { __index = f12 })
+                end
+            end
+            local v20 = { [a8] = function(self) end }
+        end
+        f7(-1844856569)
+    )");
+
+    for (const CompTimeBcFunction& fn : graphs)
+    {
+        std::optional<std::pair<BcOp, BcOp>> dangling = findDanglingPhiOperand(fn);
+        CHECK_MESSAGE(!dangling.has_value(), "phi operand points at a removed phi in function '", fn.debugname, "'");
+    }
 }
 
 TEST_SUITE_END();

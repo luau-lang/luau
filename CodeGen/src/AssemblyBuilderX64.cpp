@@ -581,6 +581,21 @@ void AssemblyBuilderX64::bsf(RegisterX64 dst, OperandX64 src)
     commit();
 }
 
+void AssemblyBuilderX64::bts(OperandX64 dst, RegisterX64 src)
+{
+    if (logText)
+        log("bts", dst, src);
+
+    CODEGEN_ASSERT(src.size == SizeX64::dword || src.size == SizeX64::qword);
+    CODEGEN_ASSERT(dst.cat == CategoryX64::reg ? dst.base.size == src.size : dst.memSize == src.size);
+
+    placeRex(src, dst);
+    place(0x0f);
+    place(0xab);
+    placeRegAndModRegMem(src, dst);
+    commit();
+}
+
 void AssemblyBuilderX64::bswap(RegisterX64 dst)
 {
     if (logText)

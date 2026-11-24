@@ -1,0 +1,17 @@
+[flags-on]
+strict = ""
+nonstrict = ""
+runtime = '''
+Warning: unrecognized flag 'LuauExportValueTypecheck'.
+Hello World!
+Hello World!
+'''
+
+[flags-off]
+strict = ""
+nonstrict = ""
+runtime = '''
+Warning: unrecognized flag 'LuauExportValueTypecheck'.
+Hello World!
+Hello World!
+'''

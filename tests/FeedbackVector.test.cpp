@@ -14,7 +14,7 @@
 #include <cstdlib>
 
 LUAU_FASTINT(LuauInlineHitsThreshold)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCompileRequireNoInline)
 
 using namespace Luau;
 
@@ -99,7 +99,6 @@ Proto* idInlinerWithAssert(lua_State* L, Closure* caller, Closure* target, uint3
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -147,7 +146,6 @@ RETURN R0 1
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -175,7 +173,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed")
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed_on_inline")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -200,7 +197,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call_sealed_on_inline")
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "high_order_call")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -248,7 +244,6 @@ RETURN R1 1
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "polymorphic_call_sealed")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -274,7 +269,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "polymorphic_call_sealed")
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "c_call_sealed")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -300,7 +294,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "c_call_sealed")
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "metamethod_call_sealed")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -331,7 +324,6 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "metamethod_call_sealed")
 
 TEST_CASE_FIXTURE(FeedbackVectorFixture, "namecall")
 {
-    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastInt inlineThreshold{FInt::LuauInlineHitsThreshold, 2};
 
     compile(R"(
@@ -375,6 +367,25 @@ RETURN R1 1
     CHECK_EQ(fbslot.call_target.proto, g->funid);
     CHECK_EQ(fbslot.call_target.hits, 2);
     CHECK_EQ(data->called, true);
+}
+
+TEST_CASE_FIXTURE(FeedbackVectorFixture, "require_call_blocks_inline")
+{
+    ScopedFastFlag requireNoInline{FFlag::LuauCompileRequireNoInline, true};
+
+    compile(R"(
+        local function withRequire() require("mod") return 1 end
+        local function noRequire() return 1 end
+        withRequire()
+        noRequire()
+    )");
+
+    Proto* top = load();
+    Proto* withRequire = top->p[0];
+    Proto* noRequire = top->p[1];
+
+    CHECK_EQ(withRequire->flags & LPF_INLINABLE, 0);
+    CHECK_NE(noRequire->flags & LPF_INLINABLE, 0);
 }
 
 TEST_SUITE_END();

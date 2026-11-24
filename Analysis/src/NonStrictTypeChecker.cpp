@@ -9,6 +9,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Simplify.h"
+#include "Luau/StackPusher.h"
 #include "Luau/Subtyping.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
@@ -23,48 +24,10 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAGVARIABLE(LuauNonStrictCallTypePacks)
-LUAU_FASTFLAG(LuauTypeFunctionsAbsenceCache)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
-
-/* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
- * NonStrictTypeChecker uses this to maintain knowledge about which scope encloses every
- * given AstNode.
- */
-struct StackPusher
-{
-    std::vector<NotNull<Scope>>* stack;
-    NotNull<Scope> scope;
-
-    explicit StackPusher(std::vector<NotNull<Scope>>& stack, Scope* scope)
-        : stack(&stack)
-        , scope(scope)
-    {
-        stack.emplace_back(scope);
-    }
-
-    ~StackPusher()
-    {
-        if (stack)
-        {
-            LUAU_ASSERT(stack->back() == scope);
-            stack->pop_back();
-        }
-    }
-
-    StackPusher(const StackPusher&) = delete;
-    StackPusher&& operator=(const StackPusher&) = delete;
-
-    StackPusher(StackPusher&& other)
-        : stack(std::exchange(other.stack, nullptr))
-        , scope(other.scope)
-    {
-    }
-};
-
 
 struct NonStrictContext
 {
@@ -252,10 +215,7 @@ struct NonStrictTypeChecker
             return instance;
 
         TypeFunctionContext context{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
-        ErrorVec errors = reduceTypeFunctions(
-                              instance, location, NotNull{&context}, true, FFlag::LuauTypeFunctionsAbsenceCache ? &typeFunctionAbsenceCache : nullptr
-        )
-                              .errors;
+        ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true, &typeFunctionAbsenceCache).errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -553,37 +513,36 @@ struct NonStrictTypeChecker
             if (!superInstanceEtv)
                 return {};
 
+            bool constructorDefined = false;
+
             for (auto prop : declClass->members)
             {
                 if (auto property = get_if<AstClassProperty>(&prop))
                 {
-                    Name propName = Name{property->name.value};
                     // Slightly inefficient: we walk the inheritance chain for each property
-                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, property->name.value))
                     {
-                        if (curr->props.count(propName) != 0)
-                        {
-                            reportError(
-                                IllegalClassPropertyOverride{propName, Name{declClass->name->name.value}, Name{curr->name}}, property->nameLocation
-                            );
-                            break;
-                        }
+                        reportError(
+                            IllegalClassPropertyOverride{property->name.value, Name{declClass->getName().value}, *ancestor}, property->nameLocation
+                        );
                     }
                 }
-                else if (auto method = get_if<AstClassMethod>(&prop);
-                         method && (method->functionName == "__eq" || method->functionName == "__lt" || method->functionName == "__le"))
+                else if (auto method = get_if<AstClassMethod>(&prop))
                 {
-                    Name methodName = Name{method->functionName.value};
-                    for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
+                    if (method->functionName == "__eq" || method->functionName == "__lt" || method->functionName == "__le")
                     {
-                        if (curr->metatable)
+                        Name methodName = Name{method->functionName.value};
+                        for (const ExternType* curr = superInstanceEtv; curr; curr = get<ExternType>(follow(curr->parent)))
                         {
+                            if (!curr->metatable)
+                                continue;
+
                             if (const TableType* mt = get<TableType>(follow(*curr->metatable)))
                             {
                                 if (mt->props.count(methodName) != 0)
                                 {
                                     reportError(
-                                        IncompatibleClassMethodOverride{methodName, Name{declClass->name->name.value}, Name{curr->name}},
+                                        IncompatibleClassMethodOverride{methodName, Name{declClass->getName().value}, Name{curr->name}},
                                         method->nameLocation
                                     );
                                     break;
@@ -591,7 +550,15 @@ struct NonStrictTypeChecker
                             }
                         }
                     }
+                    else if (method->functionName == "__init")
+                        constructorDefined = true;
                 }
+            }
+
+            if (!constructorDefined)
+            {
+                if (std::optional<Name> ancestor = propInInheritanceChain(superInstanceEtv, "__init"))
+                    reportError(MissingConstructor{Name(declClass->getName().value), *ancestor}, declClass->location);
             }
         }
 
@@ -626,8 +593,6 @@ struct NonStrictTypeChecker
         else if (auto e = expr->as<AstExprConstantBool>())
             return visit(e);
         else if (auto e = expr->as<AstExprConstantNumber>())
-            return visit(e);
-        else if (auto e = expr->as<AstExprConstantInteger>())
             return visit(e);
         else if (auto e = expr->as<AstExprConstantString>())
             return visit(e);
@@ -684,11 +649,6 @@ struct NonStrictTypeChecker
     }
 
     NonStrictContext visit(AstExprConstantNumber* expr)
-    {
-        return {};
-    }
-
-    NonStrictContext visit(AstExprConstantInteger* expr)
     {
         return {};
     }
@@ -760,7 +720,7 @@ struct NonStrictTypeChecker
             size_t argumentCount = arguments.size();
             bool hasVariadicTail = false;
 
-            if (FFlag::LuauNonStrictCallTypePacks && !arguments.empty())
+            if (!arguments.empty())
             {
                 AstExpr* last = arguments.back();
                 TypePackId* tp = module->astTypePacks.find(last);
@@ -802,7 +762,7 @@ struct NonStrictTypeChecker
                 return fresh;
             }
 
-            for (size_t i = 0; i < arguments.size() && (!FFlag::LuauNonStrictCallTypePacks || i < argumentCount); i++)
+            for (size_t i = 0; i < arguments.size() && i < argumentCount; i++)
             {
                 // For example, if the arg is "hi"
                 // The actual arg type is string

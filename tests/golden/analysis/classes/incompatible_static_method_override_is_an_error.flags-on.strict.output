@@ -1,3 +1,0 @@
-./analysis/classes/incompatible_static_method_override_is_an_error.luau(18,14): TypeError: Method 'method' on class 'ChildTwo' is not a compatible override of the method inherited from superclass 'Base'
-./analysis/classes/incompatible_static_method_override_is_an_error.luau(22,14): TypeError: Method 'instanceMethod' on class 'ChildTwo' is not a compatible override of the method inherited from superclass 'Base'
-./analysis/classes/incompatible_static_method_override_is_an_error.luau(26,14): TypeError: Method 'staticMethod' on class 'ChildTwo' is not a compatible override of the method inherited from superclass 'Base'

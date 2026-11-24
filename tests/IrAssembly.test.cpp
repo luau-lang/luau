@@ -9,11 +9,6 @@
 
 #include <regex>
 
-LUAU_FASTFLAG(LuauCodegenX64IntSpillRestore)
-LUAU_FASTFLAG(LuauCodegenExitSyncUpdate)
-LUAU_FASTFLAG(LuauCodegenScopedSpillKeepLazy)
-LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
-
 using namespace Luau::CodeGen;
 
 static void stripLinesContaining(std::string& text, const char* needle)
@@ -115,7 +110,6 @@ public:
     int tnil = parseTagName("tnil");
     int tboolean = parseTagName("tboolean");
     int tnumber = parseTagName("tnumber");
-    int tinteger = parseTagName("tinteger");
     int tvector = parseTagName("tvector");
     int tstring = parseTagName("tstring");
     int ttable = parseTagName("ttable");
@@ -581,8 +575,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "IntStackSpillIgnoresConvertedRestoreLocation")
 {
-    ScopedFastFlag luauCodegenX64IntSpillRestore{FFlag::LuauCodegenX64IntSpillRestore, true};
-
     options.includeRegSpills = true;
 
     IrOp entry = build.block(IrBlockKind::Internal);
@@ -661,9 +653,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedRegisters")
 {
-    ScopedFastFlag luauCodegenExitSyncUpdate{FFlag::LuauCodegenExitSyncUpdate, true};
-    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
-
     options.includeOutlinedCode = true;
     options.includeRegSpills = true;
 
@@ -736,9 +725,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "ExitSyncRestoreConflictedDependent")
 {
-    ScopedFastFlag luauCodegenExitSyncUpdate{FFlag::LuauCodegenExitSyncUpdate, true};
-    ScopedFastFlag luauCodegenImprovedExitSync{FFlag::LuauCodegenImprovedExitSync, true};
-
     options.includeOutlinedCode = true;
     options.includeRegSpills = true;
 
@@ -826,8 +812,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "LazyHintNotMaterializedInsideScopedSpills")
 {
-    ScopedFastFlag luauCodegenScopedSpillKeepLazy{FFlag::LuauCodegenScopedSpillKeepLazy, true};
-
     options.includeRegSpills = true;
 
     IrOp entry = build.block(IrBlockKind::Internal);

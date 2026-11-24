@@ -1,8 +1,0 @@
-Block 0 (entry "Entry Block") -> [B1, B2]:
-  local x-0 = 1
-Block 1 (linear "then branch") -> [B3]:
-  x-1 = 2
-Block 2 (linear "else branch") -> [B3]:
-Block 3 (linear "merge"):
-  x-2 = join(x-1, x-0)
-  local w-0 = x-2

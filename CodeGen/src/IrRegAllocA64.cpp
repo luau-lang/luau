@@ -11,12 +11,9 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenExitSyncUpdate)
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
-LUAU_FASTFLAGVARIABLE(LuauCodegenScopedSpillKeepLazy)
 LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
 LUAU_FASTFLAGVARIABLE(LuauCodegenA64ReloadLargeConstOffset)
-LUAU_FASTFLAG(LuauCodegenImprovedExitSync)
 
 namespace Luau
 {
@@ -71,6 +68,7 @@ static int getReloadOffset(IrValueKind kind)
     case IrValueKind::Unknown:
     case IrValueKind::None:
     case IrValueKind::Float:
+    case IrValueKind::Int64:
     case IrValueKind::Count:
         CODEGEN_ASSERT(!"Invalid operand restore value kind");
         break;
@@ -78,8 +76,6 @@ static int getReloadOffset(IrValueKind kind)
         return offsetof(TValue, tt);
     case IrValueKind::Int:
         return offsetof(TValue, value);
-    case IrValueKind::Int64:
-        return offsetof(TValue, value.l);
     case IrValueKind::Pointer:
         return offsetof(TValue, value.gc);
     case IrValueKind::Double:
@@ -396,17 +392,6 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
     if (!args)
         return;
 
-    // Collect VM registers that the ExitSync stores will write to
-    const VmExitSyncInfo* syncInfo = nullptr;
-
-    SmallVector<uint32_t, 8> argumentsToRestore;
-
-    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
-    {
-        if (const uint32_t* guardInstIdx = function.blockToVmExitMap.find(blockIdx))
-            syncInfo = function.vmExitInfo.find(*guardInstIdx);
-    }
-
     for (const ExitSyncArgA64& arg : *args)
     {
         IrInst& inst = function.instructions[arg.instIdx];
@@ -443,42 +428,7 @@ void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
             function.recordRestoreLocation(arg.instIdx, arg.restoreLocation);
 
             spills.push_back({arg.instIdx, arg.originalReg, arg.slot});
-
-            // If the restore VM register will be clobbered by a store in this block, restore it immediately
-            if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync && syncInfo && arg.restoreLocation.op.kind == IrOpKind::VmReg)
-            {
-                uint8_t vmReg = vmRegOp(arg.restoreLocation.op);
-
-                for (const VmExitStoreInfo& regStore : syncInfo->regStores)
-                {
-                    if (regStore.reg != vmReg)
-                        continue;
-
-                    // If store is the user of the argument, there is no conflict
-                    bool argUsedHere = false;
-
-                    for (const VmExitStoreRecord& record : regStore.stores)
-                    {
-                        for (const auto& op : record.backup.ops)
-                        {
-                            if (op.kind == IrOpKind::Inst && op.index == arg.instIdx)
-                                argUsedHere = true;
-                        }
-                    }
-
-                    if (!argUsedHere)
-                        argumentsToRestore.push_back(function.getInstIndex(inst));
-
-                    break;
-                }
-            }
         }
-    }
-
-    if (FFlag::LuauCodegenExitSyncUpdate && !FFlag::LuauCodegenImprovedExitSync)
-    {
-        for (uint32_t instIdx : argumentsToRestore)
-            restoreReg(function.instructions[instIdx]);
     }
 }
 
@@ -711,7 +661,7 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx, bool
             if (loc.kind != IrValueKind::Tvalue)
                 build.str(wzr, mem(rBase, storeReg * sizeof(TValue) + offsetof(TValue, tt)));
 
-            if (!FFlag::LuauCodegenScopedSpillKeepLazy || !keepLazyLocations)
+            if (!keepLazyLocations)
                 function.materializeRestoreLocation(targetInstIdx);
         }
 

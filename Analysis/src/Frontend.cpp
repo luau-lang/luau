@@ -55,7 +55,6 @@ LUAU_FLAGVERSION(LuauExportValueTypecheck, 2)
 LUAU_FASTFLAGVARIABLE(LuauCyclicRequireTypeInference)
 LUAU_FLAGVERSION(LuauCyclicRequireTypeInference, 6)
 LUAU_FASTFLAGVARIABLE(LuauCyclicRequireTopLevelAccessError)
-LUAU_FASTFLAGVARIABLE(LuauSplitIceHandler)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -1462,12 +1461,12 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
     TypeCheckLimits typeCheckLimits = makeTypeCheckLimits(item.options);
 
     InternalErrorReporter iceHandler{onInternalError};
-    UnifierSharedState unifierState{NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED}};
+    UnifierSharedState unifierState{NotNull{&iceHandler}};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
     unifierState.counters.iterationLimit = typeCheckLimits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
 
     Normalizer normalizer{scc->sharedArena.get(), builtinTypes, NotNull{&unifierState}, SolverMode::New};
-    TypeFunctionRuntime typeFunctionRuntime{NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED}, NotNull{&typeCheckLimits}};
+    TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceHandler}, NotNull{&typeCheckLimits}};
     typeFunctionRuntime.allowEvaluation = true;
 
     // Per-module ConstraintGenerator data for this SCC that needs to be preserved for later use in the ConstraintSolver
@@ -1513,17 +1512,11 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         module->names = sourceModule.names;
         module->root = sourceModule.root;
 
-        if (FFlag::LuauSplitIceHandler)
-            iceHandler.moduleName = sourceModule.name;
-        else
-            iceHandler_DEPRECATED.moduleName = sourceModule.name;
+        iceHandler.moduleName = sourceModule.name;
 
-        cgData[i].dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(
-            sourceModule.root,
-            NotNull{&module->defArena},
-            NotNull{&module->keyArena},
-            NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED}
-        ));
+        cgData[i].dfg = std::make_unique<DataFlowGraph>(
+            DataFlowGraphBuilder::build(sourceModule.root, NotNull{&module->defArena}, NotNull{&module->keyArena}, NotNull{&iceHandler})
+        );
 
         ScopePtr environmentScope = moduleInfo.environmentScope;
 
@@ -1539,7 +1532,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
             NotNull{&typeFunctionRuntime},
             NotNull{&moduleResolver},
             builtinTypes,
-            NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED},
+            NotNull{&iceHandler},
             environmentScope ? environmentScope : globals.globalScope,
             globals.globalTypeFunctionScope,
             std::move(prepareModuleScopeWrap),
@@ -1605,13 +1598,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         std::move(mergedDeferredConstraints),
     };
 
-    Subtyping subtyping{
-        builtinTypes,
-        NotNull{scc->sharedArena.get()},
-        NotNull{&normalizer},
-        NotNull{&typeFunctionRuntime},
-        NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED}
-    };
+    Subtyping subtyping{builtinTypes, NotNull{scc->sharedArena.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceHandler}};
 
     ConstraintSolver cs{
         NotNull{&normalizer},
@@ -1671,8 +1658,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         module->scopes = std::move(cgData[i].cgScopes);
         module->type = sourceModule.type;
 
-        if (FFlag::LuauSplitIceHandler)
-            iceHandler.moduleName = sourceModule.name;
+        iceHandler.moduleName = sourceModule.name;
 
         if (module->timeout || module->cancelled)
         {
@@ -1695,7 +1681,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
                     Luau::checkNonStrict(
                         builtinTypes,
                         NotNull{&typeFunctionRuntime},
-                        NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED},
+                        NotNull{&iceHandler},
                         NotNull{&unifierState},
                         NotNull{cgData[i].dfg.get()},
                         NotNull{&typeCheckLimits},
@@ -1732,7 +1718,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
 
         // Clone public interface
         unfreeze(module->interfaceTypes);
-        module->clonePublicInterface(builtinTypes, FFlag::LuauSplitIceHandler ? iceHandler : iceHandler_DEPRECATED, SolverMode::New);
+        module->clonePublicInterface(builtinTypes, iceHandler, SolverMode::New);
 
         if (module->mode == Mode::NoCheck)
         {
@@ -2335,18 +2321,17 @@ ModulePtr check(
 
     std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
 
-    CFG::CFGAllocator cfgAllocator;
-    std::unique_ptr<CFG::ControlFlowGraph> cfg;
-    std::unique_ptr<CFG::TypeStateMap> state;
-    if (FFlag::DebugLuauCFG && mode != Mode::Definition)
+    CFGAllocator cfgAllocator;
+    std::unique_ptr<ControlFlowGraph> cfg;
+    std::unique_ptr<TypeStateMap> state;
+    if (FFlag::DebugLuauCFG)
     {
-        cfg = CFG::CFGBuilder::makeCFG(NotNull{&cfgAllocator}, sourceModule.root);
+        cfg = CFGBuilder::makeCFG(NotNull{&cfgAllocator}, sourceModule.root);
         if (FFlag::DebugLuauLogCFG)
             printf("%s", dumpCFG(*cfg).c_str());
         if (FFlag::DebugLuauDumpCFGJson)
             printf("%s\n", dumpCFGJson(*cfg).c_str());
-        state =
-            std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state = std::make_unique<TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
         state->computeTypes();
     }
 
@@ -2574,7 +2559,7 @@ ModulePtr Frontend::check(
                 mode,
                 requireCycles,
                 builtinTypes,
-                NotNull{FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED},
+                NotNull{&iceHandler},
                 NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver},
                 NotNull{fileResolver},
                 environmentScope ? *environmentScope : globals.globalScope,
@@ -2602,7 +2587,7 @@ ModulePtr Frontend::check(
             forAutocomplete ? globalsForAutocomplete.globalScope : globals.globalScope,
             forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver,
             builtinTypes,
-            FFlag::LuauSplitIceHandler ? &iceHandler : &iceHandler_DEPRECATED
+            &iceHandler
         );
 
         if (prepareModuleScope)

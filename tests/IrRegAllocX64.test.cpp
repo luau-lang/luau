@@ -7,8 +7,6 @@
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
 
-LUAU_FASTFLAG(LuauCodegenX64IntSpillRestore)
-
 class IrRegAllocX64Fixture
 {
 public:
@@ -62,8 +60,6 @@ TEST_CASE_FIXTURE(IrRegAllocX64Fixture, "RelocateFix")
 
 TEST_CASE_FIXTURE(IrRegAllocX64Fixture, "RestoreStackSpillIgnoresLaterConvertedLocation")
 {
-    ScopedFastFlag luauCodegenX64IntSpillRestore{FFlag::LuauCodegenX64IntSpillRestore, true};
-
     IrInst irInst0{IrCmd::BUFFER_READI32};
     irInst0.lastUse = 2;
     function.instructions.push_back(irInst0);

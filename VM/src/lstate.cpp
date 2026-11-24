@@ -98,9 +98,16 @@ static void close_state(lua_State* L)
         LUAU_ASSERT(g->freepages[i] == NULL);
         LUAU_ASSERT(g->freegcopages[i] == NULL);
         LUAU_ASSERT(g->freegcopages_cage[i] == NULL);
+
+        for (int set = 0; set < TAGGED_PAGESET_SIZE; set++)
+            LUAU_ASSERT(g->taggedpageset[set].freepages[i] == NULL);
     }
     LUAU_ASSERT(g->allgcopages == NULL);
     LUAU_ASSERT(g->allgcopages_cage == NULL);
+
+    for (int set = 0; set < TAGGED_PAGESET_SIZE; set++)
+        LUAU_ASSERT(g->taggedpageset[set].allpages == NULL);
+
     LUAU_ASSERT(g->totalbytes == sizeof(LG));
     LUAU_ASSERT(g->memcatbytes[0] == sizeof(LG));
     for (int i = 1; i < LUA_MEMORY_CATEGORIES; i++)
@@ -204,8 +211,9 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
     g->uvhead.u.open.prev = &g->uvhead;
     g->uvhead.u.open.next = &g->uvhead;
 
-
     g->ptrenckey[0] = 1;
+
+    g->strt.saltmult = 0x9e3779b9u; // default string table salt provides additional Fibonacci hash mixing
 
     g->totalbytes = sizeof(LG);
     g->memcatbytes[0] = sizeof(LG);

@@ -1,2 +1,0 @@
-./analysis/property-modifiers/write_only_property_argument.luau(4,3): TypeError: Expected this to be 'T', but got '{ write count: number }'; 
-`count` is a write-only property in the latter type, but the former type requires a read-write property
