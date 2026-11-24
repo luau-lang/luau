@@ -1453,6 +1453,18 @@ public:
     bool value;
 };
 
+class AstTypeSingletonNumber : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeSingletonNumber)
+
+    AstTypeSingletonNumber(const Location& location, int64_t value);
+
+    void visit(AstVisitor* visitor) override;
+
+    int64_t value;
+};
+
 class AstTypeSingletonString : public AstType
 {
 public:
@@ -1763,6 +1775,10 @@ public:
         return visit(static_cast<AstType*>(node));
     }
     virtual bool visit(class AstTypeSingletonBool* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeSingletonNumber* node)
     {
         return visit(static_cast<AstType*>(node));
     }

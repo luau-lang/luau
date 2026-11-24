@@ -17,6 +17,7 @@
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -578,6 +579,12 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         {
             if (lp->type == PrimitiveType::String && rs->variant.get_if<StringSingleton>())
                 return Relation::Superset;
+
+            if (lp->type == PrimitiveType::Number && rs->variant.get_if<NumberSingleton>())
+            {
+                LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+                return Relation::Superset;
+            }
 
             if (lp->type == PrimitiveType::Boolean && rs->variant.get_if<BooleanSingleton>())
                 return Relation::Superset;

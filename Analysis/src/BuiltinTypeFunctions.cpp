@@ -336,8 +336,8 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (is<NeverType>(operandTy))
         return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
 
-    // If the type is exactly `number`, we can reduce now.
-    if (normTy->isExactlyNumber())
+    // If the type is a subtype of `number`, we can reduce now.
+    if (normTy->isSubtypeOfNumber())
         return {ctx->builtins->numberType, Reduction::MaybeOk, {}, {}};
 
     if (auto result = tryDistributeTypeFunctionApp(unmTypeFunction, instance, typeParams, packParams, ctx))
@@ -447,8 +447,8 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
     if (normLhsTy->shouldSuppressErrors() || normRhsTy->shouldSuppressErrors())
         return {ctx->builtins->anyType, Reduction::MaybeOk, {}, {}};
 
-    // if we're adding two `number` types, the result is `number`.
-    if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
+    // if we're adding two `number` types, the result is `number`. We do this for singletons as well.
+    if (normLhsTy->isSubtypeOfNumber() && normRhsTy->isSubtypeOfNumber())
         return {ctx->builtins->numberType, Reduction::MaybeOk, {}, {}};
 
     if (auto result = tryDistributeTypeFunctionApp(numericBinopTypeFunction, instance, typeParams, packParams, ctx, metamethod))
@@ -646,7 +646,7 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
         return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
 
     // if we're concatenating two elements that are either strings or numbers, the result is `string`.
-    if ((normLhsTy->isSubtypeOfString() || normLhsTy->isExactlyNumber()) && (normRhsTy->isSubtypeOfString() || normRhsTy->isExactlyNumber()))
+    if ((normLhsTy->isSubtypeOfString() || normLhsTy->isSubtypeOfNumber()) && (normRhsTy->isSubtypeOfString() || normRhsTy->isSubtypeOfNumber()))
         return {ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
 
     if (auto result = tryDistributeTypeFunctionApp(concatTypeFunction, instance, typeParams, packParams, ctx))
@@ -852,8 +852,8 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (normLhsTy->isSubtypeOfString() && normRhsTy->isSubtypeOfString())
         return {ctx->builtins->booleanType, Reduction::MaybeOk, {}, {}};
 
-    // If both types are exactly `number`, we can reduce now.
-    if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
+    // If both types are subtypes of `number`, we can reduce now.
+    if (normLhsTy->isSubtypeOfNumber() && normRhsTy->isSubtypeOfNumber())
         return {ctx->builtins->booleanType, Reduction::MaybeOk, {}, {}};
 
     if (auto result = tryDistributeTypeFunctionApp(comparisonTypeFunction, instance, typeParams, packParams, ctx, metamethod))

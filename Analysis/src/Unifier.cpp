@@ -18,6 +18,7 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -274,9 +275,14 @@ TypeId Widen::clean(TypeId ty)
 
     if (get<StringSingleton>(stv))
         return builtinTypes->stringType;
+    else if (get<NumberSingleton>(stv))
+    {
+        LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+        return builtinTypes->numberType;
+    }
     else
     {
-        // If this assert trips, it's likely we now have number singletons.
+        // If this assert trips, it's likely we now have other singletons.
         LUAU_ASSERT(get<BooleanSingleton>(stv));
         return builtinTypes->booleanType;
     }
@@ -1047,9 +1053,17 @@ void Unifier::tryUnifyNormalizedTypes(
         if (!get<PrimitiveType>(superNorm.nils))
             return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
 
-    if (get<PrimitiveType>(subNorm.numbers))
-        if (!get<PrimitiveType>(superNorm.numbers))
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        if (!isSubtype(subNorm.strings, superNorm.strings))
             return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
+    }
+    else
+    {
+        if (get<PrimitiveType>(subNorm.numbers_DEPRECATED))
+            if (!get<PrimitiveType>(superNorm.numbers_DEPRECATED))
+                return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
+    }
 
     if (!isSubtype(subNorm.strings, superNorm.strings))
         return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
@@ -1657,6 +1671,12 @@ void Unifier::tryUnifySingletons(TypeId subTy, TypeId superTy)
 
     if (superPrim && superPrim->type == PrimitiveType::Boolean && get<BooleanSingleton>(subSingleton) && variance == Covariant)
         return;
+
+    if (superPrim && superPrim->type == PrimitiveType::Number && get<NumberSingleton>(subSingleton) && variance == Covariant)
+    {
+        LUAU_ASSERT(FFlag::LuauNumberSingletonsSupport);
+        return;
+    }
 
     if (superPrim && superPrim->type == PrimitiveType::String && get<StringSingleton>(subSingleton) && variance == Covariant)
         return;

@@ -10,6 +10,7 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 using namespace Luau;
 
@@ -78,6 +79,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_incompatible_argu
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_accepts_same_generic")
 {
+    ScopedFastFlag numberSingletons{FFlag::LuauNumberSingletonsSupport, true};
+
     CheckResult result = check(R"(
         local function call<T>(fn: (T) -> T, value: T)
             return fn(value)
@@ -89,7 +92,10 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_accepts_same_generic")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("number", toString(requireType("result")));
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("number | number", toString(requireType("result")));
+    else
+        CHECK_EQ("number", toString(requireType("result")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_union_containing_generic")
@@ -1514,6 +1520,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_3")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded_pt_1")
 {
+    ScopedFastFlag numberSingletonsSupport{FFlag::LuauNumberSingletonsSupport, true};
+
     CheckResult result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
@@ -1526,7 +1534,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded_
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK_EQ("number | number", toString(requireType("a")));
         // Prior this contained a leaked generic, so we'd report no type errors.
-        CHECK_EQ("add<unknown, unknown> | number", toString(requireType("b")));
+        CHECK_EQ("add<unknown, unknown> | number | number", toString(requireType("b")));
     }
     else
     {

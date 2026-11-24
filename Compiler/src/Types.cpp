@@ -3,6 +3,8 @@
 
 #include "Luau/BytecodeBuilder.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCompileNumberSingletons)
+
 namespace Luau
 {
 
@@ -139,6 +141,10 @@ static LuauBytecodeType getType(
     else if (ty->is<AstTypeSingletonBool>())
     {
         return LBC_TYPE_BOOLEAN;
+    }
+    else if (FFlag::LuauCompileNumberSingletons && ty->is<AstTypeSingletonNumber>())
+    {
+        return LBC_TYPE_NUMBER;
     }
     else if (ty->is<AstTypeSingletonString>())
     {

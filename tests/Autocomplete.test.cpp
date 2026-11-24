@@ -26,6 +26,8 @@ LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalAnalysis)
 LUAU_FASTFLAG(LuauRefactorAutocompleteAncestry)
+LUAU_FASTFLAG(LuauNumberSingletonsSyntax)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 using namespace Luau;
 
@@ -4596,6 +4598,8 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_on_argument_type_pack_vararg")
 {
+    ScopedFastFlag numberSingletons[]{{FFlag::LuauNumberSingletonsSyntax, true}, {FFlag::LuauNumberSingletonsSupport, true}};
+
     // Caveat lector!  This is actually invalid syntax!
     // The correct syntax would be as follows:
     //
@@ -4612,7 +4616,7 @@ TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_on_argument_type_pack
     )");
 
     const std::optional<std::string> EXPECTED_INSERT =
-        !FFlag::DebugLuauForceOldSolver ? "function(...: number): number  end" : "function(...): number  end";
+        !FFlag::DebugLuauForceOldSolver ? "function(...: number | number | number): number  end" : "function(...): number  end";
 
     auto ac = autocomplete('1');
 

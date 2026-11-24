@@ -6045,6 +6045,11 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     {
         return singletonType(tsb->value);
     }
+    else if (const auto& tsn = annotation.as<AstTypeSingletonNumber>())
+    {
+        reportError(TypeError{annotation.location, GenericError{"Number singletons are not available in the Old Solver."}});
+        return errorRecoveryType(scope);
+    }
     else if (const auto& tss = annotation.as<AstTypeSingletonString>())
     {
         return singletonType(std::string(tss->value.data, tss->value.size));

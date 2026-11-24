@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <math.h>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 
@@ -1188,6 +1189,14 @@ static std::optional<LeafConstraint> lowerSingletonExpr(AstExpr* expr, bool sens
             return SingletonEq{std::move(stringleton)};
         else
             return SingletonNeq{std::move(stringleton)};
+    }
+    else if (auto num = expr->as<AstExprConstantNumber>(); FFlag::LuauNumberSingletonsSupport && num && floor(num->value) == num->value)
+    {
+        auto numbleton = NumberSingletonValue{(int64_t)num->value};
+        if (sense)
+            return SingletonEq{std::move(numbleton)};
+        else
+            return SingletonNeq{std::move(numbleton)};
     }
     else if (auto b = expr->as<AstExprConstantBool>())
     {

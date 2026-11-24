@@ -206,6 +206,21 @@ struct BooleanSingleton
     }
 };
 
+struct NumberSingleton
+{
+    int64_t value;
+
+    bool operator==(const NumberSingleton& rhs) const
+    {
+        return value == rhs.value;
+    }
+
+    bool operator!=(const NumberSingleton& rhs) const
+    {
+        return !(*this == rhs);
+    }
+};
+
 // Types for "foo", "bar" etc.
 struct StringSingleton
 {
@@ -225,7 +240,7 @@ struct StringSingleton
 // No type for float singletons, partly because === isn't any equivalence on floats
 // (NaN != NaN).
 
-using SingletonVariant = Luau::Variant<BooleanSingleton, StringSingleton>;
+using SingletonVariant = Luau::Variant<BooleanSingleton, NumberSingleton, StringSingleton>;
 
 struct SingletonType
 {

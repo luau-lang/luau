@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 using namespace Luau;
 
@@ -218,6 +219,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types_2"
 
 TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_is_some_type_or_optional_then_assigned_with_alternate_value")
 {
+    ScopedFastFlag numberSingletons{FFlag::LuauNumberSingletonsSupport, true};
+
     CheckResult result = check(R"(
         local function f(x: number?)
             x = x or 5
@@ -226,7 +229,10 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_is_some_type_or_optional_then_a
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("(number?) -> number" == toString(requireType("f")));
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK("(number?) -> number | number" == toString(requireType("f")));
+    else
+        CHECK("(number?) -> number" == toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "local_assigned_in_either_branches_that_falls_through")

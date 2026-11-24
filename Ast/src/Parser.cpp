@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauTypeLengthLimit, 1000)
@@ -34,6 +35,7 @@ LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
 LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauDeclarationFixCrashOnBadUnicode)
+LUAU_FASTFLAGVARIABLE(LuauNumberSingletonsSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -3514,6 +3516,73 @@ AstType* Parser::parseType(bool inDeclarationContext)
     return typeWithSuffix;
 }
 
+static ConstantNumberParseResult parseInteger(double& result, const char* data, int base)
+{
+    LUAU_ASSERT(base == 2 || base == 16);
+
+    // Some libc implementations accept an optional 0b prefix for base-2 parsing.
+    // Binary literals have already had their leading 0b stripped by us.
+    if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
+        return ConstantNumberParseResult::Malformed;
+
+    char* end = nullptr;
+    unsigned long long value = strtoull(data, &end, base);
+
+    if (*end != 0)
+        return ConstantNumberParseResult::Malformed;
+
+    result = double(value);
+
+    if (value == ULLONG_MAX && errno == ERANGE)
+    {
+        // 'errno' might have been set before we called 'strtoull', but we don't want the overhead of resetting a TLS variable on each call
+        // so we only reset it when we get a result that might be an out-of-range error and parse again to make sure
+        errno = 0;
+        value = strtoull(data, &end, base);
+
+        if (errno == ERANGE)
+            return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
+    }
+
+    if (value >= (1ull << 53) && static_cast<unsigned long long>(result) != value)
+        return ConstantNumberParseResult::Imprecise;
+
+    return ConstantNumberParseResult::Ok;
+}
+
+static ConstantNumberParseResult parseDouble(double& result, const char* data)
+{
+    // binary literal
+    if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
+        return parseInteger(result, data + 2, 2);
+
+    // hexadecimal literal
+    if (data[0] == '0' && (data[1] == 'x' || data[1] == 'X') && data[2])
+        return parseInteger(result, data, 16); // pass in '0x' prefix, it's handled by 'strtoull'
+
+    char* end = nullptr;
+    double value = strtod(data, &end);
+
+    // trailing non-numeric characters
+    if (*end != 0)
+        return ConstantNumberParseResult::Malformed;
+
+    result = value;
+
+    // for linting, we detect integer constants that are parsed imprecisely
+    // since the check is expensive we only perform it when the number is larger than the precise integer range
+    if (value >= double(1ull << 53) && strspn(data, "0123456789") == strlen(data))
+    {
+        char repr[512];
+        snprintf(repr, sizeof(repr), "%.0f", value);
+
+        if (strcmp(repr, data) != 0)
+            return ConstantNumberParseResult::Imprecise;
+    }
+
+    return ConstantNumberParseResult::Ok;
+}
+
 // Type ::= nil | Name[`.' Name] [ `<' Type [`,' ...] `>' ] | `typeof' `(' expr `)' | `{' [PropList] `}'
 //   | [`<' varlist `>'] `(' [TypeList] `)' `->` ReturnType
 AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
@@ -3550,6 +3619,33 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
     {
         nextLexeme();
         return {allocator.alloc<AstTypeSingletonBool>(start, false)};
+    }
+    else if (FFlag::LuauNumberSingletonsSyntax && lexer.current().type == Lexeme::Number)
+    {
+        Location start = lexer.current().location;
+
+        scratchData.assign(lexer.current().data, lexer.current().getLength());
+        AstArray<char> sourceData;
+        if (options.storeCstData)
+            sourceData = copy(scratchData);
+
+        // Remove all internal _ - they don't hold any meaning and this allows parsing code to just pass the string pointer to strtod et al
+        if (scratchData.find('_') != std::string::npos)
+        {
+            scratchData.erase(std::remove(scratchData.begin(), scratchData.end(), '_'), scratchData.end());
+        }
+
+        double value = 0;
+        ConstantNumberParseResult result = parseDouble(value, scratchData.c_str());
+        nextLexeme();
+
+        if (result == ConstantNumberParseResult::Malformed)
+            reportTypeError(start, {}, "Malformed number");
+
+        if (floor(value) != value)
+            reportTypeError(start, {}, "Only integers are allowed");
+
+        return {allocator.alloc<AstTypeSingletonNumber>(start, int64_t(value))};
     }
     else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
     {
@@ -4173,73 +4269,6 @@ AstExpr* Parser::parseAssertionExpr()
     }
     else
         return expr;
-}
-
-static ConstantNumberParseResult parseInteger(double& result, const char* data, int base)
-{
-    LUAU_ASSERT(base == 2 || base == 16);
-
-    // Some libc implementations accept an optional 0b prefix for base-2 parsing.
-    // Binary literals have already had their leading 0b stripped by us.
-    if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
-        return ConstantNumberParseResult::Malformed;
-
-    char* end = nullptr;
-    unsigned long long value = strtoull(data, &end, base);
-
-    if (*end != 0)
-        return ConstantNumberParseResult::Malformed;
-
-    result = double(value);
-
-    if (value == ULLONG_MAX && errno == ERANGE)
-    {
-        // 'errno' might have been set before we called 'strtoull', but we don't want the overhead of resetting a TLS variable on each call
-        // so we only reset it when we get a result that might be an out-of-range error and parse again to make sure
-        errno = 0;
-        value = strtoull(data, &end, base);
-
-        if (errno == ERANGE)
-            return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
-    }
-
-    if (value >= (1ull << 53) && static_cast<unsigned long long>(result) != value)
-        return ConstantNumberParseResult::Imprecise;
-
-    return ConstantNumberParseResult::Ok;
-}
-
-static ConstantNumberParseResult parseDouble(double& result, const char* data)
-{
-    // binary literal
-    if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
-        return parseInteger(result, data + 2, 2);
-
-    // hexadecimal literal
-    if (data[0] == '0' && (data[1] == 'x' || data[1] == 'X') && data[2])
-        return parseInteger(result, data, 16); // pass in '0x' prefix, it's handled by 'strtoull'
-
-    char* end = nullptr;
-    double value = strtod(data, &end);
-
-    // trailing non-numeric characters
-    if (*end != 0)
-        return ConstantNumberParseResult::Malformed;
-
-    result = value;
-
-    // for linting, we detect integer constants that are parsed imprecisely
-    // since the check is expensive we only perform it when the number is larger than the precise integer range
-    if (value >= double(1ull << 53) && strspn(data, "0123456789") == strlen(data))
-    {
-        char repr[512];
-        snprintf(repr, sizeof(repr), "%.0f", value);
-
-        if (strcmp(repr, data) != 0)
-            return ConstantNumberParseResult::Imprecise;
-    }
-
-    return ConstantNumberParseResult::Ok;
 }
 
 // LUAU_NOINLINE is used to limit the stack cost of parseSimpleExpr which is on the recursive expression-parsing path

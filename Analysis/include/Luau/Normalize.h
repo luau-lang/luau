@@ -63,6 +63,56 @@ struct std::equal_to<const Luau::TypeIds*>
 namespace Luau
 {
 
+/** A normalized number type is either `number` (represented by `nullopt`) or a
+ * union of number singletons.
+ *
+ * The representation is as follows:
+ *
+ * * A union of number singletons is finite and includes the singletons named by
+ *   the `singletons` field.
+ * * An intersection of negated number singletons is cofinite and includes the
+ *   singletons excluded by the `singletons` field.  It is implied that cofinite
+ *   values are exclusions from `number` itself.
+ * * The `number` data type is a cofinite set minus zero elements.
+ * * The `never` data type is a finite set plus zero elements.
+ */
+struct NormalizedNumberType
+{
+    // When false, this type represents a union of singleton number types.
+    // eg 1 | 2 | 3
+    //
+    // When true, this type represents number intersected with negated number
+    // singleton types.
+    // eg number & ~1 & ~2 & ...
+    bool isCofinite = false;
+
+    std::map<int64_t, TypeId> singletons;
+
+    void resetToNumber();
+    void resetToNever();
+
+    bool isNever() const;
+    bool isNumber() const;
+
+    /// Returns true if the number has finite domain.
+    ///
+    /// Important subtlety: This method returns true for `never`.  The empty set
+    /// is indeed an empty set.
+    bool isUnion() const;
+
+    /// Returns true if the string has infinite domain.
+    bool isIntersection() const;
+
+    bool includes(int64_t num) const;
+
+    static const NormalizedNumberType never;
+
+    NormalizedNumberType();
+    NormalizedNumberType(bool isCofinite, std::map<int64_t, TypeId> singletons);
+};
+
+bool isSubtype(const NormalizedNumberType& subStr, const NormalizedNumberType& superStr);
+
 /** A normalized string type is either `string` (represented by `nullopt`) or a
  * union of string singletons.
  *
@@ -211,8 +261,12 @@ struct NormalizedType
     TypeId nils;
 
     // The number part of the type.
+    // This type is never, `number`, or a union of singletons.
+    NormalizedNumberType numbers;
+
+    // The number part of the type.
     // This type is either never or number.
-    TypeId numbers;
+    TypeId numbers_DEPRECATED;
 
     // The string part of the type.
     // This may be the `string` type, or a union of singletons.
@@ -256,12 +310,12 @@ struct NormalizedType
     // IsType functions
     bool isUnknown() const;
     /// Returns true if the type is exactly a number. Behaves like Type::isNumber()
-    bool isExactlyNumber() const;
+    bool isSubtypeOfNumber() const;
 
-    /// Returns true if the type is a subtype of string(it could be a singleton). Behaves like Type::isString()
+    /// Returns true if the type is a subtype of string (it could be a singleton). Behaves like Type::isString()
     bool isSubtypeOfString() const;
 
-    /// Returns true if the type is a subtype of boolean(it could be a singleton). Behaves like Type::isBoolean()
+    /// Returns true if the type is a subtype of boolean (it could be a singleton). Behaves like Type::isBoolean()
     bool isSubtypeOfBooleans() const;
 
     /// Returns true if the type is a subtype of `table`.
@@ -365,6 +419,7 @@ private:
     void unionExternTypes(TypeIds& heres, const TypeIds& theres);
     void unionExternTypesWithExternType(NormalizedExternType& heres, TypeId there);
     void unionExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres);
+    void unionNumbers(NormalizedNumberType& heres, const NormalizedNumberType& theres);
     void unionStrings(NormalizedStringType& here, const NormalizedStringType& there);
     std::optional<TypePackId> unionOfTypePacks(TypePackId here, TypePackId there);
     std::optional<TypeId> unionOfFunctions(TypeId here, TypeId there);
@@ -398,6 +453,7 @@ private:
     void intersectExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres);
     void intersectExternTypesWithExternType(NormalizedExternType& heres, TypeId there);
     void intersectExternTypesWithShape(NormalizedExternType& heres, TypeId there);
+    void intersectNumbers(NormalizedNumberType& here, const NormalizedNumberType& there);
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     bool hasStringIndexer(const TableType* tt);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, DenseHashSet<TypeId>& seenSet);

@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -187,7 +188,20 @@ bool isBoolean(TypeId ty)
 
 bool isNumber(TypeId ty)
 {
-    return isPrim(ty, PrimitiveType::Number);
+    if (FFlag::LuauNumberSingletonsSupport)
+    {
+        ty = follow(ty);
+
+        if (isPrim(ty, PrimitiveType::Number) || get<NumberSingleton>(get<SingletonType>(ty)))
+            return true;
+
+        if (auto utv = get<UnionType>(ty))
+            return std::all_of(begin(utv), end(utv), isNumber);
+
+        return false;
+    }
+    else
+        return isPrim(ty, PrimitiveType::Number);
 }
 
 // Returns true when ty is a subtype of string

@@ -28,6 +28,8 @@ LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauEqualityConstraintBinds)
 LUAU_FASTFLAG(LuauNonreentrantLookupTableProp)
+LUAU_FASTFLAG(LuauNumberSingletonsSyntax)
+LUAU_FASTFLAG(LuauNumberSingletonsSupport)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3348,13 +3350,18 @@ TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 
 TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 {
+    ScopedFastFlag numberSingletons[]{{FFlag::LuauNumberSingletonsSyntax, true}, {FFlag::LuauNumberSingletonsSupport, true}};
+
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t and t.x == 5 or t.x == 31337
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Value of type '{ x: number? }?' could be nil", toString(result.errors[0]));
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("Value of type '{ read x: (number & ~5)?, write x: number? }?' could be nil", toString(result.errors[0]));
+    else
+        CHECK_EQ("Value of type '{ x: number? }?' could be nil", toString(result.errors[0]));
     CHECK_EQ("boolean", toString(requireType("u")));
 }
 
@@ -4877,6 +4884,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "indexing_branching_table")
 {
+    ScopedFastFlag numberSingletons{FFlag::LuauNumberSingletonsSupport, true};
+
     CheckResult result = check(R"(
         local test = if true then { "meow", "woof" } else { 4, 81 }
         local test2 = test[1]
@@ -4892,7 +4901,7 @@ TEST_CASE_FIXTURE(Fixture, "indexing_branching_table")
     // It is probably still correct to deduplicate in this way and not
     // create nested unions.
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("number | string | string" == toString(requireType("test2")));
+        CHECK("number | number | string | string" == toString(requireType("test2")));
     else
         CHECK("number | string" == toString(requireType("test2")));
 }

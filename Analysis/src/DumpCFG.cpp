@@ -108,6 +108,10 @@ static std::string dumpSingletonValue(const SingletonValue& value)
             {
                 return "\"" + stringValue.value + "\"";
             },
+            [](const NumberSingletonValue& numberValue) -> std::string
+            {
+                return std::to_string(numberValue.value);
+            },
             [](const BooleanSingletonValue& booleanValue) -> std::string
             {
                 return booleanValue.value ? "true" : "false";

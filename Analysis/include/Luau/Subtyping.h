@@ -25,6 +25,7 @@ class TypeIds;
 class Normalizer;
 struct NormalizedExternType;
 struct NormalizedFunctionType;
+struct NormalizedNumberType;
 struct NormalizedStringType;
 struct NormalizedType;
 struct Property;
@@ -378,6 +379,12 @@ private:
         SubtypingEnvironment& env,
         const NormalizedExternType& subExternType,
         const TypeIds& superTables,
+        NotNull<Scope> scope
+    );
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const NormalizedNumberType& subNumber,
+        const NormalizedNumberType& superNumber,
         NotNull<Scope> scope
     );
     SubtypingResult isCovariantWith(

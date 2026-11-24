@@ -33,6 +33,7 @@
 #include "Luau/VisitType.h"
 
 #include <memory>
+#include <math.h>
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauConstraintGeneratorRecursionLimit, 300)
 
@@ -52,6 +53,7 @@ LUAU_FLAGVERSION(LuauBanGlobalsInTypeFunctions, 3)
 LUAU_FASTFLAGVARIABLE(LuauFillInUninitializedGlobals)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalWhileLocalAnalysis)
 LUAU_FLAGVERSION(LuauExperimentalWhileLocalAnalysis, 2)
+LUAU_FASTFLAGVARIABLE(LuauNumberSingletonsSupport)
 
 namespace Luau
 {
@@ -3416,8 +3418,13 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
         result = check(scope, group->expr, expectedType, forceSingleton, generalize);
     else if (auto stringExpr = expr->as<AstExprConstantString>())
         result = check(scope, stringExpr, expectedType, forceSingleton);
-    else if (expr->is<AstExprConstantNumber>())
-        result = Inference{builtinTypes->numberType};
+    else if (auto numberExpr = expr->as<AstExprConstantNumber>())
+    {
+        if (FFlag::LuauNumberSingletonsSupport)
+            result = check(scope, numberExpr, expectedType, forceSingleton);
+        else
+            result = Inference{builtinTypes->numberType};
+    }
     else if (auto boolExpr = expr->as<AstExprConstantBool>())
         result = check(scope, boolExpr, expectedType, forceSingleton);
     else if (expr->is<AstExprConstantNil>())
@@ -3477,7 +3484,6 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton)
 {
-
     if (forceSingleton)
         return Inference{arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}})};
 
@@ -3498,6 +3504,35 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     ft->primitiveType = builtinTypes->stringType;
     if (expectedType)
         addConstraint(scope, string->location, SubtypeConstraint{freeTy, *expectedType});
+    return Inference{freeTy};
+}
+
+Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantNumber* number, std::optional<TypeId> expectedType, bool forceSingleton)
+{
+    bool canBeSingleton = floor(number->value) == number->value;
+    if (forceSingleton && canBeSingleton)
+        return Inference{arena->addType(SingletonType{NumberSingleton{int64_t(number->value)}})};
+
+    if (!canBeSingleton)
+        return Inference{builtinTypes->numberType};
+
+    // Consider a table like:
+    //
+    //  local SCORES = { 10, 15, 25, 50, 500 --[[ so on and so forth ]] }
+    //
+    // The intent is (probably) not for this to be an array-like table with a massive
+    // union for the value, but instead a `{ number }`.
+    if (largeTableDepth > 0)
+        return Inference{builtinTypes->numberType};
+
+    TypeId freeTy = freshType(scope, Polarity::Positive);
+    FreeType* ft = getMutable<FreeType>(freeTy);
+    LUAU_ASSERT(ft);
+    ft->lowerBound = arena->addType(SingletonType{NumberSingleton{int64_t(number->value)}});
+    ft->upperBound = builtinTypes->numberType;
+    ft->primitiveType = builtinTypes->numberType;
+    if (expectedType)
+        addConstraint(scope, number->location, SubtypeConstraint{freeTy, *expectedType});
     return Inference{freeTy};
 }
 
@@ -5050,6 +5085,13 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
             result = builtinTypes->trueType;
         else
             result = builtinTypes->falseType;
+    }
+    else if (auto numberAnnotation = ty->as<AstTypeSingletonNumber>())
+    {
+        if (FFlag::LuauNumberSingletonsSupport)
+            result = arena->addType(SingletonType(NumberSingleton{numberAnnotation->value}));
+        else
+            reportError(numberAnnotation->location, GenericError{"Number singletons are not enabled."});
     }
     else if (auto stringAnnotation = ty->as<AstTypeSingletonString>())
     {

@@ -121,6 +121,8 @@ public:
     {
         if (const BooleanSingleton* bs = get<BooleanSingleton>(&stv))
             return allocator->alloc<AstTypeSingletonBool>(Location(), bs->value);
+        else if (const NumberSingleton* ns = get<NumberSingleton>(&stv))
+            return allocator->alloc<AstTypeSingletonNumber>(Location(), ns->value);
         else if (const StringSingleton* ss = get<StringSingleton>(&stv))
         {
             AstArray<char> value;
