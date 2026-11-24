@@ -10,6 +10,7 @@ LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCoroutineFinallyAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauEZAddBuiltins)
+LUAU_FASTFLAG(DebugLuauBufferCompare)
 
 namespace Luau
 {
@@ -422,7 +423,25 @@ static constexpr const char* kBuiltinDefinitionBufferSrcSuffix = R"BUILTIN_SRC(
     readstring: @checked (b: buffer, offset: number, count: number) -> string,
     writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
     readbits: @checked (b: buffer, bitOffset: number, bitCount: number) -> number,
-    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> ()
+    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionBufferSrcSuffixCompare = R"BUILTIN_SRC(
+    writei8: @checked (b: buffer, offset: number, value: number) -> (),
+    writeu8: @checked (b: buffer, offset: number, value: number) -> (),
+    writei16: @checked (b: buffer, offset: number, value: number) -> (),
+    writeu16: @checked (b: buffer, offset: number, value: number) -> (),
+    writei32: @checked (b: buffer, offset: number, value: number) -> (),
+    writeu32: @checked (b: buffer, offset: number, value: number) -> (),
+    writef32: @checked (b: buffer, offset: number, value: number) -> (),
+    writef64: @checked (b: buffer, offset: number, value: number) -> (),
+    readstring: @checked (b: buffer, offset: number, count: number) -> string,
+    writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
+    readbits: @checked (b: buffer, bitOffset: number, bitCount: number) -> number,
+    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),
+    compare: @checked (b1: buffer, offset1: number, b2: buffer, offset2: number?, count: number?) -> number,
 }
 
 )BUILTIN_SRC";
@@ -490,7 +509,10 @@ std::string getBuiltinDefinitionSource()
         result += kBuiltinDefinitionBufferSrcPrefix;
         if (FFlag::DebugLuauBufferVectorLibrary)
             result += kBuiltinDefinitionBufferVectorSrc;
-        result += kBuiltinDefinitionBufferSrcSuffix;
+        if (FFlag::DebugLuauBufferCompare)
+            result += kBuiltinDefinitionBufferSrcSuffixCompare;
+        else
+            result += kBuiltinDefinitionBufferSrcSuffix;
 
         result += kBuiltinDefinitionVectorSrc;
 
@@ -827,6 +849,8 @@ static void buildBufferDefinitions(TypeDefBuilder& builder)
     table.registerProp("writestring", "@checked (b: buffer, offset: number, value: string, count: number?) -> ()");
     table.registerProp("readbits", "@checked (b: buffer, bitOffset: number, bitCount: number) -> number");
     table.registerProp("writebits", "@checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> ()");
+    if (FFlag::DebugLuauBufferCompare)
+        table.registerProp("compare", "@checked (b1: buffer, offset1: number, b2: buffer, offset2: number?, count: number?) -> number");
 }
 
 static void buildVectorDefinitions(TypeDefBuilder& builder)

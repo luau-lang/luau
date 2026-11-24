@@ -84,6 +84,7 @@ LUAU_FASTFLAG(LuauCodegenCmpAnySideEffecting)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExperimentalWhileLocalSyntax)
 LUAU_FASTFLAG(LuauLoadExplicitGcDisable)
+LUAU_FASTFLAG(DebugLuauBufferCompare)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1383,6 +1384,13 @@ TEST_CASE("BuffersWithCage")
     bufferCage = nullptr;
 }
 #endif
+
+TEST_CASE("BufferCompare")
+{
+    ScopedFastFlag debugLuauBufferCompare{FFlag::DebugLuauBufferCompare, true};
+
+    runConformance("buffer_compare.luau");
+}
 
 TEST_CASE("Math")
 {
