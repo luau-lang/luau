@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #define RETURN_WITH_ERROR(msg) \
     do \
@@ -44,10 +45,36 @@ struct ThreadPopper
     lua_State* L = nullptr;
 };
 
-static std::optional<ConfigTable> serializeTable(lua_State* L, std::string* error)
+static constexpr size_t kMaxConfigTableDepth = 100;
+
+static std::optional<ConfigTable> serializeTable(lua_State* L, std::string* error, std::vector<const void*>& path)
 {
     ThreadPopper popper(L); // Remove table from stack after processing
     ConfigTable table;
+
+    const void* self = lua_topointer(L, -1);
+    for (const void* ancestor : path)
+    {
+        if (ancestor == self)
+            RETURN_WITH_ERROR("configuration table cannot contain itself");
+    }
+
+    if (path.size() >= kMaxConfigTableDepth)
+        RETURN_WITH_ERROR("configuration table is nested too deeply");
+
+    if (!lua_checkstack(L, 3))
+        RETURN_WITH_ERROR("configuration table is nested too deeply");
+
+    path.push_back(self);
+
+    struct PathPopper
+    {
+        std::vector<const void*>& path;
+        ~PathPopper()
+        {
+            path.pop_back();
+        }
+    } pathPopper{path};
 
     lua_pushnil(L);
     while (lua_next(L, -2) != 0)
@@ -83,7 +110,7 @@ static std::optional<ConfigTable> serializeTable(lua_State* L, std::string* erro
         case LUA_TTABLE:
         {
             lua_pushvalue(L, -1); // Copy table for recursive call
-            if (std::optional<ConfigTable> nested = serializeTable(L, error))
+            if (std::optional<ConfigTable> nested = serializeTable(L, error, path))
                 table[key] = std::move(*nested);
             else
                 return std::nullopt; // Error already set in recursive call
@@ -137,7 +164,8 @@ static std::optional<ConfigTable> executeAndExtractConfig(lua_State* L, const In
     if (lua_type(L, -1) != LUA_TTABLE)
         RETURN_WITH_ERROR("configuration did not return a table");
 
-    return serializeTable(L, error);
+    std::vector<const void*> path;
+    return serializeTable(L, error, path);
 }
 
 std::optional<ConfigTable> extractConfig(const std::string& source, const InterruptCallbacks& callbacks, std::string* error)
@@ -175,7 +203,8 @@ std::optional<ConfigTable> extractConfig(const std::string& source, const Interr
     if (lua_type(L, -1) != LUA_TTABLE)
         RETURN_WITH_ERROR("configuration did not return a table");
 
-    return serializeTable(L, error);
+    std::vector<const void*> path;
+    return serializeTable(L, error, path);
 }
 
 static std::optional<std::string> createLuauConfigFromLuauTable(
