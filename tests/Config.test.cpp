@@ -263,6 +263,61 @@ TEST_CASE("extract_configuration")
     CHECK(*alias == "./src");
 }
 
+TEST_CASE("extract_configuration_rejects_cyclic_table")
+{
+    std::string source = R"(
+        local t = {}
+        t.self = t
+        return { luau = { languagemode = "strict" }, cyclic = t }
+    )";
+
+    std::string error;
+    std::optional<ConfigTable> configTable = extractConfig(source, InterruptCallbacks{}, &error);
+    CHECK(!configTable);
+    CHECK(error == "configuration table cannot contain itself");
+}
+
+TEST_CASE("extract_configuration_rejects_deeply_nested_table")
+{
+    std::string source = R"(
+        local root = {}
+        local current = root
+        for i = 1, 5000 do
+            local nested = {}
+            current.x = nested
+            current = nested
+        end
+        return { deep = root }
+    )";
+
+    std::string error;
+    std::optional<ConfigTable> configTable = extractConfig(source, InterruptCallbacks{}, &error);
+    CHECK(!configTable);
+    CHECK(error == "configuration table is nested too deeply");
+}
+
+TEST_CASE("extract_configuration_allows_shared_table")
+{
+    std::string source = R"(
+        local shared = { value = true }
+        return { a = shared, b = { c = shared } }
+    )";
+
+    std::string error;
+    std::optional<ConfigTable> configTable = extractConfig(source, InterruptCallbacks{}, &error);
+    REQUIRE_MESSAGE(configTable, error);
+
+    ConfigTable* a = (*configTable)["a"].get_if<ConfigTable>();
+    REQUIRE(a);
+    CHECK(a->contains("value"));
+
+    ConfigTable* b = (*configTable)["b"].get_if<ConfigTable>();
+    REQUIRE(b);
+    ConfigTable* c = (*b)["c"].get_if<ConfigTable>();
+    REQUIRE(c);
+    CHECK(c->contains("value"));
+}
+
 TEST_CASE("extract_luau_configuration")
 {
     std::string source = R"(
