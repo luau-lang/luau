@@ -149,6 +149,55 @@ assert(pcall(string.format, "%?", 1) == false)
 -- longest number that can be formated
 assert(string.len(string.format('%99.99f', -1e308)) >= 100)
 
+-- plain %s: numbers give the same text as tostring, strings and errors are unchanged
+do
+  local nums = {0, -0, 1, -1, 7, 10, 99, 100, 12345, -12345, 0.5, -0.5, 1/3, -9.99, 0.1 + 0.2, 1e15, 1e16, 1e21, 1e-7, 5e-324,
+    2^31, -2^31, 2^53, -2^53, -2^63, 1e300, math.pi, math.huge, -math.huge, 0/0}
+
+  for _, v in nums do
+    assert(string.format("%s", v) == tostring(v))
+    assert(string.format("<%s:%s>", v, "x") == "<" .. tostring(v) .. ":x>")
+    assert(string.format("%5s", v) == string.format("%5s", tostring(v)))
+  end
+
+  assert(string.format("%s %s %s", 1, 2.5, "3") == "1 2.5 3")
+  assert(string.format(string.rep("%s", 100), table.unpack(table.create(100, 1.25))) == string.rep("1.25", 100))
+  assert(string.format("%s", "42") == "42")
+  assert(string.format("%s", "") == "")
+  assert(string.format("[%s]", "a\0b") == "[a\0b]")
+  assert(string.format("%s%s", string.rep("x", 1000), "y") == string.rep("x", 1000) .. "y")
+  assert(pcall(string.format, "%s") == false)
+  assert(pcall(string.format, "%s", true) == false)
+  assert(pcall(string.format, "%s", {}) == false)
+end
+
+-- plain %d and %i
+do
+  local nums = {0, -0, 1, -1, 7, 10, 99, 100, 12345, -12345, 0.5, -0.5, 1.9, -1.9, 1/3, 1e15, 1e16, 1e18,
+    2^31, -2^31, 2^32, 2^53, -2^53, 2^62, -2^62, 2^63 - 1024, -2^63}
+
+  -- %1d never pads, so it gives the same text as %d through the general path
+  for _, v in nums do
+    assert(string.format("%d", v) == string.format("%1d", v))
+    assert(string.format("%i", v) == string.format("%1i", v))
+    assert(string.format("[%d]", v) == "[" .. string.format("%1d", v) .. "]")
+  end
+
+  assert(string.format("%d", 0) == "0")
+  assert(string.format("%d", -0) == "0")
+  assert(string.format("%d", 1.9) == "1")
+  assert(string.format("%d", -1.9) == "-1")
+  assert(string.format("%d", -0.5) == "0")
+  assert(string.format("%d %i", 1234567890, -1234567890) == "1234567890 -1234567890")
+  assert(string.format("%d", 2^53) == "9007199254740992")
+  assert(string.format("%d", -2^63) == "-9223372036854775808")
+  assert(string.format("%d", "42") == "42")
+  assert(string.format(string.rep("%d", 100), table.unpack(table.create(100, -2^62))) == string.rep("-4611686018427387904", 100))
+  assert(pcall(string.format, "%d", "x") == false)
+  assert(pcall(string.format, "%d", {}) == false)
+  assert(pcall(string.format, "%d") == false)
+end
+
 local function return_one_thing()
 	return "hi"
 end

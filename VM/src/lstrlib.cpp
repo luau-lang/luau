@@ -10,6 +10,7 @@
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringSplit, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringGsub, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringFormat, false)
 
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
@@ -1064,6 +1065,23 @@ static void addInt64Format(char form[MAX_FORMAT], char formatIndicator, size_t f
     form[formatItemSize + 3] = 0;
 }
 
+// same output as snprintf with "%lld", without parsing a format
+static LUAU_NOINLINE void addinteger(luaL_Strbuf* b, long long v)
+{
+    char buf[24];
+    char* end = buf + sizeof(buf);
+    char* p = end;
+    unsigned long long u = v < 0 ? 0ull - (unsigned long long)v : (unsigned long long)v;
+    do
+    {
+        *--p = char('0' + u % 10);
+        u /= 10;
+    } while (u);
+    if (v < 0)
+        *--p = '-';
+    luaL_addlstring(b, p, end - p);
+}
+
 static int str_format(lua_State* L)
 {
     int top = lua_gettop(L);
@@ -1107,6 +1125,13 @@ static int str_format(lua_State* L)
             case 'd':
             case 'i':
             {
+                if (DFFlag::LuauOptimizeStringFormat && formatItemSize == 1)
+                {
+                    // plain %d/%i without flags, width or precision
+                    addinteger(&b, static_cast<long long>(luaL_checknumber(L, arg)));
+                    continue; // skip the 'luaL_addlstring' at the end
+                }
+
                 addInt64Format(form, formatIndicator, formatItemSize);
                 snprintf(buff, sizeof(buff), form, static_cast<long long>(luaL_checknumber(L, arg)));
                 break;
@@ -1138,6 +1163,23 @@ static int str_format(lua_State* L)
             }
             case 's':
             {
+                if (DFFlag::LuauOptimizeStringFormat && formatItemSize == 1)
+                {
+                    // plain %s without flags, width or precision: strings are added directly, and numbers the same way %* adds them,
+                    // without creating a temporary string
+                    const TValue* o = L->base + arg - 1;
+                    if (ttisstring(o))
+                    {
+                        luaL_addlstring(&b, svalue(o), tsvalue(o)->len);
+                        continue; // skip the 'luaL_addlstring' at the end
+                    }
+                    if (ttisnumber(o))
+                    {
+                        luaL_addvalueany(&b, arg);
+                        continue; // skip the 'luaL_addlstring' at the end
+                    }
+                }
+
                 size_t l;
                 const char* s = luaL_checklstring(L, arg, &l);
                 // no precision and string is too long to be formatted, or no format necessary to begin with
