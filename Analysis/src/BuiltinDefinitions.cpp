@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
+LUAU_FASTFLAGVARIABLE(LuauSelectPastLastArgumentIsEmpty)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -1363,6 +1364,11 @@ bool MagicSelect::infer(const MagicFunctionCallContext& context)
             }
             else if (tail)
                 asMutable(context.result)->ty.emplace<BoundTypePack>(*tail);
+            else if (FFlag::LuauSelectPastLastArgumentIsEmpty)
+            {
+                // like the VM, an index past the last argument selects no values
+                asMutable(context.result)->ty.emplace<BoundTypePack>(context.solver->builtinTypes->emptyTypePack);
+            }
 
             return true;
         }

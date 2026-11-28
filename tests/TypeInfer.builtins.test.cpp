@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauBufferVectorLibrary)
+LUAU_FASTFLAG(LuauSelectPastLastArgumentIsEmpty)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -808,6 +809,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_slightly_out_of_range")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<GenericError>(result.errors[0]));
     CHECK_EQ("bad argument #1 to select (index out of range)", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_past_the_last_argument_selects_nothing")
+{
+    ScopedFastFlag sff{FFlag::LuauSelectPastLastArgumentIsEmpty, true};
+
+    // the old solver reports these as out of range instead
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        --!strict
+        print(select(1))
+        print(select(2, nil))
+        local count = select("#", select(3, "a", 1))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("count")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
