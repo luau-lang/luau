@@ -810,6 +810,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_slightly_out_of_range")
     CHECK_EQ("bad argument #1 to select (index out of range)", toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_past_end_returns_empty_pack")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        print(select(1))
+        print(select(2, nil))
+
+        local function pastEnd()
+            return select(5, "a", 1)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("() -> ()", toString(requireType("pastEnd")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
 {
     CheckResult result = check(R"(
