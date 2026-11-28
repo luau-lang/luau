@@ -1361,8 +1361,8 @@ bool MagicSelect::infer(const MagicFunctionCallContext& context)
                 TypePackId resTypePack = context.solver->arena->addTypePack({std::move(res), tail});
                 asMutable(context.result)->ty.emplace<BoundTypePack>(resTypePack);
             }
-            else if (tail)
-                asMutable(context.result)->ty.emplace<BoundTypePack>(*tail);
+            else
+                asMutable(context.result)->ty.emplace<BoundTypePack>(tail.value_or(context.solver->builtinTypes->emptyTypePack));
 
             return true;
         }
