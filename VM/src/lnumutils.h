@@ -5,6 +5,12 @@
 #include <math.h>
 #include <cstdint>
 
+// Luau relies on IEEE NaN semantics, e.g. luai_numisnan for rejecting NaN table keys
+// Fast-math lets the compiler assume NaN never occurs and remove those checks, so a NaN key corrupts the table
+#if defined(_M_FP_FAST) || defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
+#error "Luau must not be compiled with fast-math (/fp:fast, -ffast-math, -ffinite-math-only): NaN checks would be optimized away, allowing NaN table keys that corrupt tables"
+#endif
+
 #define luai_numadd(a, b) ((a) + (b))
 #define luai_numsub(a, b) ((a) - (b))
 #define luai_nummul(a, b) ((a) * (b))
