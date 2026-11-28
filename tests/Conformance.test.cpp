@@ -25,6 +25,7 @@
 #include "ScopedFlags.h"
 #include "BufferCage.h"
 #include "ConformanceIrHooks.h"
+#include "lgc.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -46,9 +47,6 @@ extern bool verbose;
 extern bool codegen;
 extern bool jitInliner;
 extern int optimizationLevel;
-
-// internal functions, declared in lgc.h - not exposed via lua.h
-void luaC_validate(lua_State* L);
 
 #if LUA_VECTOR_SIZE == 4
 #define lua_pushvector3(L, x, y, z) lua_pushvector(L, x, y, z, 0.0)
@@ -73,6 +71,7 @@ LUAU_FASTFLAG(LuauCodegenA64ReloadLargeConstOffset)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauGcTraceUdata)
+LUAU_FASTFLAG(LuauCacheSingleByteStrings)
 LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
 LUAU_FASTFLAG(LuauPcallErrorContinuationReentry)
 LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
@@ -1668,6 +1667,64 @@ TEST_CASE("GC")
         nullptr,
         lua_newstate(blockableRealloc, nullptr)
     );
+}
+
+TEST_CASE("SingleByteStringsAcrossCollections")
+{
+    ScopedFastFlag cache{FFlag::LuauCacheSingleByteStrings, true};
+    StateRef state(luaL_newstate(), lua_close);
+    lua_State* L = state.get();
+    luaL_openlibs(L);
+    lua_pushcfunction(L, lua_collectgarbage, "collectgarbage");
+    lua_setglobal(L, "collectgarbage");
+
+    std::string bytecode = Luau::compile(R"(
+        local keys = {}
+        for i = 0, 255 do
+            assert(string.byte(string.char(i)) == i)
+            collectgarbage()
+            keys[string.char(i)] = i
+        end
+        collectgarbage()
+        for i = 0, 255 do
+            assert(keys[string.char(i)] == i)
+        end
+    )");
+    REQUIRE(luau_load(L, "=SingleByteStrings", bytecode.data(), bytecode.size(), 0) == 0);
+    REQUIRE(lua_pcall(L, 0, 0, 0) == 0);
+}
+
+TEST_CASE("SingleByteStringDuringSweep")
+{
+    ScopedFastFlag cache{FFlag::LuauCacheSingleByteStrings, true};
+    StateRef state(luaL_newstate(), lua_close);
+    lua_State* L = state.get();
+    global_State* g = L->global;
+    const char byte = '\0';
+
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    lua_pushlstring(L, &byte, 1);
+    TString* ts = g->bytestrings[0];
+    REQUIRE(ts != nullptr);
+    lua_pop(L, 1);
+
+    while (g->gcstate != GCSsweep)
+        REQUIRE(lua_gc(L, LUA_GCSTEP, 0) == 0);
+
+    REQUIRE(isdead(g, obj2gco(ts)));
+    lua_gc(L, LUA_GCSTOP, 0); // Keep the next push from advancing the sweep.
+    lua_pushlstring(L, &byte, 1);
+    REQUIRE(lua_topointer(L, -1) == ts);
+    REQUIRE_FALSE(isdead(g, obj2gco(ts)));
+    while (lua_gc(L, LUA_GCSTEP, 0) == 0)
+    {
+    }
+    CHECK(g->bytestrings[0] == ts);
+
+    lua_pop(L, 1);
+    ScopedFastFlag disable{FFlag::LuauCacheSingleByteStrings, false};
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    CHECK(g->bytestrings[0] == nullptr);
 }
 
 TEST_CASE("Bitwise")

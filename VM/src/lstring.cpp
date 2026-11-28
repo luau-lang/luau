@@ -8,6 +8,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauSaltedInterningTable)
+LUAU_FASTFLAGVARIABLE(LuauCacheSingleByteStrings)
 
 #define salthash(hash, saltmult, saltadd) uint32_t((saltmult) * (hash) + (saltadd))
 #define tobucket(hash, hashshift) int((hash) >> (hashshift))
@@ -214,7 +215,7 @@ TString* luaS_buffinish(lua_State* L, TString* ts)
     return ts;
 }
 
-TString* luaS_newlstr(lua_State* L, const char* str, size_t l)
+static TString* internstr(lua_State* L, const char* str, size_t l)
 {
     if (FFlag::LuauSaltedInterningTable)
     {
@@ -250,6 +251,25 @@ TString* luaS_newlstr(lua_State* L, const char* str, size_t l)
         }
         return newlstr(L, str, l, h, 0); // not found
     }
+}
+
+TString* luaS_newlstr(lua_State* L, const char* str, size_t l)
+{
+    if (l == 1 && FFlag::LuauCacheSingleByteStrings)
+    {
+        global_State* g = L->global;
+        uint8_t ch = uint8_t(str[0]);
+        if (TString* ts = g->bytestrings[ch])
+        {
+            if (isdead(g, obj2gco(ts)))
+                changewhite(obj2gco(ts));
+            return ts;
+        }
+
+        return g->bytestrings[ch] = internstr(L, str, l);
+    }
+
+    return internstr(L, str, l);
 }
 
 static bool unlinkstr(lua_State* L, TString* ts)
@@ -300,7 +320,12 @@ static bool unlinkstr(lua_State* L, TString* ts)
 void luaS_free(lua_State* L, TString* ts, lua_Page* page)
 {
     if (unlinkstr(L, ts))
-        L->global->strt.nuse--;
+    {
+        global_State* g = L->global;
+        g->strt.nuse--;
+        if (ts->len == 1 && g->bytestrings[uint8_t(ts->data[0])] == ts)
+            g->bytestrings[uint8_t(ts->data[0])] = NULL;
+    }
     else
         LUAU_ASSERT(ts->next == NULL); // orphaned string buffer
 

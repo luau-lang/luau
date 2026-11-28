@@ -295,6 +295,8 @@ typedef struct global_State
     uint32_t lastprotoid;
     uint32_t lastclassid;
 
+    TString* bytestrings[256]; // weak cache of interned single-byte strings
+
 #ifdef LUAI_GCMETRICS
     GCMetrics gcmetrics;
 #endif
