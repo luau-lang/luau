@@ -11,6 +11,10 @@
 #include "ldebug.h"
 #include "lvm.h"
 
+#include <math.h>
+
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableSortDefaultFastPath, false)
+
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -545,6 +549,153 @@ static void sort_rec(lua_State* L, LuaTable* t, int l, int u, int limit, SortPre
     }
 }
 
+static LUAU_FORCEINLINE bool sort_numless(const TValue& a, const TValue& b)
+{
+    return nvalue(&a) < nvalue(&b);
+}
+
+static LUAU_FORCEINLINE bool sort_strless(const TValue& a, const TValue& b)
+{
+    TString* ls = tsvalue(&a);
+    TString* rs = tsvalue(&b);
+    if (ls == rs)
+        return false;
+
+    uint8_t lc = uint8_t(getstr(ls)[0]);
+    uint8_t rc = uint8_t(getstr(rs)[0]);
+    return lc != rc ? lc < rc : luaV_strcmp(ls, rs) < 0;
+}
+
+static LUAU_FORCEINLINE void sort_swapvalues(TValue& a, TValue& b)
+{
+    TValue tmp = a;
+    a = b;
+    b = tmp;
+}
+
+template<bool (*less)(const TValue&, const TValue&)>
+static void sort_typed_siftheap(TValue* arr, int count, int root)
+{
+    while (root < count / 2)
+    {
+        int child = root * 2 + 1;
+        if (child + 1 < count && less(arr[child], arr[child + 1]))
+            child++;
+        if (!less(arr[root], arr[child]))
+            break;
+        sort_swapvalues(arr[root], arr[child]);
+        root = child;
+    }
+}
+
+template<bool (*less)(const TValue&, const TValue&)>
+static void sort_typed_heap(TValue* arr, int count)
+{
+    for (int i = count / 2 - 1; i >= 0; --i)
+        sort_typed_siftheap<less>(arr, count, i);
+
+    for (int i = count - 1; i > 0; --i)
+    {
+        sort_swapvalues(arr[0], arr[i]);
+        sort_typed_siftheap<less>(arr, i, 0);
+    }
+}
+
+template<bool (*less)(const TValue&, const TValue&)>
+static void sort_typed_rec(TValue* arr, int l, int u, int limit)
+{
+    while (u - l >= 16)
+    {
+        if (limit == 0)
+            return sort_typed_heap<less>(arr + l, u - l + 1);
+
+        int m = l + ((u - l) >> 1);
+        if (less(arr[u], arr[l]))
+            sort_swapvalues(arr[u], arr[l]);
+        if (less(arr[m], arr[l]))
+            sort_swapvalues(arr[m], arr[l]);
+        else if (less(arr[u], arr[m]))
+            sort_swapvalues(arr[m], arr[u]);
+
+        // The endpoints bound the pivot, so the scans need no bounds checks.
+        sort_swapvalues(arr[m], arr[u - 1]);
+        TValue pivot = arr[u - 1];
+        int i = l;
+        int j = u - 1;
+        for (;;)
+        {
+            while (less(arr[++i], pivot))
+            {
+            }
+            while (less(pivot, arr[--j]))
+            {
+            }
+            if (j < i)
+                break;
+            sort_swapvalues(arr[i], arr[j]);
+        }
+
+        sort_swapvalues(arr[i], arr[u - 1]);
+        limit = (limit >> 1) + (limit >> 2);
+
+        // Recurse on the smaller half to bound stack use.
+        if (i - l < u - i)
+        {
+            sort_typed_rec<less>(arr, l, i - 1, limit);
+            l = i + 1;
+        }
+        else
+        {
+            sort_typed_rec<less>(arr, i + 1, u, limit);
+            u = i - 1;
+        }
+    }
+
+    for (int i = l + 1; i <= u; ++i)
+    {
+        TValue key = arr[i];
+        int j = i;
+        while (j > l && less(key, arr[j - 1]))
+        {
+            arr[j] = arr[j - 1];
+            j--;
+        }
+        arr[j] = key;
+    }
+}
+
+static bool sort_default_typed(TValue* arr, int n)
+{
+    if (ttisnumber(&arr[0]))
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            if (!ttisnumber(&arr[i]))
+                return false;
+
+            // The generic comparison order is observable for NaNs and signed zeros.
+            double value = nvalue(&arr[i]);
+            if (luai_numisnan(value) || (value == 0.0 && signbit(value)))
+                return false;
+        }
+
+        sort_typed_rec<sort_numless>(arr, 0, n - 1, n);
+        return true;
+    }
+
+    if (ttisstring(&arr[0]))
+    {
+        for (int i = 1; i < n; ++i)
+            if (!ttisstring(&arr[i]))
+                return false;
+
+        sort_typed_rec<sort_strless>(arr, 0, n - 1, n);
+        return true;
+    }
+
+    return false;
+}
+
 static int tsort(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -562,7 +713,11 @@ static int tsort(lua_State* L)
     lua_settop(L, 2); // make sure there are two arguments
 
     if (n > 0)
+    {
+        if (DFFlag::LuauTableSortDefaultFastPath && pred == luaV_lessthan && n > 1 && sort_default_typed(t->array, n))
+            return 0;
         sort_rec(L, t, 0, n - 1, n, pred);
+    }
     return 0;
 }
 

@@ -30,6 +30,48 @@ checksort({"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
 -- duplicates
 checksort({3, 1, 1, 7, 1, 3, 5, 1, 9, 3}, nil, 1, 1, 1, 1, 3, 3, 3, 5, 7, 9)
 
+-- The default numeric sort agrees with the generic comparator even when the order is only partial.
+for _, values in {{4, 0/0, 3, -1, 0/0, 7, 2}, {-0.0, 0, 4, -2, 0, -0.0}, {0/0, 4, 2, 3, 1}, {-0.0, 1, 0, -1}} do
+  local expected = table.clone(values)
+  table.sort(expected, function(a, b) return a < b end)
+  table.sort(values)
+  for i, x in values do
+    local y = expected[i]
+    assert((x ~= x and y ~= y) or (x == y and (x ~= 0 or 1/x == 1/y)))
+  end
+end
+
+do
+  local ok, err = pcall(table.sort, {"a", 1})
+  assert(not ok and err == "attempt to compare number < string")
+  local mixed = {3, 2, "a"}
+  ok, err = pcall(table.sort, mixed)
+  assert(not ok and err == "attempt to compare string < number")
+  assert(mixed[1] == 3 and mixed[2] == 2 and mixed[3] == "a")
+
+  local prefix = string.rep("p", 256)
+  checksort({prefix.."\255", prefix.."\0", prefix, prefix.."\128"}, nil,
+    prefix, prefix.."\0", prefix.."\128", prefix.."\255")
+
+  -- This sequence repeatedly gives the median-of-three partition a poor pivot.
+  local organpipe = table.create(1000)
+  for i=0,999 do organpipe[i+1] = math.min(i, 1000-i) end
+  table.sort(organpipe)
+  for i=1,1000 do assert(organpipe[i] == math.floor(i/2)) end
+
+  for _, n in {1, 2, 3, 16, 17, 1000} do
+    local t = table.create(n)
+    for i=1,n do t[i] = n - i + 1 end
+    table.sort(t, nil)
+    for i=1,n do assert(t[i] == i) end
+    table.sort(t)
+    for i=1,n do assert(t[i] == i) end
+    for i=1,n do t[i] = 42 end
+    table.sort(t)
+    for i=1,n do assert(t[i] == 42) end
+  end
+end
+
 -- predicates
 checksort({3, 8, 1, 7, 10, 2, 5, 4, 9, 6}, function (a, b) return a > b end, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
 
