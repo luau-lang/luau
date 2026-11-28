@@ -173,6 +173,19 @@ assert((function() local a = 10 local b = 1 repeat b = b * 2 a = a - 1 if a == 1
 -- the block and ends before the condition is evaluated
 assert((function() repeat local a = 5 until a - 4 < 0 or a - 4 >= 0 end)() == nil)
 
+-- Decimal string conversion and coercion in arithmetic
+assert(tonumber("0") == 0)
+assert(tonumber("007") == 7)
+assert(tonumber("999999999999999") == 999999999999999)
+assert(tonumber("1234567890123456") == 1234567890123456)
+assert(tonumber("9007199254740993") == 9007199254740992)
+assert(tonumber("") == nil and tonumber("\255") == nil)
+assert(tonumber(" 12") == 12 and tonumber("12 ") == 12)
+assert(tonumber("+1") == 1 and tonumber("-1") == -1)
+assert(tonumber("1e2") == 100 and tonumber("0x10") == 16)
+assert(tonumber("12\0") == 12 and tonumber("12\0x") == 12)
+assert("10" + 1 == 11)
+
 -- numeric for
 -- basic tests with positive/negative step sizes
 assert((function() local a = 1 for b=1,9 do a = a * 2 end return a end)() == 512)

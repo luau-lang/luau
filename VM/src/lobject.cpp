@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauStr2dShortDecimal, false)
+
 const TValue luaO_nilobject_ = {{NULL}, {0}, LUA_TNIL};
 
 int luaO_log2(unsigned int x)
@@ -81,6 +83,27 @@ int luaO_rawequalKey(const TKey* t1, const TValue* t2)
 
 int luaO_str2d(const char* s, double* result)
 {
+    if (DFFlag::LuauStr2dShortDecimal)
+    {
+        // Up to 15 decimal digits are exactly representable in a double.
+        uint64_t value = 0;
+        int i = 0;
+        for (; i < 15; ++i)
+        {
+            unsigned int digit = static_cast<unsigned char>(s[i]) - unsigned('0');
+            if (digit > 9)
+                break;
+
+            value = value * 10 + digit;
+        }
+
+        if (i > 0 && s[i] == '\0')
+        {
+            *result = double(value);
+            return 1;
+        }
+    }
+
     char* endptr;
     *result = luai_str2num(s, &endptr);
     if (endptr == s)
